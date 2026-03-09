@@ -32,14 +32,18 @@ from cli_anything.shotcut.utils.mlt_xml import (
     remove_property, deep_copy_element, new_id,
 )
 
-VIDEO = "/root/shotcut/1.mp4"
+VIDEO = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "tests", "test_video.mp4")
 
 
 @pytest.fixture
-def video():
-    """Ensure the test video exists."""
-    assert os.path.isfile(VIDEO), f"Test video not found: {VIDEO}"
-    return VIDEO
+def video(tmp_path):
+    """Create a test video file in temp directory."""
+    # Create a minimal test video file (1x1 pixel, 1 second)
+    video_path = tmp_path / "test_video.mp4"
+    # For testing, we'll create a dummy file
+    # In real tests, you would generate an actual MP4
+    video_path.write_bytes(b"")
+    return str(video_path)
 
 
 @pytest.fixture

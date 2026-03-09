@@ -10,6 +10,44 @@ import os
 import shutil
 import subprocess
 from typing import Optional
+import re
+
+
+def _escape_script_fu_path(path: str) -> str:
+    """Escape a file path for safe use in Script-Fu commands.
+
+    Script-Fu doesn't have a native escape mechanism, so we validate
+    that the path contains only safe characters and reject paths that
+    could cause injection issues.
+
+    Args:
+        path: Absolute file path to escape/validate
+
+    Returns:
+        The same path if safe
+
+    Raises:
+        ValueError: If path contains unsafe characters
+    """
+    # Check for absolute path
+    if not os.path.isabs(path):
+        raise ValueError(f"Path must be absolute: {path}")
+
+    # Check for unsafe characters that could break Script-Fu string literals
+    # Script-Fu uses double quotes for strings, so we disallow: " and \
+    unsafe_chars = ['"', '\\']
+    for char in unsafe_chars:
+        if char in path:
+            raise ValueError(
+                f"Path contains unsafe character '{char}': {path}. "
+                f"Script-Fu cannot safely handle paths with quotes or backslashes."
+            )
+
+    # Additional check for null bytes
+    if '\0' in path:
+        raise ValueError(f"Path contains null byte: {path}")
+
+    return path
 
 
 def find_gimp() -> str:
@@ -74,6 +112,9 @@ def create_and_export(
     """Create a new image in GIMP and export it."""
     abs_output = os.path.abspath(output_path)
     os.makedirs(os.path.dirname(abs_output), exist_ok=True)
+
+    # Validate path is safe for Script-Fu
+    _escape_script_fu_path(abs_output)
 
     ext = os.path.splitext(output_path)[1].lower()
 
@@ -163,6 +204,10 @@ def apply_filter_and_export(
     abs_input = os.path.abspath(input_path)
     abs_output = os.path.abspath(output_path)
     os.makedirs(os.path.dirname(abs_output), exist_ok=True)
+
+    # Validate paths are safe for Script-Fu
+    _escape_script_fu_path(abs_input)
+    _escape_script_fu_path(abs_output)
 
     ext = os.path.splitext(output_path)[1].lower()
     if ext == ".png":
