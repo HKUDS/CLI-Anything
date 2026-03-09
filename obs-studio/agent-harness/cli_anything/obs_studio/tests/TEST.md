@@ -153,7 +153,7 @@ E2E tests validate complete streaming/recording workflows without OBS Studio ins
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.13.11, pytest-9.0.2, pluggy-1.5.0
-rootdir: /root/cli-anything
+rootdir: ./CLI-Anything
 plugins: langsmith-0.5.1, anyio-4.12.0
 collected 153 items
 

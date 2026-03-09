@@ -26,9 +26,10 @@ from cli.core import filters as filt_mod
 from cli.core import media as media_mod
 from cli.core import export as export_mod
 
-VIDEO = "/root/shotcut/1.mp4"
-OUTPUT = "/root/shotcut/agent-harness/output.mp4"
-PROJECT_FILE = "/root/shotcut/agent-harness/highlight_reel.mlt"
+# Configuration - update these paths for your environment
+VIDEO = os.path.join(os.path.dirname(__file__), "1.mp4")
+OUTPUT = os.path.join(os.path.dirname(__file__), "output.mp4")
+PROJECT_FILE = os.path.join(os.path.dirname(__file__), "highlight_reel.mlt")
 
 
 def main():
