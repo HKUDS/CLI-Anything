@@ -20,14 +20,19 @@ echo -e "${BLUE}  Build powerful CLI interfaces for any GUI application${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Check if HARNESS.md exists
-HARNESS_PATH="/root/cli-anything/HARNESS.md"
-if [ ! -f "$HARNESS_PATH" ]; then
-    echo -e "${YELLOW}⚠️  HARNESS.md not found at $HARNESS_PATH${NC}"
-    echo -e "${YELLOW}   The cli-anything methodology requires HARNESS.md${NC}"
-    echo -e "${YELLOW}   You can create it or specify a custom path with --harness-path${NC}"
-    echo ""
-fi
+# Check if HARNESS.md exists (try multiple common locations)
+HARNESS_PATHS=(
+    "./cli-anything-plugin/HARNESS.md"
+    "./HARNESS.md"
+    "$HOME/cli-anything/cli-anything-plugin/HARNESS.md"
+)
+HARNESS_PATH=""
+for path in "${HARNESS_PATHS[@]}"; do
+    if [ -f "$path" ]; then
+        HARNESS_PATH="$path"
+        break
+    fi
+done
 
 # Check Python version
 if command -v python3 &> /dev/null; then
@@ -85,7 +90,11 @@ echo -e "  ${BLUE}/cli-anything:validate${NC} /home/user/audacity"
 echo ""
 echo "Documentation:"
 echo ""
-echo "  HARNESS.md: /root/cli-anything/HARNESS.md"
+if [ -n "$HARNESS_PATH" ]; then
+    echo "  HARNESS.md: $HARNESS_PATH"
+else
+    echo "  HARNESS.md: Not found (install cli-anything-plugin first)"
+fi
 echo "  Plugin README: Use '/help cli-anything' for more info"
 echo ""
 echo -e "${GREEN}Ready to build CLI harnesses! 🚀${NC}"
