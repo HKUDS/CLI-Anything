@@ -18,7 +18,7 @@ control over OBS scene collections via JSON configuration files.
 ## CLI Harness Location
 
 ```
-/root/cli-anything/obs-studio/agent-harness/cli/
+~/cli-anything/obs-studio/agent-harness/cli/
 ```
 
 ## Usage
@@ -26,7 +26,7 @@ control over OBS scene collections via JSON configuration files.
 ### Creating a Stream Setup
 
 ```bash
-cd /root/cli-anything/obs-studio/agent-harness
+cd ~/cli-anything/obs-studio/agent-harness
 
 # 1. Create project
 python3 -m cli.obs_cli project new --name "my_stream" -o stream.json
@@ -142,7 +142,7 @@ python3 -m cli.obs_cli repl --project stream.json
 ## Testing
 
 ```bash
-cd /root/cli-anything/obs-studio/agent-harness
+cd ~/cli-anything/obs-studio/agent-harness
 python3 -m pytest cli/tests/ -v
 ```
 
