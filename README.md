@@ -513,7 +513,7 @@ blender[ProductShot]*> render execute --output render.png --engine CYCLES
 ✓ Rendered: render.png (1920×1080, 2.3 MB) via blender --background
 
 blender[ProductShot]> exit
-Goodbye! 👋ffor a specific CLI
+Goodbye! 👋
 ```
 
 ---
@@ -572,7 +572,7 @@ cli-anything-<software> --json <command>   # JSON output for agents
 
 
 ```bash
-# Run tests for a specific CLI
+# Run tests for a specific CLI 
 cd <software>/agent-harness
 python3 -m pytest cli_anything/<software>/tests/ -v
 
