@@ -523,7 +523,7 @@ HARNESS.md is our definitive SOP for making any software agent-accessible via au
 
 It encodes proven patterns and methodologies refined through the automated generation processes.
 
-The playbook distills key insights from successfully building all 8 diverse, production-ready harnesses.
+The playbook distills key insights from successfully building all 9 diverse, production-ready harnesses.
 
 ### Critical Lessons
 
