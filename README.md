@@ -43,7 +43,7 @@ CLI is the universal interface for both humans and AI agents:
 
 • **Self-Describing** - --help flags provide automatic documentation agents can discover
 
-• **Proven Success** - Claude Code runs thousands of real workflows through CLI daily
+• **Proven Success** - Claude Code runs thousands of real workflows through the CLI daily
 
 • **Agent-First Design** - Structured JSON output eliminates parsing complexity
 
