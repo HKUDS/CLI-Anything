@@ -513,7 +513,7 @@ blender[ProductShot]*> render execute --output render.png --engine CYCLES
 ✓ Rendered: render.png (1920×1080, 2.3 MB) via blender --background
 
 blender[ProductShot]> exit
-Goodbye! 👋
+Goodbye! 👋ffor a specific CLI
 ```
 
 ---
