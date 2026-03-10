@@ -572,7 +572,7 @@ cli-anything-<software> --json <command>   # JSON output for agents
 
 
 ```bash
-# Run tests for a specific CLI 
+# Run tests for a specific CLI har
 cd <software>/agent-harness
 python3 -m pytest cli_anything/<software>/tests/ -v
 
