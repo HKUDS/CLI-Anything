@@ -521,7 +521,7 @@ Goodbye! 👋
 📖 The Standard Playbook: HARNESS.md
 HARNESS.md is our definitive SOP for making any software agent-accessible via automated CLI generation.
 
-It encodes proven patterns and methodologies refined through automated generation processes.
+It encodes proven patterns and methodologies refined through the automated generation processes.
 
 The playbook distills key insights from successfully building all 8 diverse, production-ready harnesses.
 
