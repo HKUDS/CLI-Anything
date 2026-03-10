@@ -19,7 +19,7 @@ setup(
     description="CLI harness for Shotcut - Video editing and rendering via melt/ffmpeg. Requires: melt (apt install melt), ffmpeg (apt install ffmpeg)",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/cli-anything-shotcut",
+    url="https://github.com/HKUDS/CLI-Anything",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",

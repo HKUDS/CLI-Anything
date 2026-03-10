@@ -19,7 +19,7 @@ setup(
     description="CLI harness for Inkscape - SVG vector graphics with export via inkscape --export-filename. Requires: inkscape (apt install inkscape)",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/cli-anything-inkscape",
+    url="https://github.com/HKUDS/CLI-Anything",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",
