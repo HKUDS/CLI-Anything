@@ -31,23 +31,23 @@ All commands are run from the `agent-harness/` directory.
 
 ```bash
 # Show help
-python3 -m cli.shotcut_cli --help
+cli-anything-shotcut --help
 
 # Create a new project
-python3 -m cli.shotcut_cli project new --profile hd1080p30 -o my_project.mlt
+cli-anything-shotcut project new --profile hd1080p30 -o my_project.mlt
 
 # Open a project and show info
-python3 -m cli.shotcut_cli --project my_project.mlt project info
+cli-anything-shotcut --project my_project.mlt project info
 
 # JSON output (for agent consumption)
-python3 -m cli.shotcut_cli --json --project my_project.mlt project info
+cli-anything-shotcut --json --project my_project.mlt project info
 ```
 
 ### Interactive REPL
 
 ```bash
-python3 -m cli.shotcut_cli repl
-python3 -m cli.shotcut_cli repl --project my_project.mlt
+cli-anything-shotcut repl
+cli-anything-shotcut repl --project my_project.mlt
 ```
 
 Inside the REPL, type `help` for all available commands.
@@ -172,7 +172,7 @@ The CLI accepts these timecode formats anywhere a time value is expected:
 Add `--json` before the subcommand for machine-readable output:
 
 ```bash
-python3 -m cli.shotcut_cli --json --project p.mlt timeline clips 1
+cli-anything-shotcut --json --project p.mlt timeline clips 1
 ```
 
 ## Running Tests
@@ -186,21 +186,21 @@ python3 -m pytest cli/tests/test_core.py -v
 
 ```bash
 # Create a project with two video tracks
-python3 -m cli.shotcut_cli project new --profile hd1080p30 -o edit.mlt
-python3 -m cli.shotcut_cli --project edit.mlt timeline add-track --type video --name "Main"
-python3 -m cli.shotcut_cli --project edit.mlt timeline add-track --type audio --name "Music"
+cli-anything-shotcut project new --profile hd1080p30 -o edit.mlt
+cli-anything-shotcut --project edit.mlt timeline add-track --type video --name "Main"
+cli-anything-shotcut --project edit.mlt timeline add-track --type audio --name "Music"
 
 # Add clips (assuming media files exist)
-python3 -m cli.shotcut_cli --project edit.mlt timeline add-clip intro.mp4 --track 1 --in 00:00:00.000 --out 00:00:05.000
-python3 -m cli.shotcut_cli --project edit.mlt timeline add-clip main.mp4 --track 1 --in 00:00:00.000 --out 00:00:30.000
+cli-anything-shotcut --project edit.mlt timeline add-clip intro.mp4 --track 1 --in 00:00:00.000 --out 00:00:05.000
+cli-anything-shotcut --project edit.mlt timeline add-clip main.mp4 --track 1 --in 00:00:00.000 --out 00:00:30.000
 
 # Apply a brightness filter to the first clip
-python3 -m cli.shotcut_cli --project edit.mlt filter add brightness --track 1 --clip 0 --param level=1.3
+cli-anything-shotcut --project edit.mlt filter add brightness --track 1 --clip 0 --param level=1.3
 
 # View the timeline
-python3 -m cli.shotcut_cli --project edit.mlt timeline show
+cli-anything-shotcut --project edit.mlt timeline show
 
 # Save and render
-python3 -m cli.shotcut_cli --project edit.mlt project save
-python3 -m cli.shotcut_cli --project edit.mlt export render output.mp4 --preset h264-high --overwrite
+cli-anything-shotcut --project edit.mlt project save
+cli-anything-shotcut --project edit.mlt export render output.mp4 --preset h264-high --overwrite
 ```

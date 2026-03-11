@@ -28,26 +28,26 @@ All commands are run from the `agent-harness/` directory.
 
 ```bash
 # Show help
-python3 -m cli.gimp_cli --help
+cli-anything-gimp --help
 
 # Create a new project
-python3 -m cli.gimp_cli project new --width 1920 --height 1080 -o my_project.json
+cli-anything-gimp project new --width 1920 --height 1080 -o my_project.json
 
 # Create with a profile
-python3 -m cli.gimp_cli project new --profile hd720p -o project.json
+cli-anything-gimp project new --profile hd720p -o project.json
 
 # Open a project and show info
-python3 -m cli.gimp_cli --project project.json project info
+cli-anything-gimp --project project.json project info
 
 # JSON output (for agent consumption)
-python3 -m cli.gimp_cli --json --project project.json project info
+cli-anything-gimp --json --project project.json project info
 ```
 
 ### Interactive REPL
 
 ```bash
-python3 -m cli.gimp_cli repl
-python3 -m cli.gimp_cli repl --project my_project.json
+cli-anything-gimp repl
+cli-anything-gimp repl --project my_project.json
 ```
 
 Inside the REPL, type `help` for all available commands.
@@ -156,7 +156,7 @@ session history
 Add `--json` before the subcommand for machine-readable output:
 
 ```bash
-python3 -m cli.gimp_cli --json --project p.json layer list
+cli-anything-gimp --json --project p.json layer list
 ```
 
 ## Running Tests
@@ -172,26 +172,26 @@ python3 -m pytest cli/tests/ -v                      # All tests
 
 ```bash
 # Create a project
-python3 -m cli.gimp_cli project new --width 1920 --height 1080 --profile hd1080p -o edit.json
+cli-anything-gimp project new --width 1920 --height 1080 --profile hd1080p -o edit.json
 
 # Add an image layer
-python3 -m cli.gimp_cli --project edit.json layer add-from-file photo.jpg --name "Background"
+cli-anything-gimp --project edit.json layer add-from-file photo.jpg --name "Background"
 
 # Apply filters
-python3 -m cli.gimp_cli --project edit.json filter add brightness --layer 0 --param factor=1.2
-python3 -m cli.gimp_cli --project edit.json filter add contrast --layer 0 --param factor=1.1
-python3 -m cli.gimp_cli --project edit.json filter add saturation --layer 0 --param factor=1.3
+cli-anything-gimp --project edit.json filter add brightness --layer 0 --param factor=1.2
+cli-anything-gimp --project edit.json filter add contrast --layer 0 --param factor=1.1
+cli-anything-gimp --project edit.json filter add saturation --layer 0 --param factor=1.3
 
 # Add a text overlay
-python3 -m cli.gimp_cli --project edit.json layer new --type text --name "Title"
-python3 -m cli.gimp_cli --project edit.json draw text --layer 0 --text "My Photo" --size 48 --color "#ffffff"
+cli-anything-gimp --project edit.json layer new --type text --name "Title"
+cli-anything-gimp --project edit.json draw text --layer 0 --text "My Photo" --size 48 --color "#ffffff"
 
 # View the layer stack
-python3 -m cli.gimp_cli --project edit.json layer list
+cli-anything-gimp --project edit.json layer list
 
 # Save and render
-python3 -m cli.gimp_cli --project edit.json project save
-python3 -m cli.gimp_cli --project edit.json export render output.jpg --preset jpeg-high --overwrite
+cli-anything-gimp --project edit.json project save
+cli-anything-gimp --project edit.json export render output.jpg --preset jpeg-high --overwrite
 ```
 
 ## Blend Modes

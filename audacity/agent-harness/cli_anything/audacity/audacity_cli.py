@@ -19,6 +19,7 @@ Usage:
 import sys
 import os
 import json
+import shlex
 import click
 from typing import Optional
 
@@ -714,7 +715,7 @@ def repl(project_path):
                 _repl_help(skin)
                 continue
 
-            args = line.split()
+            args = shlex.split(line)
             try:
                 cli.main(args, standalone_mode=False)
             except SystemExit:

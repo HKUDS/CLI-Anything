@@ -27,26 +27,26 @@ All commands are run from the `agent-harness/` directory.
 
 ```bash
 # Show help
-python3 -m cli.libreoffice_cli --help
+cli-anything-libreoffice --help
 
 # Create a new Writer document
-python3 -m cli.libreoffice_cli document new --type writer --name "Report" -o report.json
+cli-anything-libreoffice document new --type writer --name "Report" -o report.json
 
 # Create with a page profile
-python3 -m cli.libreoffice_cli document new --profile a4_portrait -o project.json
+cli-anything-libreoffice document new --profile a4_portrait -o project.json
 
 # Open a project and show info
-python3 -m cli.libreoffice_cli --project project.json document info
+cli-anything-libreoffice --project project.json document info
 
 # JSON output (for agent consumption)
-python3 -m cli.libreoffice_cli --json --project project.json document info
+cli-anything-libreoffice --json --project project.json document info
 ```
 
 ### Interactive REPL
 
 ```bash
-python3 -m cli.libreoffice_cli repl
-python3 -m cli.libreoffice_cli repl --project my_project.json
+cli-anything-libreoffice repl
+cli-anything-libreoffice repl --project my_project.json
 ```
 
 Inside the REPL, type `help` for all available commands.
@@ -136,7 +136,7 @@ session history
 Add `--json` before the subcommand for machine-readable output:
 
 ```bash
-python3 -m cli.libreoffice_cli --json --project p.json writer list
+cli-anything-libreoffice --json --project p.json writer list
 ```
 
 ## Running Tests
@@ -152,22 +152,22 @@ python3 -m pytest cli/tests/ -v                      # All tests
 
 ```bash
 # Create a Writer document
-python3 -m cli.libreoffice_cli document new --type writer --name "Quarterly Report" -o report.json
+cli-anything-libreoffice document new --type writer --name "Quarterly Report" -o report.json
 
 # Add content
-python3 -m cli.libreoffice_cli --project report.json writer add-heading -t "Q1 Report" -l 1
-python3 -m cli.libreoffice_cli --project report.json writer add-paragraph -t "Revenue grew by 15%."
-python3 -m cli.libreoffice_cli --project report.json writer add-table --rows 3 --cols 2
-python3 -m cli.libreoffice_cli --project report.json writer add-list -i "Product A" -i "Product B"
+cli-anything-libreoffice --project report.json writer add-heading -t "Q1 Report" -l 1
+cli-anything-libreoffice --project report.json writer add-paragraph -t "Revenue grew by 15%."
+cli-anything-libreoffice --project report.json writer add-table --rows 3 --cols 2
+cli-anything-libreoffice --project report.json writer add-list -i "Product A" -i "Product B"
 
 # Create and apply a style
-python3 -m cli.libreoffice_cli --project report.json style create "Emphasis" --prop bold=true --prop color=#cc0000
-python3 -m cli.libreoffice_cli --project report.json style apply "Emphasis" 1
+cli-anything-libreoffice --project report.json style create "Emphasis" --prop bold=true --prop color=#cc0000
+cli-anything-libreoffice --project report.json style apply "Emphasis" 1
 
 # Save and export
-python3 -m cli.libreoffice_cli --project report.json document save
-python3 -m cli.libreoffice_cli --project report.json export render report.odt --preset odt --overwrite
-python3 -m cli.libreoffice_cli --project report.json export render report.html --preset html --overwrite
+cli-anything-libreoffice --project report.json document save
+cli-anything-libreoffice --project report.json export render report.odt --preset odt --overwrite
+cli-anything-libreoffice --project report.json export render report.html --preset html --overwrite
 ```
 
 ## ODF Format

@@ -18,28 +18,28 @@ pip install click prompt_toolkit
 
 ```bash
 # Create a new scene
-python3 -m cli.blender_cli scene new --name "MyScene" -o scene.json
+cli-anything-blender scene new --name "MyScene" -o scene.json
 
 # Add objects
-python3 -m cli.blender_cli --project scene.json object add cube --name "Box"
-python3 -m cli.blender_cli --project scene.json object add sphere --name "Ball" -l 3,0,1
+cli-anything-blender --project scene.json object add cube --name "Box"
+cli-anything-blender --project scene.json object add sphere --name "Ball" -l 3,0,1
 
 # Create and assign materials
-python3 -m cli.blender_cli --project scene.json material create --name "Red" --color 1,0,0,1
-python3 -m cli.blender_cli --project scene.json material assign 0 0
+cli-anything-blender --project scene.json material create --name "Red" --color 1,0,0,1
+cli-anything-blender --project scene.json material assign 0 0
 
 # Add modifiers
-python3 -m cli.blender_cli --project scene.json modifier add subdivision_surface -o 0 -p levels=2
+cli-anything-blender --project scene.json modifier add subdivision_surface -o 0 -p levels=2
 
 # Add camera and light
-python3 -m cli.blender_cli --project scene.json camera add -l 7,-6,5 -r 63,0,46 --active
-python3 -m cli.blender_cli --project scene.json light add sun -r -45,0,30
+cli-anything-blender --project scene.json camera add -l 7,-6,5 -r 63,0,46 --active
+cli-anything-blender --project scene.json light add sun -r -45,0,30
 
 # Save
-python3 -m cli.blender_cli --project scene.json scene save
+cli-anything-blender --project scene.json scene save
 
 # Generate render script
-python3 -m cli.blender_cli --project scene.json render execute render.png --overwrite
+cli-anything-blender --project scene.json render execute render.png --overwrite
 
 # Execute with Blender (if installed)
 blender --background --python /path/to/_render_script.py
@@ -50,16 +50,16 @@ blender --background --python /path/to/_render_script.py
 All commands support `--json` for machine-readable output:
 
 ```bash
-python3 -m cli.blender_cli --json scene new -o scene.json
-python3 -m cli.blender_cli --json --project scene.json object list
+cli-anything-blender --json scene new -o scene.json
+cli-anything-blender --json --project scene.json object list
 ```
 
 ## Interactive REPL
 
 ```bash
-python3 -m cli.blender_cli repl
+cli-anything-blender repl
 # or with existing project:
-python3 -m cli.blender_cli repl --project scene.json
+cli-anything-blender repl --project scene.json
 ```
 
 ## Command Groups
@@ -168,7 +168,7 @@ python3 -m pytest cli/tests/ -v --tb=short
 ```
 cli/
 ├── __init__.py
-├── __main__.py           # python3 -m cli.blender_cli
+├── __main__.py           # cli-anything-blender
 ├── blender_cli.py        # Main CLI entry point (Click + REPL)
 ├── core/
 │   ├── __init__.py

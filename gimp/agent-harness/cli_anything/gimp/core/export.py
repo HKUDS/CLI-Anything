@@ -5,7 +5,7 @@ with all filters applied and exporting to various image formats.
 """
 
 import os
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageDraw, ImageFont
 import numpy as np
 
@@ -93,42 +93,19 @@ def render(
     else:
         canvas_img = Image.new("RGB", (cw, ch), bg_color)
 
-    layers = project.get("layers", [])
+    layers, applied_layer_operations = _prepare_layers_for_export(project, cw, ch)
 
     # Composite layers bottom-to-top
     for layer in reversed(layers):
         if not layer.get("visible", True):
             continue
 
-        layer_img = _load_layer(layer, cw, ch)
+        layer_img = _render_layer_to_canvas(layer, cw, ch)
         if layer_img is None:
             continue
 
-        # Apply filters
-        layer_img = _apply_filters(layer_img, layer.get("filters", []))
-
-        # Apply scaling if marked
-        if "_scale_x" in layer:
-            new_w = max(1, round(layer_img.width * layer["_scale_x"]))
-            new_h = max(1, round(layer_img.height * layer["_scale_y"]))
-            resample_map = {
-                "nearest": Image.NEAREST, "bilinear": Image.BILINEAR,
-                "bicubic": Image.BICUBIC, "lanczos": Image.LANCZOS,
-            }
-            resample = resample_map.get(layer.get("_resample", "lanczos"), Image.LANCZOS)
-            layer_img = layer_img.resize((new_w, new_h), resample)
-
-        # Position on canvas
-        ox = layer.get("offset_x", 0)
-        oy = layer.get("offset_y", 0)
-
-        # Apply opacity
-        opacity = layer.get("opacity", 1.0)
-
-        # Apply blend mode and composite
         canvas_img = _composite_layer(
-            canvas_img, layer_img, ox, oy, opacity,
-            layer.get("blend_mode", "normal")
+            canvas_img, layer_img, layer.get("blend_mode", "normal")
         )
 
     # Convert mode for export
@@ -160,9 +137,129 @@ def render(
         "file_size_human": _human_size(os.path.getsize(output_path)),
         "preset": preset,
         "layers_rendered": sum(1 for l in layers if l.get("visible", True)),
+        "applied_layer_operations": applied_layer_operations,
     }
 
     return result
+
+
+def _prepare_layers_for_export(
+    project: Dict[str, Any], canvas_w: int, canvas_h: int
+) -> tuple[list[Dict[str, Any]], list[str]]:
+    """Resolve deferred layer operations against a working layer stack."""
+    layers = list(project.get("layers", []))
+    applied: list[str] = []
+
+    merge_index = project.get("_merge_down_pending")
+    if isinstance(merge_index, int) and 0 <= merge_index < len(layers) - 1:
+        merged = _merge_layers(layers[merge_index], layers[merge_index + 1], canvas_w, canvas_h)
+        layers = layers[:merge_index] + [merged] + layers[merge_index + 2:]
+        applied.append("merge_down")
+
+    if project.get("_flatten_pending"):
+        flattened = _flatten_visible_layers(layers, canvas_w, canvas_h)
+        if flattened is not None:
+            layers = [flattened]
+            applied.append("flatten")
+
+    return layers, applied
+
+
+def _merge_layers(
+    top_layer: Dict[str, Any], bottom_layer: Dict[str, Any], canvas_w: int, canvas_h: int
+) -> Dict[str, Any]:
+    """Merge one layer into the layer immediately below it for export."""
+    bottom_canvas = _render_layer_to_canvas(bottom_layer, canvas_w, canvas_h)
+    top_canvas = _render_layer_to_canvas(top_layer, canvas_w, canvas_h)
+
+    if bottom_canvas is None:
+        bottom_canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    if top_canvas is None:
+        merged = bottom_canvas
+    else:
+        merged = _composite_layer(
+            bottom_canvas,
+            top_canvas,
+            top_layer.get("blend_mode", "normal"),
+        )
+
+    return {
+        "name": bottom_layer.get("name", "Merged Layer"),
+        "type": "image",
+        "visible": True,
+        "opacity": 1.0,
+        "blend_mode": "normal",
+        "_rendered_image": merged,
+    }
+
+
+def _flatten_visible_layers(
+    layers: list[Dict[str, Any]], canvas_w: int, canvas_h: int
+) -> Optional[Dict[str, Any]]:
+    """Flatten all visible layers into a single rasterized layer for export."""
+    visible_layers = [layer for layer in layers if layer.get("visible", True)]
+    if not visible_layers:
+        return None
+
+    flattened = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    for layer in reversed(visible_layers):
+        layer_canvas = _render_layer_to_canvas(layer, canvas_w, canvas_h)
+        if layer_canvas is None:
+            continue
+        flattened = _composite_layer(
+            flattened,
+            layer_canvas,
+            layer.get("blend_mode", "normal"),
+        )
+
+    return {
+        "name": "Flattened Layer",
+        "type": "image",
+        "visible": True,
+        "opacity": 1.0,
+        "blend_mode": "normal",
+        "_rendered_image": flattened,
+    }
+
+
+def _render_layer_to_canvas(
+    layer: Dict[str, Any], canvas_w: int, canvas_h: int
+) -> Optional[Image.Image]:
+    """Render a single layer into a full-canvas RGBA image."""
+    if "_rendered_image" in layer:
+        rendered = layer["_rendered_image"]
+        return rendered.convert("RGBA") if rendered.mode != "RGBA" else rendered.copy()
+
+    layer_img = _load_layer(layer, canvas_w, canvas_h)
+    if layer_img is None:
+        return None
+
+    layer_img = _apply_filters(layer_img, layer.get("filters", []))
+
+    if "_scale_x" in layer:
+        new_w = max(1, round(layer_img.width * layer["_scale_x"]))
+        new_h = max(1, round(layer_img.height * layer["_scale_y"]))
+        resample_map = {
+            "nearest": Image.NEAREST, "bilinear": Image.BILINEAR,
+            "bicubic": Image.BICUBIC, "lanczos": Image.LANCZOS,
+        }
+        resample = resample_map.get(layer.get("_resample", "lanczos"), Image.LANCZOS)
+        layer_img = layer_img.resize((new_w, new_h), resample)
+
+    if layer_img.mode != "RGBA":
+        layer_img = layer_img.convert("RGBA")
+
+    opacity = layer.get("opacity", 1.0)
+    if opacity < 1.0:
+        alpha = layer_img.split()[3].point(lambda a: int(a * opacity))
+        layer_img.putalpha(alpha)
+
+    ox = layer.get("offset_x", 0)
+    oy = layer.get("offset_y", 0)
+
+    layer_canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    layer_canvas.paste(layer_img, (ox, oy), layer_img)
+    return layer_canvas
 
 
 def _load_layer(layer: Dict[str, Any], canvas_w: int, canvas_h: int) -> Optional[Image.Image]:
@@ -378,37 +475,23 @@ def _apply_sepia(img: Image.Image, strength: float = 0.8) -> Image.Image:
 def _composite_layer(
     base: Image.Image,
     layer: Image.Image,
-    offset_x: int,
-    offset_y: int,
-    opacity: float,
     blend_mode: str,
 ) -> Image.Image:
-    """Composite a layer onto the base canvas with blend mode and opacity."""
-    # Ensure both are RGBA for compositing
+    """Composite a full-canvas layer image onto the base canvas."""
     if base.mode != "RGBA":
         base = base.convert("RGBA")
     if layer.mode != "RGBA":
         layer = layer.convert("RGBA")
 
-    # Apply opacity to layer
-    if opacity < 1.0:
-        alpha = layer.split()[3]
-        alpha = alpha.point(lambda a: int(a * opacity))
-        layer.putalpha(alpha)
-
-    # Create a full-canvas-sized version of the layer at the correct offset
-    layer_canvas = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    layer_canvas.paste(layer, (offset_x, offset_y))
-
     if blend_mode == "normal":
-        return Image.alpha_composite(base, layer_canvas)
+        return Image.alpha_composite(base, layer)
 
     # For other blend modes, we need numpy
     try:
-        return _blend_with_mode(base, layer_canvas, blend_mode)
+        return _blend_with_mode(base, layer, blend_mode)
     except ImportError:
         # Fallback to normal if numpy not available
-        return Image.alpha_composite(base, layer_canvas)
+        return Image.alpha_composite(base, layer)
 
 
 def _blend_with_mode(base: Image.Image, layer: Image.Image, mode: str) -> Image.Image:

@@ -14,37 +14,37 @@ pip install click prompt_toolkit
 
 ```bash
 # Create a new project
-python3 -m cli.obs_cli project new --name "my_stream" -o project.json
+cli-anything-obs-studio project new --name "my_stream" -o project.json
 
 # Add sources
-python3 -m cli.obs_cli --project project.json source add video_capture --name "Camera"
-python3 -m cli.obs_cli --project project.json source add display_capture --name "Game"
+cli-anything-obs-studio --project project.json source add video_capture --name "Camera"
+cli-anything-obs-studio --project project.json source add display_capture --name "Game"
 
 # Add filters
-python3 -m cli.obs_cli --project project.json filter add chroma_key -S 0 -p similarity=400
+cli-anything-obs-studio --project project.json filter add chroma_key -S 0 -p similarity=400
 
 # Add scenes
-python3 -m cli.obs_cli --project project.json scene add --name "BRB"
+cli-anything-obs-studio --project project.json scene add --name "BRB"
 
 # Configure streaming
-python3 -m cli.obs_cli --project project.json output streaming --service twitch --key "your_key"
+cli-anything-obs-studio --project project.json output streaming --service twitch --key "your_key"
 
 # Save
-python3 -m cli.obs_cli --project project.json project save
+cli-anything-obs-studio --project project.json project save
 ```
 
 ## JSON Output Mode
 
 ```bash
-python3 -m cli.obs_cli --json project new -o project.json
-python3 -m cli.obs_cli --json --project project.json source list
+cli-anything-obs-studio --json project new -o project.json
+cli-anything-obs-studio --json --project project.json source list
 ```
 
 ## Interactive REPL
 
 ```bash
-python3 -m cli.obs_cli repl
-python3 -m cli.obs_cli repl --project project.json
+cli-anything-obs-studio repl
+cli-anything-obs-studio repl --project project.json
 ```
 
 ## Command Groups

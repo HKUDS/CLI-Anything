@@ -25,17 +25,17 @@ No other dependencies required. Core functionality uses only Python stdlib.
 cd /root/cli-anything/audacity/agent-harness
 
 # One-shot commands
-python3 -m cli.audacity_cli project new --name "My Podcast"
-python3 -m cli.audacity_cli track add --name "Voice"
-python3 -m cli.audacity_cli clip add 0 /path/to/recording.wav
-python3 -m cli.audacity_cli effect add normalize --track 0
-python3 -m cli.audacity_cli export render output.wav
+cli-anything-audacity project new --name "My Podcast"
+cli-anything-audacity track add --name "Voice"
+cli-anything-audacity clip add 0 /path/to/recording.wav
+cli-anything-audacity effect add normalize --track 0
+cli-anything-audacity export render output.wav
 
 # JSON output mode (for agent consumption)
-python3 -m cli.audacity_cli --json project info
+cli-anything-audacity --json project info
 
 # Interactive REPL
-python3 -m cli.audacity_cli repl
+cli-anything-audacity repl
 ```
 
 ## Run Tests
@@ -71,27 +71,27 @@ python3 -m pytest cli/tests/test_full_e2e.py -v
 
 ```bash
 # Create a podcast project
-python3 -m cli.audacity_cli project new --name "Episode 1" -o project.json
+cli-anything-audacity project new --name "Episode 1" -o project.json
 
 # Add tracks
-python3 -m cli.audacity_cli --project project.json track add --name "Host"
-python3 -m cli.audacity_cli --project project.json track add --name "Guest"
-python3 -m cli.audacity_cli --project project.json track add --name "Music"
+cli-anything-audacity --project project.json track add --name "Host"
+cli-anything-audacity --project project.json track add --name "Guest"
+cli-anything-audacity --project project.json track add --name "Music"
 
 # Import audio clips
-python3 -m cli.audacity_cli --project project.json clip add 0 host_recording.wav
-python3 -m cli.audacity_cli --project project.json clip add 1 guest_recording.wav --start 0.5
-python3 -m cli.audacity_cli --project project.json clip add 2 music.wav --volume 0.3
+cli-anything-audacity --project project.json clip add 0 host_recording.wav
+cli-anything-audacity --project project.json clip add 1 guest_recording.wav --start 0.5
+cli-anything-audacity --project project.json clip add 2 music.wav --volume 0.3
 
 # Apply effects
-python3 -m cli.audacity_cli --project project.json effect add normalize --track 0 -p target_db=-3.0
-python3 -m cli.audacity_cli --project project.json effect add compress --track 0 -p threshold=-20 -p ratio=4.0
-python3 -m cli.audacity_cli --project project.json effect add fade_in --track 2 -p duration=2.0
+cli-anything-audacity --project project.json effect add normalize --track 0 -p target_db=-3.0
+cli-anything-audacity --project project.json effect add compress --track 0 -p threshold=-20 -p ratio=4.0
+cli-anything-audacity --project project.json effect add fade_in --track 2 -p duration=2.0
 
 # Add labels
-python3 -m cli.audacity_cli --project project.json label add 0.0 --text "Intro"
-python3 -m cli.audacity_cli --project project.json label add 30.0 -e 60.0 --text "Main discussion"
+cli-anything-audacity --project project.json label add 0.0 --text "Intro"
+cli-anything-audacity --project project.json label add 30.0 -e 60.0 --text "Main discussion"
 
 # Export
-python3 -m cli.audacity_cli --project project.json export render episode1.wav --preset wav
+cli-anything-audacity --project project.json export render episode1.wav --preset wav
 ```

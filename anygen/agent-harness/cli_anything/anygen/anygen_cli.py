@@ -14,6 +14,7 @@ Usage:
 import sys
 import os
 import json
+import shlex
 import click
 from typing import Optional
 
@@ -504,7 +505,7 @@ def repl():
             skin.help(commands)
             continue
 
-        parts = line.split()
+        parts = shlex.split(line)
         try:
             cli.main(parts, standalone_mode=False)
         except SystemExit:
