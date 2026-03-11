@@ -10,9 +10,9 @@ LibreOffice and other ODF-compatible applications.
 ## Architecture
 
 ```
-cli/
+cli_anything/libreoffice/
   __init__.py
-  __main__.py              # python3 -m cli.libreoffice_cli entry point
+  __main__.py              # python3 -m cli_anything.libreoffice entry point
   libreoffice_cli.py       # Click CLI with groups and REPL
   core/
     __init__.py
@@ -54,30 +54,31 @@ Documents are stored as JSON project files (`.lo-cli.json`) with this structure:
 cd /root/cli-anything/libreoffice/agent-harness
 pip install click
 python3 -m cli.libreoffice_cli --help
-python3 -m pytest cli/tests/ -v
+python3 -m cli_anything.libreoffice --help
+python3 -m pytest cli_anything/libreoffice/tests/ -v
 ```
 
 ## Common Workflows
 
 ### Create a Writer document and export to ODF
 ```bash
-python3 -m cli.libreoffice_cli document new --type writer -n "Report" -o report.json
-python3 -m cli.libreoffice_cli --project report.json writer add-heading -t "Title" -l 1
-python3 -m cli.libreoffice_cli --project report.json writer add-paragraph -t "Body text"
-python3 -m cli.libreoffice_cli --project report.json export render report.odt -p odt --overwrite
+cli-anything-libreoffice document new --type writer -n "Report" -o report.json
+cli-anything-libreoffice --project report.json writer add-heading -t "Title" -l 1
+cli-anything-libreoffice --project report.json writer add-paragraph -t "Body text"
+cli-anything-libreoffice --project report.json export render report.odt -p odt --overwrite
 ```
 
 ### Create a spreadsheet
 ```bash
-python3 -m cli.libreoffice_cli document new --type calc -o budget.json
-python3 -m cli.libreoffice_cli --project budget.json calc set-cell A1 "Revenue" --type string
-python3 -m cli.libreoffice_cli --project budget.json calc set-cell B1 "50000" --type float
-python3 -m cli.libreoffice_cli --project budget.json export render budget.ods -p ods --overwrite
+cli-anything-libreoffice document new --type calc -o budget.json
+cli-anything-libreoffice --project budget.json calc set-cell A1 "Revenue" --type string
+cli-anything-libreoffice --project budget.json calc set-cell B1 "50000" --type float
+cli-anything-libreoffice --project budget.json export render budget.ods -p ods --overwrite
 ```
 
 ### Create a presentation
 ```bash
-python3 -m cli.libreoffice_cli document new --type impress -o deck.json
-python3 -m cli.libreoffice_cli --project deck.json impress add-slide -t "Welcome" -c "Hello"
-python3 -m cli.libreoffice_cli --project deck.json export render deck.odp -p odp --overwrite
+cli-anything-libreoffice document new --type impress -o deck.json
+cli-anything-libreoffice --project deck.json impress add-slide -t "Welcome" -c "Hello"
+cli-anything-libreoffice --project deck.json export render deck.odp -p odp --overwrite
 ```
