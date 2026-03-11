@@ -54,34 +54,35 @@ CLI is the universal interface for both humans and AI agents:
 
 ### Prerequisites
 
-- **Claude Code** (with plugin support)
+- **An agent runtime that supports local skills** (Codex, Claude Code, or similar)
 - **Python 3.10+**
 - Target software installed (e.g., GIMP, Blender, LibreOffice, or your own application)
 
-### Step 1: Add the Marketplace
+### Step 1: Install via Plugin or Skill
 
-CLI-Anything is distributed as a Claude Code plugin marketplace hosted on GitHub.
+CLI-Anything still supports the original plugin flow, and now also exposes a repo-local skill under `.agents/skills/cli-anything`.
 
 ```bash
-# Add the CLI-Anything marketplace
+# Plugin path
 /plugin marketplace add HKUDS/CLI-Anything
-```
-
-### Step 2: Install the Plugin
-
-```bash
-# Install the cli-anything plugin from the marketplace
 /plugin install cli-anything
+
+# Skill path (additional option for runtimes with local skills)
+git clone https://github.com/HKUDS/CLI-Anything.git
+cd CLI-Anything
+mkdir -p ~/.agents/skills
+ln -s "$PWD/.agents/skills/cli-anything" ~/.agents/skills/cli-anything
 ```
 
-That's it. The plugin is now available in your Claude Code session.
+### Step 2: Invoke the Workflow
+
+If you are using the plugin, call `/cli-anything <software-path-or-repo>`. If you are using a local-skill runtime, ask your agent to use the `cli-anything` skill on the same target path. Both entrypoints follow the same methodology.
 
 ### Step 3: Build a CLI in One Command
 
 ```bash
-# /cli-anything <software-path-or-repo>
-# Generate a complete CLI for GIMP (all 7 phases)
-/cli-anything ./gimp
+# Example prompt to your agent
+Use the cli-anything skill to build a complete CLI harness for ./gimp.
 ```
 
 This runs the full pipeline:
@@ -109,19 +110,15 @@ cli-anything-gimp
 ```
 
 <details>
-<summary><strong>Alternative: Manual Installation</strong></summary>
+<summary><strong>Alternative: Skill-Only Installation</strong></summary>
 
-If you prefer not to use the marketplace:
+If your runtime does not support the plugin flow but does support local skills:
 
 ```bash
-# Clone the repo
 git clone https://github.com/HKUDS/CLI-Anything.git
-
-# Copy plugin to Claude Code plugins directory
-cp -r CLI-Anything/cli-anything-plugin ~/.claude/plugins/cli-anything
-
-# Reload plugins
-/reload-plugins
+cd CLI-Anything
+mkdir -p ~/.agents/skills
+ln -s "$PWD/.agents/skills/cli-anything" ~/.agents/skills/cli-anything
 ```
 
 </details>
@@ -407,11 +404,15 @@ TOTAL        1,458 passed  ✅   100% pass rate
 ```
 cli-anything/
 ├── 📄 README.md                          # You are here
+├── 🧠 .agents/skills/cli-anything/       # Additional local-skill entrypoint
+│   ├── SKILL.md                          # Triggering + workflow guidance
+│   ├── agents/openai.yaml                # Optional UI metadata
+│   └── references/                       # Skill-local SOP and command specs
 ├── 📁 assets/                            # Images and media
 │   ├── icon.png                          # Project icon
 │   └── teaser.png                        # Teaser figure
 │
-├── 🔌 cli-anything-plugin/               # The Claude Code plugin
+├── 🔌 cli-anything-plugin/               # Claude Code plugin wrapper
 │   ├── HARNESS.md                        # Methodology SOP (source of truth)
 │   ├── README.md                         # Plugin documentation
 │   ├── QUICKSTART.md                     # 5-minute getting started
@@ -553,18 +554,27 @@ The playbook distills key insights from successfully building all 9 diverse, pro
 
 ## 📦 Installation & Usage
 
-### For Plugin Users (Claude Code)
+### For Plugin Users
 
 ```bash
-# Add marketplace & install (recommended)
 /plugin marketplace add HKUDS/CLI-Anything
 /plugin install cli-anything
-
-# Build a CLI for any software with a codebase
-/cli-anything <software-name>
+/cli-anything <software-path-or-repo>
 ```
 
-### For Generated CLIs
+### For Skill Users
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+cd CLI-Anything
+ls .agents/skills/cli-anything
+mkdir -p ~/.agents/skills
+ln -s "$PWD/.agents/skills/cli-anything" ~/.agents/skills/cli-anything
+```
+
+Then ask your agent to use the `cli-anything` skill against a local source tree or repository URL. The skill uses the same methodology and output layout as the plugin flow.
+
+### Generated CLIs
 
 ```bash
 # Install any generated CLI
@@ -597,9 +607,9 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<software>/tests/ 
 
 We welcome contributions! CLI-Anything is designed to be extensible:
 
-- **New software targets** — Use the plugin to generate a CLI for any software with a codebase, then submit your harness via [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md).
+- **New software targets** — Use the repo-local skill to generate a CLI for any software with a codebase, then submit your harness via [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md).
 - **Methodology improvements** — PRs to `HARNESS.md` that encode new lessons learned
-- **Plugin enhancements** — New commands, phase improvements, better validation
+- **Skill and workflow enhancements** — Better prompts, clearer references, and improved validation flows
 - **Test coverage** — More E2E scenarios, edge cases, workflow tests
 
 ### Roadmap
@@ -609,7 +619,7 @@ We welcome contributions! CLI-Anything is designed to be extensible:
 - [ ] Community-contributed CLI harnesses for internal/custom software
 - [ ] Integration with additional agent frameworks beyond Claude Code
 - [ ] Support packaging APIs for closed-source software and web services into CLIs
-- [ ] Produce SKILL.md alongside the CLI for agent skill discovery and orchestration
+- [x] Ship a repo-local `cli-anything` skill for agent skill discovery and orchestration
 
 ---
 
@@ -617,10 +627,12 @@ We welcome contributions! CLI-Anything is designed to be extensible:
 
 | Document | Description |
 |----------|-------------|
+| [`.agents/skills/cli-anything/SKILL.md`](.agents/skills/cli-anything/SKILL.md) | Additional skill entrypoint for runtimes that support local skills |
+| [`.agents/skills/cli-anything/references/HARNESS.md`](.agents/skills/cli-anything/references/HARNESS.md) | Skill-local copy of the methodology SOP |
 | [`cli-anything-plugin/HARNESS.md`](cli-anything-plugin/HARNESS.md) | The methodology SOP — single source of truth |
 | [`cli-anything-plugin/README.md`](cli-anything-plugin/README.md) | Plugin documentation — commands, options, phases |
-| [`cli-anything-plugin/QUICKSTART.md`](cli-anything-plugin/QUICKSTART.md) | 5-minute getting started guide |
-| [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md) | Distribution and publishing guide |
+| [`cli-anything-plugin/QUICKSTART.md`](cli-anything-plugin/QUICKSTART.md) | Plugin getting started guide |
+| [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md) | Harness distribution and publishing guide |
 
 Each generated harness also includes:
 - `<SOFTWARE>.md` — Architecture SOP specific to that application

@@ -54,34 +54,35 @@ CLI 是人类和 AI Agent 共通的万能接口：
 
 ### 环境要求
 
-- **Claude Code**（需支持插件）
+- **支持本地 skill 的 Agent 运行时**（Codex、Claude Code 等）
 - **Python 3.10+**
 - 目标软件已安装（如 GIMP、Blender、LibreOffice 或你自己的应用）
 
-### 第一步：添加插件市场
+### 第一步：通过插件或 Skill 接入
 
-CLI-Anything 以 Claude Code 插件市场的形式托管在 GitHub 上。
+CLI-Anything 保留原有插件接入方式，同时新增仓库内 skill，路径是 `.agents/skills/cli-anything`。
 
 ```bash
-# 添加 CLI-Anything 插件市场
+# 插件方式
 /plugin marketplace add HKUDS/CLI-Anything
-```
-
-### 第二步：安装插件
-
-```bash
-# 从市场安装 cli-anything 插件
 /plugin install cli-anything
+
+# Skill 方式（支持本地 skill 的运行时可选）
+git clone https://github.com/HKUDS/CLI-Anything.git
+cd CLI-Anything
+mkdir -p ~/.agents/skills
+ln -s "$PWD/.agents/skills/cli-anything" ~/.agents/skills/cli-anything
 ```
 
-搞定。插件已经在你的 Claude Code 会话中可用了。
+### 第二步：调用工作流
+
+如果你走插件方式，就调用 `/cli-anything <软件路径或仓库地址>`。如果你走本地 skill 方式，就让 Agent 对同一个目标路径使用 `cli-anything` skill。两条入口都遵循同一套方法论。
 
 ### 第三步：一行命令生成 CLI
 
 ```bash
-# /cli-anything <软件路径或仓库地址>
-# 为 GIMP 生成完整的 CLI（7 个阶段全自动）
-/cli-anything ./gimp
+# 给 Agent 的示例提示词
+使用 cli-anything skill，为 ./gimp 构建完整的 CLI harness。
 ```
 
 完整流水线自动执行：
@@ -110,19 +111,15 @@ cli-anything-gimp
 ```
 
 <details>
-<summary><strong>备选方案：手动安装</strong></summary>
+<summary><strong>备选方案：仅使用 Skill</strong></summary>
 
-如果你不想用插件市场：
+如果你的运行时不支持插件，但支持本地 skill：
 
 ```bash
-# 克隆仓库
 git clone https://github.com/HKUDS/CLI-Anything.git
-
-# 复制插件到 Claude Code 插件目录
-cp -r CLI-Anything/cli-anything-plugin ~/.claude/plugins/cli-anything
-
-# 重新加载插件
-/reload-plugins
+cd CLI-Anything
+mkdir -p ~/.agents/skills
+ln -s "$PWD/.agents/skills/cli-anything" ~/.agents/skills/cli-anything
 ```
 
 </details>
@@ -415,11 +412,15 @@ TOTAL        1,458 passed  ✅   100% pass rate
 cli-anything/
 ├── 📄 README.md                          # 英文文档
 ├── 📄 README_CN.md                       # 中文文档（你在这里）
+├── 🧠 .agents/skills/cli-anything/       # 新增的本地 skill 入口
+│   ├── SKILL.md                          # 触发条件与工作流说明
+│   ├── agents/openai.yaml                # 可选 UI 元数据
+│   └── references/                       # skill 内置 SOP 与命令规范
 ├── 📁 assets/                            # 图片和媒体文件
 │   ├── icon.png                          # 项目图标
 │   └── teaser.png                        # 概览图
 │
-├── 🔌 cli-anything-plugin/               # Claude Code 插件
+├── 🔌 cli-anything-plugin/               # Claude Code 插件壳
 │   ├── HARNESS.md                        # 方法论 SOP（唯一权威来源）
 │   ├── README.md                         # 插件文档
 │   ├── QUICKSTART.md                     # 5 分钟快速上手
@@ -427,7 +428,7 @@ cli-anything/
 │   ├── repl_skin.py                      # 统一 REPL 界面
 │   ├── commands/                         # 插件命令定义
 │   │   ├── cli-anything.md               # 主构建命令
-│   │   ├── build.md                      # 扩展已有 harness 覆盖面
+│   │   ├── refine.md                     # 扩展已有 harness 覆盖面
 │   │   ├── test.md                       # 测试运行器
 │   │   └── validate.md                   # 标准验证
 │   └── scripts/
@@ -561,16 +562,25 @@ HARNESS.md 是我们通过自动化 CLI 生成让任意软件变得 Agent 可用
 
 ## 📦 安装与使用
 
-### 插件用户（Claude Code）
+### 插件用户
 
 ```bash
-# 添加市场并安装（推荐）
 /plugin marketplace add HKUDS/CLI-Anything
 /plugin install cli-anything
-
-# 为任何有代码库的软件生成 CLI
-/cli-anything <软件名>
+/cli-anything <软件路径或仓库地址>
 ```
+
+### Skill 用户
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+cd CLI-Anything
+ls .agents/skills/cli-anything
+mkdir -p ~/.agents/skills
+ln -s "$PWD/.agents/skills/cli-anything" ~/.agents/skills/cli-anything
+```
+
+然后让 Agent 对本地源码树或仓库 URL 使用 `cli-anything` skill。它和插件方式共用同一套方法论与输出结构。
 
 ### 使用生成的 CLI
 
@@ -605,9 +615,9 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<软件名>/tests/
 
 欢迎贡献！CLI-Anything 天然支持扩展：
 
-- **新的目标软件** — 用插件为任意有代码库的软件生成 CLI，然后通过 [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md) 提交你的成果。
+- **新的目标软件** — 用仓库内 skill 为任意有代码库的软件生成 CLI，然后通过 [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md) 提交你的成果。
 - **方法论改进** — 向 `HARNESS.md` 提 PR，把新的经验教训沉淀下来
-- **插件增强** — 新命令、阶段优化、更好的验证逻辑
+- **Skill 与工作流增强** — 更好的提示词、更清晰的 references、更强的验证链路
 - **测试覆盖** — 更多端到端场景、边界情况、工作流测试
 
 ---
@@ -616,10 +626,12 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<软件名>/tests/
 
 | 文档 | 说明 |
 |-----|------|
+| [`.agents/skills/cli-anything/SKILL.md`](.agents/skills/cli-anything/SKILL.md) | 面向支持本地 skill 的运行时的新增入口 |
+| [`.agents/skills/cli-anything/references/HARNESS.md`](.agents/skills/cli-anything/references/HARNESS.md) | skill 内置的方法论 SOP 副本 |
 | [`cli-anything-plugin/HARNESS.md`](cli-anything-plugin/HARNESS.md) | 方法论 SOP — 唯一权威来源 |
 | [`cli-anything-plugin/README.md`](cli-anything-plugin/README.md) | 插件文档 — 命令、选项、阶段 |
-| [`cli-anything-plugin/QUICKSTART.md`](cli-anything-plugin/QUICKSTART.md) | 5 分钟快速上手 |
-| [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md) | 分发与发布指南 |
+| [`cli-anything-plugin/QUICKSTART.md`](cli-anything-plugin/QUICKSTART.md) | 插件快速上手 |
+| [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md) | harness 分发与发布指南 |
 
 每个生成的 CLI 还包含：
 
@@ -668,4 +680,3 @@ MIT License — 可自由使用、修改和分发。
   <em>感谢访问 ✨ CLI-Anything！</em><br><br>
   <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.CLI-Anything&style=for-the-badge&color=00d4ff" alt="Views">
 </p>
-
