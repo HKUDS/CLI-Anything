@@ -8,10 +8,10 @@ documents with a JSON project format for state tracking.
 
 ```bash
 # From the agent-harness directory:
-pip install click pillow
+pip install click Pillow prompt_toolkit
 
-# No Inkscape installation required for SVG editing.
-# Inkscape is only needed for PDF export and advanced rendering.
+# Pillow powers native PNG rendering.
+# Inkscape is only needed for PDF/EPS export and advanced SVG rendering fallback.
 ```
 
 ## Quick Start
@@ -150,11 +150,18 @@ gradient list       - List all gradients
 
 ### Export
 ```
-export png     - Render to PNG (via Pillow)
+export png     - Render to PNG (via Pillow; falls back to SVG + Inkscape command if unavailable)
 export svg     - Export as SVG
 export pdf     - Export as PDF (needs Inkscape)
+export eps     - Export as EPS (needs Inkscape)
 export presets - List export presets
 ```
+
+## Export Notes
+
+- `export png` renders directly with Pillow for common shapes, text, and basic styling.
+- If Pillow is unavailable, the CLI still emits an SVG plus the exact `inkscape` command needed to render the PNG.
+- `export pdf` and `export eps` require Inkscape for final conversion because they depend on the real SVG engine.
 
 ### Session Management
 ```
