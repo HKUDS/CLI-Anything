@@ -6,7 +6,8 @@ Get started with the cli-anything plugin in 5 minutes.
 
 ```bash
 # Copy plugin to Claude Code plugins directory
-cp -r /root/cli-anything/cli-anything-plugin ~/.claude/plugins/cli-anything
+REPO_ROOT=/path/to/CLI-Anything
+cp -r "$REPO_ROOT/cli-anything-plugin" ~/.claude/plugins/cli-anything
 
 # Reload plugins in Claude Code
 /reload-plugins
@@ -21,7 +22,7 @@ Let's build a CLI for a simple GUI application:
 
 ```bash
 # Build complete CLI harness for GIMP
-/cli-anything gimp
+/cli-anything /path/to/gimp-source
 ```
 
 This will:
@@ -35,13 +36,13 @@ This will:
 
 **Time:** ~10-15 minutes (depending on complexity)
 
-**Output:** `/root/cli-anything/gimp/agent-harness/`
+**Output:** `/path/to/gimp-source/agent-harness/`
 
 ## Install the CLI
 
 ```bash
 # Install to system PATH
-cd /root/cli-anything/gimp/agent-harness
+cd /path/to/gimp-source/agent-harness
 pip install -e .
 
 # Verify it's in PATH
@@ -55,7 +56,7 @@ cli-anything-gimp --help
 
 ```bash
 # Navigate to the CLI directory
-cd /root/cli-anything/gimp/agent-harness
+cd /path/to/gimp-source/agent-harness
 
 # Run the CLI directly (if installed)
 cli-anything-gimp --help
@@ -74,10 +75,10 @@ cli-anything-gimp repl
 
 ```bash
 # Run all tests
-/cli-anything:test gimp
+/cli-anything:test /path/to/gimp-source
 
 # Or manually
-cd /root/cli-anything/gimp/agent-harness
+cd /path/to/gimp-source/agent-harness
 python3 -m pytest cli_anything/gimp/tests/ -v
 
 # Force tests to use the installed command (recommended for validation)
@@ -89,20 +90,20 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/gimp/tests/ -v -s
 
 ```bash
 # Check if CLI meets all standards
-/cli-anything:validate gimp
+/cli-anything:validate /path/to/gimp-source
 ```
 
 ## Build Another CLI
 
 ```bash
 # Build CLI for Blender (3D software)
-/cli-anything blender
+/cli-anything /path/to/blender-source
 
 # Build CLI for Inkscape (vector graphics)
-/cli-anything inkscape
+/cli-anything /path/to/inkscape-source
 
 # Build CLI for Audacity (audio editor)
-/cli-anything audacity
+/cli-anything /path/to/audacity-source
 ```
 
 ## Refining an Existing CLI
@@ -130,7 +131,7 @@ After the initial build, use the refine command to expand coverage:
 /cli-anything /home/user/blender
 /cli-anything:validate /home/user/blender
 /cli-anything:test /home/user/blender
-cd /root/cli-anything/blender/agent-harness
+cd /home/user/blender/agent-harness
 pip install -e .
 which cli-anything-blender
 ```
@@ -170,10 +171,10 @@ pip install click pytest pillow numpy
 ### CLI doesn't work
 ```bash
 # Check if all files were created
-ls /root/cli-anything/<software>/agent-harness/cli_anything/<software>/
+ls <software-path>/agent-harness/cli_anything/<software>/
 
 # Verify Python can import
-cd /root/cli-anything/<software>/agent-harness
+cd <software-path>/agent-harness
 python3 -c "import cli_anything.<software>"
 
 # Check if installed to PATH
@@ -188,7 +189,7 @@ pip install -e .
 Once your CLI is ready:
 
 ```bash
-cd /root/cli-anything/<software>/agent-harness
+cd <software-path>/agent-harness
 
 # Install build tools
 pip install build twine
@@ -210,9 +211,9 @@ cli-anything-blender --help
 ## Next Steps
 
 1. **Read the full README:** `cat README.md`
-2. **Study an example:** Explore `/root/cli-anything/gimp/agent-harness/cli_anything/gimp/`
-3. **Read HARNESS.md:** Understand the methodology at `~/.claude/plugins/cli-anything/HARNESS.md`
-4. **Build your own:** Choose a GUI app and run `/cli-anything <app-name>`
+2. **Study an example:** Explore `<software-path>/agent-harness/cli_anything/<software>/`
+3. **Read HARNESS.md:** Understand the methodology at `<plugin-dir>/HARNESS.md` (commonly `~/.claude/plugins/cli-anything/HARNESS.md`)
+4. **Build your own:** Choose a GUI app and run `/cli-anything <software-path-or-repo>`
 
 ## Tips
 
