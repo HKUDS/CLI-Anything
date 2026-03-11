@@ -300,6 +300,9 @@ def layer_duplicate(index):
     sess = get_session()
     sess.snapshot(f"Duplicate layer {index}")
     dup = layer_mod.duplicate_layer(sess.get_project(), index)
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output(dup, f"Duplicated layer {index}")
 
 
@@ -312,6 +315,9 @@ def layer_move(index, to):
     sess = get_session()
     sess.snapshot(f"Move layer {index} to {to}")
     layer_mod.move_layer(sess.get_project(), index, to)
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output({"moved": index, "to": to}, f"Moved layer {index} to position {to}")
 
 
