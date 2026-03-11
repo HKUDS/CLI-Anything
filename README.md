@@ -7,8 +7,8 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 
 <p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start"></a>
-  <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-9_Apps-green?style=for-the-badge" alt="Demos"></a>
-  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-1%2C458_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
+  <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-11_Apps-green?style=for-the-badge" alt="Demos"></a>
+  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-1%2C508_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -54,11 +54,16 @@ CLI is the universal interface for both humans and AI agents:
 
 ### Prerequisites
 
-- **Claude Code** (with plugin support)
 - **Python 3.10+**
 - Target software installed (e.g., GIMP, Blender, LibreOffice, or your own application)
+- A supported AI coding agent: [Claude Code](#-claude-code) | [OpenCode](#-opencode) | [More Platforms](#-more-platforms-coming-soon)
 
-### Step 1: Add the Marketplace
+### Pick Your Platform
+
+<details open>
+<summary><h4 id="-claude-code">⚡ Claude Code</h4></summary>
+
+**Step 1: Add the Marketplace**
 
 CLI-Anything is distributed as a Claude Code plugin marketplace hosted on GitHub.
 
@@ -67,7 +72,7 @@ CLI-Anything is distributed as a Claude Code plugin marketplace hosted on GitHub
 /plugin marketplace add HKUDS/CLI-Anything
 ```
 
-### Step 2: Install the Plugin
+**Step 2: Install the Plugin**
 
 ```bash
 # Install the cli-anything plugin from the marketplace
@@ -76,12 +81,14 @@ CLI-Anything is distributed as a Claude Code plugin marketplace hosted on GitHub
 
 That's it. The plugin is now available in your Claude Code session.
 
-### Step 3: Build a CLI in One Command
+**Step 3: Build a CLI in One Command**
 
 ```bash
-# /cli-anything <software-path-or-repo>
+# /cli-anything:cli-anything <software-path-or-repo>
 # Generate a complete CLI for GIMP (all 7 phases)
-/cli-anything ./gimp
+/cli-anything:cli-anything ./gimp
+
+# Note: If your Claude Code is under 2.x, use "/cli-anything" instead.
 ```
 
 This runs the full pipeline:
@@ -93,20 +100,19 @@ This runs the full pipeline:
 6. 📝 **Document** — Updates TEST.md with results
 7. 📦 **Publish** — Creates `setup.py`, installs to PATH
 
-### Step 4: Use the CLI
+**Step 4 (Optional): Refine and Improve the CLI**
+
+After the initial build, you can iteratively refine the CLI to expand coverage and add missing capabilities:
 
 ```bash
-# Install to PATH
-cd gimp/agent-harness && pip install -e .
+# Broad refinement — agent analyzes gaps across all capabilities
+/cli-anything:refine ./gimp
 
-# Use from anywhere
-cli-anything-gimp --help
-cli-anything-gimp project new --width 1920 --height 1080 -o poster.json
-cli-anything-gimp --json layer add -n "Background" --type solid --color "#1a1a2e"
-
-# Enter interactive REPL
-cli-anything-gimp
+# Focused refinement — target a specific functionality area
+/cli-anything:refine ./gimp "I want more CLIs on image batch processing and filters"
 ```
+
+The refine command performs gap analysis between the software's full capabilities and current CLI coverage, then implements new commands, tests, and documentation for the identified gaps. You can run it multiple times to steadily expand coverage — each run is incremental and non-destructive.
 
 <details>
 <summary><strong>Alternative: Manual Installation</strong></summary>
@@ -125,6 +131,84 @@ cp -r CLI-Anything/cli-anything-plugin ~/.claude/plugins/cli-anything
 ```
 
 </details>
+
+</details>
+
+<details>
+<summary><h4 id="-opencode">⚡ OpenCode</h4></summary>
+
+**Step 1: Install the Commands**
+
+Copy the CLI-Anything commands **and** `HARNESS.md` to your OpenCode commands directory:
+
+```bash
+# Clone the repo
+git clone https://github.com/HKUDS/CLI-Anything.git
+
+# Global install (available in all projects)
+cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/commands/
+cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/commands/
+
+# Or project-level install
+cp CLI-Anything/opencode-commands/*.md .opencode/commands/
+cp CLI-Anything/cli-anything-plugin/HARNESS.md .opencode/commands/
+```
+
+> **Note:** `HARNESS.md` is the methodology spec that all commands reference. It must be in the same directory as the commands.
+
+This adds 5 slash commands: `/cli-anything`, `/cli-anything-refine`, `/cli-anything-test`, `/cli-anything-validate`, and `/cli-anything-list`.
+
+**Step 2: Build a CLI in One Command**
+
+```bash
+# Generate a complete CLI for GIMP (all 7 phases)
+/cli-anything ./gimp
+
+# Build from a GitHub repo
+/cli-anything https://github.com/blender/blender
+```
+
+The command runs as a subtask and follows the same 7-phase methodology as Claude Code.
+
+**Step 3 (Optional): Refine and Improve the CLI**
+
+```bash
+# Broad refinement — agent analyzes gaps across all capabilities
+/cli-anything-refine ./gimp
+
+# Focused refinement — target a specific functionality area
+/cli-anything-refine ./gimp "batch processing and filters"
+```
+
+</details>
+
+<details>
+<summary><h4 id="-more-platforms-coming-soon">🔮 More Platforms (Coming Soon)</h4></summary>
+
+CLI-Anything is designed to be platform-agnostic. Support for more AI coding agents is planned:
+
+- **Cursor** — coming soon
+- **Windsurf** — coming soon
+- **Your favorite tool** — contributions welcome! See the `opencode-commands/` directory for a reference implementation.
+
+</details>
+
+### Use the Generated CLI
+
+Regardless of which platform you used to build it, the generated CLI works the same way:
+
+```bash
+# Install to PATH
+cd gimp/agent-harness && pip install -e .
+
+# Use from anywhere
+cli-anything-gimp --help
+cli-anything-gimp project new --width 1920 --height 1080 -o poster.json
+cli-anything-gimp --json layer add -n "Background" --type solid --color "#1a1a2e"
+
+# Enter interactive REPL
+cli-anything-gimp
+```
 
 ---
 
@@ -168,7 +252,7 @@ AI agents are great at reasoning but terrible at using real professional softwar
 | 💸 "UI automation breaks constantly" | No screenshots, no clicking, no RPA fragility. Pure command-line reliability with structured interfaces |
 | 📊 "Agents need structured data" | Built-in JSON output for seamless agent consumption + human-readable formats for debugging |
 | 🔧 "Custom integrations are expensive" | One Claude plugin auto-generates CLIs for ANY codebase through proven 7-phase pipeline |
-| ⚡ "Prototype vs Production gap" | 1,458+ tests with real software validation. Battle-tested across 10 major applications |
+| ⚡ "Prototype vs Production gap" | 1,508+ tests with real software validation. Battle-tested across 11 major applications |
 
 ---
 
@@ -257,7 +341,7 @@ All CLIs organized under cli_anything.* namespace — conflict-free, pip-install
 CLI-Anything works on any software with a codebase — no domain restrictions or architectural limitations.
 
 ### 🏭 Professional-Grade Testing
-Tested across 10 diverse, complex applications spanning creative, productivity, communication, and diagramming domains previously inaccessible to AI agents.
+Tested across 11 diverse, complex applications spanning creative, productivity, communication, diagramming, and AI content generation domains previously inaccessible to AI agents.
 
 ### 🎨 Diverse Domain Coverage
 From creative workflows (image editing, 3D modeling, vector graphics) to production tools (audio, office, live streaming, video editing).
@@ -344,12 +428,19 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 138</td>
 </tr>
 <tr>
+<td align="center"><strong>✨ AnyGen</strong></td>
+<td>AI Content Generation</td>
+<td><code>cli-anything-anygen</code></td>
+<td>AnyGen REST API (anygen.io)</td>
+<td align="center">✅ 50</td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 1,458</strong></td>
+<td align="center"><strong>✅ 1,508</strong></td>
 </tr>
 </table>
 
-> **100% pass rate** across all 1,458 tests — 1,033 unit tests + 425 end-to-end tests.
+> **100% pass rate** across all 1,508 tests — 1,073 unit tests + 435 end-to-end tests.
 
 ---
 
@@ -376,8 +467,9 @@ kdenlive      155 passed  ✅   (111 unit + 44 e2e)
 shotcut       154 passed  ✅   (110 unit + 44 e2e)
 zoom           22 passed  ✅   (22 unit + 0 e2e)
 drawio        138 passed  ✅   (116 unit + 22 e2e)
+anygen         50 passed  ✅   (40 unit + 10 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        1,458 passed  ✅   100% pass rate
+TOTAL        1,508 passed  ✅   100% pass rate
 ```
 
 ---
@@ -434,7 +526,8 @@ cli-anything/
 ├── 🎞️ kdenlive/agent-harness/           # Kdenlive CLI (155 tests)
 ├── 🎬 shotcut/agent-harness/            # Shotcut CLI (154 tests)
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22 tests)
-└── 📐 drawio/agent-harness/             # Draw.io CLI (138 tests)
+├── 📐 drawio/agent-harness/             # Draw.io CLI (138 tests)
+└── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)
 ```
 
 Each `agent-harness/` contains an installable Python package under `cli_anything.<software>/` with Click CLI, core modules, utils (including `repl_skin.py` and backend wrapper), and comprehensive tests.
@@ -535,7 +628,7 @@ HARNESS.md is our definitive SOP for making any software agent-accessible via au
 
 It encodes proven patterns and methodologies refined through automated generation processes.
 
-The playbook distills key insights from successfully building all 9 diverse, production-ready harnesses.
+The playbook distills key insights from successfully building all 11 diverse, production-ready harnesses.
 
 ### Critical Lessons
 
@@ -654,7 +747,7 @@ MIT License — free to use, modify, and distribute.
 
 **CLI-Anything** — *Make any software with a codebase Agent-native.*
 
-<sub>A methodology for the age of AI agents | 10 professional software demos | 1,458 passing tests</sub>
+<sub>A methodology for the age of AI agents | 11 professional software demos | 1,508 passing tests</sub>
 
 <br>
 
