@@ -19,7 +19,7 @@ setup(
     description="CLI harness for GIMP - Raster image processing via gimp -i -b (batch mode). Requires: gimp (apt install gimp)",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/cli-anything-gimp",
+    url="https://github.com/HKUDS/cli-anything-gimp",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",

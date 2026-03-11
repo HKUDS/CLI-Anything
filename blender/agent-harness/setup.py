@@ -19,7 +19,7 @@ setup(
     description="CLI harness for Blender - 3D modeling, animation, and rendering via blender --background --python. Requires: blender (apt install blender)",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/cli-anything-blender",
+    url="https://github.com/HKUDS/cli-anything-blender",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",

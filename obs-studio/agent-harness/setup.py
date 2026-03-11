@@ -19,7 +19,7 @@ setup(
     description="CLI harness for OBS Studio - Create and manage streaming/recording scenes via command line",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/cli-anything-obs-studio",
+    url="https://github.com/HKUDS/cli-anything-obs-studio",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",
