@@ -215,6 +215,68 @@ agent-harness/
 └── workflow_demo.py        # Full demo: 3-segment highlight reel
 ```
 
+## Shotcut CLI Execution & Persistence Model
+
+The Shotcut CLI (`shotcut-cli`) intentionally supports **both**:
+
+- A **stateful REPL** for interactive editing, and
+- **One-shot commands** for scripting and pipelines.
+
+Because session and process lifetime differ in these two modes, **persistence
+rules must be explicit**, especially for agents.
+
+### REPL mode
+
+- Started via the `repl` subcommand:
+  - `shotcut-cli repl`
+- Runs as a single long-lived process.
+- All commands share the same in-memory `Session`.
+- Project changes are **not automatically saved** to disk.
+- The user/agent is expected to call an explicit save when ready:
+  - `project save [path]`
+
+### One-shot mode
+
+- Any `shotcut-cli` invocation **without** the `repl` subcommand:
+  - `shotcut-cli project new ...`
+  - `shotcut-cli timeline add-track --type video`
+  - `shotcut-cli filter add brightness ...`
+- Each invocation runs in a **fresh process** with a fresh `Session`.
+- By default, changes are **in-memory only** and are **not persisted** unless
+  the command:
+  - Performs an explicit save (e.g., `project save`), or
+  - Runs with auto-save enabled (see below).
+
+### Auto-save for one-shot commands
+
+To make one-shot commands behave more like "run and persist", the CLI supports
+an `-s/--save` flag on the main entrypoint:
+
+```bash
+# Without auto-save: changes are in-memory only
+shotcut-cli --project edit.mlt timeline add-track --type video
+shotcut-cli --project edit.mlt project info  # track_count: 0
+
+# With auto-save: changes are written back to edit.mlt
+shotcut-cli --project edit.mlt -s timeline add-track --type video
+shotcut-cli --project edit.mlt project info  # track_count: 1
+```
+
+- `-s/--save` sets a global `auto_save` flag on the CLI group.
+- An internal `_auto_save_callback()` runs after each command.
+- Auto-save is **only applied in one-shot mode**:
+  - In REPL mode, the user/agent remains in full control of when to save.
+
+> **Design note**
+>
+> Today, one-shot commands **do not** auto-save by default, even though many
+> users might intuitively expect that behavior when they are *not* using
+> `repl`. The `-s/--save` flag makes this behavior explicit and opt-in.
+>
+> In the future, we may consider flipping this default (auto-save for one-shot
+> by default, with an explicit `--no-save` override) if that better matches
+> common usage patterns.
+
 ## Applying This to Other Software
 
 This same SOP applies to any GUI application:
