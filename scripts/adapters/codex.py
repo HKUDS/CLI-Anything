@@ -32,7 +32,8 @@ class CodexAdapter(Adapter):
             return f"  error  codex    source missing: {src}"
         if self._copy_dir(src, dst):
             return f"  installed codex    -> {dst}"
-        return f"  skip     codex    (already at {dst})"
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+        return f"  updated  codex    -> {dst}"
 
     def status(self) -> str:
         dst = self.destination()
