@@ -50,14 +50,17 @@ class OpenCodeAdapter(Adapter):
     def install(self, repo_root: Path) -> str:
         dst_dir = self.destination()
         dst_dir.mkdir(parents=True, exist_ok=True)
-        installed, skipped = 0, 0
+        installed, updated = 0, 0
         for src, fname in self._all_files(repo_root):
             if not src.is_file():
                 return f"  error  opencode  source missing: {src}"
-            if self._copy_file(src, dst_dir / fname):
+            dst = dst_dir / fname
+            if not dst.exists():
+                shutil.copy2(src, dst)
                 installed += 1
             else:
-                skipped += 1
+                shutil.copy2(src, dst)
+                updated += 1
 
         # Keep one canonical entrypoint name in OpenCode.
         for fname in _DEPRECATED_FILES:
@@ -65,9 +68,9 @@ class OpenCodeAdapter(Adapter):
             if old.exists():
                 old.unlink()
 
-        if installed == 0:
-            return f"  skip     opencode (all {skipped} files exist)"
-        return f"  installed opencode -> {dst_dir} ({installed} new, {skipped} existing)"
+        if installed == 0 and updated == 0:
+            return f"  skip     opencode (no file changes)"
+        return f"  updated  opencode -> {dst_dir} ({installed} new, {updated} updated)"
 
     def status(self) -> str:
         dst_dir = self.destination()
