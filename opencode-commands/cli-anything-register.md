@@ -19,7 +19,7 @@ Register CLI-Anything adapters for Claude Code, OpenCode, and Codex from this re
 Run from the CLI-Anything repository root:
 
 ```bash
-bash scripts/register.sh install --targets <targets>
+python3 scripts/register.py install --targets <targets>
 ```
 
 Replace `<targets>` with the comma-separated list the user provided, or `all` if omitted.
@@ -27,7 +27,7 @@ Replace `<targets>` with the comma-separated list the user provided, or `all` if
 Then show status:
 
 ```bash
-bash scripts/register.sh status
+python3 scripts/register.py status
 ```
 
 Report what was installed and where.

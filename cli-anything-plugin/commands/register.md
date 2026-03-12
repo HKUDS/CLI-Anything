@@ -20,7 +20,7 @@ Register CLI-Anything adapters for all supported AI coding agents from this repo
 Run from the CLI-Anything repository root:
 
 ```bash
-bash scripts/register.sh install --targets <targets>
+python3 scripts/register.py install --targets <targets>
 ```
 
 Replace `<targets>` with the comma-separated list the user provided, or `all` if none specified.
@@ -28,13 +28,13 @@ Replace `<targets>` with the comma-separated list the user provided, or `all` if
 Then show status:
 
 ```bash
-bash scripts/register.sh status
+python3 scripts/register.py status
 ```
 
 Report what was installed and where.
 
 ## Examples
 
-- `/register` → `bash scripts/register.sh install --targets all`
-- `/register codex` → `bash scripts/register.sh install --targets codex`
-- `/register claude,opencode` → `bash scripts/register.sh install --targets claude,opencode`
+- `/register` → `python3 scripts/register.py install --targets all`
+- `/register codex` → `python3 scripts/register.py install --targets codex`
+- `/register claude,opencode` → `python3 scripts/register.py install --targets claude,opencode`
