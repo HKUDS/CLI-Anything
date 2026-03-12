@@ -9,8 +9,10 @@ Build a complete, stateful CLI harness for any GUI application.
 ## Usage
 
 ```bash
-/cli-anything <software-path-or-repo>
+/cli-anything:cli-anything <software-path-or-repo>
 ```
+
+> Claude Code 2.x uses the namespaced command form above. On older releases, the legacy `/cli-anything` alias may still work.
 
 ## Arguments
 
@@ -104,10 +106,10 @@ This command implements the complete cli-anything methodology to build a product
 
 ```bash
 # Build a CLI for GIMP from local source
-/cli-anything /home/user/gimp
+/cli-anything:cli-anything /home/user/gimp
 
 # Build from a GitHub repo
-/cli-anything https://github.com/blender/blender
+/cli-anything:cli-anything https://github.com/blender/blender
 ```
 
 ## Success Criteria

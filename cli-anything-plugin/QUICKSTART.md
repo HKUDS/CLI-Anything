@@ -12,7 +12,7 @@ cp -r /root/cli-anything/cli-anything-plugin ~/.claude/plugins/cli-anything
 /reload-plugins
 
 # Verify installation
-/help cli-anything
+/help cli-anything:cli-anything
 ```
 
 ## Your First CLI Harness
@@ -21,7 +21,7 @@ Let's build a CLI for a simple GUI application:
 
 ```bash
 # Build complete CLI harness for GIMP
-/cli-anything gimp
+/cli-anything:cli-anything /path/to/gimp
 ```
 
 This will:
@@ -96,13 +96,13 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/gimp/tests/ -v -s
 
 ```bash
 # Build CLI for Blender (3D software)
-/cli-anything blender
+/cli-anything:cli-anything /home/user/blender
 
 # Build CLI for Inkscape (vector graphics)
-/cli-anything inkscape
+/cli-anything:cli-anything /home/user/inkscape
 
 # Build CLI for Audacity (audio editor)
-/cli-anything audacity
+/cli-anything:cli-anything /home/user/audacity
 ```
 
 ## Refining an Existing CLI
@@ -121,13 +121,13 @@ After the initial build, use the refine command to expand coverage:
 
 ### Build and Test
 ```bash
-/cli-anything /home/user/gimp
+/cli-anything:cli-anything /home/user/gimp
 /cli-anything:test /home/user/gimp
 ```
 
 ### Build, Validate, Test, Install
 ```bash
-/cli-anything /home/user/blender
+/cli-anything:cli-anything /home/user/blender
 /cli-anything:validate /home/user/blender
 /cli-anything:test /home/user/blender
 cd /root/cli-anything/blender/agent-harness
@@ -212,7 +212,7 @@ cli-anything-blender --help
 1. **Read the full README:** `cat README.md`
 2. **Study an example:** Explore `/root/cli-anything/gimp/agent-harness/cli_anything/gimp/`
 3. **Read HARNESS.md:** Understand the methodology at `~/.claude/plugins/cli-anything/HARNESS.md`
-4. **Build your own:** Choose a GUI app and run `/cli-anything <app-name>`
+4. **Build your own:** Choose a GUI app and run `/cli-anything:cli-anything <software-path-or-repo>`
 
 ## Tips
 

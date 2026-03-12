@@ -53,17 +53,17 @@ pip install click pytest
 
 ## Commands
 
-### `/cli-anything <software-path-or-repo>`
+### `/cli-anything:cli-anything <software-path-or-repo>`
 
 Build a complete CLI harness for any software application. Accepts a local path to the software source code or a GitHub repository URL.
 
 **Examples:**
 ```bash
 # Build from local source
-/cli-anything /home/user/gimp
+/cli-anything:cli-anything /home/user/gimp
 
 # Build from a GitHub repo
-/cli-anything https://github.com/blender/blender
+/cli-anything:cli-anything https://github.com/blender/blender
 ```
 
 This runs all 7 phases:
@@ -374,7 +374,7 @@ This makes CLIs discoverable by AI agents that can check `which cli-anything-<so
 
 - Verify output directory: `ls -la /root/cli-anything/<software>/agent-harness/cli_anything/<software>/`
 - Check for errors in build phase
-- Try rebuilding: `/cli-anything <software-path>`
+- Try rebuilding: `/cli-anything:cli-anything <software-path>`
 
 ### Import errors
 
@@ -394,7 +394,7 @@ This makes CLIs discoverable by AI agents that can check `which cli-anything-<so
 To add support for new software:
 
 1. Clone the target application's repository
-2. Run `/cli-anything <software-name>`
+2. Run `/cli-anything:cli-anything <software-path-or-repo>`
 3. Review and refine the generated CLI
 4. Submit a PR with the new harness
 
