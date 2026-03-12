@@ -18,19 +18,25 @@ python3 register.py bootstrap --target auto
 /register [target...]
 ```
 
-**Targets:** `all` (default), `claude`, `opencode`, `codex`
+**Targets:** `all` (only if user explicitly asks), `claude`, `opencode`, `codex`
 
 ## What To Do
 
-Run from the CLI-Anything repository root:
+1. If the user did not provide targets, ask first. Do not install yet.
+
+Use this question:
+
+"Choose install target: claude / opencode / codex / all"
+
+2. Run from the CLI-Anything repository root:
 
 ```bash
 python3 register.py install --targets <targets>
 ```
 
-Replace `<targets>` with the comma-separated list the user provided, or `all` if omitted.
+Replace `<targets>` with the comma-separated list the user explicitly selected.
 
-Then show status:
+3. Then show status:
 
 ```bash
 python3 register.py status
@@ -38,7 +44,7 @@ python3 register.py status
 
 Report what was installed and where.
 
-If the user wants one-click install for all supported agents:
+4. If the user wants one-click install for all supported agents:
 
 ```bash
 python3 register.py install-all
