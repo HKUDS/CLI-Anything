@@ -15,6 +15,10 @@ _COMMAND_FILES = [
     "cli-anything-test.md",
     "cli-anything-validate.md",
     "cli-anything-list.md",
+    "register.md",
+]
+
+_DEPRECATED_FILES = [
     "cli-anything-register.md",
 ]
 
@@ -54,6 +58,13 @@ class OpenCodeAdapter(Adapter):
                 installed += 1
             else:
                 skipped += 1
+
+        # Keep one canonical entrypoint name in OpenCode.
+        for fname in _DEPRECATED_FILES:
+            old = dst_dir / fname
+            if old.exists():
+                old.unlink()
+
         if installed == 0:
             return f"  skip     opencode (all {skipped} files exist)"
         return f"  installed opencode -> {dst_dir} ({installed} new, {skipped} existing)"

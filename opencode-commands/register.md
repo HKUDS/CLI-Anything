@@ -2,9 +2,7 @@
 description: Register CLI-Anything adapters for all supported AI coding agents
 subtask: false
 ---
-# cli-anything-register Command
-
-Deprecated alias. Use `/register` instead.
+# register Command
 
 Register CLI-Anything adapters for Claude Code, OpenCode, and Codex from this repository.
 

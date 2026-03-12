@@ -10,7 +10,7 @@ python3 scripts/register.py bootstrap --target auto
 ## Usage
 
 ```
-/register [target...]
+/cli-anything:register [target...]
 ```
 
 ## Targets
@@ -46,6 +46,6 @@ python3 scripts/register.py install-all
 
 ## Examples
 
-- `/register` → `python3 scripts/register.py install --targets all`
-- `/register codex` → `python3 scripts/register.py install --targets codex`
-- `/register claude,opencode` → `python3 scripts/register.py install --targets claude,opencode`
+- `/cli-anything:register` -> `python3 scripts/register.py install --targets all`
+- `/cli-anything:register codex` -> `python3 scripts/register.py install --targets codex`
+- `/cli-anything:register claude,opencode` -> `python3 scripts/register.py install --targets claude,opencode`

@@ -57,8 +57,8 @@ Debug output includes:
 Phase 1: terminal bootstrap to one agent.
 
 Phase 2: use that agent to manage others.
-- Claude Code: /register
-- OpenCode: /cli-anything-register
+- Claude Code: /cli-anything:register (plugin namespace)
+- OpenCode: /register
 - Codex: use cli-anything skill
 
 ## Extending to New Platforms

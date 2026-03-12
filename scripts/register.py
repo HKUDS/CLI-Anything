@@ -27,8 +27,8 @@ from adapters import get_adapters  # noqa: E402
 
 # Agent-specific hints shown after bootstrap.
 _NEXT_STEPS = {
-    "claude": "Open Claude Code in this repo and type:  /register",
-    "opencode": "Open OpenCode in this repo and type:  /cli-anything-register",
+    "claude": "Open Claude Code in this repo and type:  /cli-anything:register",
+    "opencode": "Open OpenCode in this repo and type:  /register",
     "codex": "Open Codex CLI in this repo and use the cli-anything skill",
 }
 
