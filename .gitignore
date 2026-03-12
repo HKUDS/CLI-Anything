@@ -15,6 +15,7 @@
 !/README.md
 !/assets/
 !/.claude-plugin/
+!/scripts/
 
 # Step 3: Allow cli-anything-plugin entirely
 !/cli-anything-plugin/
