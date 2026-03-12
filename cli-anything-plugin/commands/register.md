@@ -1,4 +1,4 @@
-# register Command
+# cli-anything:register Command
 
 Register CLI-Anything adapters for other AI coding agents from this repository.
 This command is how you manage adapters **after** the initial bootstrap.
