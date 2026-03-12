@@ -9,33 +9,33 @@ Run from repository root.
 
 1. First install (recommended):
 
-python3 scripts/register.py bootstrap --target auto
+python3 register.py bootstrap --target auto
 
 2. First install with explicit target:
 
-python3 scripts/register.py bootstrap --target claude
-python3 scripts/register.py bootstrap --target opencode
-python3 scripts/register.py bootstrap --target codex
+python3 register.py bootstrap --target claude
+python3 register.py bootstrap --target opencode
+python3 register.py bootstrap --target codex
 
 3. Confirm target and paths before changing files:
 
-python3 scripts/register.py bootstrap --target auto --dry-run
+python3 register.py bootstrap --target auto --dry-run
 
 4. Install selected targets:
 
-python3 scripts/register.py install --targets claude,opencode
+python3 register.py install --targets claude,opencode
 
 5. Lazy mode (one-click all):
 
-python3 scripts/register.py install-all
+python3 register.py install-all
 
 6. Check installation status:
 
-python3 scripts/register.py status --targets all
+python3 register.py status --targets all
 
 7. See local detection result:
 
-python3 scripts/register.py list
+python3 register.py list
 
 ## Debug Mode
 
@@ -43,8 +43,8 @@ Add --debug to bootstrap/install/install-all/status/list.
 
 Example:
 
-python3 scripts/register.py bootstrap --target auto --debug
-python3 scripts/register.py install --targets all --debug
+python3 register.py bootstrap --target auto --debug
+python3 register.py install --targets all --debug
 
 Debug output includes:
 - detected adapter list
@@ -120,7 +120,7 @@ class NewPlatformAdapter(Adapter):
 
 ## Troubleshooting Quick Checks
 
-1. python3 scripts/register.py list --debug
-2. python3 scripts/register.py status --targets all --debug
-3. python3 scripts/register.py bootstrap --target auto --dry-run --debug
+1. python3 register.py list --debug
+2. python3 register.py status --targets all --debug
+3. python3 register.py bootstrap --target auto --dry-run --debug
 4. Verify source directories exist in current branch.

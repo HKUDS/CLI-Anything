@@ -16,6 +16,7 @@
 !/assets/
 !/.claude-plugin/
 !/scripts/
+!/register.py
 
 # Step 3: Allow cli-anything-plugin entirely
 !/cli-anything-plugin/

@@ -10,7 +10,7 @@ Register CLI-Anything adapters for Claude Code, OpenCode, and Codex from this re
 
 First-time users can bootstrap from terminal first:
 
-python3 scripts/register.py bootstrap --target auto
+python3 register.py bootstrap --target auto
 
 ## Usage
 
@@ -25,7 +25,7 @@ python3 scripts/register.py bootstrap --target auto
 Run from the CLI-Anything repository root:
 
 ```bash
-python3 scripts/register.py install --targets <targets>
+python3 register.py install --targets <targets>
 ```
 
 Replace `<targets>` with the comma-separated list the user provided, or `all` if omitted.
@@ -33,7 +33,7 @@ Replace `<targets>` with the comma-separated list the user provided, or `all` if
 Then show status:
 
 ```bash
-python3 scripts/register.py status
+python3 register.py status
 ```
 
 Report what was installed and where.
@@ -41,5 +41,5 @@ Report what was installed and where.
 If the user wants one-click install for all supported agents:
 
 ```bash
-python3 scripts/register.py install-all
+python3 register.py install-all
 ```

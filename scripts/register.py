@@ -2,11 +2,11 @@
 """Unified CLI-Anything registration across all agent platforms.
 
 Usage:
-    scripts/register.py bootstrap [--target auto|claude|opencode|codex] [--dry-run] [--debug]
-    scripts/register.py install [--targets claude,opencode,codex|all]
-    scripts/register.py install-all [--debug]
-    scripts/register.py status  [--targets claude,opencode,codex|all]
-    scripts/register.py list [--debug]
+    register.py bootstrap [--target auto|claude|opencode|codex] [--dry-run] [--debug]
+    register.py install [--targets claude,opencode,codex|all]
+    register.py install-all [--debug]
+    register.py status  [--targets claude,opencode,codex|all]
+    register.py list [--debug]
 
 Drop a new .py file in scripts/adapters/ to add a platform - no other
 files need to change.
@@ -15,6 +15,7 @@ files need to change.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -24,6 +25,8 @@ REPO_ROOT = SCRIPTS_DIR.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from adapters import get_adapters  # noqa: E402
+
+DISPLAY_CMD = os.environ.get("CLI_ANYTHING_REGISTER_CMD", sys.argv[0])
 
 # Agent-specific hints shown after bootstrap.
 _NEXT_STEPS = {
@@ -116,7 +119,7 @@ def cmd_bootstrap(target: str, dry_run: bool, debug: bool) -> None:
         print(f"To register the remaining agents ({', '.join(remaining)}):")
         print(f"  {hint}")
     print("Lazy mode (install all now):")
-    print(f"  {sys.argv[0]} install-all")
+    print(f"  {DISPLAY_CMD} install-all")
 
 
 def cmd_install(targets: list[str], debug: bool) -> None:
@@ -127,7 +130,7 @@ def cmd_install(targets: list[str], debug: bool) -> None:
         adapter = registry[name]()
         _debug(debug, f"installing {name}: src={adapter.source(REPO_ROOT)} dst={adapter.destination()}")
         print(adapter.install(REPO_ROOT))
-    print(f"Done. Run '{sys.argv[0]} status' to verify.")
+    print(f"Done. Run '{DISPLAY_CMD} status' to verify.")
 
 
 def cmd_install_all(debug: bool) -> None:

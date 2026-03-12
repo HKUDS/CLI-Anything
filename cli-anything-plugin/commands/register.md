@@ -5,7 +5,7 @@ This command is how you manage adapters **after** the initial bootstrap.
 
 First-time users can bootstrap from terminal first:
 
-python3 scripts/register.py bootstrap --target auto
+python3 register.py bootstrap --target auto
 
 ## Usage
 
@@ -25,7 +25,7 @@ python3 scripts/register.py bootstrap --target auto
 1. Run from the CLI-Anything repository root:
 
 ```bash
-python3 scripts/register.py install --targets <targets>
+python3 register.py install --targets <targets>
 ```
 
 Replace `<targets>` with the comma-separated list the user provided, or `all` if none specified.
@@ -33,7 +33,7 @@ Replace `<targets>` with the comma-separated list the user provided, or `all` if
 2. Show status:
 
 ```bash
-python3 scripts/register.py status
+python3 register.py status
 ```
 
 Report what was installed and where.
@@ -41,11 +41,11 @@ Report what was installed and where.
 3. If user asks for one-click install of all agents:
 
 ```bash
-python3 scripts/register.py install-all
+python3 register.py install-all
 ```
 
 ## Examples
 
-- `/cli-anything:register` -> `python3 scripts/register.py install --targets all`
-- `/cli-anything:register codex` -> `python3 scripts/register.py install --targets codex`
-- `/cli-anything:register claude,opencode` -> `python3 scripts/register.py install --targets claude,opencode`
+- `/cli-anything:register` -> `python3 register.py install --targets all`
+- `/cli-anything:register codex` -> `python3 register.py install --targets codex`
+- `/cli-anything:register claude,opencode` -> `python3 register.py install --targets claude,opencode`
