@@ -2,6 +2,7 @@
 """Unified CLI-Anything registration across all agent platforms.
 
 Usage:
+    scripts/register.py bootstrap [TARGET]   # first install — one agent
     scripts/register.py install [--targets claude,opencode,codex|all]
     scripts/register.py status  [--targets claude,opencode,codex|all]
     scripts/register.py list
@@ -23,6 +24,13 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from adapters import get_adapters  # noqa: E402
 
+# Agent-specific hints shown after bootstrap.
+_NEXT_STEPS = {
+    "claude": "Open Claude Code in this repo and type:  /register",
+    "opencode": "Open OpenCode in this repo and type:  /cli-anything-register",
+    "codex": "Open Codex CLI in this repo and use the cli-anything skill",
+}
+
 
 def resolve_targets(raw: str) -> list[str]:
     registry = get_adapters()
@@ -33,6 +41,37 @@ def resolve_targets(raw: str) -> list[str]:
         if n not in registry:
             sys.exit(f"error: unknown target '{n}'. Known: {', '.join(registry)}")
     return names
+
+
+def cmd_bootstrap(target: str | None) -> None:
+    """First-time setup: install to one agent, then let it manage the rest."""
+    registry = get_adapters()
+
+    if target:
+        if target not in registry:
+            sys.exit(f"error: unknown target '{target}'. Known: {', '.join(registry)}")
+        name = target
+    else:
+        # Auto-detect: pick the first agent that is found locally.
+        detected = [n for n, cls in registry.items() if cls().detect()]
+        if not detected:
+            sys.exit(
+                "No agents detected. Install Claude Code, OpenCode, or Codex first,\n"
+                "then re-run this command."
+            )
+        name = detected[0]
+        print(f"Auto-detected: {name}")
+
+    adapter = registry[name]()
+    print(adapter.install(REPO_ROOT))
+
+    hint = _NEXT_STEPS.get(name, f"Use {name} in this repo to manage other adapters.")
+    remaining = [n for n in registry if n != name]
+    print()
+    print("Bootstrap complete!")
+    if remaining:
+        print(f"To register the remaining agents ({', '.join(remaining)}):")
+        print(f"  {hint}")
 
 
 def cmd_install(targets: list[str]) -> None:
@@ -66,6 +105,9 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
 
+    p_boot = sub.add_parser("bootstrap", help="First-time setup — install to one agent")
+    p_boot.add_argument("target", nargs="?", help="Agent to bootstrap (auto-detects if omitted)")
+
     p_install = sub.add_parser("install", help="Install adapters")
     p_install.add_argument("--targets", default="all", help="Comma-separated targets or 'all'")
 
@@ -79,7 +121,9 @@ def main() -> None:
         parser.print_help()
         return
 
-    if args.command == "list":
+    if args.command == "bootstrap":
+        cmd_bootstrap(args.target)
+    elif args.command == "list":
         cmd_list()
     else:
         targets = resolve_targets(args.targets)

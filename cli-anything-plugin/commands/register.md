@@ -1,6 +1,7 @@
 # register Command
 
-Register CLI-Anything adapters for all supported AI coding agents from this repository.
+Register CLI-Anything adapters for other AI coding agents from this repository.
+This command is how you manage adapters **after** the initial bootstrap.
 
 ## Usage
 
@@ -17,7 +18,7 @@ Register CLI-Anything adapters for all supported AI coding agents from this repo
 
 ## What To Do
 
-Run from the CLI-Anything repository root:
+1. Run from the CLI-Anything repository root:
 
 ```bash
 python3 scripts/register.py install --targets <targets>
@@ -25,7 +26,7 @@ python3 scripts/register.py install --targets <targets>
 
 Replace `<targets>` with the comma-separated list the user provided, or `all` if none specified.
 
-Then show status:
+2. Show status:
 
 ```bash
 python3 scripts/register.py status
