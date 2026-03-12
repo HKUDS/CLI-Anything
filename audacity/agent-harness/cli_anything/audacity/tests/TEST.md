@@ -170,7 +170,7 @@ E2E tests use real WAV file I/O with numpy arrays for audio sample verification.
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.13.11, pytest-9.0.2, pluggy-1.5.0
-rootdir: /root/cli-anything
+rootdir: ~/CLI-Anything
 plugins: langsmith-0.5.1, anyio-4.12.0
 collected 154 items
 

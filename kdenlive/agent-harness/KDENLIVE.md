@@ -7,7 +7,7 @@ The Kdenlive CLI harness provides a stateful command-line interface for non-line
 ## Setup
 
 ```bash
-cd /root/cli-anything/kdenlive/agent-harness
+cd ~/CLI-Anything/kdenlive/agent-harness
 pip install click
 ```
 
@@ -109,7 +109,7 @@ python3 -m cli.kdenlive_cli repl --project project.json
 ## Testing
 
 ```bash
-cd /root/cli-anything/kdenlive/agent-harness
+cd ~/CLI-Anything/kdenlive/agent-harness
 
 # Run all tests
 python3 -m pytest cli/tests/ -v

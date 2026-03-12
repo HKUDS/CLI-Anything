@@ -589,7 +589,7 @@ side-by-side in the same Python environment without conflicts.
 
 4. **Test local installation**:
    ```bash
-   cd /root/cli-anything/<software>/agent-harness
+   cd ~/CLI-Anything/<software>/agent-harness
    pip install -e .
    ```
 
@@ -601,7 +601,7 @@ side-by-side in the same Python environment without conflicts.
 
 6. **Run tests against the installed command**:
    ```bash
-   cd /root/cli-anything/<software>/agent-harness
+   cd ~/CLI-Anything/<software>/agent-harness
    CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<software>/tests/ -v -s
    ```
    The output must show `[_resolve_cli] Using installed command: /path/to/cli-anything-<software>`

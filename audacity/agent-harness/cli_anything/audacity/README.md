@@ -22,7 +22,7 @@ No other dependencies required. Core functionality uses only Python stdlib.
 
 ```bash
 # From the agent-harness/ directory:
-cd /root/cli-anything/audacity/agent-harness
+cd ~/CLI-Anything/audacity/agent-harness
 
 # One-shot commands
 python3 -m cli.audacity_cli project new --name "My Podcast"
@@ -41,7 +41,7 @@ python3 -m cli.audacity_cli repl
 ## Run Tests
 
 ```bash
-cd /root/cli-anything/audacity/agent-harness
+cd ~/CLI-Anything/audacity/agent-harness
 
 # All tests
 python3 -m pytest cli/tests/ -v

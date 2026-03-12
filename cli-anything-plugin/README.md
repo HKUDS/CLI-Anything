@@ -341,7 +341,7 @@ After building a CLI with this plugin, you can:
 
 ### Install Locally
 ```bash
-cd /root/cli-anything/<software>/agent-harness
+cd ~/CLI-Anything/<software>/agent-harness
 pip install -e .
 cli-anything-<software> --help
 ```
@@ -372,7 +372,7 @@ This makes CLIs discoverable by AI agents that can check `which cli-anything-<so
 
 ### CLI not found
 
-- Verify output directory: `ls -la /root/cli-anything/<software>/agent-harness/cli_anything/<software>/`
+- Verify output directory: `ls -la ~/CLI-Anything/<software>/agent-harness/cli_anything/<software>/`
 - Check for errors in build phase
 - Try rebuilding: `/cli-anything <software-path>`
 
@@ -412,7 +412,7 @@ Inspired by the ralph-loop plugin's iterative development approach.
 
 - Documentation: See HARNESS.md in this plugin for the complete methodology
 - Issues: Report bugs or request features on GitHub
-- Examples: Check `/root/cli-anything/` for reference implementations
+- Examples: Check `~/CLI-Anything/` for reference implementations
 
 ## Version History
 

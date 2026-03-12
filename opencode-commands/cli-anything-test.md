@@ -19,7 +19,7 @@ Run tests for a CLI harness and update TEST.md with results.
 
   If a GitHub URL is provided, clone the repo locally first, then work on the local copy.
 
-  The software name is derived from the directory name. The agent locates the CLI harness at `/root/cli-anything/<software-name>/agent-harness/`.
+  The software name is derived from the directory name. The agent locates the CLI harness at `~/CLI-Anything/<software-name>/agent-harness/`.
 
 ## What This Command Does
 

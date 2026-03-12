@@ -51,7 +51,7 @@ Documents are stored as JSON project files (`.lo-cli.json`) with this structure:
 ## Running
 
 ```bash
-cd /root/cli-anything/libreoffice/agent-harness
+cd ~/CLI-Anything/libreoffice/agent-harness
 pip install click
 python3 -m cli.libreoffice_cli --help
 python3 -m pytest cli/tests/ -v

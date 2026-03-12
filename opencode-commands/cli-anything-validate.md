@@ -19,7 +19,7 @@ Validate a CLI harness against HARNESS.md standards and best practices.
 
   If a GitHub URL is provided, clone the repo locally first, then work on the local copy.
 
-  The software name is derived from the directory name. The agent locates the CLI harness at `/root/cli-anything/<software-name>/agent-harness/`.
+  The software name is derived from the directory name. The agent locates the CLI harness at `~/CLI-Anything/<software-name>/agent-harness/`.
 
 ## What This Command Validates
 
@@ -97,7 +97,7 @@ The command generates a detailed report:
 ```
 CLI Harness Validation Report
 Software: gimp
-Path: /root/cli-anything/gimp/agent-harness/cli_anything/gimp
+Path: ~/CLI-Anything/gimp/agent-harness/cli_anything/gimp
 
 Directory Structure (5/5 checks passed)
 Required Files (9/9 files present)

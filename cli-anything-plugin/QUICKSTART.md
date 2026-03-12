@@ -6,7 +6,7 @@ Get started with the cli-anything plugin in 5 minutes.
 
 ```bash
 # Copy plugin to Claude Code plugins directory
-cp -r /root/cli-anything/cli-anything-plugin ~/.claude/plugins/cli-anything
+cp -r ~/CLI-Anything/cli-anything-plugin ~/.claude/plugins/cli-anything
 
 # Reload plugins in Claude Code
 /reload-plugins
@@ -35,13 +35,13 @@ This will:
 
 **Time:** ~10-15 minutes (depending on complexity)
 
-**Output:** `/root/cli-anything/gimp/agent-harness/`
+**Output:** `~/CLI-Anything/gimp/agent-harness/`
 
 ## Install the CLI
 
 ```bash
 # Install to system PATH
-cd /root/cli-anything/gimp/agent-harness
+cd ~/CLI-Anything/gimp/agent-harness
 pip install -e .
 
 # Verify it's in PATH
@@ -55,7 +55,7 @@ cli-anything-gimp --help
 
 ```bash
 # Navigate to the CLI directory
-cd /root/cli-anything/gimp/agent-harness
+cd ~/CLI-Anything/gimp/agent-harness
 
 # Run the CLI directly (if installed)
 cli-anything-gimp --help
@@ -77,7 +77,7 @@ cli-anything-gimp repl
 /cli-anything:test gimp
 
 # Or manually
-cd /root/cli-anything/gimp/agent-harness
+cd ~/CLI-Anything/gimp/agent-harness
 python3 -m pytest cli_anything/gimp/tests/ -v
 
 # Force tests to use the installed command (recommended for validation)
@@ -130,7 +130,7 @@ After the initial build, use the refine command to expand coverage:
 /cli-anything /home/user/blender
 /cli-anything:validate /home/user/blender
 /cli-anything:test /home/user/blender
-cd /root/cli-anything/blender/agent-harness
+cd ~/CLI-Anything/blender/agent-harness
 pip install -e .
 which cli-anything-blender
 ```
@@ -170,10 +170,10 @@ pip install click pytest pillow numpy
 ### CLI doesn't work
 ```bash
 # Check if all files were created
-ls /root/cli-anything/<software>/agent-harness/cli_anything/<software>/
+ls ~/CLI-Anything/<software>/agent-harness/cli_anything/<software>/
 
 # Verify Python can import
-cd /root/cli-anything/<software>/agent-harness
+cd ~/CLI-Anything/<software>/agent-harness
 python3 -c "import cli_anything.<software>"
 
 # Check if installed to PATH
@@ -188,7 +188,7 @@ pip install -e .
 Once your CLI is ready:
 
 ```bash
-cd /root/cli-anything/<software>/agent-harness
+cd ~/CLI-Anything/<software>/agent-harness
 
 # Install build tools
 pip install build twine
@@ -210,7 +210,7 @@ cli-anything-blender --help
 ## Next Steps
 
 1. **Read the full README:** `cat README.md`
-2. **Study an example:** Explore `/root/cli-anything/gimp/agent-harness/cli_anything/gimp/`
+2. **Study an example:** Explore `~/CLI-Anything/gimp/agent-harness/cli_anything/gimp/`
 3. **Read HARNESS.md:** Understand the methodology at `~/.claude/plugins/cli-anything/HARNESS.md`
 4. **Build your own:** Choose a GUI app and run `/cli-anything <app-name>`
 
