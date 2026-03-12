@@ -97,13 +97,23 @@ class Session:
             self.save(self._session_file)
 
     def save(self, path: str):
+        import fcntl
+        
         data = {
             "history": [e.to_dict() for e in self._history],
             "redo_stack": [e.to_dict() for e in self._redo_stack],
         }
         Path(path).parent.mkdir(parents=True, exist_ok=True)
+        
+        # Use file locking to prevent race conditions in multi-session scenarios
         with open(path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                json.dump(data, f, indent=2, default=str)
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except (IOError, OSError):
+                # Fallback if locking fails (e.g., on some network filesystems)
+                json.dump(data, f, indent=2, default=str)
 
     def _load(self, path: str):
         p = Path(path)
