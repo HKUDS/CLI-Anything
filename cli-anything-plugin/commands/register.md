@@ -3,6 +3,10 @@
 Register CLI-Anything adapters for other AI coding agents from this repository.
 This command is how you manage adapters **after** the initial bootstrap.
 
+First-time users can bootstrap from terminal first:
+
+python3 scripts/register.py bootstrap --target auto
+
 ## Usage
 
 ```
@@ -33,6 +37,12 @@ python3 scripts/register.py status
 ```
 
 Report what was installed and where.
+
+3. If user asks for one-click install of all agents:
+
+```bash
+python3 scripts/register.py install-all
+```
 
 ## Examples
 

@@ -6,6 +6,10 @@ subtask: false
 
 Register CLI-Anything adapters for Claude Code, OpenCode, and Codex from this repository.
 
+First-time users can bootstrap from terminal first:
+
+python3 scripts/register.py bootstrap --target auto
+
 ## Usage
 
 ```
@@ -31,3 +35,9 @@ python3 scripts/register.py status
 ```
 
 Report what was installed and where.
+
+If the user wants one-click install for all supported agents:
+
+```bash
+python3 scripts/register.py install-all
+```
