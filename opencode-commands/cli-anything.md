@@ -6,6 +6,17 @@ subtask: true
 
 Build a complete, stateful CLI harness for any GUI application.
 
+## Registration Disambiguation
+
+If the user asks about "registering" across AI agents (Claude/OpenCode/Codex),
+this is not website/account sign-up automation. Redirect to `/register`.
+
+Use this clarification question if intent is unclear:
+
+"Do you mean agent adapter registration (claude/opencode/codex), or website account sign-up?"
+
+If user means agent adapter registration, follow `/register` flow.
+
 **Target software**: $1
 
 ## CRITICAL: Read HARNESS.md First
