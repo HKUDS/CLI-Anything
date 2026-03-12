@@ -124,3 +124,4 @@ class NewPlatformAdapter(Adapter):
 2. python3 register.py status --targets all --debug
 3. python3 register.py bootstrap --target auto --dry-run --debug
 4. Verify source directories exist in current branch.
+5. If Claude command list does not show new commands immediately, restart Claude Code and open command search again.

@@ -29,7 +29,8 @@ class ClaudeAdapter(Adapter):
             return f"  error  claude   source missing: {src}"
         if self._copy_dir(src, dst):
             return f"  installed claude   -> {dst}"
-        return f"  skip     claude   (already at {dst})"
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+        return f"  updated  claude   -> {dst}"
 
     def status(self) -> str:
         dst = self.destination()
