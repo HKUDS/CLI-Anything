@@ -146,12 +146,12 @@ Copy the CLI-Anything commands **and** `HARNESS.md` to your OpenCode commands di
 git clone https://github.com/HKUDS/CLI-Anything.git
 
 # Global install (available in all projects)
-cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/commands/
-cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/commands/
+cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/command/
+cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/command/
 
 # Or project-level install
-cp CLI-Anything/opencode-commands/*.md .opencode/commands/
-cp CLI-Anything/cli-anything-plugin/HARNESS.md .opencode/commands/
+cp CLI-Anything/opencode-commands/*.md .opencode/command/
+cp CLI-Anything/cli-anything-plugin/HARNESS.md .opencode/command/
 ```
 
 > **Note:** `HARNESS.md` is the methodology spec that all commands reference. It must be in the same directory as the commands.

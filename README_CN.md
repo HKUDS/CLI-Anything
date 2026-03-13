@@ -146,12 +146,12 @@ cp -r CLI-Anything/cli-anything-plugin ~/.claude/plugins/cli-anything
 git clone https://github.com/HKUDS/CLI-Anything.git
 
 # 全局安装（所有项目可用）
-cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/commands/
-cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/commands/
+cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/command/
+cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/command/
 
 # 或项目级安装
-cp CLI-Anything/opencode-commands/*.md .opencode/commands/
-cp CLI-Anything/cli-anything-plugin/HARNESS.md .opencode/commands/
+cp CLI-Anything/opencode-commands/*.md .opencode/command/
+cp CLI-Anything/cli-anything-plugin/HARNESS.md .opencode/command/
 ```
 
 > **注意：** `HARNESS.md` 是所有命令引用的方法论规范，必须和命令文件放在同一目录下。
@@ -745,8 +745,8 @@ HARNESS.md 是我们通过自动化 CLI 生成让任意软件变得 Agent 可用
 git clone https://github.com/HKUDS/CLI-Anything.git
 
 # 复制命令和 HARNESS.md 到 OpenCode 命令目录
-cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/commands/
-cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/commands/
+cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/command/
+cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/command/
 
 # 为任何有代码库的软件生成 CLI
 /cli-anything <软件路径或仓库>
