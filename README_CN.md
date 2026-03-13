@@ -56,7 +56,7 @@ CLI 是人类和 AI Agent 共通的万能接口：
 
 - **Python 3.10+**
 - 目标软件已安装（如 GIMP、Blender、LibreOffice 或你自己的应用）
-- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [OpenCode](#-opencode) | [Codex](#-codex) | [更多平台](#-更多平台即将支持)
+- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [更多平台](#-更多平台即将支持)
 
 ### 选择你的平台
 
@@ -183,6 +183,29 @@ cp CLI-Anything/cli-anything-plugin/HARNESS.md .opencode/commands/
 </details>
 
 <details>
+
+<summary><h4 id="-qodercli">⚡ Qodercli <sup><code>社区贡献</code></sup></h4></summary>
+
+**第一步：注册插件**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+bash CLI-Anything/qoder-plugin/setup-qodercli.sh
+```
+
+脚本会将 cli-anything 插件注册到 `~/.qoder.json`。注册后开启新的 Qodercli 会话即可使用。
+
+**第二步：在 Qodercli 中使用 CLI-Anything**
+
+```bash
+/cli-anything:cli-anything ./gimp
+/cli-anything:refine ./gimp "批处理和滤镜"
+/cli-anything:validate ./gimp
+```
+</details>
+
+<details>
+
 <summary><h4 id="-codex">⚡ Codex <sup><code>实验性</code></sup> <sup><code>社区贡献</code></sup></h4></summary>
 
 **第一步：安装 Skill**
