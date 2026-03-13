@@ -1,0 +1,34 @@
+{
+  "name": "cli-anything",
+  "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology.",
+  "author": {
+    "name": "cli-anything contributors"
+  },
+  "commands": [
+    {
+      "name": "cli-anything",
+      "description": "Build a complete, stateful CLI harness for any GUI application",
+      "trigger": "/cli-anything"
+    },
+    {
+      "name": "cli-anything-refine",
+      "description": "Refine an existing CLI harness to improve coverage",
+      "trigger": "/cli-anything:refine"
+    },
+    {
+      "name": "cli-anything-test",
+      "description": "Run tests for a CLI harness",
+      "trigger": "/cli-anything:test"
+    },
+    {
+      "name": "cli-anything-validate",
+      "description": "Validate a CLI harness against HARNESS.md standards",
+      "trigger": "/cli-anything:validate"
+    },
+    {
+      "name": "cli-anything-list",
+      "description": "List all available CLI-Anything tools",
+      "trigger": "/cli-anything:list"
+    }
+  ]
+}
