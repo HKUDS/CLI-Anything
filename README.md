@@ -220,6 +220,12 @@ git clone https://github.com/HKUDS/CLI-Anything.git
 bash CLI-Anything/codex-skill/scripts/install.sh
 ```
 
+On Windows PowerShell, use:
+
+```powershell
+.\CLI-Anything\codex-skill\scripts\install.ps1
+```
+
 This installs the skill to `$CODEX_HOME/skills/cli-anything` (or `~/.codex/skills/cli-anything` if `CODEX_HOME` is unset).
 
 Restart Codex after installation so it is discovered.

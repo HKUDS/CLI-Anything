@@ -220,6 +220,12 @@ git clone https://github.com/HKUDS/CLI-Anything.git
 bash CLI-Anything/codex-skill/scripts/install.sh
 ```
 
+在 Windows PowerShell 中，可以使用：
+
+```powershell
+.\CLI-Anything\codex-skill\scripts\install.ps1
+```
+
 脚本会把 skill 安装到 `$CODEX_HOME/skills/cli-anything`；如果没有设置 `CODEX_HOME`，则默认安装到 `~/.codex/skills/cli-anything`。
 
 安装后重启 Codex，让它重新发现这个 skill。
