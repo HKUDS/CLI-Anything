@@ -56,7 +56,7 @@ CLI is the universal interface for both humans and AI agents:
 
 - **Python 3.10+**
 - Target software installed (e.g., GIMP, Blender, LibreOffice, or your own application)
-- A supported AI coding agent: [Claude Code](#-claude-code) | [OpenCode](#-opencode) | [Codex](#-codex) | [More Platforms](#-more-platforms-coming-soon)
+- A supported AI coding agent: [Claude Code](#-claude-code) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [More Platforms](#-more-platforms-coming-soon)
 
 ### Pick Your Platform
 
@@ -183,6 +183,29 @@ The command runs as a subtask and follows the same 7-phase methodology as Claude
 </details>
 
 <details>
+
+<summary><h4 id="-qodercli">⚡ Qodercli <sup><code>Community</code></sup></h4></summary>
+
+**Step 1: Register the Plugin**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+bash CLI-Anything/qoder-plugin/setup-qodercli.sh
+```
+
+This registers the cli-anything plugin in `~/.qoder.json`. Start a new Qodercli session after registration.
+
+**Step 2: Use CLI-Anything from Qodercli**
+
+```bash
+/cli-anything:cli-anything ./gimp
+/cli-anything:refine ./gimp "batch processing and filters"
+/cli-anything:validate ./gimp
+```
+</details>
+
+<details>
+
 <summary><h4 id="-codex">⚡ Codex <sup><code>Experimental</code></sup> <sup><code>Community</code></sup></h4></summary>
 
 **Step 1: Install the Skill**
@@ -213,7 +236,6 @@ Use CLI-Anything to validate ./libreoffice
 
 The Codex skill adapts the same methodology used by the Claude Code plugin and
 OpenCode commands, while keeping the generated Python harness format unchanged.
-
 </details>
 
 <details>
