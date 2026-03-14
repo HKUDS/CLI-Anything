@@ -102,7 +102,11 @@ class Session:
             "redo_stack": [e.to_dict() for e in self._redo_stack],
         }
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        try:
+            f = open(path, "r+")
+        except FileNotFoundError:
+            f = open(path, "w")
+        with f:
             _locked = False
             try:
                 import fcntl

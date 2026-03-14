@@ -111,7 +111,11 @@ class Session:
 
         # Save project
         self.project["metadata"]["modified"] = datetime.now().isoformat()
-        with open(save_path, "w") as f:
+        try:
+            f = open(save_path, "r+")
+        except FileNotFoundError:
+            f = open(save_path, "w")
+        with f:
             _locked = False
             try:
                 import fcntl

@@ -126,7 +126,11 @@ class Session:
             "timestamp": time.time(),
         }
         path = SESSION_DIR / f"{self.session_id}.json"
-        with open(path, "w") as f:
+        try:
+            f = open(path, "r+")
+        except FileNotFoundError:
+            f = open(path, "w")
+        with f:
             _locked = False
             try:
                 import fcntl
