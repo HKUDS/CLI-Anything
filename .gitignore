@@ -20,6 +20,12 @@
 !/cli-anything-plugin/
 !/codex-skill/
 
+# Step 3.5: Allow .agents for repo-local skills
+!/.agents/
+
+# Step 3.6: Allow tests directory
+!/tests/
+
 # Step 4: Allow each software dir (top level only)
 !/gimp/
 !/blender/

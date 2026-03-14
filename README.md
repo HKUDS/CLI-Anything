@@ -726,6 +726,19 @@ The playbook distills key insights from successfully building all 11 diverse, pr
 /cli-anything <software-name>
 ```
 
+### For Repo-Local Usage (OpenClaw Agents)
+
+This project supports dual-entrypoint design:
+
+1. **Plugin workflow** (see above): Use `cli-anything-plugin/` as a Claude Code plugin
+2. **Repo-local skill**: Use `.agents/skills/cli-anything/` for OpenClaw agents
+
+```bash
+# The repo-local skill at .agents/skills/cli-anything/
+# reuses HARNESS.md and command specs from cli-anything-plugin/
+# No additional installation needed for OpenClaw agents
+```
+
 ### For Generated CLIs
 
 ```bash
