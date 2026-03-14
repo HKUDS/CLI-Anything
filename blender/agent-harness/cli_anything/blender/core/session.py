@@ -112,13 +112,20 @@ class Session:
         # Save project
         self.project["metadata"]["modified"] = datetime.now().isoformat()
         with open(save_path, "w") as f:
+            _locked = False
             try:
                 import fcntl
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                json.dump(self.project, f, indent=2, default=str)
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                _locked = True
             except (ImportError, OSError):
+                pass
+            try:
+                f.seek(0)
+                f.truncate()
                 json.dump(self.project, f, indent=2, default=str)
+            finally:
+                if _locked:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
         self.project_path = save_path
         self._modified = False

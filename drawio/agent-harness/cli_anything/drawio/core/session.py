@@ -127,13 +127,20 @@ class Session:
         }
         path = SESSION_DIR / f"{self.session_id}.json"
         with open(path, "w") as f:
+            _locked = False
             try:
                 import fcntl
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                json.dump(state, f, indent=2)
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                _locked = True
             except (ImportError, OSError):
+                pass
+            try:
+                f.seek(0)
+                f.truncate()
                 json.dump(state, f, indent=2)
+            finally:
+                if _locked:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         return str(path)
 
     @classmethod

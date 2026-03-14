@@ -103,13 +103,20 @@ class Session:
         }
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
+            _locked = False
             try:
                 import fcntl
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                json.dump(data, f, indent=2, default=str)
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                _locked = True
             except (ImportError, OSError):
+                pass
+            try:
+                f.seek(0)
+                f.truncate()
                 json.dump(data, f, indent=2, default=str)
+            finally:
+                if _locked:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     def _load(self, path: str):
         p = Path(path)
