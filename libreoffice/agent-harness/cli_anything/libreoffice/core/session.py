@@ -119,7 +119,13 @@ class Session:
         self.project["metadata"]["modified"] = datetime.now().isoformat()
         os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
         with open(save_path, "w") as f:
-            json.dump(self.project, f, indent=2, default=str)
+            try:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                json.dump(self.project, f, indent=2, default=str)
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except (ImportError, OSError):
+                json.dump(self.project, f, indent=2, default=str)
 
         self.project_path = save_path
         self._modified = False

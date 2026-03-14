@@ -103,7 +103,13 @@ class Session:
         }
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+            try:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                json.dump(data, f, indent=2, default=str)
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except (ImportError, OSError):
+                json.dump(data, f, indent=2, default=str)
 
     def _load(self, path: str):
         p = Path(path)
