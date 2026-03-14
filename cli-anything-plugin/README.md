@@ -44,7 +44,7 @@ The result: A stateful CLI with REPL mode, JSON output, undo/redo, and full test
 - Python 3.10+
 - `click` - CLI framework
 - `pytest` - Testing framework
-- HARNESS.md (included in this plugin at `~/.claude/plugins/cli-anything/HARNESS.md`)
+- HARNESS.md (included alongside this plugin at `<plugin-dir>/HARNESS.md`; commonly `~/.claude/plugins/cli-anything/HARNESS.md`)
 
 **Windows note:** Claude Code runs shell commands via `bash`. On Windows, install Git for Windows (includes `bash` and
 `cygpath`) or use WSL; otherwise commands may fail with `cygpath: command not found`.
@@ -344,7 +344,7 @@ After building a CLI with this plugin, you can:
 
 ### Install Locally
 ```bash
-cd /root/cli-anything/<software>/agent-harness
+cd <software-path>/agent-harness
 pip install -e .
 cli-anything-<software> --help
 ```
@@ -375,7 +375,7 @@ This makes CLIs discoverable by AI agents that can check `which cli-anything-<so
 
 ### CLI not found
 
-- Verify output directory: `ls -la /root/cli-anything/<software>/agent-harness/cli_anything/<software>/`
+- Verify output directory: `ls -la <software-path>/agent-harness/cli_anything/<software>/`
 - Check for errors in build phase
 - Try rebuilding: `/cli-anything <software-path>`
 
@@ -415,7 +415,7 @@ Inspired by the ralph-loop plugin's iterative development approach.
 
 - Documentation: See HARNESS.md in this plugin for the complete methodology
 - Issues: Report bugs or request features on GitHub
-- Examples: Check `/root/cli-anything/` for reference implementations
+- Examples: Check the software directories in this repository (`gimp/`, `blender/`, `drawio/`, etc.) for reference implementations
 
 ## Version History
 

@@ -13,6 +13,8 @@ NC='\033[0m' # No Color
 # Plugin info
 PLUGIN_NAME="cli-anything"
 PLUGIN_VERSION="1.0.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  cli-anything Plugin v${PLUGIN_VERSION}${NC}"
@@ -21,12 +23,14 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Check if HARNESS.md exists
-HARNESS_PATH="/root/cli-anything/HARNESS.md"
+HARNESS_PATH="$PLUGIN_DIR/HARNESS.md"
 if [ ! -f "$HARNESS_PATH" ]; then
     echo -e "${YELLOW}⚠️  HARNESS.md not found at $HARNESS_PATH${NC}"
-    echo -e "${YELLOW}   The cli-anything methodology requires HARNESS.md${NC}"
-    echo -e "${YELLOW}   You can create it or specify a custom path with --harness-path${NC}"
+    echo -e "${YELLOW}   The cli-anything methodology expects HARNESS.md to ship with the plugin${NC}"
+    echo -e "${YELLOW}   Reinstall or re-copy the plugin if this file is missing${NC}"
     echo ""
+else
+    echo -e "${GREEN}✓${NC} HARNESS.md found: ${HARNESS_PATH}"
 fi
 
 # Check Python version
@@ -85,7 +89,8 @@ echo -e "  ${BLUE}/cli-anything:validate${NC} /home/user/audacity"
 echo ""
 echo "Documentation:"
 echo ""
-echo "  HARNESS.md: /root/cli-anything/HARNESS.md"
+echo "  Plugin directory: ${PLUGIN_DIR}"
+echo "  HARNESS.md: ${HARNESS_PATH}"
 echo "  Plugin README: Use '/help cli-anything' for more info"
 echo ""
 echo -e "${GREEN}Ready to build CLI harnesses! 🚀${NC}"

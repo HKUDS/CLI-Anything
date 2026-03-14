@@ -8,7 +8,8 @@ This guide explains how to make the cli-anything plugin installable and publish 
 
 1. **Copy to Claude Code plugins directory:**
    ```bash
-   cp -r /root/cli-anything/cli-anything-plugin ~/.claude/plugins/cli-anything
+   REPO_ROOT=/path/to/CLI-Anything
+   cp -r "$REPO_ROOT/cli-anything-plugin" ~/.claude/plugins/cli-anything
    ```
 
 2. **Reload plugins in Claude Code:**
@@ -25,7 +26,8 @@ This guide explains how to make the cli-anything plugin installable and publish 
 
 Package as a tarball:
 ```bash
-cd /root/cli-anything
+REPO_ROOT=/path/to/CLI-Anything
+cd "$REPO_ROOT"
 tar -czf cli-anything-plugin-v1.0.0.tar.gz cli-anything-plugin/
 ```
 
@@ -40,7 +42,8 @@ tar -xzf cli-anything-plugin-v1.0.0.tar.gz
 ### 1. Create GitHub Repository
 
 ```bash
-cd /root/cli-anything/cli-anything-plugin
+REPO_ROOT=/path/to/CLI-Anything
+cd "$REPO_ROOT/cli-anything-plugin"
 
 # Initialize git
 git init
@@ -103,9 +106,10 @@ Ensure your plugin meets requirements:
 
 2. **Add your plugin to external_plugins:**
    ```bash
+   REPO_ROOT=/path/to/CLI-Anything
    cd claude-plugins-official
    mkdir -p external_plugins/cli-anything
-   cp -r /root/cli-anything/cli-anything-plugin/* external_plugins/cli-anything/
+   cp -r "$REPO_ROOT/cli-anything-plugin/"* external_plugins/cli-anything/
    ```
 
 3. **Create pull request:**
