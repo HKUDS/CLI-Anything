@@ -21,7 +21,8 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Check if HARNESS.md exists
-HARNESS_PATH="/root/cli-anything/HARNESS.md"
+CLI_ANYTHING_ROOT="${CLI_ANYTHING_ROOT:-$HOME/CLI-Anything}"
+HARNESS_PATH="${CLI_ANYTHING_ROOT}/HARNESS.md"
 if [ ! -f "$HARNESS_PATH" ]; then
     echo -e "${YELLOW}⚠️  HARNESS.md not found at $HARNESS_PATH${NC}"
     echo -e "${YELLOW}   The cli-anything methodology requires HARNESS.md${NC}"
@@ -85,7 +86,7 @@ echo -e "  ${BLUE}/cli-anything:validate${NC} /home/user/audacity"
 echo ""
 echo "Documentation:"
 echo ""
-echo "  HARNESS.md: /root/cli-anything/HARNESS.md"
+echo "  HARNESS.md: ${HARNESS_PATH}"
 echo "  Plugin README: Use '/help cli-anything' for more info"
 echo ""
 echo -e "${GREEN}Ready to build CLI harnesses! 🚀${NC}"
