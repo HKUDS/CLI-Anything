@@ -1,6 +1,7 @@
 """cli-anything-adguardhome - CLI harness for AdGuardHome."""
 
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -75,6 +76,7 @@ def cli(ctx: click.Context, host, port, username, password, config_path, use_htt
     ctx.obj["password"] = password or cfg["password"]
     ctx.obj["use_https"] = use_https or cfg.get("https", False)
     ctx.obj["as_json"] = as_json
+    ctx.obj["config_path"] = Path(config_path) if config_path else None
 
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl)
@@ -129,7 +131,7 @@ def repl(ctx: click.Context):
             continue
 
         try:
-            args = line.split()
+            args = shlex.split(line)
             cli.main(args=args, obj=dict(ctx.obj), standalone_mode=False)
         except click.exceptions.UsageError as e:
             skin.error(str(e))
@@ -175,6 +177,7 @@ def config_save(ctx: click.Context):
     path = project.save_config(
         host=obj["host"], port=obj["port"],
         username=obj["username"], password=obj["password"],
+        config_path=obj.get("config_path"),
     )
     result = {"saved": str(path)}
     output(result, obj["as_json"])

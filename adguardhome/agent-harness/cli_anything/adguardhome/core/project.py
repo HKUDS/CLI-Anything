@@ -17,12 +17,13 @@ def load_config(config_path: Path | None = None) -> dict:
         "port": DEFAULT_PORT,
         "username": "",
         "password": "",
+        "https": False,
     }
     if path.exists():
         try:
             with open(path) as f:
                 file_config = json.load(f)
-            for key in ("host", "port", "username", "password"):
+            for key in ("host", "port", "username", "password", "https"):
                 if key in file_config:
                     config[key] = file_config[key]
         except (json.JSONDecodeError, OSError):
