@@ -223,6 +223,42 @@ record of the testing process.
 
 ## Critical Lessons Learned
 
+### Session File Locking for Concurrency
+
+When implementing session persistence (`session.py`), always use file locking to
+prevent race conditions when multiple CLI invocations access the same session file:
+
+```python
+import fcntl
+
+def save(self, path: str):
+    data = {
+        "history": [e.to_dict() for e in self._history],
+        "redo_stack": [e.to_dict() for e in self._redo_stack],
+    }
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(path, "w") as f:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            json.dump(data, f, indent=2, default=str)
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except (IOError, OSError):
+            # Fallback if locking fails (e.g., on some network filesystems)
+            json.dump(data, f, indent=2, default=str)
+```
+
+**Why this matters:**
+- Multiple CLI commands may run concurrently (e.g., agent spawning parallel tasks)
+- Without locking, concurrent writes cause lost updates and corrupted session state
+- The `LOCK_EX` (exclusive) lock ensures atomic writes
+- Fallback handles filesystems that don't support `flock` (NFS, etc.)
+
+**Common pitfalls:**
+- Don't use `flock` directly — always use `fcntl.flock()` with proper import
+- Always release the lock with `LOCK_UN` after writing
+- Handle `IOError`/`OSError` gracefully for unsupported filesystems
+
 ### Use the Real Software — Don't Reimplement It
 
 **This is the #1 rule.** The CLI MUST call the actual software for rendering and
