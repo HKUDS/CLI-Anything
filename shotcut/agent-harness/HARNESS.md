@@ -190,10 +190,10 @@ Real-world workflow test scenarios should include:
 agent-harness/
 ├── HARNESS.md              # This file — general SOP
 ├── SHOTCUT.md              # Project-specific analysis and SOP
-├── cli/                    # The actual CLI implementation
+├── cli_anything/shotcut/   # The actual CLI implementation
 │   ├── README.md           # HOW TO RUN — required
 │   ├── __init__.py
-│   ├── __main__.py         # python3 -m cli.shotcut_cli
+│   ├── __main__.py         # python3 -m cli_anything.shotcut
 │   ├── shotcut_cli.py      # Main CLI entry point (Click + REPL)
 │   ├── core/               # Core modules (one per domain)
 │   │   ├── __init__.py

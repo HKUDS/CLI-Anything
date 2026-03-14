@@ -17,6 +17,7 @@ Usage:
 import sys
 import os
 import json
+import shlex
 import click
 from typing import Optional
 
@@ -958,7 +959,7 @@ def _run_repl(s: Session, skin):
         if not line:
             continue
 
-        parts = line.split()
+        parts = shlex.split(line)
         cmd = parts[0].lower()
         args = parts[1:]
 

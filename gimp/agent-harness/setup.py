@@ -36,6 +36,7 @@ setup(
     install_requires=[
         "click>=8.0.0",
         "Pillow>=10.0.0",
+        "numpy>=1.24.0",
         "prompt-toolkit>=3.0.0",
     ],
     extras_require={

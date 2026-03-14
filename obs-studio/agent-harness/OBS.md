@@ -18,7 +18,7 @@ control over OBS scene collections via JSON configuration files.
 ## CLI Harness Location
 
 ```
-/root/cli-anything/obs-studio/agent-harness/cli/
+/root/cli-anything/obs-studio/agent-harness/cli_anything/obs_studio/
 ```
 
 ## Usage
@@ -29,37 +29,37 @@ control over OBS scene collections via JSON configuration files.
 cd /root/cli-anything/obs-studio/agent-harness
 
 # 1. Create project
-python3 -m cli.obs_cli project new --name "my_stream" -o stream.json
+cli-anything-obs-studio project new --name "my_stream" -o stream.json
 
 # 2. Add camera with chroma key
-python3 -m cli.obs_cli --project stream.json source add video_capture --name "Webcam"
-python3 -m cli.obs_cli --project stream.json filter add chroma_key -S 0 -p similarity=400
+cli-anything-obs-studio --project stream.json source add video_capture --name "Webcam"
+cli-anything-obs-studio --project stream.json filter add chroma_key -S 0 -p similarity=400
 
 # 3. Add game capture
-python3 -m cli.obs_cli --project stream.json source add display_capture --name "Game"
+cli-anything-obs-studio --project stream.json source add display_capture --name "Game"
 
 # 4. Add overlay
-python3 -m cli.obs_cli --project stream.json source add image --name "Overlay" -S file=/path/to/overlay.png
+cli-anything-obs-studio --project stream.json source add image --name "Overlay" -S file=/path/to/overlay.png
 
 # 5. Set up scenes
-python3 -m cli.obs_cli --project stream.json scene add --name "BRB"
-python3 -m cli.obs_cli --project stream.json scene add --name "Starting Soon"
+cli-anything-obs-studio --project stream.json scene add --name "BRB"
+cli-anything-obs-studio --project stream.json scene add --name "Starting Soon"
 
 # 6. Configure streaming output
-python3 -m cli.obs_cli --project stream.json output streaming --service twitch --key "live_xxx"
-python3 -m cli.obs_cli --project stream.json output settings --preset balanced
+cli-anything-obs-studio --project stream.json output streaming --service twitch --key "live_xxx"
+cli-anything-obs-studio --project stream.json output settings --preset balanced
 
 # 7. Configure recording
-python3 -m cli.obs_cli --project stream.json output recording --format mp4 --quality high
+cli-anything-obs-studio --project stream.json output recording --format mp4 --quality high
 
 # 8. Save
-python3 -m cli.obs_cli --project stream.json project save
+cli-anything-obs-studio --project stream.json project save
 ```
 
 ### Using the REPL
 
 ```bash
-python3 -m cli.obs_cli repl --project stream.json
+cli-anything-obs-studio repl --project stream.json
 ```
 
 ## JSON Scene Collection Format
@@ -143,7 +143,7 @@ python3 -m cli.obs_cli repl --project stream.json
 
 ```bash
 cd /root/cli-anything/obs-studio/agent-harness
-python3 -m pytest cli/tests/ -v
+python3 -m pytest cli_anything/obs_studio/tests/ -v
 ```
 
 All tests run without OBS Studio installed.

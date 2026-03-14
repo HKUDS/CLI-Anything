@@ -14,37 +14,37 @@ pip install click prompt_toolkit
 
 ```bash
 # Create a new project
-python3 -m cli.obs_cli project new --name "my_stream" -o project.json
+cli-anything-obs-studio project new --name "my_stream" -o project.json
 
 # Add sources
-python3 -m cli.obs_cli --project project.json source add video_capture --name "Camera"
-python3 -m cli.obs_cli --project project.json source add display_capture --name "Game"
+cli-anything-obs-studio --project project.json source add video_capture --name "Camera"
+cli-anything-obs-studio --project project.json source add display_capture --name "Game"
 
 # Add filters
-python3 -m cli.obs_cli --project project.json filter add chroma_key -S 0 -p similarity=400
+cli-anything-obs-studio --project project.json filter add chroma_key -S 0 -p similarity=400
 
 # Add scenes
-python3 -m cli.obs_cli --project project.json scene add --name "BRB"
+cli-anything-obs-studio --project project.json scene add --name "BRB"
 
 # Configure streaming
-python3 -m cli.obs_cli --project project.json output streaming --service twitch --key "your_key"
+cli-anything-obs-studio --project project.json output streaming --service twitch --key "your_key"
 
 # Save
-python3 -m cli.obs_cli --project project.json project save
+cli-anything-obs-studio --project project.json project save
 ```
 
 ## JSON Output Mode
 
 ```bash
-python3 -m cli.obs_cli --json project new -o project.json
-python3 -m cli.obs_cli --json --project project.json source list
+cli-anything-obs-studio --json project new -o project.json
+cli-anything-obs-studio --json --project project.json source list
 ```
 
 ## Interactive REPL
 
 ```bash
-python3 -m cli.obs_cli repl
-python3 -m cli.obs_cli repl --project project.json
+cli-anything-obs-studio repl
+cli-anything-obs-studio repl --project project.json
 ```
 
 ## Command Groups
@@ -127,21 +127,21 @@ session history - Show undo history
 
 ```bash
 # From the agent-harness directory:
-python3 -m pytest cli/tests/ -v
+python3 -m pytest cli_anything/obs_studio/tests/ -v
 
 # Unit tests only
-python3 -m pytest cli/tests/test_core.py -v
+python3 -m pytest cli_anything/obs_studio/tests/test_core.py -v
 
 # E2E tests only
-python3 -m pytest cli/tests/test_full_e2e.py -v
+python3 -m pytest cli_anything/obs_studio/tests/test_full_e2e.py -v
 ```
 
 ## Architecture
 
 ```
-cli/
+cli_anything/obs_studio/
 ├── __init__.py
-├── obs_cli.py            # Main CLI entry point (Click + REPL)
+├── obs_studio_cli.py     # Main CLI entry point (Click + REPL)
 ├── core/
 │   ├── __init__.py
 │   ├── project.py        # Project create/open/save/info

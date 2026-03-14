@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from cli_anything.gimp.core.project import create_project, open_project, save_project, get_project_info, list_profiles
 from cli_anything.gimp.core.layers import (
     add_layer, add_from_file, remove_layer, duplicate_layer, move_layer,
-    set_layer_property, get_layer, list_layers, BLEND_MODES,
+    set_layer_property, get_layer, list_layers, flatten_layers, merge_down,
+    BLEND_MODES,
 )
 from cli_anything.gimp.core.filters import (
     list_available, get_filter_info, validate_params, add_filter,
@@ -206,6 +207,19 @@ class TestLayers:
         assert layer["type"] == "text"
         assert "text" in layer
         assert "font_size" in layer
+
+    def test_flatten_marks_project(self):
+        proj = self._make_project()
+        add_layer(proj, name="Visible")
+        flatten_layers(proj)
+        assert proj["_flatten_pending"] is True
+
+    def test_merge_down_marks_project(self):
+        proj = self._make_project()
+        add_layer(proj, name="Bottom")
+        add_layer(proj, name="Top")
+        merge_down(proj, 0)
+        assert proj["_merge_down_pending"] == 0
 
 
 # ── Filter Tests ─────────────────────────────────────────────────

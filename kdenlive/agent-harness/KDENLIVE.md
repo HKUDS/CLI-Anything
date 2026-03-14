@@ -18,7 +18,7 @@ No Kdenlive or melt installation is required for project editing and XML generat
 ### 1. Create a Project
 
 ```bash
-python3 -m cli.kdenlive_cli project new --name "MyProject" --profile hd1080p30 -o project.json
+cli-anything-kdenlive project new --name "MyProject" --profile hd1080p30 -o project.json
 ```
 
 Available profiles: hd1080p30, hd1080p25, hd1080p24, hd1080p60, hd720p30, hd720p25, hd720p60, 4k30, 4k60, sd_ntsc, sd_pal
@@ -26,8 +26,8 @@ Available profiles: hd1080p30, hd1080p25, hd1080p24, hd1080p60, hd720p30, hd720p
 ### 2. Import Media
 
 ```bash
-python3 -m cli.kdenlive_cli --project project.json bin import /path/to/video.mp4 --name "Main" -d 120.0
-python3 -m cli.kdenlive_cli --project project.json bin import /path/to/audio.wav --name "Music" -d 180.0 --type audio
+cli-anything-kdenlive --project project.json bin import /path/to/video.mp4 --name "Main" -d 120.0
+cli-anything-kdenlive --project project.json bin import /path/to/audio.wav --name "Music" -d 180.0 --type audio
 ```
 
 Clip types: video, audio, image, color, title
@@ -36,16 +36,16 @@ Clip types: video, audio, image, color, title
 
 ```bash
 # Add tracks
-python3 -m cli.kdenlive_cli --project project.json timeline add-track --type video
-python3 -m cli.kdenlive_cli --project project.json timeline add-track --type audio
+cli-anything-kdenlive --project project.json timeline add-track --type video
+cli-anything-kdenlive --project project.json timeline add-track --type audio
 
 # Place clips
-python3 -m cli.kdenlive_cli --project project.json timeline add-clip 0 clip0 --position 0 --out 30.0
+cli-anything-kdenlive --project project.json timeline add-clip 0 clip0 --position 0 --out 30.0
 
 # Trim, split, move
-python3 -m cli.kdenlive_cli --project project.json timeline trim 0 0 --in 5.0 --out 25.0
-python3 -m cli.kdenlive_cli --project project.json timeline split 0 0 10.0
-python3 -m cli.kdenlive_cli --project project.json timeline move 0 0 5.0
+cli-anything-kdenlive --project project.json timeline trim 0 0 --in 5.0 --out 25.0
+cli-anything-kdenlive --project project.json timeline split 0 0 10.0
+cli-anything-kdenlive --project project.json timeline move 0 0 5.0
 ```
 
 ### 4. Apply Effects
@@ -53,28 +53,28 @@ python3 -m cli.kdenlive_cli --project project.json timeline move 0 0 5.0
 ```bash
 # Available: brightness, contrast, saturation, blur, fade_in_video, fade_out_video,
 # fade_in_audio, fade_out_audio, volume, crop, rotate, speed, chroma_key
-python3 -m cli.kdenlive_cli --project project.json filter add 0 0 brightness -p level=1.3
-python3 -m cli.kdenlive_cli --project project.json filter add 0 0 blur -p hblur=5 -p vblur=5
+cli-anything-kdenlive --project project.json filter add 0 0 brightness -p level=1.3
+cli-anything-kdenlive --project project.json filter add 0 0 blur -p hblur=5 -p vblur=5
 ```
 
 ### 5. Add Transitions
 
 ```bash
 # Available: dissolve, wipe, slide, composite, affine
-python3 -m cli.kdenlive_cli --project project.json transition add dissolve 0 1 -p 5.0 -d 2.0
+cli-anything-kdenlive --project project.json transition add dissolve 0 1 -p 5.0 -d 2.0
 ```
 
 ### 6. Add Guides
 
 ```bash
-python3 -m cli.kdenlive_cli --project project.json guide add 30.0 --label "Scene 2"
+cli-anything-kdenlive --project project.json guide add 30.0 --label "Scene 2"
 ```
 
 ### 7. Export
 
 ```bash
 # Generate MLT XML for Kdenlive
-python3 -m cli.kdenlive_cli --project project.json export xml -o output.kdenlive
+cli-anything-kdenlive --project project.json export xml -o output.kdenlive
 
 # Open in Kdenlive (if installed)
 kdenlive output.kdenlive
@@ -85,10 +85,10 @@ kdenlive output.kdenlive
 The CLI supports undo/redo for all mutations:
 
 ```bash
-python3 -m cli.kdenlive_cli --project project.json session undo
-python3 -m cli.kdenlive_cli --project project.json session redo
-python3 -m cli.kdenlive_cli --project project.json session history
-python3 -m cli.kdenlive_cli --project project.json session status
+cli-anything-kdenlive --project project.json session undo
+cli-anything-kdenlive --project project.json session redo
+cli-anything-kdenlive --project project.json session history
+cli-anything-kdenlive --project project.json session status
 ```
 
 ## JSON Output
@@ -96,14 +96,14 @@ python3 -m cli.kdenlive_cli --project project.json session status
 All commands support `--json` flag for machine-readable output:
 
 ```bash
-python3 -m cli.kdenlive_cli --json --project project.json bin list
-python3 -m cli.kdenlive_cli --json --project project.json timeline list
+cli-anything-kdenlive --json --project project.json bin list
+cli-anything-kdenlive --json --project project.json timeline list
 ```
 
 ## Interactive REPL
 
 ```bash
-python3 -m cli.kdenlive_cli repl --project project.json
+cli-anything-kdenlive repl --project project.json
 ```
 
 ## Testing
@@ -112,13 +112,13 @@ python3 -m cli.kdenlive_cli repl --project project.json
 cd /root/cli-anything/kdenlive/agent-harness
 
 # Run all tests
-python3 -m pytest cli/tests/ -v
+python3 -m pytest cli_anything/kdenlive/tests/ -v
 
 # Unit tests (60+ tests)
-python3 -m pytest cli/tests/test_core.py -v
+python3 -m pytest cli_anything/kdenlive/tests/test_core.py -v
 
 # E2E tests (40+ tests)
-python3 -m pytest cli/tests/test_full_e2e.py -v
+python3 -m pytest cli_anything/kdenlive/tests/test_full_e2e.py -v
 ```
 
 ## Architecture
@@ -132,14 +132,14 @@ python3 -m pytest cli/tests/test_full_e2e.py -v
 ## Key Files
 
 ```
-cli/kdenlive_cli.py       - Main CLI entry point
-cli/core/project.py       - Project management
-cli/core/bin.py           - Media bin
-cli/core/timeline.py      - Timeline tracks and clips
-cli/core/filters.py       - Filter/effect registry
-cli/core/transitions.py   - Transition management
-cli/core/guides.py        - Guide/marker management
-cli/core/export.py        - XML generation
-cli/core/session.py       - Session undo/redo
-cli/utils/mlt_xml.py      - MLT XML helpers
+cli_anything/kdenlive/kdenlive_cli.py       - Main CLI entry point
+cli_anything/kdenlive/core/project.py       - Project management
+cli_anything/kdenlive/core/bin.py           - Media bin
+cli_anything/kdenlive/core/timeline.py      - Timeline tracks and clips
+cli_anything/kdenlive/core/filters.py       - Filter/effect registry
+cli_anything/kdenlive/core/transitions.py   - Transition management
+cli_anything/kdenlive/core/guides.py        - Guide/marker management
+cli_anything/kdenlive/core/export.py        - XML generation
+cli_anything/kdenlive/core/session.py       - Session undo/redo
+cli_anything/kdenlive/utils/mlt_xml.py      - MLT XML helpers
 ```

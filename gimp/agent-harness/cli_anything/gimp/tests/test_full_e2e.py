@@ -16,7 +16,9 @@ from PIL import Image, ImageDraw
 import numpy as np
 
 from cli_anything.gimp.core.project import create_project, save_project, open_project, get_project_info
-from cli_anything.gimp.core.layers import add_layer, add_from_file, list_layers, remove_layer
+from cli_anything.gimp.core.layers import (
+    add_layer, add_from_file, flatten_layers, list_layers, merge_down, remove_layer,
+)
 from cli_anything.gimp.core.filters import add_filter, list_filters
 from cli_anything.gimp.core.canvas import resize_canvas, scale_canvas, crop_canvas, set_mode
 from cli_anything.gimp.core.media import probe_image, check_media
@@ -107,6 +109,30 @@ class TestLayerOperations:
         layers = list_layers(proj)
         assert layers[0]["name"] == "Blue"  # Top
         assert layers[1]["name"] == "Red"   # Bottom
+
+    def test_merge_down_is_applied_during_render(self, tmp_dir):
+        proj = create_project(width=100, height=100, color_mode="RGBA")
+        add_layer(proj, name="Bottom", layer_type="solid", fill="#00ff00")
+        add_layer(proj, name="Top", layer_type="solid", fill="#ff0000", opacity=0.5)
+        merge_down(proj, 0)
+
+        out = os.path.join(tmp_dir, "merge-down.png")
+        result = render(proj, out, preset="png", overwrite=True)
+
+        assert result["layers_rendered"] == 1
+        assert result["applied_layer_operations"] == ["merge_down"]
+
+    def test_flatten_is_applied_during_render(self, tmp_dir):
+        proj = create_project(width=100, height=100, color_mode="RGBA")
+        add_layer(proj, name="Bottom", layer_type="solid", fill="#00ff00")
+        add_layer(proj, name="Top", layer_type="solid", fill="#ff0000", opacity=0.5)
+        flatten_layers(proj)
+
+        out = os.path.join(tmp_dir, "flatten.png")
+        result = render(proj, out, preset="png", overwrite=True)
+
+        assert result["layers_rendered"] == 1
+        assert result["applied_layer_operations"] == ["flatten"]
 
 
 # ── Filter Rendering ─────────────────────────────────────────────

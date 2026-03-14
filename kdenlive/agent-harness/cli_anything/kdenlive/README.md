@@ -18,49 +18,49 @@ pip install click
 
 ```bash
 # Create a new project
-python3 -m cli.kdenlive_cli project new --name "MyVideo" --profile hd1080p30 -o project.json
+cli-anything-kdenlive project new --name "MyVideo" --profile hd1080p30 -o project.json
 
 # Import clips into the bin
-python3 -m cli.kdenlive_cli --project project.json bin import /path/to/video.mp4 --name "Interview" -d 120.5
-python3 -m cli.kdenlive_cli --project project.json bin import /path/to/music.mp3 --name "BGM" -d 180.0 --type audio
+cli-anything-kdenlive --project project.json bin import /path/to/video.mp4 --name "Interview" -d 120.5
+cli-anything-kdenlive --project project.json bin import /path/to/music.mp3 --name "BGM" -d 180.0 --type audio
 
 # Add tracks
-python3 -m cli.kdenlive_cli --project project.json timeline add-track --type video
-python3 -m cli.kdenlive_cli --project project.json timeline add-track --type audio
+cli-anything-kdenlive --project project.json timeline add-track --type video
+cli-anything-kdenlive --project project.json timeline add-track --type audio
 
 # Place clips on timeline
-python3 -m cli.kdenlive_cli --project project.json timeline add-clip 0 clip0 --position 0 --out 30.0
-python3 -m cli.kdenlive_cli --project project.json timeline add-clip 1 clip1 --position 0 --out 60.0
+cli-anything-kdenlive --project project.json timeline add-clip 0 clip0 --position 0 --out 30.0
+cli-anything-kdenlive --project project.json timeline add-clip 1 clip1 --position 0 --out 60.0
 
 # Add filters
-python3 -m cli.kdenlive_cli --project project.json filter add 0 0 brightness -p level=1.3
+cli-anything-kdenlive --project project.json filter add 0 0 brightness -p level=1.3
 
 # Add transitions
-python3 -m cli.kdenlive_cli --project project.json transition add dissolve 0 1 -d 2.0
+cli-anything-kdenlive --project project.json transition add dissolve 0 1 -d 2.0
 
 # Add guides
-python3 -m cli.kdenlive_cli --project project.json guide add 30.0 --label "Scene 2"
+cli-anything-kdenlive --project project.json guide add 30.0 --label "Scene 2"
 
 # Export to Kdenlive XML
-python3 -m cli.kdenlive_cli --project project.json export xml -o output.kdenlive
+cli-anything-kdenlive --project project.json export xml -o output.kdenlive
 
 # Save project
-python3 -m cli.kdenlive_cli --project project.json project save
+cli-anything-kdenlive --project project.json project save
 ```
 
 ## JSON Output Mode
 
 ```bash
-python3 -m cli.kdenlive_cli --json project new -o project.json
-python3 -m cli.kdenlive_cli --json --project project.json bin list
+cli-anything-kdenlive --json project new -o project.json
+cli-anything-kdenlive --json --project project.json bin list
 ```
 
 ## Interactive REPL
 
 ```bash
-python3 -m cli.kdenlive_cli repl
+cli-anything-kdenlive repl
 # or with existing project:
-python3 -m cli.kdenlive_cli repl --project project.json
+cli-anything-kdenlive repl --project project.json
 ```
 
 ## Command Groups
@@ -147,21 +147,21 @@ hd720p60, 4k30, 4k60, sd_ntsc, sd_pal
 
 ```bash
 # From the agent-harness directory:
-python3 -m pytest cli/tests/ -v
+python3 -m pytest cli_anything/kdenlive/tests/ -v
 
 # Unit tests only
-python3 -m pytest cli/tests/test_core.py -v
+python3 -m pytest cli_anything/kdenlive/tests/test_core.py -v
 
 # E2E tests only
-python3 -m pytest cli/tests/test_full_e2e.py -v
+python3 -m pytest cli_anything/kdenlive/tests/test_full_e2e.py -v
 ```
 
 ## Architecture
 
 ```
-cli/
+cli_anything/kdenlive/
 ├── __init__.py
-├── __main__.py              # python3 -m cli.kdenlive_cli
+├── __main__.py              # python3 -m cli_anything.kdenlive
 ├── kdenlive_cli.py          # Main CLI entry point (Click + REPL)
 ├── core/
 │   ├── __init__.py
