@@ -2,6 +2,7 @@
 # Only track:
 #   - cli-anything-plugin/**
 #   - codex-skill/**
+#   - gemini-skill/**
 #   - */agent-harness/**  (under each software dir)
 #   - .gitignore
 # Everything else is ignored.
@@ -19,6 +20,7 @@
 # Step 3: Allow cli-anything-plugin entirely
 !/cli-anything-plugin/
 !/codex-skill/
+!/gemini-skill/
 
 # Step 4: Allow each software dir (top level only)
 !/gimp/
