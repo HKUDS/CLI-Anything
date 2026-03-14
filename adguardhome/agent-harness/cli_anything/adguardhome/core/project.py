@@ -40,11 +40,13 @@ def load_config(config_path: Path | None = None) -> dict:
 
 
 def save_config(host: str, port: int, username: str, password: str,
+                https: bool = False,
                 config_path: Path | None = None) -> Path:
     """Save connection settings to config file."""
     path = config_path or DEFAULT_CONFIG_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"host": host, "port": port, "username": username, "password": password}
+    data = {"host": host, "port": port, "username": username, "password": password,
+            "https": https}
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
     return path

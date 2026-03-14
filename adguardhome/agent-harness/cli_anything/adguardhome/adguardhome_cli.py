@@ -69,14 +69,15 @@ def cli(ctx: click.Context, host, port, username, password, config_path, use_htt
     """cli-anything-adguardhome - control AdGuardHome from the command line."""
     ctx.ensure_object(dict)
 
-    cfg = project.load_config(Path(config_path) if config_path else None)
+    config_path_obj = Path(config_path) if config_path else None
+    cfg = project.load_config(config_path_obj)
     ctx.obj["host"] = host or cfg["host"]
     ctx.obj["port"] = port or cfg["port"]
     ctx.obj["username"] = username or cfg["username"]
     ctx.obj["password"] = password or cfg["password"]
     ctx.obj["use_https"] = use_https or cfg.get("https", False)
     ctx.obj["as_json"] = as_json
-    ctx.obj["config_path"] = Path(config_path) if config_path else None
+    ctx.obj["config_path"] = config_path_obj
 
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl)
@@ -177,6 +178,7 @@ def config_save(ctx: click.Context):
     path = project.save_config(
         host=obj["host"], port=obj["port"],
         username=obj["username"], password=obj["password"],
+        https=obj.get("use_https", False),
         config_path=obj.get("config_path"),
     )
     result = {"saved": str(path)}
