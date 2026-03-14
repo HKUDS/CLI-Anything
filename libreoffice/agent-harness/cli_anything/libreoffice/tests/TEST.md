@@ -157,7 +157,7 @@ E2E tests produce real ODF files (ODT/ODS/ODP) and validate ZIP structure, XML c
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.13.11, pytest-9.0.2, pluggy-1.5.0
-rootdir: /root/cli-anything
+rootdir: ~/cli-anything
 plugins: langsmith-0.5.1, anyio-4.12.0
 collected 143 items
 

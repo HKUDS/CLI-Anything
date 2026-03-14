@@ -180,7 +180,7 @@ E2E tests generate real SVG XML and validate structure, export to SVG/PNG with P
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.13.11, pytest-9.0.2, pluggy-1.5.0
-rootdir: /root/cli-anything
+rootdir: ~/cli-anything
 plugins: langsmith-0.5.1, anyio-4.12.0
 collected 197 items
 
