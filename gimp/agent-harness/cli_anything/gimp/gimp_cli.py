@@ -758,7 +758,7 @@ def repl(project_path):
                 if sess.has_project():
                     p = sess.get_project()
                     proj_name = p.get("name", "") if isinstance(p, dict) else ""
-            except Exception:
+            except Exception as e:
                 proj_name = ""
 
             line = skin.get_input(pt_session, project_name=proj_name, modified=False)
