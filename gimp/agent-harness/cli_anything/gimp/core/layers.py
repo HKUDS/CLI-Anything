@@ -119,7 +119,7 @@ def add_from_file(
         from PIL import Image
         with Image.open(path) as img:
             w, h = img.size
-    except Exception:
+    except Exception as e:
         w = project["canvas"]["width"]
         h = project["canvas"]["height"]
 

@@ -150,7 +150,7 @@ def main():
                 try:
                     f = filt_mod.list_filters(session, track["index"], c["clip_index"])
                     filter_count += len(f)
-                except Exception:
+                except Exception as e:
                     pass
         print(f"  Track {track['index']} [{track['type'][0].upper()}] {name}: "
               f"{clip_count} clips, {filter_count} filters")
