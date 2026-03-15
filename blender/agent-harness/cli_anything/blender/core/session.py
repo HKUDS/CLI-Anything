@@ -5,6 +5,7 @@ import os
 import copy
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from cli_anything.utils.io import locked_save_json
 
 
 class Session:
@@ -111,8 +112,7 @@ class Session:
 
         # Save project
         self.project["metadata"]["modified"] = datetime.now().isoformat()
-        with open(save_path, "w") as f:
-            json.dump(self.project, f, indent=2, default=str)
+        locked_save_json(save_path, self.project, indent=2, default=str)
 
         self.project_path = save_path
         self._modified = False

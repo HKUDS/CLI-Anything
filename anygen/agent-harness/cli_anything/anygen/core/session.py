@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from cli_anything.utils.io import locked_save_json
 
 
 @dataclass
@@ -102,8 +103,7 @@ class Session:
             "redo_stack": [e.to_dict() for e in self._redo_stack],
         }
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+        locked_save_json(path, data, indent=2, default=str)
 
     def _load(self, path: str):
         p = Path(path)

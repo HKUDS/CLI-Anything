@@ -12,6 +12,7 @@ from typing import Optional
 from xml.etree import ElementTree as ET
 
 from ..utils import drawio_xml
+from cli_anything.utils.io import locked_save_json
 
 
 SESSION_DIR = Path.home() / ".drawio-cli" / "sessions"
@@ -126,8 +127,7 @@ class Session:
             "timestamp": time.time(),
         }
         path = SESSION_DIR / f"{self.session_id}.json"
-        with open(path, "w") as f:
-            json.dump(state, f, indent=2)
+        locked_save_json(path, state, indent=2)
         return str(path)
 
     @classmethod
