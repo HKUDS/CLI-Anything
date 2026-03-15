@@ -43,6 +43,7 @@ setup(
     python_requires=">=3.10",
 
     install_requires=[
+        "cli-anything-shared",
         "click>=8.1",
         "prompt-toolkit>=3.0",
     ],

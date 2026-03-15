@@ -12,7 +12,7 @@ from typing import Optional
 from xml.etree import ElementTree as ET
 
 from ..utils import drawio_xml
-from ..utils.io import locked_save_json
+from cli_anything.utils.io import locked_save_json
 
 
 SESSION_DIR = Path.home() / ".drawio-cli" / "sessions"

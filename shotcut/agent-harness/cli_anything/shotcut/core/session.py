@@ -13,7 +13,7 @@ from typing import Optional
 from lxml import etree
 
 from ..utils import mlt_xml
-from ..utils.io import locked_save_json
+from cli_anything.utils.io import locked_save_json
 
 
 SESSION_DIR = Path.home() / ".shotcut-cli" / "sessions"

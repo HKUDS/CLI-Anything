@@ -34,6 +34,7 @@ setup(
     ],
     python_requires=">=3.10",
     install_requires=[
+        "cli-anything-shared",
         "click>=8.0.0",
         "requests>=2.28.0",
         "prompt-toolkit>=3.0.0",

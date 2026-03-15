@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from ..utils.io import locked_save_json
+from cli_anything.utils.io import locked_save_json
 
 
 @dataclass
