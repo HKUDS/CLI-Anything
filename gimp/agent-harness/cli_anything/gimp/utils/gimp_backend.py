@@ -196,7 +196,7 @@ def apply_filter_and_export(
 
     script = (
         f'(let* ('
-        f'(image (car (file-png-load RUN-NONINTERACTIVE "{safe_abs_input}" "{safe_abs_input}")))'
+        f'(image (car (gimp-file-load RUN-NONINTERACTIVE "{safe_abs_input}" "{safe_abs_input}")))'
         f'(drawable (car (gimp-image-flatten image)))'
         f')'
         f'{script_fu_filter}'
