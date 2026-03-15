@@ -1,11 +1,13 @@
 ---
 name: cli-anything
-description: Use when the user wants Codex to build, refine, test, or validate a CLI-Anything harness for a GUI application or source repository. Adapts the CLI-Anything methodology to Codex without changing the generated Python harness format.
+description: Use when the user wants Codex to build/refine/test/validate CLI-Anything harnesses, or manage cross-agent registration (bootstrap/install/status/list) from this repository.
 ---
 
 # CLI-Anything for Codex
 
 Use this skill when the user wants Codex to act like the `CLI-Anything` builder.
+
+This skill also supports unified adapter registration for Claude Code, OpenCode, and Codex.
 
 If this skill is being used from inside the `CLI-Anything` repository, read `../cli-anything-plugin/HARNESS.md` before implementation. That file is the full methodology source of truth. If it is not available, follow the condensed rules below.
 
@@ -18,7 +20,31 @@ Accept either:
 
 Derive the software name from the local directory name after cloning if needed.
 
+For registration workflows, accept either:
+
+- explicit targets: `claude`, `opencode`, `codex`, or `all`
+- no target (must ask user to choose before install)
+
 ## Modes
+
+### Register
+
+Use when the user wants to install/manage CLI-Anything adapters across agents.
+
+Commands (run from repository root):
+
+- `python3 register.py bootstrap --target <auto|claude|opencode|codex>`
+- `python3 register.py install --targets <claude,opencode,codex|all>`
+- `python3 register.py install-all`
+- `python3 register.py status --targets all`
+- `python3 register.py list --debug`
+
+Important policy:
+
+- If user does not provide target(s), ask first:
+    - "Choose install target: claude / opencode / codex / all"
+- Do not default to `all` without explicit user confirmation.
+- If user asks "install all" explicitly, `install-all` is allowed.
 
 ### Build
 
@@ -100,6 +126,13 @@ Prefer the real software backend over reimplementation. Wrap the actual executab
 6. Update README usage docs.
 7. Verify local installation with `pip install -e .`
 
+For register mode:
+
+1. Confirm target(s) with user if omitted.
+2. Run the selected register command.
+3. Run `python3 register.py status --targets all`.
+4. Report installed/updated/skipped result per agent.
+
 ## Output Expectations
 
 When reporting progress or final results, include:
@@ -108,3 +141,9 @@ When reporting progress or final results, include:
 - files added or changed
 - validation commands run
 - open risks or backend limitations
+
+For register mode, also include:
+
+- selected target(s) and whether user-confirmed
+- executed registration command
+- status output summary for claude/codex/opencode
