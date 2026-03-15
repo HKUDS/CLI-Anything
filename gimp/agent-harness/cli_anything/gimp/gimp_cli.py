@@ -241,6 +241,9 @@ def layer_new(name, layer_type, width, height, fill, opacity, mode, position):
         proj, name=name, layer_type=layer_type, width=width, height=height,
         fill=fill, opacity=opacity, blend_mode=mode, position=position,
     )
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output(layer, f"Added layer: {name}")
 
 
@@ -260,6 +263,9 @@ def layer_add_from_file(path, name, position, opacity, mode):
         proj, path=path, name=name, position=position,
         opacity=opacity, blend_mode=mode,
     )
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output(layer, f"Added layer from: {path}")
 
 
@@ -280,6 +286,9 @@ def layer_remove(index):
     sess = get_session()
     sess.snapshot(f"Remove layer {index}")
     removed = layer_mod.remove_layer(sess.get_project(), index)
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output(removed, f"Removed layer {index}: {removed.get('name', '')}")
 
 
@@ -291,6 +300,9 @@ def layer_duplicate(index):
     sess = get_session()
     sess.snapshot(f"Duplicate layer {index}")
     dup = layer_mod.duplicate_layer(sess.get_project(), index)
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output(dup, f"Duplicated layer {index}")
 
 
@@ -303,6 +315,9 @@ def layer_move(index, to):
     sess = get_session()
     sess.snapshot(f"Move layer {index} to {to}")
     layer_mod.move_layer(sess.get_project(), index, to)
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output({"moved": index, "to": to}, f"Moved layer {index} to position {to}")
 
 
@@ -671,6 +686,9 @@ def draw_text(layer_index, text, x, y, font, size, color):
     layer["color"] = color
     layer["offset_x"] = x
     layer["offset_y"] = y
+    # Auto-save if project path is set
+    if sess.project_path:
+        sess.save_session()
     output({"layer": layer_index, "text": text}, f"Set text on layer {layer_index}")
 
 
