@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from ..utils.io import locked_save_json
 
 
 @dataclass
@@ -102,25 +103,7 @@ class Session:
             "redo_stack": [e.to_dict() for e in self._redo_stack],
         }
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        try:
-            f = open(path, "r+")
-        except FileNotFoundError:
-            f = open(path, "w")
-        with f:
-            _locked = False
-            try:
-                import fcntl
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                _locked = True
-            except (ImportError, OSError):
-                pass
-            try:
-                f.seek(0)
-                f.truncate()
-                json.dump(data, f, indent=2, default=str)
-            finally:
-                if _locked:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        locked_save_json(path, data, indent=2, default=str)
 
     def _load(self, path: str):
         p = Path(path)

@@ -5,6 +5,7 @@ import os
 import copy
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from ..utils.io import locked_save_json
 
 
 class Session:
@@ -107,25 +108,7 @@ class Session:
 
         self.project["metadata"]["modified"] = datetime.now().isoformat()
         os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
-        try:
-            f = open(save_path, "r+")
-        except FileNotFoundError:
-            f = open(save_path, "w")
-        with f:
-            _locked = False
-            try:
-                import fcntl
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                _locked = True
-            except (ImportError, OSError):
-                pass
-            try:
-                f.seek(0)
-                f.truncate()
-                json.dump(self.project, f, indent=2, default=str)
-            finally:
-                if _locked:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        locked_save_json(save_path, self.project, indent=2, default=str)
 
         self.project_path = save_path
         self._modified = False
