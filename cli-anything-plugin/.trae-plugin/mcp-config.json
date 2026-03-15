@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cli-anything": {
+      "command": "python",
+      "args": [
+        "D:\\AwesomeGithub\\CLI-Anything\\cli-anything-plugin\\mcp_server.py"
+      ]
+    }
+  }
+}
