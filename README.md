@@ -202,6 +202,29 @@ The command runs as a subtask and follows the same 7-phase methodology as Claude
 </details>
 
 <details>
+<summary><h4 id="-goose">⚡ Goose (Desktop / CLI)</h4></summary>
+
+**Step 1: Install Goose**
+
+Install Goose (Desktop or CLI) using the official Goose instructions for your OS.
+
+**Step 2: Configure a CLI Provider**
+
+Configure Goose to use a CLI provider such as Claude Code, and make sure that CLI is installed and authenticated.
+
+**Step 3: Use CLI-Anything in a Goose Session**
+
+Once Goose is configured, start a session and use the same CLI-Anything commands described above for Claude Code, for example:
+
+```bash
+/cli-anything:cli-anything ./gimp
+/cli-anything:refine ./gimp "batch processing and filters"
+```
+
+> Note: When Goose runs through a CLI provider, it uses that provider's capabilities and command format.
+</details>
+
+<details>
 
 <summary><h4 id="-qodercli">⚡ Qodercli <sup><code>Community</code></sup></h4></summary>
 
