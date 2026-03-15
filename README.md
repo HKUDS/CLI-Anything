@@ -7,7 +7,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 
 <p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start"></a>
-  <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-11_Apps-green?style=for-the-badge" alt="Demos"></a>
+  <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-12_Apps-green?style=for-the-badge" alt="Demos"></a>
   <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-1%2C508_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License"></a>
 </p>
@@ -95,27 +95,27 @@ That's it. The plugin is now available in your Claude Code session.
 ```
 
 This runs the full pipeline:
-1. 🔍 **Analyze** — Scans source code, maps GUI actions to APIs
-2. 📐 **Design** — Architects command groups, state model, output formats
-3. 🔨 **Implement** — Builds Click CLI with REPL, JSON output, undo/redo
-4. 📋 **Plan Tests** — Creates TEST.md with unit + E2E test plans
-5. 🧪 **Write Tests** — Implements comprehensive test suite
-6. 📝 **Document** — Updates TEST.md with results
-7. 📦 **Publish** — Creates `setup.py`, installs to PATH
+1. 🔍 **Analyze** - Scans source code, maps GUI actions to APIs
+2. 📐 **Design** - Architects command groups, state model, output formats
+3. 🔨 **Implement** - Builds Click CLI with REPL, JSON output, undo/redo
+4. 📋 **Plan Tests** - Creates TEST.md with unit + E2E test plans
+5. 🧪 **Write Tests** - Implements comprehensive test suite
+6. 📝 **Document** - Updates TEST.md with results
+7. 📦 **Publish** - Creates `setup.py`, installs to PATH
 
 **Step 4 (Optional): Refine and Improve the CLI**
 
 After the initial build, you can iteratively refine the CLI to expand coverage and add missing capabilities:
 
 ```bash
-# Broad refinement — agent analyzes gaps across all capabilities
+# Broad refinement - agent analyzes gaps across all capabilities
 /cli-anything:refine ./gimp
 
-# Focused refinement — target a specific functionality area
+# Focused refinement - target a specific functionality area
 /cli-anything:refine ./gimp "I want more CLIs on image batch processing and filters"
 ```
 
-The refine command performs gap analysis between the software's full capabilities and current CLI coverage, then implements new commands, tests, and documentation for the identified gaps. You can run it multiple times to steadily expand coverage — each run is incremental and non-destructive.
+The refine command performs gap analysis between the software's full capabilities and current CLI coverage, then implements new commands, tests, and documentation for the identified gaps. You can run it multiple times to steadily expand coverage - each run is incremental and non-destructive.
 
 <details>
 <summary><strong>Alternative: Manual Installation</strong></summary>
@@ -178,10 +178,10 @@ The command runs as a subtask and follows the same 7-phase methodology as Claude
 **Step 3 (Optional): Refine and Improve the CLI**
 
 ```bash
-# Broad refinement — agent analyzes gaps across all capabilities
+# Broad refinement - agent analyzes gaps across all capabilities
 /cli-anything-refine ./gimp
 
-# Focused refinement — target a specific functionality area
+# Focused refinement - target a specific functionality area
 /cli-anything-refine ./gimp "batch processing and filters"
 ```
 
@@ -254,10 +254,10 @@ OpenCode commands, while keeping the generated Python harness format unchanged.
 
 CLI-Anything is designed to be platform-agnostic. Support for more AI coding agents is planned:
 
-- **Codex** — available via the bundled skill in `codex-skill/`
-- **Cursor** — coming soon
-- **Windsurf** — coming soon
-- **Your favorite tool** — contributions welcome! See the `opencode-commands/` directory for a reference implementation.
+- **Codex** - available via the bundled skill in `codex-skill/`
+- **Cursor** - coming soon
+- **Windsurf** - coming soon
+- **Your favorite tool** - contributions welcome! See the `opencode-commands/` directory for a reference implementation.
 
 </details>
 
@@ -304,6 +304,7 @@ cli-anything-gimp
 | **📞 Communication & Collaboration** | Automate meeting scheduling, participant management, recording retrieval, and reporting through structured CLI | Zoom, Jitsi Meet, BigBlueButton, Mattermost |
 | **📐 Diagramming & Visualization** | Create and manipulate diagrams, flowcharts, architecture diagrams, and visual documentation programmatically | Draw.io (diagrams.net), Mermaid, PlantUML, Excalidraw, yEd |
 | **✨ AI Content Generation** | Generate professional deliverables (slides, docs, diagrams, websites, research reports) through AI-powered cloud APIs | [AnyGen](https://www.anygen.io), Gamma, Beautiful.ai, Tome |
+| **🌐 Network & Infrastructure** | Manage network services, DNS, ad-blocking, and infrastructure through structured CLI commands | AdGuardHome |
 
 ---
 
@@ -316,7 +317,7 @@ AI agents are great at reasoning but terrible at using real professional softwar
 
 | **Current Pain Point** | **CLI-Anything's Fix** |
 |----------|----------------------|
-| 🤖 "AI can't use real tools" | Direct integration with actual software backends (Blender, LibreOffice, FFmpeg) — full professional capabilities, zero compromises |
+| 🤖 "AI can't use real tools" | Direct integration with actual software backends (Blender, LibreOffice, FFmpeg) - full professional capabilities, zero compromises |
 | 💸 "UI automation breaks constantly" | No screenshots, no clicking, no RPA fragility. Pure command-line reliability with structured interfaces |
 | 📊 "Agents need structured data" | Built-in JSON output for seamless agent consumption + human-readable formats for debugging |
 | 🔧 "Custom integrations are expensive" | One Claude plugin auto-generates CLIs for ANY codebase through proven 7-phase pipeline |
@@ -332,21 +333,21 @@ AI agents are great at reasoning but terrible at using real professional softwar
 
 ### 🛠️ Let Agents Take Your Workflows
 
-Professional or everyday — just throw the codebase at `/cli-anything`. GIMP, Blender, Shotcut for creative work. LibreOffice, OBS Studio for daily tasks. Don't have the source? Find an open-source alternative and throw *that* in. You'll instantly get a full CLI your agents can use.
+Professional or everyday - just throw the codebase at `/cli-anything`. GIMP, Blender, Shotcut for creative work. LibreOffice, OBS Studio for daily tasks. Don't have the source? Find an open-source alternative and throw *that* in. You'll instantly get a full CLI your agents can use.
 
 </td>
 <td width="33%">
 
 ### 🔗 Unify Scattered APIs into One CLI
 
-Tired of juggling fragmented web service APIs? Feed the docs or SDK manuscripts to `/cli-anything` and your agents get a **powerful, stateful CLI** that wraps those individual endpoints into coherent command groups. One tool instead of dozens of raw API calls — stronger capabilities while saving tokens.
+Tired of juggling fragmented web service APIs? Feed the docs or SDK manuscripts to `/cli-anything` and your agents get a **powerful, stateful CLI** that wraps those individual endpoints into coherent command groups. One tool instead of dozens of raw API calls - stronger capabilities while saving tokens.
 
 </td>
 <td width="33%">
 
 ### 🚀 Replace or Supercharge GUI Agents
 
-CLI-Anything can flat-out **replace GUI-based agent approaches** — no more screenshots, no brittle pixel-clicking. But here's the fun part: once you `/cli-anything` a GUI software, you can **synthesize agent tasks, evaluators, and benchmarks** entirely via code and terminal — fully automated, iteratively refinable, massively more efficient.
+CLI-Anything can flat-out **replace GUI-based agent approaches** - no more screenshots, no brittle pixel-clicking. But here's the fun part: once you `/cli-anything` a GUI software, you can **synthesize agent tasks, evaluators, and benchmarks** entirely via code and terminal - fully automated, iteratively refinable, massively more efficient.
 
 </td>
 </tr>
@@ -361,7 +362,7 @@ CLI-Anything can flat-out **replace GUI-based agent approaches** — no more scr
 <td width="50%">
 
 ### 🏗️ Fully Automated 7-Phase Pipeline
-From codebase analysis to PyPI publishing — the plugin handles architecture design, implementation, test planning, test writing, and documentation completely automatically.
+From codebase analysis to PyPI publishing - the plugin handles architecture design, implementation, test planning, test writing, and documentation completely automatically.
 
 </td>
 <td width="50%">
@@ -395,7 +396,7 @@ Multi-layered validation: unit tests with synthetic data, end-to-end tests with 
 <td width="50%">
 
 ### 🐍 Clean Package Architecture
-All CLIs organized under cli_anything.* namespace — conflict-free, pip-installable, with consistent naming: cli-anything-gimp, cli-anything-blender, etc.
+All CLIs organized under cli_anything.* namespace - conflict-free, pip-installable, with consistent naming: cli-anything-gimp, cli-anything-blender, etc.
 
 </td>
 </tr>
@@ -406,7 +407,7 @@ All CLIs organized under cli_anything.* namespace — conflict-free, pip-install
 ## 🎬 Demonstrations
 
 ### 🎯 General-Purpose
-CLI-Anything works on any software with a codebase — no domain restrictions or architectural limitations.
+CLI-Anything works on any software with a codebase - no domain restrictions or architectural limitations.
 
 ### 🏭 Professional-Grade Testing
 Tested across 11 diverse, complex applications spanning creative, productivity, communication, diagramming, and AI content generation domains previously inaccessible to AI agents.
@@ -415,7 +416,7 @@ Tested across 11 diverse, complex applications spanning creative, productivity, 
 From creative workflows (image editing, 3D modeling, vector graphics) to production tools (audio, office, live streaming, video editing).
 
 ### ✅ Full CLI Generation
-Each application received complete, production-ready CLI interfaces — not demos, but comprehensive tool access preserving full capabilities.
+Each application received complete, production-ready CLI interfaces - not demos, but comprehensive tool access preserving full capabilities.
 
 <table>
 <tr>
@@ -508,7 +509,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 </table>
 
-> **100% pass rate** across all 1,508 tests — 1,073 unit tests + 435 end-to-end tests.
+> **100% pass rate** across all 1,508 tests - 1,073 unit tests + 435 end-to-end tests.
 
 ---
 
@@ -518,7 +519,7 @@ Each CLI harness undergoes rigorous multi-layered testing to ensure production r
 
 | Layer | What it tests | Example |
 |-------|---------------|---------|
-| **Unit tests** | Every core function in isolation with synthetic data | `test_core.py` — project creation, layer ops, filter params |
+| **Unit tests** | Every core function in isolation with synthetic data | `test_core.py` - project creation, layer ops, filter params |
 | **E2E tests (native)** | Project file generation pipeline | Valid ODF ZIP structure, correct MLT XML, SVG well-formedness |
 | **E2E tests (true backend)** | Real software invocation + output verification | LibreOffice → PDF with `%PDF-` magic bytes, Blender → rendered PNG |
 | **CLI subprocess tests** | Installed command via `subprocess.run` | `cli-anything-gimp --json project new` → valid JSON output |
@@ -550,15 +551,15 @@ TOTAL        1,508 passed  ✅   100% pass rate
 
 ### 🎯 Core Design Principles
 
-1. **Authentic Software Integration** — The CLI generates valid project files (ODF, MLT XML, SVG) and delegates to real applications for rendering. **We build structured interfaces TO software, not replacements**.
+1. **Authentic Software Integration** - The CLI generates valid project files (ODF, MLT XML, SVG) and delegates to real applications for rendering. **We build structured interfaces TO software, not replacements**.
 
-2. **Flexible Interaction Models** — Every CLI operates in dual modes: stateful REPL for interactive agent sessions + subcommand interface for scripting/pipelines. **Run bare command → enter REPL mode**.
+2. **Flexible Interaction Models** - Every CLI operates in dual modes: stateful REPL for interactive agent sessions + subcommand interface for scripting/pipelines. **Run bare command → enter REPL mode**.
 
-3. **Consistent User Experience** — All generated CLIs share unified REPL interface (repl_skin.py) with branded banners, styled prompts, command history, progress indicators, and standardized formatting.
+3. **Consistent User Experience** - All generated CLIs share unified REPL interface (repl_skin.py) with branded banners, styled prompts, command history, progress indicators, and standardized formatting.
 
-4. **Agent-Native Design** — Built-in --json flag on every command delivers structured data for machine consumption, while human-readable tables serve interactive use. **Agents discover capabilities via standard --help and which commands**.
+4. **Agent-Native Design** - Built-in --json flag on every command delivers structured data for machine consumption, while human-readable tables serve interactive use. **Agents discover capabilities via standard --help and which commands**.
 
-5. **Zero Compromise Dependencies** — Real software is a hard requirement — no fallbacks, no graceful degradation. **Tests fail (not skip) when backends are missing, ensuring authentic functionality**.
+5. **Zero Compromise Dependencies** - Real software is a hard requirement - no fallbacks, no graceful degradation. **Tests fail (not skip) when backends are missing, ensuring authentic functionality**.
 
 ---
 
@@ -596,6 +597,7 @@ cli-anything/
 ├── 🎬 shotcut/agent-harness/            # Shotcut CLI (154 tests)
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22 tests)
 ├── 📐 drawio/agent-harness/             # Draw.io CLI (138 tests)
+├── 🛡️ adguardhome/agent-harness/        # AdGuardHome CLI (36 tests)
 └── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)
 ```
 
@@ -607,8 +609,8 @@ Each `agent-harness/` contains an installable Python package under `cli_anything
 
 | Command | Description |
 |---------|-------------|
-| `/cli-anything <software-path-or-repo>` | Build complete CLI harness — all 7 phases |
-| `/cli-anything:refine <software-path> [focus]` | Refine an existing harness — expand coverage with gap analysis |
+| `/cli-anything <software-path-or-repo>` | Build complete CLI harness - all 7 phases |
+| `/cli-anything:refine <software-path> [focus]` | Refine an existing harness - expand coverage with gap analysis |
 | `/cli-anything:test <software-path-or-repo>` | Run tests and update TEST.md with results |
 | `/cli-anything:validate <software-path-or-repo>` | Validate against HARNESS.md standards |
 
@@ -621,7 +623,7 @@ Each `agent-harness/` contains an installable Python package under `cli_anything
 # Build from a GitHub repo
 /cli-anything https://github.com/blender/blender
 
-# Refine an existing harness — broad gap analysis
+# Refine an existing harness - broad gap analysis
 /cli-anything:refine /home/user/gimp
 
 # Refine with a specific focus area
@@ -759,16 +761,16 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<software>/tests/ 
 
 We welcome contributions! CLI-Anything is designed to be extensible:
 
-- **New software targets** — Use the plugin to generate a CLI for any software with a codebase, then submit your harness via [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md).
-- **Methodology improvements** — PRs to `HARNESS.md` that encode new lessons learned
-- **Plugin enhancements** — New commands, phase improvements, better validation
-- **Test coverage** — More E2E scenarios, edge cases, workflow tests
+- **New software targets** - Use the plugin to generate a CLI for any software with a codebase, then submit your harness via [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md).
+- **Methodology improvements** - PRs to `HARNESS.md` that encode new lessons learned
+- **Plugin enhancements** - New commands, phase improvements, better validation
+- **Test coverage** - More E2E scenarios, edge cases, workflow tests
 
 ### Limitations
 
-- **Requires strong foundation models** — CLI-Anything relies on frontier-class models (e.g., Claude Opus 4.6, Claude Sonnet 4.6, GPT-5.4) for reliable harness generation. Weaker or smaller models may produce incomplete or incorrect CLIs that require significant manual correction.
-- **Relies on available source code** — The 7-phase pipeline analyzes and generates from source code. When the target software only provides compiled binaries that require decompilation, harness quality and coverage will degrade substantially.
-- **May require iterative refinement** — A single `/cli-anything` run may not fully cover all capabilities. Running `/refine` one or more times is often needed to push the CLI's performance and coverage to production quality.
+- **Requires strong foundation models** - CLI-Anything relies on frontier-class models (e.g., Claude Opus 4.6, Claude Sonnet 4.6, GPT-5.4) for reliable harness generation. Weaker or smaller models may produce incomplete or incorrect CLIs that require significant manual correction.
+- **Relies on available source code** - The 7-phase pipeline analyzes and generates from source code. When the target software only provides compiled binaries that require decompilation, harness quality and coverage will degrade substantially.
+- **May require iterative refinement** - A single `/cli-anything` run may not fully cover all capabilities. Running `/refine` one or more times is often needed to push the CLI's performance and coverage to production quality.
 
 ### Roadmap
 
@@ -785,14 +787,14 @@ We welcome contributions! CLI-Anything is designed to be extensible:
 
 | Document | Description |
 |----------|-------------|
-| [`cli-anything-plugin/HARNESS.md`](cli-anything-plugin/HARNESS.md) | The methodology SOP — single source of truth |
-| [`cli-anything-plugin/README.md`](cli-anything-plugin/README.md) | Plugin documentation — commands, options, phases |
+| [`cli-anything-plugin/HARNESS.md`](cli-anything-plugin/HARNESS.md) | The methodology SOP - single source of truth |
+| [`cli-anything-plugin/README.md`](cli-anything-plugin/README.md) | Plugin documentation - commands, options, phases |
 | [`cli-anything-plugin/QUICKSTART.md`](cli-anything-plugin/QUICKSTART.md) | 5-minute getting started guide |
 | [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md) | Distribution and publishing guide |
 
 Each generated harness also includes:
-- `<SOFTWARE>.md` — Architecture SOP specific to that application
-- `tests/TEST.md` — Test plan and results documentation
+- `<SOFTWARE>.md` - Architecture SOP specific to that application
+- `tests/TEST.md` - Test plan and results documentation
 
 ---
 
@@ -814,13 +816,13 @@ If CLI-Anything helps make your software Agent-native, give us a star! ⭐
 
 ## 📄 License
 
-MIT License — free to use, modify, and distribute.
+MIT License - free to use, modify, and distribute.
 
 ---
 
 <div align="center">
 
-**CLI-Anything** — *Make any software with a codebase Agent-native.*
+**CLI-Anything** - *Make any software with a codebase Agent-native.*
 
 <sub>A methodology for the age of AI agents | 11 professional software demos | 1,508 passing tests</sub>
 

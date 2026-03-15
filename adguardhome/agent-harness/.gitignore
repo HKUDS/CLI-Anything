@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.fastembed_cache/
+.leann/
+*.egg-info/
+dist/
+build/
