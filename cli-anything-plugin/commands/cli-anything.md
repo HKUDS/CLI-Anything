@@ -69,6 +69,13 @@ This command implements the complete cli-anything methodology to build a product
 - Appends full test results to `TEST.md`
 - Documents test coverage and any gaps
 
+### Phase 6.5: SKILL.md Generation
+- Extracts CLI metadata using `skill_generator.py`
+- Generates SKILL.md with YAML frontmatter and Markdown body
+- Includes command groups, examples, and agent-specific guidance
+- Outputs to `skills/<software>_SKILL.md` by default
+- Makes the CLI discoverable and usable by AI agents
+
 ### Phase 7: PyPI Publishing and Installation
 - Creates `setup.py` with `find_namespace_packages(include=["cli_anything.*"])`
 - Package name: `cli-anything-<software>`, namespace: `cli_anything.<software>`
@@ -120,5 +127,6 @@ The command succeeds when:
 5. Subprocess tests use `_resolve_cli()` and pass with `CLI_ANYTHING_FORCE_INSTALLED=1`
 6. TEST.md contains both plan and results
 7. README.md documents installation and usage
-8. setup.py is created and local installation works
-9. CLI is available in PATH as `cli-anything-<software>`
+8. SKILL.md is generated with proper YAML frontmatter and command documentation
+9. setup.py is created and local installation works
+10. CLI is available in PATH as `cli-anything-<software>`
