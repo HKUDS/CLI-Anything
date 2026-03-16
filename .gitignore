@@ -10,11 +10,12 @@
 # Step 1: Ignore everything at the root
 /*
 
-# Step 2: Allow .gitignore, README, assets, and marketplace
+# Step 2: Allow .gitignore, README, assets, marketplace, and CI
 !.gitignore
 !/README.md
 !/assets/
 !/.claude-plugin/
+!/.github/
 
 # Step 3: Allow cli-anything-plugin entirely
 !/cli-anything-plugin/
