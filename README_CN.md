@@ -56,7 +56,7 @@ CLI 是人类和 AI Agent 共通的万能接口：
 
 - **Python 3.10+**
 - 目标软件已安装（如 GIMP、Blender、LibreOffice 或你自己的应用）
-- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [OpenCode](#-opencode) | [Codex](#-codex) | [更多平台](#-更多平台即将支持)
+- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [更多平台](#-更多平台即将支持)
 
 ### 选择你的平台
 
@@ -80,6 +80,9 @@ CLI-Anything 以 Claude Code 插件市场的形式托管在 GitHub 上。
 ```
 
 搞定。插件已经在你的 Claude Code 会话中可用了。
+
+**Windows 注意：** Claude Code 通过 `bash` 执行命令。Windows 下请安装 Git for Windows（包含 `bash` 和 `cygpath`）
+或使用 WSL，否则可能出现 `cygpath: command not found`。
 
 **第三步：一行命令生成 CLI**
 
@@ -139,6 +142,8 @@ cp -r CLI-Anything/cli-anything-plugin ~/.claude/plugins/cli-anything
 
 **第一步：安装命令**
 
+**注意：** 请升级到最新 OpenCode，旧版本可能使用不同的命令目录路径。
+
 将 CLI-Anything 命令**和** `HARNESS.md` 复制到 OpenCode 命令目录：
 
 ```bash
@@ -183,6 +188,56 @@ cp CLI-Anything/cli-anything-plugin/HARNESS.md .opencode/commands/
 </details>
 
 <details>
+
+<summary><h4 id="-qodercli">⚡ Qodercli <sup><code>社区贡献</code></sup></h4></summary>
+
+**第一步：注册插件**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+bash CLI-Anything/qoder-plugin/setup-qodercli.sh
+```
+
+脚本会将 cli-anything 插件注册到 `~/.qoder.json`。注册后开启新的 Qodercli 会话即可使用。
+
+**第二步：在 Qodercli 中使用 CLI-Anything**
+
+```bash
+/cli-anything:cli-anything ./gimp
+/cli-anything:refine ./gimp "批处理和滤镜"
+/cli-anything:validate ./gimp
+```
+</details>
+
+<details>
+
+<summary><h4 id="-openclaw">⚡ OpenClaw</h4></summary>
+
+**第一步：安装 Skill**
+
+CLI-Anything 提供了原生的 OpenClaw `SKILL.md` 文件。请将其复制到你的 OpenClaw 技能目录：
+
+```bash
+# Clone the repo
+git clone https://github.com/HKUDS/CLI-Anything.git
+
+# Install to the global skills folder
+mkdir -p ~/.openclaw/skills/cli-anything
+cp CLI-Anything/openclaw-skill/SKILL.md ~/.openclaw/skills/cli-anything/SKILL.md
+```
+
+**第二步：构建 CLI**
+
+安装完成后，你就可以在 OpenClaw 中直接调用：
+
+`@cli-anything build a CLI for ./gimp`
+
+该技能采用了与 Claude Code 和 OpenCode 一致的 7 步构建流程。
+
+</details>
+
+<details>
+
 <summary><h4 id="-codex">⚡ Codex <sup><code>实验性</code></sup> <sup><code>社区贡献</code></sup></h4></summary>
 
 **第一步：安装 Skill**
@@ -195,6 +250,12 @@ git clone https://github.com/HKUDS/CLI-Anything.git
 
 # 安装 skill
 bash CLI-Anything/codex-skill/scripts/install.sh
+```
+
+在 Windows PowerShell 中，可以使用：
+
+```powershell
+.\CLI-Anything\codex-skill\scripts\install.ps1
 ```
 
 脚本会把 skill 安装到 `$CODEX_HOME/skills/cli-anything`；如果没有设置 `CODEX_HOME`，则默认安装到 `~/.codex/skills/cli-anything`。
@@ -715,6 +776,7 @@ HARNESS.md 是我们通过自动化 CLI 生成让任意软件变得 Agent 可用
 # 克隆仓库
 git clone https://github.com/HKUDS/CLI-Anything.git
 
+# 请确保使用最新 OpenCode，旧版本可能使用不同的命令目录路径
 # 复制命令和 HARNESS.md 到 OpenCode 命令目录
 cp CLI-Anything/opencode-commands/*.md ~/.config/opencode/commands/
 cp CLI-Anything/cli-anything-plugin/HARNESS.md ~/.config/opencode/commands/

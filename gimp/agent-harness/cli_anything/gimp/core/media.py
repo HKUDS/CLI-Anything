@@ -1,4 +1,9 @@
-"""GIMP CLI - Media file analysis module."""
+"""GIMP CLI - Media file analysis module.
+
+Uses Pillow when available for rich metadata (EXIF, histograms).  Falls back
+to pure-Python header parsing for basic dimensions / format detection when
+Pillow is not installed.
+"""
 
 import os
 import json
@@ -7,13 +12,15 @@ from typing import Dict, Any, Optional
 
 
 def probe_image(path: str) -> Dict[str, Any]:
-    """Analyze an image file and return metadata."""
+    """Analyze an image file and return metadata.
+
+    Tries Pillow for rich metadata; degrades gracefully to pure-Python
+    header parsing when Pillow is absent.
+    """
     if not os.path.exists(path):
         raise FileNotFoundError(f"Image file not found: {path}")
 
-    from PIL import Image
-
-    info = {
+    info: Dict[str, Any] = {
         "path": os.path.abspath(path),
         "filename": os.path.basename(path),
         "file_size": os.path.getsize(path),
@@ -21,30 +28,37 @@ def probe_image(path: str) -> Dict[str, Any]:
     }
 
     try:
+        from PIL import Image
+        return _probe_via_pillow(path, info, Image)
+    except ImportError:
+        pass
+
+    return _probe_basic(path, info)
+
+
+def _probe_via_pillow(path: str, info: Dict[str, Any], Image) -> Dict[str, Any]:
+    """Full metadata probe using Pillow."""
+    try:
         with Image.open(path) as img:
             info["width"] = img.width
             info["height"] = img.height
             info["mode"] = img.mode
             info["format"] = img.format
-            info["format_description"] = img.format_description if hasattr(img, 'format_description') else img.format
+            info["format_description"] = img.format_description if hasattr(img, "format_description") else img.format
             info["megapixels"] = f"{img.width * img.height / 1_000_000:.2f}"
 
-            # DPI info
             dpi = img.info.get("dpi")
             if dpi:
                 info["dpi"] = {"x": round(dpi[0]), "y": round(dpi[1])}
 
-            # Animation info (GIF, APNG)
             info["is_animated"] = getattr(img, "is_animated", False)
             if info["is_animated"]:
                 info["n_frames"] = getattr(img, "n_frames", 1)
 
-            # Color palette
             if img.mode == "P":
                 palette = img.getpalette()
                 info["palette_colors"] = len(palette) // 3 if palette else 0
 
-            # EXIF data (basic)
             exif = img.getexif()
             if exif:
                 exif_data = {}
@@ -60,11 +74,9 @@ def probe_image(path: str) -> Dict[str, Any]:
                 if exif_data:
                     info["exif"] = exif_data
 
-            # Image bands/channels
             info["channels"] = len(img.getbands())
             info["bands"] = list(img.getbands())
 
-            # Bits per pixel estimation
             bits_per_channel = {"1": 1, "L": 8, "P": 8, "RGB": 8, "RGBA": 8,
                                 "CMYK": 8, "I": 32, "F": 32, "LA": 8}
             bpc = bits_per_channel.get(img.mode, 8)
@@ -73,6 +85,25 @@ def probe_image(path: str) -> Dict[str, Any]:
     except Exception as e:
         info["error"] = str(e)
 
+    return info
+
+
+def _probe_basic(path: str, info: Dict[str, Any]) -> Dict[str, Any]:
+    """Lightweight probe using pure-Python header parsing (no Pillow)."""
+    from cli_anything.gimp.core.layers import _read_image_dimensions
+
+    dims = _read_image_dimensions(path)
+    if dims:
+        info["width"], info["height"] = dims
+        info["megapixels"] = f"{dims[0] * dims[1] / 1_000_000:.2f}"
+
+    ext = os.path.splitext(path)[1].lower()
+    fmt_map = {
+        ".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG",
+        ".gif": "GIF", ".bmp": "BMP", ".webp": "WEBP",
+        ".tiff": "TIFF", ".tif": "TIFF",
+    }
+    info["format"] = fmt_map.get(ext, ext.lstrip(".").upper())
     return info
 
 
@@ -106,11 +137,17 @@ def check_media(project: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_image_histogram(path: str) -> Dict[str, Any]:
-    """Get histogram data for an image."""
+    """Get histogram data for an image.  Requires Pillow."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"Image file not found: {path}")
 
-    from PIL import Image
+    try:
+        from PIL import Image
+    except ImportError:
+        raise RuntimeError(
+            "Histogram analysis requires Pillow.  Install it with:\n"
+            "  pip install Pillow"
+        )
 
     with Image.open(path) as img:
         if img.mode not in ("RGB", "RGBA", "L"):

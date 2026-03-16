@@ -2,12 +2,14 @@
 
 This module handles the critical "rendering" step: flattening the layer stack
 with all filters applied and exporting to various image formats.
+
+Rendering backends (tried in order):
+  1. GIMP Script-Fu batch mode  – uses the real GIMP engine (``gimp -i -b``)
+  2. Pillow (PIL)               – pure-Python fallback when GIMP is absent
 """
 
 import os
 from typing import Dict, Any, Optional, Tuple
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageDraw, ImageFont
-import numpy as np
 
 
 # Export presets
@@ -59,8 +61,47 @@ def render(
 ) -> Dict[str, Any]:
     """Render the project: flatten layers, apply filters, export.
 
-    This is the main rendering pipeline.
+    Tries the GIMP Script-Fu backend first (native image processing via
+    ``gimp -i -b``).  Falls back to Pillow when GIMP is not installed.
     """
+    # --- GIMP-native rendering (preferred) ---
+    try:
+        from cli_anything.gimp.utils.gimp_backend import is_available, render_project
+        if is_available():
+            return render_project(
+                project, output_path,
+                preset=preset, overwrite=overwrite,
+                quality=quality, format_override=format_override,
+            )
+    except Exception:
+        pass  # fall through to Pillow
+
+    # --- Pillow fallback ---
+    return _render_via_pillow(
+        project, output_path,
+        preset=preset, overwrite=overwrite,
+        quality=quality, format_override=format_override,
+    )
+
+
+def _render_via_pillow(
+    project: Dict[str, Any],
+    output_path: str,
+    preset: str = "png",
+    overwrite: bool = False,
+    quality: Optional[int] = None,
+    format_override: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Render the project using Pillow (fallback when GIMP is absent)."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        raise RuntimeError(
+            "Neither GIMP nor Pillow is available.  Install one of:\n"
+            "  apt install gimp        # recommended\n"
+            "  pip install Pillow       # fallback"
+        )
+
     if os.path.exists(output_path) and not overwrite:
         raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite.")
 
@@ -69,7 +110,6 @@ def render(
     bg_color = canvas.get("background", "#ffffff")
     mode = canvas.get("color_mode", "RGB")
 
-    # Determine output format
     if format_override:
         fmt = format_override.upper()
         save_params = {}
@@ -83,10 +123,8 @@ def render(
     if quality is not None:
         save_params["quality"] = quality
 
-    # Create canvas
     if mode in ("RGBA", "LA"):
         canvas_img = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-        # Draw background if not transparent
         if bg_color.lower() != "transparent":
             bg = Image.new("RGBA", (cw, ch), bg_color)
             canvas_img = Image.alpha_composite(canvas_img, bg)
@@ -95,7 +133,6 @@ def render(
 
     layers = project.get("layers", [])
 
-    # Composite layers bottom-to-top
     for layer in reversed(layers):
         if not layer.get("visible", True):
             continue
@@ -104,10 +141,8 @@ def render(
         if layer_img is None:
             continue
 
-        # Apply filters
         layer_img = _apply_filters(layer_img, layer.get("filters", []))
 
-        # Apply scaling if marked
         if "_scale_x" in layer:
             new_w = max(1, round(layer_img.width * layer["_scale_x"]))
             new_h = max(1, round(layer_img.height * layer["_scale_y"]))
@@ -118,23 +153,17 @@ def render(
             resample = resample_map.get(layer.get("_resample", "lanczos"), Image.LANCZOS)
             layer_img = layer_img.resize((new_w, new_h), resample)
 
-        # Position on canvas
         ox = layer.get("offset_x", 0)
         oy = layer.get("offset_y", 0)
-
-        # Apply opacity
         opacity = layer.get("opacity", 1.0)
 
-        # Apply blend mode and composite
         canvas_img = _composite_layer(
             canvas_img, layer_img, ox, oy, opacity,
             layer.get("blend_mode", "normal")
         )
 
-    # Convert mode for export
     if fmt == "JPEG":
         if canvas_img.mode == "RGBA":
-            # Flatten alpha onto white background for JPEG
             bg = Image.new("RGB", canvas_img.size, (255, 255, 255))
             bg.paste(canvas_img, mask=canvas_img.split()[3])
             canvas_img = bg
@@ -143,15 +172,12 @@ def render(
     elif fmt == "GIF":
         canvas_img = canvas_img.convert("P", palette=Image.ADAPTIVE, colors=256)
 
-    # Set DPI
     dpi = canvas.get("dpi", 72)
     save_params["dpi"] = (dpi, dpi)
 
-    # Save
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     canvas_img.save(output_path, format=fmt, **save_params)
 
-    # Verify output
     result = {
         "output": os.path.abspath(output_path),
         "format": fmt,
@@ -159,14 +185,17 @@ def render(
         "file_size": os.path.getsize(output_path),
         "file_size_human": _human_size(os.path.getsize(output_path)),
         "preset": preset,
+        "method": "pillow",
         "layers_rendered": sum(1 for l in layers if l.get("visible", True)),
     }
 
     return result
 
 
-def _load_layer(layer: Dict[str, Any], canvas_w: int, canvas_h: int) -> Optional[Image.Image]:
-    """Load a layer's content as a PIL Image."""
+def _load_layer(layer, canvas_w, canvas_h):
+    """Load a layer's content as a PIL Image (Pillow fallback path)."""
+    from PIL import Image
+
     layer_type = layer.get("type", "image")
 
     if layer_type == "image":
@@ -174,7 +203,6 @@ def _load_layer(layer: Dict[str, Any], canvas_w: int, canvas_h: int) -> Optional
         if source and os.path.exists(source):
             img = Image.open(source).convert("RGBA")
             return img
-        # Blank layer with fill
         fill = layer.get("fill", "transparent")
         w = layer.get("width", canvas_w)
         h = layer.get("height", canvas_h)
@@ -199,8 +227,10 @@ def _load_layer(layer: Dict[str, Any], canvas_w: int, canvas_h: int) -> Optional
     return None
 
 
-def _render_text_layer(layer: Dict[str, Any], canvas_w: int, canvas_h: int) -> Image.Image:
-    """Render a text layer to an image."""
+def _render_text_layer(layer, canvas_w, canvas_h):
+    """Render a text layer to an image (Pillow fallback path)."""
+    from PIL import Image, ImageDraw, ImageFont
+
     text = layer.get("text", "")
     font_size = layer.get("font_size", 24)
     color = layer.get("color", "#000000")
@@ -222,8 +252,8 @@ def _render_text_layer(layer: Dict[str, Any], canvas_w: int, canvas_h: int) -> I
     return img
 
 
-def _apply_filters(img: Image.Image, filters: list) -> Image.Image:
-    """Apply a chain of filters to an image."""
+def _apply_filters(img, filters):
+    """Apply a chain of filters to an image (Pillow fallback path)."""
     for f in filters:
         name = f["name"]
         params = f.get("params", {})
@@ -231,24 +261,22 @@ def _apply_filters(img: Image.Image, filters: list) -> Image.Image:
     return img
 
 
-def _apply_single_filter(img: Image.Image, name: str, params: Dict) -> Image.Image:
-    """Apply a single filter to an image."""
+def _apply_single_filter(img, name, params):
+    """Apply a single filter to an image (Pillow fallback path)."""
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     from cli_anything.gimp.core.filters import FILTER_REGISTRY
 
     if name not in FILTER_REGISTRY:
-        return img  # Skip unknown filters
+        return img
 
     spec = FILTER_REGISTRY[name]
     engine = spec["engine"]
 
-    # Convert to appropriate mode for processing
-    original_mode = img.mode
-    needs_rgba = original_mode == "RGBA"
+    needs_rgba = img.mode == "RGBA"
 
     if engine == "pillow_enhance":
         cls_name = spec["pillow_class"]
         factor = params.get("factor", 1.0)
-        # ImageEnhance needs RGB, handle RGBA by separating alpha
         if needs_rgba:
             alpha = img.split()[3]
             rgb = img.convert("RGB")
@@ -353,8 +381,10 @@ def _apply_single_filter(img: Image.Image, name: str, params: Dict) -> Image.Ima
     return img
 
 
-def _apply_sepia(img: Image.Image, strength: float = 0.8) -> Image.Image:
-    """Apply sepia tone effect."""
+def _apply_sepia(img, strength=0.8):
+    """Apply sepia tone effect (Pillow fallback path)."""
+    from PIL import Image as PILImage, ImageOps
+
     needs_rgba = img.mode == "RGBA"
     if needs_rgba:
         alpha = img.split()[3]
@@ -363,9 +393,7 @@ def _apply_sepia(img: Image.Image, strength: float = 0.8) -> Image.Image:
     sepia = ImageOps.colorize(gray, "#704214", "#C0A080")
 
     if strength < 1.0:
-        # Blend with original
         rgb = img.convert("RGB")
-        from PIL import Image as PILImage
         sepia = PILImage.blend(rgb, sepia, strength)
 
     if needs_rgba:
@@ -375,44 +403,37 @@ def _apply_sepia(img: Image.Image, strength: float = 0.8) -> Image.Image:
     return sepia
 
 
-def _composite_layer(
-    base: Image.Image,
-    layer: Image.Image,
-    offset_x: int,
-    offset_y: int,
-    opacity: float,
-    blend_mode: str,
-) -> Image.Image:
-    """Composite a layer onto the base canvas with blend mode and opacity."""
-    # Ensure both are RGBA for compositing
+def _composite_layer(base, layer, offset_x, offset_y, opacity, blend_mode):
+    """Composite a layer onto the base canvas (Pillow fallback path)."""
+    from PIL import Image
+
     if base.mode != "RGBA":
         base = base.convert("RGBA")
     if layer.mode != "RGBA":
         layer = layer.convert("RGBA")
 
-    # Apply opacity to layer
     if opacity < 1.0:
         alpha = layer.split()[3]
         alpha = alpha.point(lambda a: int(a * opacity))
         layer.putalpha(alpha)
 
-    # Create a full-canvas-sized version of the layer at the correct offset
     layer_canvas = Image.new("RGBA", base.size, (0, 0, 0, 0))
     layer_canvas.paste(layer, (offset_x, offset_y))
 
     if blend_mode == "normal":
         return Image.alpha_composite(base, layer_canvas)
 
-    # For other blend modes, we need numpy
     try:
         return _blend_with_mode(base, layer_canvas, blend_mode)
     except ImportError:
-        # Fallback to normal if numpy not available
         return Image.alpha_composite(base, layer_canvas)
 
 
-def _blend_with_mode(base: Image.Image, layer: Image.Image, mode: str) -> Image.Image:
-    """Apply blend mode using numpy pixel math."""
+def _blend_with_mode(base, layer, mode):
+    """Apply blend mode using numpy pixel math (Pillow fallback path)."""
+    import numpy as np
+    from PIL import Image
+
     base_arr = np.array(base, dtype=np.float64)
     layer_arr = np.array(layer, dtype=np.float64)
 
@@ -467,7 +488,8 @@ def _blend_with_mode(base: Image.Image, layer: Image.Image, mode: str) -> Image.
     result = np.concatenate([result_rgb, result_alpha], axis=2)
     result = np.clip(result * 255, 0, 255).astype(np.uint8)
 
-    return Image.fromarray(result, "RGBA")
+    from PIL import Image as _Image
+    return _Image.fromarray(result, "RGBA")
 
 
 def _human_size(nbytes: int) -> str:

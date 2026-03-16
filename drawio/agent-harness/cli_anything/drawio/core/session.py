@@ -127,7 +127,7 @@ class Session:
         }
         path = SESSION_DIR / f"{self.session_id}.json"
         with open(path, "w") as f:
-            json.dump(state, f, indent=2)
+            json.dump(state, f, indent=2, sort_keys=True)
         return str(path)
 
     @classmethod

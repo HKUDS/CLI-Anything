@@ -10,6 +10,20 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Windows bash environment check (helps avoid cryptic cygpath errors later)
+is_windows_bash() {
+    case "$(uname -s 2>/dev/null)" in
+        CYGWIN*|MINGW*|MSYS*) return 0 ;;
+    esac
+    return 1
+}
+
+if is_windows_bash && ! command -v cygpath >/dev/null 2>&1; then
+    echo -e "${RED}✗${NC} Windows bash environment detected but 'cygpath' was not found."
+    echo -e "${YELLOW}  Please install Git for Windows (Git Bash) or use WSL, then rerun this script.${NC}"
+    exit 1
+fi
+
 # Plugin info
 PLUGIN_NAME="cli-anything"
 PLUGIN_VERSION="1.0.0"

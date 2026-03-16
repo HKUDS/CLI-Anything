@@ -46,6 +46,9 @@ The result: A stateful CLI with REPL mode, JSON output, undo/redo, and full test
 - `pytest` - Testing framework
 - HARNESS.md (included in this plugin at `~/.claude/plugins/cli-anything/HARNESS.md`)
 
+**Windows note:** Claude Code runs shell commands via `bash`. On Windows, install Git for Windows (includes `bash` and
+`cygpath`) or use WSL; otherwise commands may fail with `cygpath: command not found`.
+
 Install Python dependencies:
 ```bash
 pip install click pytest

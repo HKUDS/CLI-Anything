@@ -108,7 +108,7 @@ class Session:
         self.project["metadata"]["modified"] = datetime.now().isoformat()
         os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
         with open(save_path, "w") as f:
-            json.dump(self.project, f, indent=2, default=str)
+            json.dump(self.project, f, indent=2, sort_keys=True, default=str)
 
         self.project_path = save_path
         self._modified = False

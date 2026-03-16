@@ -103,7 +103,7 @@ class Session:
         }
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+            json.dump(data, f, indent=2, sort_keys=True, default=str)
 
     def _load(self, path: str):
         p = Path(path)

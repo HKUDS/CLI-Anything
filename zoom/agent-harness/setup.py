@@ -18,7 +18,7 @@ setup(
     if __import__("os").path.exists("cli_anything/zoom/README.md")
     else "CLI harness for Zoom meeting management.",
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/cli-anything-zoom",
+    url="https://github.com/HKUDS/CLI-Anything",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",
