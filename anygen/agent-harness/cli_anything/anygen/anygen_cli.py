@@ -6,7 +6,7 @@ import shlex
 import sys
 from functools import lru_cache, wraps
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 
@@ -19,8 +19,8 @@ from cli_anything.anygen.utils.anygen_backend import (
     VALID_OPERATIONS,
 )
 
-_json_output = False
-_repl_mode = False
+_json_output: bool = False
+_repl_mode: bool = False
 _api_key: Optional[str] = None
 
 
@@ -30,6 +30,7 @@ _api_key: Optional[str] = None
 
 @lru_cache(maxsize=1)
 def get_session() -> Session:
+    """Return cached session object."""
     sf = Path.home() / ".cli-anything-anygen" / "session.json"
     return Session(session_file=str(sf))
 
@@ -38,30 +39,35 @@ def get_session() -> Session:
 # Output utilities
 # ─────────────────────────────────────────────
 
-def pretty_print(data, indent=0):
+def pretty_print(data: Any, indent: int = 0) -> None:
+    """Pretty print nested structures."""
+    echo = click.echo
     prefix = "  " * indent
 
     if isinstance(data, dict):
         for k, v in data.items():
-            click.echo(f"{prefix}{k}:")
+            echo(f"{prefix}{k}:")
             pretty_print(v, indent + 1)
 
     elif isinstance(data, list):
         for i, item in enumerate(data):
-            click.echo(f"{prefix}[{i}]")
+            echo(f"{prefix}[{i}]")
             pretty_print(item, indent + 1)
 
     else:
-        click.echo(f"{prefix}{data}")
+        echo(f"{prefix}{data}")
 
 
-def output(data, message: str = ""):
+def output(data: Any, message: str = "") -> None:
+    """Output formatted or JSON."""
     if _json_output:
         click.echo(json.dumps(data, indent=2, default=str))
-    else:
-        if message:
-            click.echo(message)
-        pretty_print(data)
+        return
+
+    if message:
+        click.echo(message)
+
+    pretty_print(data)
 
 
 # ─────────────────────────────────────────────
@@ -69,13 +75,21 @@ def output(data, message: str = ""):
 # ─────────────────────────────────────────────
 
 def handle_error(func):
+    """Decorator for CLI error handling."""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
+
         except (FileNotFoundError, ValueError, RuntimeError, TimeoutError) as e:
             if _json_output:
-                click.echo(json.dumps({"error": str(e), "type": type(e).__name__}))
+                click.echo(
+                    json.dumps(
+                        {"error": str(e), "type": type(e).__name__},
+                        indent=2,
+                    )
+                )
             else:
                 click.echo(f"Error: {e}", err=True)
 
@@ -117,12 +131,15 @@ def task():
 
 
 @task.command("create")
-@click.option("-o", "--operation",
-              required=True,
-              type=click.Choice(VALID_OPERATIONS))
+@click.option(
+    "-o",
+    "--operation",
+    required=True,
+    type=click.Choice(VALID_OPERATIONS),
+)
 @click.option("-p", "--prompt", required=True)
 @handle_error
-def task_create(operation, prompt):
+def task_create(operation: str, prompt: str):
     """Create task."""
     sess = get_session()
 
@@ -140,7 +157,7 @@ def task_create(operation, prompt):
 @task.command("status")
 @click.argument("task_id")
 @handle_error
-def task_status(task_id):
+def task_status(task_id: str):
     """Check task status."""
     result = task_mod.query_task(_api_key, task_id)
 
@@ -148,13 +165,16 @@ def task_status(task_id):
 
 
 @task.command("run")
-@click.option("-o", "--operation",
-              required=True,
-              type=click.Choice(VALID_OPERATIONS))
+@click.option(
+    "-o",
+    "--operation",
+    required=True,
+    type=click.Choice(VALID_OPERATIONS),
+)
 @click.option("-p", "--prompt", required=True)
 @click.option("--output", default=None)
 @handle_error
-def task_run(operation, prompt, output):
+def task_run(operation: str, prompt: str, output: Optional[str]):
     """Create + poll + download."""
     sess = get_session()
 
@@ -188,7 +208,8 @@ def file():
 @file.command("upload")
 @click.argument("path", type=click.Path(exists=True))
 @handle_error
-def file_upload(path):
+def file_upload(path: str):
+    """Upload file."""
     result = task_mod.upload_file(_api_key, path)
 
     get_session().record("file upload", {"path": path}, result)
@@ -209,7 +230,7 @@ def config():
 @config.command("set")
 @click.argument("key")
 @click.argument("value")
-def config_set(key, value):
+def config_set(key: str, value: str):
     cfg = load_config()
 
     cfg[key] = value
@@ -220,7 +241,7 @@ def config_set(key, value):
 
 @config.command("get")
 @click.argument("key", required=False)
-def config_get(key):
+def config_get(key: Optional[str]):
     cfg = load_config()
 
     if key:
@@ -241,7 +262,7 @@ def session():
 
 @session.command("history")
 @click.option("-n", "--limit", default=20)
-def session_history(limit):
+def session_history(limit: int):
     entries = get_session().history(limit=limit)
 
     output(entries, f"{len(entries)} entries")
