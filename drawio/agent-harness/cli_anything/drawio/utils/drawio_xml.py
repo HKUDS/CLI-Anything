@@ -24,7 +24,7 @@ Structure:
 """
 
 import os
-import time
+import uuid
 from xml.etree import ElementTree as ET
 from typing import Optional
 
@@ -295,7 +295,7 @@ EDGE_STYLES = {
 
 def _new_id(prefix: str = "cell") -> str:
     """Generate a unique ID."""
-    return f"{prefix}_{int(time.time() * 1000000)}"
+    return f"{prefix}_{uuid.uuid4().hex}"
 
 
 def add_vertex(mxfile: ET.Element, shape_type: str,

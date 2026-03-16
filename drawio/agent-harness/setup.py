@@ -45,7 +45,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "cli-anything-drawio=cli_anything.drawio.drawio_cli:cli",
+            "cli-anything-drawio=cli_anything.drawio.drawio_cli:main",
         ],
     },
     include_package_data=True,

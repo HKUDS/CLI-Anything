@@ -1,7 +1,6 @@
 """Export/render operations: export diagrams to PNG, PDF, SVG."""
 
 import os
-import shutil
 import tempfile
 from typing import Optional
 
@@ -109,22 +108,5 @@ def render(session: Session, output_path: str,
 
 def render_or_save(session: Session, output_path: str,
                    fmt: str = "png", **kwargs) -> dict:
-    """Export with fallback: if draw.io CLI is not available, save the .drawio
-    file and provide instructions for manual export.
-    """
-    try:
-        return render(session, output_path, fmt, **kwargs)
-    except RuntimeError as e:
-        if "not installed" not in str(e):
-            raise
-        # Fallback: save .drawio and generate instructions
-        drawio_path = os.path.splitext(output_path)[0] + ".drawio"
-        drawio_xml.write_drawio(session.root, drawio_path)
-        return {
-            "action": "export_fallback",
-            "drawio_file": os.path.abspath(drawio_path),
-            "target_output": output_path,
-            "target_format": fmt,
-            "note": "draw.io CLI not found. Open the .drawio file in draw.io to export manually.",
-            "install_hint": str(e),
-        }
+    """Backward-compatible wrapper for callers that still import this helper."""
+    return render(session, output_path, fmt, **kwargs)

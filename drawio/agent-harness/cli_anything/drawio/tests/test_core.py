@@ -54,6 +54,14 @@ class TestDrawioXml:
         assert cells[0].get("value") == "Test"
         assert cells[0].get("vertex") == "1"
 
+    def test_generated_ids_are_unique(self):
+        root = drawio_xml.create_blank_diagram()
+        ids = {
+            drawio_xml.add_vertex(root, "rectangle", i * 10, 0, 100, 50, f"Cell {i}")
+            for i in range(20)
+        }
+        assert len(ids) == 20
+
     def test_add_edge(self):
         root = drawio_xml.create_blank_diagram()
         v1 = drawio_xml.add_vertex(root, "rectangle", 10, 20, 120, 60, "A")
@@ -699,6 +707,18 @@ class TestExport:
             assert len(cells) == 1
         finally:
             os.unlink(path)
+
+    def test_render_or_save_propagates_backend_errors(self, monkeypatch):
+        s = Session()
+        proj_mod.new_project(s)
+
+        def _fail(*args, **kwargs):
+            raise RuntimeError("draw.io desktop app is not installed")
+
+        monkeypatch.setattr(export_mod, "render", _fail)
+
+        with pytest.raises(RuntimeError, match="not installed"):
+            export_mod.render_or_save(s, "missing.png", fmt="png")
 
     def test_export_no_project(self):
         s = Session()

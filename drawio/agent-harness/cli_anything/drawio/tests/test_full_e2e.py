@@ -356,6 +356,17 @@ class TestCLISubprocess:
         assert result.returncode == 0
         assert "Draw.io" in result.stdout or "diagram" in result.stdout.lower()
 
+    def test_module_help(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "cli_anything.drawio", "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        assert result.returncode == 0
+        assert "Draw.io" in result.stdout or "diagram" in result.stdout.lower()
+
     def test_project_new_json(self, tmp_path):
         out = str(tmp_path / "test.drawio")
         result = self._run(["--json", "project", "new", "-o", out])

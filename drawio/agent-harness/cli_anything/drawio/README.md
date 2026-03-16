@@ -1,6 +1,6 @@
 # cli-anything-drawio
 
-A CLI harness for **Draw.io** — create, edit, and export diagrams from the command line.
+A CLI harness for **Draw.io** - create, edit, and export diagrams from the command line.
 
 Designed for AI agents and power users who need to generate diagrams programmatically.
 
@@ -12,13 +12,19 @@ Designed for AI agents and power users who need to generate diagrams programmati
   - Linux: `snap install drawio`
   - Windows: `winget install JGraph.Draw`
 
-Note: The CLI can create and manipulate `.drawio` files without the desktop app installed. The app is only needed for rasterized export (PNG, PDF, SVG).
+Note: The CLI can create and manipulate `.drawio` files without the desktop app installed. The desktop app is a hard dependency for `export render` when the target format is `png`, `pdf`, `svg`, or `vsdx`; those commands fail with install instructions if draw.io is unavailable.
 
 ## Installation
 
 ```bash
 cd drawio/agent-harness
-pip install -e .
+python -m pip install -e .
+```
+
+For local test runs:
+
+```bash
+python -m pip install -e .[dev]
 ```
 
 ## Usage
@@ -80,5 +86,5 @@ straight, orthogonal, curved, entity-relation
 
 ```bash
 cd drawio/agent-harness
-python3 -m pytest cli_anything/drawio/tests/ -v
+python -m pytest cli_anything/drawio/tests/ -v --tb=no
 ```

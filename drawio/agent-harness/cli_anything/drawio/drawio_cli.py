@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw.io CLI — A stateful command-line interface for diagram creation.
+"""Draw.io CLI - A stateful command-line interface for diagram creation.
 
 This CLI manipulates Draw.io XML files directly, providing full diagram
 creation capabilities for AI agents and power users.
@@ -132,7 +132,7 @@ def handle_error(func):
 @click.option("--project", "project_path", default=None, help="Open a project file")
 @click.pass_context
 def cli(ctx, json_mode, session_id, project_path):
-    """Draw.io CLI — Diagram creation from the command line.
+    """Draw.io CLI - Diagram creation from the command line.
 
     A stateful CLI for manipulating draw.io diagram files.
     Designed for AI agents and power users.
@@ -385,7 +385,7 @@ def connect_add(source_id, target_id, edge_style, label, page):
     """Add a connector between two shapes."""
     session = get_session()
     result = conn_mod.add_connector(session, source_id, target_id, edge_style, label, page)
-    output(result, f"Connected: {source_id} → {target_id}")
+    output(result, f"Connected: {source_id} -> {target_id}")
 
 
 @connect.command("remove")
@@ -765,11 +765,11 @@ def _run_repl(s: Session, skin):
                     continue
                 edge_style = args[2] if len(args) > 2 else "orthogonal"
                 result = conn_mod.add_connector(s, args[0], args[1], edge_style)
-                skin.success(f"Connected: {args[0]} → {args[1]} ({result['id']})")
+                skin.success(f"Connected: {args[0]} -> {args[1]} ({result['id']})")
             elif cmd == "connectors":
                 result = conn_mod.list_connectors(s)
                 for e in result:
-                    click.echo(f"  {e['id']}: {e.get('source', '')} → {e.get('target', '')} {e.get('value', '')}")
+                    click.echo(f"  {e['id']}: {e.get('source', '')} -> {e.get('target', '')} {e.get('value', '')}")
                 skin.info(f"Total: {len(result)} connectors")
             elif cmd == "pages":
                 result = pages_mod.list_pages(s)
@@ -802,5 +802,10 @@ def _run_repl(s: Session, skin):
             skin.error(str(e))
 
 
-if __name__ == "__main__":
+def main():
+    """Entry point for console_scripts and python -m."""
     cli()
+
+
+if __name__ == "__main__":
+    main()

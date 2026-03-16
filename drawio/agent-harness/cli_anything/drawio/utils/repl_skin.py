@@ -61,22 +61,22 @@ _MAGENTA = "\033[38;5;176m"
 # ── Brand icon ────────────────────────────────────────────────────────
 
 # The cli-anything icon: a small colored diamond/chevron mark
-_ICON = f"{_CYAN}{_BOLD}◆{_RESET}"
-_ICON_SMALL = f"{_CYAN}▸{_RESET}"
+_ICON = f"{_CYAN}{_BOLD}*{_RESET}"
+_ICON_SMALL = f"{_CYAN}>{_RESET}"
 
 # ── Box drawing characters ────────────────────────────────────────────
 
-_H_LINE = "─"
-_V_LINE = "│"
-_TL = "╭"
-_TR = "╮"
-_BL = "╰"
-_BR = "╯"
-_T_DOWN = "┬"
-_T_UP = "┴"
-_T_RIGHT = "├"
-_T_LEFT = "┤"
-_CROSS = "┼"
+_H_LINE = "-"
+_V_LINE = "|"
+_TL = "+"
+_TR = "+"
+_BL = "+"
+_BR = "+"
+_T_DOWN = "+"
+_T_UP = "+"
+_T_RIGHT = "+"
+_T_LEFT = "+"
+_CROSS = "+"
 
 
 def _strip_ansi(text: str) -> str:
@@ -155,10 +155,10 @@ class ReplSkin:
         top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
         bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
 
-        # Title:  ◆  cli-anything · Shotcut
-        icon = self._c(_CYAN + _BOLD, "◆")
+        # Title:  *  cli-anything . Shotcut
+        icon = self._c(_CYAN + _BOLD, "*")
         brand = self._c(_CYAN + _BOLD, "cli-anything")
-        dot = self._c(_DARK_GRAY, "·")
+        dot = self._c(_DARK_GRAY, ".")
         name = self._c(self.accent + _BOLD, self.display_name)
         title = f" {icon}  {brand} {dot} {name}"
 
@@ -192,7 +192,7 @@ class ReplSkin:
 
         # Icon
         if self._color:
-            parts.append(f"{_CYAN}◆{_RESET} ")
+            parts.append(f"{_CYAN}*{_RESET} ")
         else:
             parts.append("> ")
 
@@ -207,7 +207,7 @@ class ReplSkin:
             parts.append(self._c(_LIGHT_GRAY, f"{ctx}{mod}"))
             parts.append(self._c(_DARK_GRAY, ']'))
 
-        parts.append(self._c(_GRAY, " ❯ "))
+        parts.append(self._c(_GRAY, " > "))
 
         return "".join(parts)
 
@@ -223,7 +223,7 @@ class ReplSkin:
         accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
         tokens = []
 
-        tokens.append(("class:icon", "◆ "))
+        tokens.append(("class:icon", "* "))
         tokens.append(("class:software", self.software))
 
         if project_name or context:
@@ -233,7 +233,7 @@ class ReplSkin:
             tokens.append(("class:context", f"{ctx}{mod}"))
             tokens.append(("class:bracket", "]"))
 
-        tokens.append(("class:arrow", " ❯ "))
+        tokens.append(("class:arrow", " > "))
 
         return tokens
 
@@ -272,22 +272,22 @@ class ReplSkin:
 
     def success(self, message: str):
         """Print a success message with green checkmark."""
-        icon = self._c(_GREEN + _BOLD, "✓")
+        icon = self._c(_GREEN + _BOLD, "OK")
         print(f"  {icon} {self._c(_GREEN, message)}")
 
     def error(self, message: str):
         """Print an error message with red cross."""
-        icon = self._c(_RED + _BOLD, "✗")
+        icon = self._c(_RED + _BOLD, "!!")
         print(f"  {icon} {self._c(_RED, message)}", file=sys.stderr)
 
     def warning(self, message: str):
         """Print a warning message with yellow triangle."""
-        icon = self._c(_YELLOW + _BOLD, "⚠")
+        icon = self._c(_YELLOW + _BOLD, "!")
         print(f"  {icon} {self._c(_YELLOW, message)}")
 
     def info(self, message: str):
         """Print an info message with blue dot."""
-        icon = self._c(_BLUE, "●")
+        icon = self._c(_BLUE, "i")
         print(f"  {icon} {self._c(_LIGHT_GRAY, message)}")
 
     def hint(self, message: str):
@@ -335,7 +335,7 @@ class ReplSkin:
         pct = int(current / total * 100) if total > 0 else 0
         bar_width = 20
         filled = int(bar_width * current / total) if total > 0 else 0
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar = "=" * filled + "." * (bar_width - filled)
         text = f"  {self._c(_CYAN, bar)} {self._c(_GRAY, f'{pct:3d}%')}"
         if label:
             text += f" {self._c(_LIGHT_GRAY, label)}"
@@ -379,7 +379,7 @@ class ReplSkin:
 
         # Separator
         sep_parts = [self._c(_DARK_GRAY, _H_LINE * w) for w in col_widths]
-        sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
+        sep_line = self._c(_DARK_GRAY, f"  {'---'.join([_H_LINE * w for w in col_widths])}")
         print(sep_line)
 
         # Rows
@@ -476,7 +476,7 @@ class ReplSkin:
             parts = []
             for i, (k, v) in enumerate(items.items()):
                 if i > 0:
-                    parts.append(("class:bottom-toolbar.text", "  │  "))
+                    parts.append(("class:bottom-toolbar.text", "  |  "))
                 parts.append(("class:bottom-toolbar.text", f" {k}: "))
                 parts.append(("class:bottom-toolbar", v))
             return FormattedText(parts)

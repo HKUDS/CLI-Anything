@@ -54,9 +54,9 @@ The desktop Electron app supports headless export:
 - `draw.io --export input.drawio --output out.pdf --format pdf`
 - `draw.io --export input.drawio --output out.svg --format svg`
 
-**Fallback: direct XML write**
-When draw.io CLI is not installed, the CLI saves the `.drawio` file directly.
-Users can open it in draw.io (web or desktop) for manual export.
+**Native-format write**
+The CLI can always save `.drawio` and uncompressed XML output directly.
+Rendered export to PNG, PDF, SVG, and VSDX must go through the real draw.io desktop CLI and fails clearly if the app is not installed.
 
 ## CLI Strategy
 
