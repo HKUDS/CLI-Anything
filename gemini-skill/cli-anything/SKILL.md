@@ -1,64 +1,87 @@
 ---
 name: cli-anything
-description: Automatically generate, test, and maintain Agent-Native CLIs for existing software. Designed for integrating complex GUI software (e.g., Blender, GIMP, LibreOffice) into AI agent workflows with structured control capabilities.
+description: Use when creating, testing, or maintaining Agent-Native CLIs for existing software following the HKUDS/CLI-Anything protocol. This is specifically for building harnesses that allow AI agents to control complex GUI software (Blender, GIMP, LibreOffice) via structured command-line interfaces.
 ---
 
-# CLI-Anything: Empowering Software with Agent-Native Capabilities
+# CLI-Anything: Agent Harness Standard Operating Procedure
 
-## Core Vision
-CLI-Anything aims to bridge the gap between AI agents and complex software. By generating structured CLIs, AI agents can control software with the same precision and reliability as a human interacting with a GUI.
+## Core Vision & The Iron Law
+CLI-Anything bridges the gap between AI agents and GUI software by creating a stateful, structured, and verifiable CLI.
 
-## The 7-Stage Automation Pipeline
+> [!IMPORTANT]
+> **THE IRON LAW (Rule #1):** The CLI MUST invoke the actual software for rendering and export. **DO NOT reimplement** the software's functionality (e.g., using Pillow to replace GIMP). The software is a **hard dependency**, not optional.
 
-Follow this Standard Operating Procedure (SOP) when tasked with "Creating a CLI for [Software Name]":
+## Mandatory Directory Structure
+All harnesses MUST follow this PEP 420 Namespace package structure:
+```
+<software>/
+└── agent-harness/
+    ├── <SOFTWARE>.md          # Project-specific analysis
+    ├── setup.py               # Namespace package config (Phase 7)
+    ├── cli_anything/          # NO __init__.py here (Namespace Package)
+    │   └── <software>/        # Sub-package for this CLI (HAS __init__.py)
+    │       ├── README.md      # Installation & usage — required
+    │       ├── <software>_cli.py # Main entry (Click + REPL)
+    │       ├── core/          # Domain modules (project.py, export.py, etc.)
+    │       ├── utils/         # backend.py (wrappers), repl_skin.py
+    │       └── tests/
+    │           ├── TEST.md    # Test plan and results — required
+    │           ├── test_core.py
+    │           └── test_full_e2e.py
+```
 
-### 1. Analyze
-- Scan the source code to identify core APIs, underlying libraries (e.g., Blender's `bpy`), or headless modes.
-- Map GUI operations (e.g., File -> New) to internal function calls (e.g., `bpy.ops.wm.read_homefile()`).
-- Define the software's state model (e.g., active objects, open documents, current selection).
+## The 7-Phase SOP
 
-### 2. Design
-- **Command Architecture**: Use hierarchical command groups (e.g., `project new`, `image resize`).
-- **JSON Schema**: All commands MUST support the `--json` flag. Define input parameters and expected output structures for every command.
-- **State Management**: Design how to persist software sessions or handle Undo/Redo operations within the CLI.
+### Phase 1: Codebase Analysis
+- Identify the backend engine (MLT, ImageMagick, bpy).
+- Map GUI actions to API calls and identify the data model (XML, JSON, .blend).
+- Find existing low-level CLI tools (`melt`, `ffmpeg`, `convert`).
 
-### 3. Implement
-- Build the CLI framework using the **Python Click** library.
-- Encapsulate backend logic to ensure atomic command execution.
-- Implement a `repl_skin.py` style interactive shell for persistent sessions.
+### Phase 2: CLI Architecture Design
+- **Interaction Model**: Support both **Stateful REPL** and **Subcommand CLI**.
+- **JSON Output**: Every command MUST support `--json` for machine parsing.
+- **State Model**: Define what persists (open project, selection) and how it serializes.
 
-### 4. Plan Tests
-- Identify critical functional paths (Happy Paths).
-- Design edge-case test scenarios (e.g., invalid parameters, missing dependencies).
+### Phase 3: Implementation
+- **Data Layer**: Start with direct manipulation of project files (XML/JSON).
+- **Backend Wrapper**: Create `utils/<software>_backend.py`. Use `shutil.which()` to find the executable and `subprocess.run()` to invoke it. Raise `RuntimeError` with clear install instructions if missing.
+- **REPL Skin**: Copy `repl_skin.py` from the plugin source to `utils/`. Use the `ReplSkin` class for banner, help, and styled messages. **REPL MUST be the default behavior** when no subcommand is given.
 
-### 5. Write Tests
-- Generate **pytest** unit tests for individual commands.
-- Develop End-to-End (E2E) tests to verify that the CLI correctly drives the authentic software backend.
+### Phase 4: Test Planning (TEST.md Part 1 - BEFORE Code)
+**REQUIRED:** Create `tests/TEST.md` containing:
+1. **Test Inventory Plan**: List planned files and test counts.
+2. **Unit Test Plan**: Map modules/functions/edge cases.
+3. **E2E Test Plan**: Scenarios with real files and verified output properties.
+4. **Workflow Scenarios**: Titles, simulations (e.g. "podcast mix"), and operations chained.
 
-### 6. Document
-- Provide comprehensive `--help` information for every command.
-- Ensure documentation includes usage examples and sample JSON outputs optimized for LLM learning.
+### Phase 5: Test Implementation
+- **Unit Tests**: Isolated with synthetic data.
+- **E2E True Backend**: MUST invoke the real software. Verify file exists, size > 0, and **magic bytes/format validation**.
+- **Artifact Paths**: Tests MUST print the paths of generated artifacts (PDF, MP4) for manual inspection.
+- **Subprocess Tests**: Use the `_resolve_cli` helper to test the *installed* command. Never hardcode `python -m`.
 
-### 7. Publish
-- Create standard distribution files such as `setup.py` or `pyproject.toml`.
-- Package the tool using the naming convention: `agent-harness-[software-name]`.
+### Phase 6: Test Documentation (TEST.md Part 2 - AFTER Execution)
+**REQUIRED:** Append to `tests/TEST.md`:
+1. **Test Results**: Full `pytest -v` output.
+2. **Summary Stats**: Total tests, pass rate, time.
 
-## Technical Standards
+### Phase 7: Packaging & Publishing
+- Use `setuptools.find_namespace_packages(include=["cli_anything.*"])`.
+- Package name convention: `cli-anything-<software>`.
+- **Namespace rule**: The `cli_anything` directory must NOT contain an `__init__.py`.
 
-### Agent-First JSON Output
-- Successful responses MUST include `status: "success"`.
-- Error responses MUST include `status: "error"` and a detailed `message`.
-- Outputs should prioritize machine-readable data fields over plain text descriptions.
+## Key Principles & Rules
+- **No Graceful Degradation**: If the software is missing, fail loudly with install instructions.
+- **The Rendering Gap**: Ensure filters/effects added via CLI are actually applied during render (use native engines or translated filtergraphs).
+- **Timecode Precision**: Use `round()`, not `int()`, for float-to-frame conversion to avoid drifting.
+- **Verification**: "It ran without errors" is NOT enough. Programmatically verify magic bytes, ZIP structure, or frame probes.
 
-### REPL and Stateful Interaction
-- Default to an interactive REPL mode.
-- MUST support `undo` and `redo` commands where applicable.
-- Provide a `history` command to track execution trajectories.
-
-## Usage Examples
-- "Analyze the source code of [Software Path] and list core functionalities for CLI conversion."
-- "Design a Click-based command hierarchy for [Software]."
-- "Write a test script to verify if `cli-anything-xxx image grayscale` executes correctly."
+## Implementation Patterns
+See [patterns.md](file:///C:/Users/SZGF/.gemini/skills/cli-anything/patterns.md) for boilerplate code regarding:
+- Backend wrappers with `shutil.which`.
+- Subprocess test helpers (`_resolve_cli`).
+- REPL Skin integration.
+- Output artifact verification.
 
 ---
-*Note: This skill is strictly aligned with the HKUDS/CLI-Anything project specifications.*
+*Reference: HKUDS/CLI-Anything HARNESS.md standard.*
