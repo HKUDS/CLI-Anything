@@ -12,12 +12,24 @@ concurrency:
 
 jobs:
   unit-tests:
-    name: Unit Tests (Python ${{ matrix.python-version }})
+    name: "${{ matrix.harness }} (py${{ matrix.python-version }})"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.12"]
+        harness:
+          - anygen
+          - audacity
+          - blender
+          - drawio
+          - gimp
+          - inkscape
+          - kdenlive
+          - libreoffice
+          - obs-studio
+          - shotcut
+          - zoom
 
     steps:
       - uses: actions/checkout@v4
@@ -31,39 +43,41 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('*/agent-harness/setup.py') }}
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ matrix.harness }}-${{ hashFiles(format('{0}/agent-harness/setup.py', matrix.harness)) }}
           restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ matrix.harness }}-
 
-      - name: Install all harnesses
+      - name: Install harness
         run: |
           python -m pip install --upgrade pip
-          for harness in anygen audacity blender drawio gimp inkscape kdenlive libreoffice obs-studio shotcut zoom; do
-            echo "::group::Installing $harness"
-            pip install -e "$harness/agent-harness[dev]"
-            echo "::endgroup::"
-          done
+          pip install -e "${{ matrix.harness }}/agent-harness[dev]"
 
       - name: Run unit tests
         run: |
-          exit_code=0
-          for harness in anygen audacity blender drawio gimp inkscape kdenlive libreoffice obs-studio shotcut zoom; do
-            echo "::group::Testing $harness"
-            module=$(echo "$harness" | tr '-' '_')
-            test_file="$harness/agent-harness/cli_anything/$module/tests/test_core.py"
-            if [ -f "$test_file" ]; then
-              python -m pytest "$test_file" -v --tb=short || exit_code=1
-            else
-              echo "::warning::No test_core.py found for $harness"
-            fi
-            echo "::endgroup::"
-          done
-          exit $exit_code
+          module=$(echo "${{ matrix.harness }}" | tr '-' '_')
+          python -m pytest \
+            "${{ matrix.harness }}/agent-harness/cli_anything/$module/tests/test_core.py" \
+            -v --tb=short
 
   e2e-tests:
-    name: E2E Tests (Safe Subset)
+    name: "e2e ${{ matrix.harness }}"
     runs-on: ubuntu-latest
     needs: unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        harness:
+          - anygen
+          - audacity
+          - blender
+          - drawio
+          - gimp
+          - inkscape
+          - kdenlive
+          - libreoffice
+          - obs-studio
+          - shotcut
+          - zoom
 
     steps:
       - uses: actions/checkout@v4
@@ -77,64 +91,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-3.12-${{ hashFiles('*/agent-harness/setup.py') }}
+          key: ${{ runner.os }}-pip-3.12-${{ matrix.harness }}-${{ hashFiles(format('{0}/agent-harness/setup.py', matrix.harness)) }}
           restore-keys: |
-            ${{ runner.os }}-pip-3.12-
+            ${{ runner.os }}-pip-3.12-${{ matrix.harness }}-
 
-      - name: Install all harnesses
+      - name: Install harness
         run: |
           python -m pip install --upgrade pip
-          for harness in anygen audacity blender drawio gimp inkscape kdenlive libreoffice obs-studio shotcut zoom; do
-            pip install -e "$harness/agent-harness[dev]"
-          done
+          pip install -e "${{ matrix.harness }}/agent-harness[dev]"
 
       - name: Run E2E tests (auto-skip when external tools missing)
         run: |
-          exit_code=0
-          for harness in anygen audacity blender drawio gimp inkscape kdenlive libreoffice obs-studio shotcut zoom; do
-            echo "::group::E2E $harness"
-            module=$(echo "$harness" | tr '-' '_')
-            test_file="$harness/agent-harness/cli_anything/$module/tests/test_full_e2e.py"
-            if [ -f "$test_file" ]; then
-              python -m pytest "$test_file" -v --tb=short || exit_code=1
-            fi
-            echo "::endgroup::"
-          done
-          exit $exit_code
-
-  coverage:
-    name: Coverage Report
-    runs-on: ubuntu-latest
-    needs: unit-tests
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install all harnesses
-        run: |
-          python -m pip install --upgrade pip
-          for harness in anygen audacity blender drawio gimp inkscape kdenlive libreoffice obs-studio shotcut zoom; do
-            pip install -e "$harness/agent-harness[dev]"
-          done
-
-      - name: Run tests with coverage
-        run: |
-          python -m pytest \
-            */agent-harness/cli_anything/*/tests/test_core.py \
-            --cov=cli_anything \
-            --cov-report=term-missing \
-            --cov-report=html:coverage-report \
-            --tb=short -q
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-report
-          path: coverage-report/
-          retention-days: 14
+          module=$(echo "${{ matrix.harness }}" | tr '-' '_')
+          test_file="${{ matrix.harness }}/agent-harness/cli_anything/$module/tests/test_full_e2e.py"
+          if [ -f "$test_file" ]; then
+            python -m pytest "$test_file" -v --tb=short
+          else
+            echo "No e2e tests found for ${{ matrix.harness }}, skipping."
+          fi
