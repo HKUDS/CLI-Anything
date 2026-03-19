@@ -9,7 +9,7 @@ CLI-Anything: AIエージェントと世界のソフトウェアの架け橋</st
   <a href="#-クイックスタート"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="クイックスタート"></a>
   <a href="#-デモンストレーション"><img src="https://img.shields.io/badge/Demos-11_Apps-green?style=for-the-badge" alt="デモ"></a>
   <a href="#-テスト結果"><img src="https://img.shields.io/badge/Tests-1%2C508_Passing-brightgreen?style=for-the-badge" alt="テスト"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="ライセンス"></a>
+  <a href="cli-anything-plugin/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="ライセンス"></a>
 </p>
 
 <p align="center">
