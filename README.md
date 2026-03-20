@@ -744,10 +744,8 @@ cli-anything/
 ├── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)
 ├── 🖼️ comfyui/agent-harness/            # ComfyUI CLI (70 tests)
 ├── 🧠 notebooklm/agent-harness/         # NotebookLM CLI (experimental, 21 tests)
-├── 🖼️ comfyui/agent-harness/            # ComfyUI CLI (70 tests)
-└── 🛡️ adguardhome/agent-harness/        # AdGuardHome CLI (36 tests)
-└── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
-├── 🛡️ adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
+├── 🛡️ adguardhome/agent-harness/        # AdGuardHome CLI (36 tests)
+├── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
 └── 🦙 ollama/agent-harness/             # Ollama CLI (98 tests)
 ```
 

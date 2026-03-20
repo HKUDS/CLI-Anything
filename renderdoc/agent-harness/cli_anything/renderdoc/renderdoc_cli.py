@@ -31,6 +31,7 @@ import click
 # ---------------------------------------------------------------------------
 
 _capture_handle = None  # type: ignore
+_repl_mode = False
 
 
 def _get_export_dir(ctx: click.Context, subfolder: str = "") -> str:
@@ -97,7 +98,7 @@ def _output(ctx: click.Context, data, human_fn=None):
 # ===========================================================================
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.option(
     "--capture", "-c",
     type=click.Path(exists=False),
@@ -109,11 +110,17 @@ def _output(ctx: click.Context, data, human_fn=None):
 @click.version_option(package_name="cli-anything-renderdoc")
 @click.pass_context
 def cli(ctx, capture, json_mode, debug):
-    """RenderDoc CLI – headless capture analysis tool."""
+    """RenderDoc CLI – headless capture analysis tool.
+
+    Run without a subcommand to enter interactive REPL mode.
+    """
     ctx.ensure_object(dict)
     ctx.obj["capture_path"] = capture
     ctx.obj["json_mode"] = json_mode
     ctx.obj["debug"] = debug
+
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(repl)
 
 
 # ===========================================================================
@@ -810,6 +817,69 @@ def cleanup(ctx, *args, **kwargs):
     if _capture_handle_b is not None:
         _capture_handle_b.close()
         _capture_handle_b = None
+
+
+# ===========================================================================
+# REPL
+# ===========================================================================
+
+
+@cli.command()
+@click.pass_context
+def repl(ctx):
+    """Start interactive REPL session."""
+    from cli_anything.renderdoc.utils.repl_skin import ReplSkin
+
+    global _repl_mode
+    _repl_mode = True
+
+    skin = ReplSkin("renderdoc", version="0.1.0")
+    skin.print_banner()
+
+    pt_session = skin.create_prompt_session()
+
+    _repl_commands = {
+        "capture":   "info|thumb|convert",
+        "actions":   "list|summary|find|get",
+        "textures":  "list|get|save|save-outputs|pick",
+        "pipeline":  "state|shader-export|cbuffer|diff",
+        "resources": "list|buffers|read-buffer",
+        "mesh":      "inputs|outputs",
+        "counters":  "list|fetch",
+        "help":      "Show this help",
+        "quit":      "Exit REPL",
+    }
+
+    capture_path = ctx.obj.get("capture_path", "")
+    context = os.path.basename(capture_path) if capture_path else ""
+
+    while True:
+        try:
+            line = skin.get_input(pt_session, project_name=context, modified=False)
+            if not line:
+                continue
+            if line.lower() in ("quit", "exit", "q"):
+                skin.print_goodbye()
+                break
+            if line.lower() == "help":
+                skin.help(_repl_commands)
+                continue
+
+            args = line.split()
+            try:
+                cli.main(args, standalone_mode=False)
+            except SystemExit:
+                pass
+            except click.exceptions.UsageError as e:
+                skin.warning("Usage error: %s" % e)
+            except Exception as e:
+                skin.error("%s" % e)
+
+        except (EOFError, KeyboardInterrupt):
+            skin.print_goodbye()
+            break
+
+    _repl_mode = False
 
 
 # ===========================================================================
