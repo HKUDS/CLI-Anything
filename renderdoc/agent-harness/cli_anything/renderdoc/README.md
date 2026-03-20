@@ -44,7 +44,7 @@ cli-anything-renderdoc -c frame.rdc textures pick <resourceId> 100 200
 cli-anything-renderdoc -c frame.rdc pipeline state 42
 
 # Get shader disassembly
-cli-anything-renderdoc -c frame.rdc pipeline disasm 42 --stage Fragment
+cli-anything-renderdoc -c frame.rdc pipeline shader-export 42 --stage Fragment
 
 # List GPU counters
 cli-anything-renderdoc -c frame.rdc counters list
@@ -84,8 +84,9 @@ cli-anything-renderdoc -c frame.rdc --json actions list
 | `textures`  | `save-outputs`  | Save all render targets at an event       |
 | `textures`  | `pick`          | Read pixel value                          |
 | `pipeline`  | `state`         | Full pipeline state at event              |
-| `pipeline`  | `disasm`        | Shader disassembly                        |
+| `pipeline`  | `shader-export` | Export shader source / disassembly         |
 | `pipeline`  | `cbuffer`       | Constant buffer contents                  |
+| `pipeline`  | `diff`          | Compare pipeline state between events     |
 | `resources` | `list`          | List all resources                        |
 | `resources` | `buffers`       | List buffer resources                     |
 | `resources` | `read-buffer`   | Read raw buffer data                      |

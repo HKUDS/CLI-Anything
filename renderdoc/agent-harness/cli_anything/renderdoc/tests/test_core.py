@@ -500,21 +500,8 @@ class TestCLIHelp:
 class TestCLISubprocess:
     """Test CLI via subprocess (requires pip install -e .)"""
 
-    @staticmethod
-    def _resolve_cli(name: str) -> str:
-        """Resolve CLI binary path. Respects CLI_ANYTHING_FORCE_INSTALLED."""
-        import shutil
-        if os.environ.get("CLI_ANYTHING_FORCE_INSTALLED"):
-            path = shutil.which(name)
-            if path:
-                return path
-            pytest.skip(f"{name} not found in PATH")
-        # Development: try the entry point directly
-        return name
-
     def test_cli_help_subprocess(self):
         import subprocess
-        cli_path = self._resolve_cli("cli-anything-renderdoc")
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "cli_anything.renderdoc.renderdoc_cli", "--help"],

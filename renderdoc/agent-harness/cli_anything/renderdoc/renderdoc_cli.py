@@ -753,7 +753,24 @@ def pipeline_diff_cmd(ctx, event_a, event_b, capture_b, compact, output):
     )
 
     if compact:
-        data = {k: v for k, v in data.items() if v != "SAME"}
+        def _prune_same(obj):
+            """Recursively remove 'SAME' markers and empty containers."""
+            if isinstance(obj, dict):
+                pruned = {}
+                for k, v in obj.items():
+                    if v == "SAME":
+                        continue
+                    cleaned = _prune_same(v)
+                    if cleaned is not None:
+                        pruned[k] = cleaned
+                return pruned if pruned else None
+            if isinstance(obj, list):
+                pruned = [_prune_same(item) for item in obj if item != "SAME"]
+                pruned = [item for item in pruned if item is not None]
+                return pruned if pruned else None
+            return obj
+
+        data = _prune_same(data) or {}
 
     # Determine output file path
     if output is None:

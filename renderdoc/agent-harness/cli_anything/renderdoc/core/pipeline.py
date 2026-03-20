@@ -1181,9 +1181,9 @@ def dump_pipeline(controller, event_id: int) -> Dict[str, Any]:
     try:
         targets = pipe.GetOutputTargets()
         ps["outputTargets"] = [
-            {"resource": str(t.resource), "index": i}
+            {"resourceId": str(t.resourceId), "index": i}
             for i, t in enumerate(targets)
-            if t.resource != rd.ResourceId.Null()
+            if t.resourceId != rd.ResourceId.Null()
         ]
     except Exception:
         ps["outputTargets"] = []
@@ -1191,8 +1191,8 @@ def dump_pipeline(controller, event_id: int) -> Dict[str, Any]:
     # Depth target
     try:
         depth = pipe.GetDepthTarget()
-        if depth.resource != rd.ResourceId.Null():
-            ps["depthTarget"] = {"resource": str(depth.resource)}
+        if depth.resourceId != rd.ResourceId.Null():
+            ps["depthTarget"] = {"resourceId": str(depth.resourceId)}
         else:
             ps["depthTarget"] = None
     except Exception:

@@ -79,7 +79,7 @@ class CaptureHandle:
         try:
             props = self._cap.APIProperties()
             result["api"] = str(props.pipelineType)
-            result["driver"] = str(props.pipelineType)
+            result["driver"] = str(getattr(props, "degraded", props.pipelineType))
         except AttributeError:
             # Fallback: get API info from replay controller
             self._ensure_replay()

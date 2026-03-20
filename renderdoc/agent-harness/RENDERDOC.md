@@ -66,8 +66,9 @@ Captures can be replayed on the local GPU. The ReplayController allows:
 | Save render target outputs  | `textures save-outputs`   | ✅ Done   |
 | Pick pixel value            | `textures pick`           | ✅ Done   |
 | Pipeline state              | `pipeline state`          | ✅ Done   |
-| Shader disassembly          | `pipeline disasm`         | ✅ Done   |
+| Shader disassembly          | `pipeline shader-export`   | ✅ Done   |
 | Constant buffer contents    | `pipeline cbuffer`        | ✅ Done   |
+| Pipeline diff               | `pipeline diff`           | ✅ Done   |
 | List resources              | `resources list`          | ✅ Done   |
 | List buffers                | `resources buffers`       | ✅ Done   |
 | Read buffer data            | `resources read-buffer`   | ✅ Done   |

@@ -10,7 +10,7 @@ setup(
     long_description_content_type="text/markdown",
     author="cli-anything",
     packages=find_namespace_packages(include=["cli_anything.*"]),
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     install_requires=[
         "click>=8.0",
     ],

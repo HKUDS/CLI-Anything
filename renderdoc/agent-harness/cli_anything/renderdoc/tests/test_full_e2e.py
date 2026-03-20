@@ -41,17 +41,6 @@ skip_no_rd = pytest.mark.skipif(not HAS_RD, reason="renderdoc module not availab
 skip_no_cap = pytest.mark.skipif(not HAS_CAPTURE, reason="RENDERDOC_TEST_CAPTURE not set or file missing")
 
 
-def _resolve_cli(name: str) -> str:
-    """Resolve CLI binary path."""
-    import shutil
-    if os.environ.get("CLI_ANYTHING_FORCE_INSTALLED"):
-        path = shutil.which(name)
-        if path:
-            return path
-        pytest.skip(f"{name} not found in PATH")
-    return name
-
-
 def _run_cli(*args, json_mode=True) -> dict | list | str:
     """Run CLI via module invocation and parse output."""
     cmd = [sys.executable, "-m", "cli_anything.renderdoc.renderdoc_cli"]
