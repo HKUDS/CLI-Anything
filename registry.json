@@ -228,6 +228,20 @@
       "category": "communication",
       "contributor": "zhangxilong-43",
       "contributor_url": "https://github.com/zhangxilong-43"
+    },
+    {
+      "name": "renderdoc",
+      "display_name": "RenderDoc",
+      "version": "0.1.0",
+      "description": "GPU frame capture analysis: pipeline state, shader export, texture inspection, draw call browsing",
+      "requires": "renderdoc (Python bindings from RenderDoc installation)",
+      "homepage": "https://renderdoc.org",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=renderdoc/agent-harness",
+      "entry_point": "cli-anything-renderdoc",
+      "skill_md": "renderdoc/agent-harness/cli_anything/renderdoc/skills/SKILL.md",
+      "category": "graphics",
+      "contributor": "levishilf",
+      "contributor_url": "https://github.com/levishilf"
     }
   ]
 }
