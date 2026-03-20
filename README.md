@@ -401,7 +401,7 @@ AI agents are great at reasoning but terrible at using real professional softwar
 | 💸 "UI automation breaks constantly" | No screenshots, no clicking, no RPA fragility. Pure command-line reliability with structured interfaces |
 | 📊 "Agents need structured data" | Built-in JSON output for seamless agent consumption + human-readable formats for debugging |
 | 🔧 "Custom integrations are expensive" | One Claude plugin auto-generates CLIs for ANY codebase through proven 7-phase pipeline |
-| ⚡ "Prototype vs Production gap" | 1,839+ tests with real software validation. Battle-tested across 16 major applications |
+| ⚡ "Prototype vs Production gap" | 1,839+ tests with real software validation. Battle-tested across 17 major applications |
 
 ---
 
@@ -970,7 +970,7 @@ MIT License — free to use, modify, and distribute.
 
 **CLI-Anything** — *Make any software with a codebase Agent-native.*
 
-<sub>A methodology for the age of AI agents | 16 professional software demos | 1,839 passing tests</sub>
+<sub>A methodology for the age of AI agents | 17 professional software demos | 1,839 passing tests</sub>
 
 <br>
 
