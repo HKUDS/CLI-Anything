@@ -188,6 +188,18 @@
       "contributor_url": "https://github.com/Haimbeau1o"
     },
     {
+      "name": "ollama",
+      "display_name": "Ollama",
+      "version": "1.0.1",
+      "description": "Local LLM inference and model management via Ollama REST API",
+      "requires": "Ollama running at http://localhost:11434",
+      "homepage": "https://ollama.com",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ollama/agent-harness",
+      "entry_point": "cli-anything-ollama",
+      "skill_md": "ollama/agent-harness/cli_anything/ollama/skills/SKILL.md",
+      "category": "ai"
+    },
+    {
       "name": "obs-studio",
       "display_name": "OBS Studio",
       "version": "1.0.0",
