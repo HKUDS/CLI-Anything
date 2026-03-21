@@ -1,3 +1,7 @@
+---
+description: Run tests for a CLI harness and update TEST.md with results
+---
+
 # cli-anything:test Command
 
 Run tests for a CLI harness and update TEST.md with results.

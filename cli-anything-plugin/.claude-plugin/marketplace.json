@@ -1,0 +1,30 @@
+{
+  "name": "cli-anything",
+  "id": "cli-anything",
+  "owner": {
+    "name": "HKUDS"
+  },
+  "metadata": {
+    "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "cli-anything",
+      "source": "./",
+      "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology.",
+      "version": "1.0.0",
+      "author": {
+        "name": "cli-anything contributors"
+      },
+      "keywords": [
+        "cli",
+        "harness",
+        "gui-automation",
+        "cli-anything"
+      ],
+      "category": "tools",
+      "strict": false
+    }
+  ]
+}

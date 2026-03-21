@@ -1,3 +1,7 @@
+---
+description: Build a complete, stateful CLI harness for any GUI application
+---
+
 # cli-anything Command
 
 Build a complete, stateful CLI harness for any GUI application.

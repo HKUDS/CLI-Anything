@@ -1,3 +1,7 @@
+---
+description: Refine an existing CLI harness to improve coverage of the software's functions and usage patterns
+---
+
 # cli-anything:refine Command
 
 Refine an existing CLI harness to improve coverage of the software's functions and usage patterns.

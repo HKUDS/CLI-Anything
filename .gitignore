@@ -42,6 +42,7 @@
 !/adguardhome/
 !/novita/
 !/ollama/
+!/krita/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -74,6 +75,8 @@
 /adguardhome/.*
 /ollama/*
 /ollama/.*
+/krita/*
+/krita/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -92,6 +95,7 @@
 !/adguardhome/agent-harness/
 !/novita/agent-harness/
 !/ollama/agent-harness/
+!/krita/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
