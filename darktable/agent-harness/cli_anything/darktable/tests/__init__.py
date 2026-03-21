@@ -1,0 +1,1 @@
+"""Darktable CLI — Tests package."""

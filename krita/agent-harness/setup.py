@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+from setuptools import setup, find_namespace_packages
+
+with open("cli_anything/krita/README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+setup(
+    name="cli-anything-krita",
+    version="1.0.0",
+    author="cli-anything contributors",
+    description="CLI harness for Krita — Digital art and painting via krita --export. Requires: krita (apt install krita)",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/HKUDS/CLI-Anything",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    python_requires=">=3.10",
+    install_requires=["click>=8.0.0", "prompt-toolkit>=3.0.0"],
+    entry_points={
+        "console_scripts": ["cli-anything-krita=cli_anything.krita.krita_cli:main"]
+    },
+    package_data={"cli_anything.krita": ["skills/*.md"]},
+    include_package_data=True,
+    zip_safe=False,
+)

@@ -42,6 +42,16 @@
 !/ollama/
 !/vlc/
 !/freecad/
+!/ffprobe/
+!/gpg/
+!/imagemagick/
+!/sox/
+!/darktable/
+!/krita/
+!/scribus/
+!/kicad/
+!/ghidra/
+!/godot/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -78,10 +88,40 @@
 /vlc/.*
 /freecad/*
 /freecad/.*
+/ffprobe/*
+/ffprobe/.*
+/gpg/*
+/gpg/.*
+/imagemagick/*
+/imagemagick/.*
+/sox/*
+/sox/.*
+/darktable/*
+/darktable/.*
+/krita/*
+/krita/.*
+/scribus/*
+/scribus/.*
+/kicad/*
+/kicad/.*
+/ghidra/*
+/ghidra/.*
+/godot/*
+/godot/.*
 
 # Step 6: ...except agent-harness
 !/vlc/agent-harness/
 !/freecad/agent-harness/
+!/ffprobe/agent-harness/
+!/gpg/agent-harness/
+!/imagemagick/agent-harness/
+!/sox/agent-harness/
+!/darktable/agent-harness/
+!/krita/agent-harness/
+!/scribus/agent-harness/
+!/kicad/agent-harness/
+!/ghidra/agent-harness/
+!/godot/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/

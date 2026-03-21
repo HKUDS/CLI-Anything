@@ -1,0 +1,1 @@
+"""Darktable CLI — Core modules."""

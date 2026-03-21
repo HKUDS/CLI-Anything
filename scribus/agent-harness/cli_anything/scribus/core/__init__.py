@@ -1,0 +1,1 @@
+"""Scribus CLI — Core modules."""

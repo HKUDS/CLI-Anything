@@ -1,0 +1,1 @@
+"""Scribus CLI — Tests package."""
