@@ -9,8 +9,20 @@ Handles:
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from cli_anything.zoom.utils.zoom_backend import api_get, api_delete, api_request
+
+
+def _strip_token_from_url(url: str) -> str:
+    """Remove access_token query parameter from a URL to prevent token leakage."""
+    if not url:
+        return url
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    params.pop("access_token", None)
+    clean_query = urlencode(params, doseq=True)
+    return urlunparse(parsed._replace(query=clean_query))
 
 
 def list_recordings(
@@ -48,7 +60,7 @@ def list_recordings(
                 "status": f.get("status", ""),
                 "recording_start": f.get("recording_start", ""),
                 "recording_end": f.get("recording_end", ""),
-                "download_url": f.get("download_url", ""),
+                "download_url": _strip_token_from_url(f.get("download_url", "")),
             })
         meetings.append({
             "meeting_id": m.get("id"),
@@ -92,8 +104,8 @@ def get_meeting_recordings(meeting_id: int | str) -> dict:
             "file_extension": f.get("file_extension", ""),
             "file_size": f.get("file_size", 0),
             "status": f.get("status", ""),
-            "download_url": f.get("download_url", ""),
-            "play_url": f.get("play_url", ""),
+            "download_url": _strip_token_from_url(f.get("download_url", "")),
+            "play_url": _strip_token_from_url(f.get("play_url", "")),
             "recording_start": f.get("recording_start", ""),
             "recording_end": f.get("recording_end", ""),
         })
@@ -130,9 +142,7 @@ def download_recording(
 
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    # Download with streaming
-    resp = api_request("GET", "", stream=True)
-    # For recording downloads, we need to use the direct URL with token
+    # For recording downloads, we need to use the direct URL with Bearer token
     import requests
     from cli_anything.zoom.utils.zoom_backend import _get_valid_token
 
