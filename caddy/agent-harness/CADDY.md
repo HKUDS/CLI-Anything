@@ -1,6 +1,6 @@
 # caddy
 
-Caddy - reverse proxy, TLS, file server
+Automatic HTTPS web server
 
 Binary: `caddy`
 Category: web

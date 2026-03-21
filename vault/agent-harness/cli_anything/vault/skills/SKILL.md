@@ -1,10 +1,8 @@
 ---
 name: cli-anything-vault
-description: Secrets management - KV, policies, tokens
+description: Secrets management
 ---
 
 # cli-anything-vault
 
-Secrets management - KV, policies, tokens
-
-Binary: `vault`
+Secrets management

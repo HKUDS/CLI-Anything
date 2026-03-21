@@ -1,10 +1,8 @@
 ---
 name: cli-anything-consul
-description: Service discovery, KV store, health checks
+description: Service discovery
 ---
 
 # cli-anything-consul
 
-Service discovery, KV store, health checks
-
-Binary: `consul`
+Service discovery

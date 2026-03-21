@@ -1,3 +1,3 @@
 # cli-anything-journalctl
 
-Systemd journal - read, filter, follow
+Systemd journal

@@ -1,10 +1,8 @@
 ---
 name: cli-anything-playwright
-description: Browser automation - screenshot, PDF, test
+description: Browser automation
 ---
 
 # cli-anything-playwright
 
-Browser automation - screenshot, PDF, test
-
-Binary: `playwright`
+Browser automation

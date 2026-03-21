@@ -1,8 +1,8 @@
 ---
 name: cli-anything-unreal
-description: Unreal Engine - build, cook, package
+description: Unreal Engine
 ---
 
 # cli-anything-unreal
 
-Unreal Engine - build, cook, package
+Unreal Engine

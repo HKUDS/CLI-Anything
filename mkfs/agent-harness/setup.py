@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-mkfs",version="1.0.0",author="cli-anything contributors",description="Filesystem creation",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-mkfs=cli_anything.mkfs.mkfs_cli:main"]},package_data={"cli_anything.mkfs":["skills/*.md"]},include_package_data=True,zip_safe=False)

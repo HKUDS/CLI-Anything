@@ -1,8 +1,8 @@
 ---
 name: cli-anything-chkrootkit
-description: Rootkit detection - scan for rootkits
+description: Rootkit detection
 ---
 
 # cli-anything-chkrootkit
 
-Rootkit detection - scan for rootkits
+Rootkit detection

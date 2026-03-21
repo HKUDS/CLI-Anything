@@ -1,6 +1,6 @@
 # rkhunter
 
-Rootkit hunter - check, update, propupdate
+Rootkit hunter
 
 Binary: `rkhunter`
 Category: security

@@ -1,6 +1,6 @@
 # logrotate
 
-Log rotation - rotate, compress, config
+Log rotation
 
 Binary: `logrotate`
 Category: system

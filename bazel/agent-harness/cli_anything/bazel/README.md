@@ -1,3 +1,3 @@
 # cli-anything-bazel
 
-Bazel - build, test, query dependencies
+Bazel - scalable builds

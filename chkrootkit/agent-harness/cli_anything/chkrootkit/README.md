@@ -1,3 +1,3 @@
 # cli-anything-chkrootkit
 
-Rootkit detection - scan for rootkits
+Rootkit detection

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-keycloak
-description: Keycloak - realms, clients, users, roles
+description: Identity management
 ---
 
 # cli-anything-keycloak
 
-Keycloak - realms, clients, users, roles
+Identity management

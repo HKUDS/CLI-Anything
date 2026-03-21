@@ -1,3 +1,3 @@
 # cli-anything-caddy
 
-Caddy - reverse proxy, TLS, file server
+Automatic HTTPS web server

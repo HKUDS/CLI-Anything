@@ -1,6 +1,6 @@
 # mlflow
 
-MLflow - experiments, models, tracking
+ML lifecycle management
 
 Binary: `mlflow`
 Category: ml

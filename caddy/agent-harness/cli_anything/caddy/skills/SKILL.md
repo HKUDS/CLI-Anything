@@ -1,8 +1,8 @@
 ---
 name: cli-anything-caddy
-description: Caddy - reverse proxy, TLS, file server
+description: Automatic HTTPS web server
 ---
 
 # cli-anything-caddy
 
-Caddy - reverse proxy, TLS, file server
+Automatic HTTPS web server

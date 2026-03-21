@@ -1,8 +1,8 @@
 ---
 name: cli-anything-mutt
-description: Email client - send, read, search, attachments
+description: Email client
 ---
 
 # cli-anything-mutt
 
-Email client - send, read, search, attachments
+Email client

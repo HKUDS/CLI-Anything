@@ -1,8 +1,8 @@
 ---
 name: cli-anything-syslog
-description: Syslog - send messages, read logs
+description: Syslog messages
 ---
 
 # cli-anything-syslog
 
-Syslog - send messages, read logs
+Syslog messages

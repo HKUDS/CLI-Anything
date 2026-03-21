@@ -1,6 +1,6 @@
 # trivy
 
-Container security - image, fs, repo, config scan
+Container security
 
 Binary: `trivy`
 Category: security

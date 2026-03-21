@@ -1,6 +1,6 @@
 # bazel
 
-Bazel - build, test, query dependencies
+Bazel - scalable builds
 
 Binary: `bazel`
 Category: build

@@ -1,6 +1,6 @@
 # syslog
 
-Syslog - send messages, read logs
+Syslog messages
 
 Binary: `logger`
 Category: system

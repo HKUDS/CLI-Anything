@@ -1,8 +1,8 @@
 ---
 name: cli-anything-trivy
-description: Container security - image, fs, repo, config scan
+description: Container security
 ---
 
 # cli-anything-trivy
 
-Container security - image, fs, repo, config scan
+Container security

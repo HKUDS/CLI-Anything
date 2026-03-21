@@ -1,8 +1,8 @@
 ---
 name: cli-anything-unity
-description: Unity - build, batch mode, project
+description: Unity game engine
 ---
 
 # cli-anything-unity
 
-Unity - build, batch mode, project
+Unity game engine

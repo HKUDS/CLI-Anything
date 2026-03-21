@@ -1,6 +1,6 @@
 # lynis
 
-Security audit - system hardening, compliance
+Security audit
 
 Binary: `lynis`
 Category: security

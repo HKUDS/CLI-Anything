@@ -1,0 +1,3 @@
+# cli-anything-checkmk
+
+Monitoring

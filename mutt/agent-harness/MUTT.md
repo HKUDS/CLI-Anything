@@ -1,6 +1,6 @@
 # mutt
 
-Email client - send, read, search, attachments
+Email client
 
 Binary: `mutt`
 Category: email

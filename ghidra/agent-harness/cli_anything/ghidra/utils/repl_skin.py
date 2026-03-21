@@ -6,14 +6,14 @@ Copy this file into your CLI package at:
 Usage:
     from cli_anything.<software>.utils.repl_skin import ReplSkin
 
-    skin = ReplSkin("ghidra", version="1.0.0")
+    skin = ReplSkin("shotcut", version="1.0.0")
     skin.print_banner()
-    prompt_text = skin.prompt(project_name="my_binary", modified=True)
-    skin.success("Analysis complete")
-    skin.error("Binary not found")
-    skin.warning("Large binary detected")
-    skin.info("Decompiling functions...")
-    skin.status("Function", "main @ 0x00401000")
+    prompt_text = skin.prompt(project_name="my_video.mlt", modified=True)
+    skin.success("Project saved")
+    skin.error("File not found")
+    skin.warning("Unsaved changes")
+    skin.info("Processing 24 clips...")
+    skin.status("Track 1", "3 clips, 00:02:30")
     skin.table(headers, rows)
     skin.print_goodbye()
 """
@@ -39,9 +39,17 @@ _LIGHT_GRAY = "\033[38;5;250m"
 
 # Software accent colors — each software gets a unique accent
 _ACCENT_COLORS = {
-    "ghidra": "\033[38;5;201m",  # magenta (Ghidra purple)
+    "gimp": "\033[38;5;214m",  # warm orange
+    "blender": "\033[38;5;208m",  # deep orange
+    "inkscape": "\033[38;5;39m",  # bright blue
+    "audacity": "\033[38;5;33m",  # navy blue
+    "libreoffice": "\033[38;5;40m",  # green
+    "obs_studio": "\033[38;5;55m",  # purple
+    "kdenlive": "\033[38;5;69m",  # slate blue
+    "shotcut": "\033[38;5;35m",  # teal green
+    "vlc": "\033[38;5;208m",  # VLC orange
 }
-_DEFAULT_ACCENT = "\033[38;5;201m"  # ghidra magenta
+_DEFAULT_ACCENT = "\033[38;5;75m"  # default sky blue
 
 # Status colors
 _GREEN = "\033[38;5;78m"
@@ -96,7 +104,7 @@ class ReplSkin:
         """Initialize the REPL skin.
 
         Args:
-            software: Software name (e.g., "kicad", "ghidra", "godot").
+            software: Software name (e.g., "gimp", "shotcut", "blender").
             version: CLI version string.
             history_file: Path for persistent command history.
                          Defaults to ~/.cli-anything-<software>/history
@@ -150,7 +158,7 @@ class ReplSkin:
         top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
         bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
 
-        # Title:  ◆  cli-anything · Ghidra
+        # Title:  ◆  cli-anything · Shotcut
         icon = self._c(_CYAN + _BOLD, "◆")
         brand = self._c(_CYAN + _BOLD, "cli-anything")
         dot = self._c(_DARK_GRAY, "·")
@@ -217,7 +225,7 @@ class ReplSkin:
         Returns:
             list of (style, text) tuples for prompt_toolkit.
         """
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#ff00ff")
+        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
         tokens = []
 
         tokens.append(("class:icon", "◆ "))
@@ -245,7 +253,7 @@ class ReplSkin:
         except ImportError:
             return None
 
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#ff00ff")
+        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
 
         return Style.from_dict(
             {
@@ -494,5 +502,14 @@ class ReplSkin:
 # ── ANSI 256-color to hex mapping (for prompt_toolkit styles) ─────────
 
 _ANSI_256_TO_HEX = {
-    "\033[38;5;201m": "#ff00ff",  # ghidra magenta
+    "\033[38;5;33m": "#0087ff",  # audacity navy blue
+    "\033[38;5;35m": "#00af5f",  # shotcut teal
+    "\033[38;5;39m": "#00afff",  # inkscape bright blue
+    "\033[38;5;40m": "#00d700",  # libreoffice green
+    "\033[38;5;55m": "#5f00af",  # obs purple
+    "\033[38;5;69m": "#5f87ff",  # kdenlive slate blue
+    "\033[38;5;75m": "#5fafff",  # default sky blue
+    "\033[38;5;80m": "#5fd7d7",  # brand cyan
+    "\033[38;5;208m": "#ff8700",  # blender deep orange
+    "\033[38;5;214m": "#ffaf00",  # gimp warm orange
 }

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-lynis
-description: Security audit - system hardening, compliance
+description: Security audit
 ---
 
 # cli-anything-lynis
 
-Security audit - system hardening, compliance
+Security audit

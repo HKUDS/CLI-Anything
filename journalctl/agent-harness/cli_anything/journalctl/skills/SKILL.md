@@ -1,8 +1,8 @@
 ---
 name: cli-anything-journalctl
-description: Systemd journal - read, filter, follow
+description: Systemd journal
 ---
 
 # cli-anything-journalctl
 
-Systemd journal - read, filter, follow
+Systemd journal

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-bazel
-description: Bazel - build, test, query dependencies
+description: Bazel - scalable builds
 ---
 
 # cli-anything-bazel
 
-Bazel - build, test, query dependencies
+Bazel - scalable builds

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-rkhunter
-description: Rootkit hunter - check, update, propupdate
+description: Rootkit hunter
 ---
 
 # cli-anything-rkhunter
 
-Rootkit hunter - check, update, propupdate
+Rootkit hunter

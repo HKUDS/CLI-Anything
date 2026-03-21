@@ -1,8 +1,8 @@
 ---
 name: cli-anything-transmission
-description: BitTorrent - add, list, remove, info
+description: BitTorrent client
 ---
 
 # cli-anything-transmission
 
-BitTorrent - add, list, remove, info
+BitTorrent client

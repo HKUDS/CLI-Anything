@@ -1,8 +1,8 @@
 ---
 name: cli-anything-logrotate
-description: Log rotation - rotate, compress, config
+description: Log rotation
 ---
 
 # cli-anything-logrotate
 
-Log rotation - rotate, compress, config
+Log rotation

@@ -1,6 +1,6 @@
 # unreal
 
-Unreal Engine - build, cook, package
+Unreal Engine
 
 Binary: `UnrealEditor-Cmd`
 Category: game

@@ -1,6 +1,6 @@
 # chkrootkit
 
-Rootkit detection - scan for rootkits
+Rootkit detection
 
 Binary: `chkrootkit`
 Category: security

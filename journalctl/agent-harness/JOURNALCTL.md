@@ -1,6 +1,6 @@
 # journalctl
 
-Systemd journal - read, filter, follow
+Systemd journal
 
 Binary: `journalctl`
 Category: system

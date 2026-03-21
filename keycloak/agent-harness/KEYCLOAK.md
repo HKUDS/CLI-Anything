@@ -1,6 +1,6 @@
 # keycloak
 
-Keycloak - realms, clients, users, roles
+Identity management
 
-Binary: `kcadm`
-Category: auth
+Binary: `keycloak`
+Category: security

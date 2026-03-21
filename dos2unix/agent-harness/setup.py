@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-dos2unix",version="1.0.0",author="cli-anything contributors",description="Line ending conversion",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-dos2unix=cli_anything.dos2unix.dos2unix_cli:main"]},package_data={"cli_anything.dos2unix":["skills/*.md"]},include_package_data=True,zip_safe=False)

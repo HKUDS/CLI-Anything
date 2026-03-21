@@ -1,8 +1,8 @@
 ---
 name: cli-anything-mlflow
-description: MLflow - experiments, models, tracking
+description: ML lifecycle management
 ---
 
 # cli-anything-mlflow
 
-MLflow - experiments, models, tracking
+ML lifecycle management

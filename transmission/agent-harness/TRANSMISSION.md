@@ -1,6 +1,6 @@
 # transmission
 
-BitTorrent - add, list, remove, info
+BitTorrent client
 
 Binary: `transmission-remote`
 Category: download

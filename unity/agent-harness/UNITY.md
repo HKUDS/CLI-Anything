@@ -1,6 +1,6 @@
 # unity
 
-Unity - build, batch mode, project
+Unity game engine
 
 Binary: `unity`
 Category: game

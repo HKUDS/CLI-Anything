@@ -1,3 +1,3 @@
 # cli-anything-logrotate
 
-Log rotation - rotate, compress, config
+Log rotation
