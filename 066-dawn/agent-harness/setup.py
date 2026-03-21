@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-066-dawn",version="1.0.0",author="cli-anything contributors",description="066-dawn CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-066-dawn=cli_anything.066_dawn.066_dawn_cli:main"]},package_data={"cli_anything.066_dawn":["skills/*.md"]},include_package_data=True,zip_safe=False)

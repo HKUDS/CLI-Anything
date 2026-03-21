@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-39-beam",version="1.0.0",author="cli-anything contributors",description="39-beam CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-39-beam=cli_anything.39_beam.39_beam_cli:main"]},package_data={"cli_anything.39_beam":["skills/*.md"]},include_package_data=True,zip_safe=False)

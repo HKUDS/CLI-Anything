@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-12-drift",version="1.0.0",author="cli-anything contributors",description="12-drift CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-12-drift=cli_anything.12_drift.12_drift_cli:main"]},package_data={"cli_anything.12_drift":["skills/*.md"]},include_package_data=True,zip_safe=False)

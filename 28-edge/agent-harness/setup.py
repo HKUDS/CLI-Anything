@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-28-edge",version="1.0.0",author="cli-anything contributors",description="28-edge CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-28-edge=cli_anything.28_edge.28_edge_cli:main"]},package_data={"cli_anything.28_edge":["skills/*.md"]},include_package_data=True,zip_safe=False)

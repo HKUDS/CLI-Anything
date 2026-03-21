@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-095-helm",version="1.0.0",author="cli-anything contributors",description="095-helm CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-095-helm=cli_anything.095_helm.095_helm_cli:main"]},package_data={"cli_anything.095_helm":["skills/*.md"]},include_package_data=True,zip_safe=False)

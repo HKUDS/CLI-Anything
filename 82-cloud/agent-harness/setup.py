@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-82-cloud",version="1.0.0",author="cli-anything contributors",description="82-cloud CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-82-cloud=cli_anything.82_cloud.82_cloud_cli:main"]},package_data={"cli_anything.82_cloud":["skills/*.md"]},include_package_data=True,zip_safe=False)
