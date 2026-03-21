@@ -1,0 +1,2 @@
+from cli_anything.prototype_pollution_test.prototype_pollution_test_cli import main
+main()

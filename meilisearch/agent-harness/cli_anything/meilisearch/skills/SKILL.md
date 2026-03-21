@@ -1,8 +1,8 @@
 ---
 name: cli-anything-meilisearch
-description: Search engine - indexes, documents, search
+description: meilisearch tool
 ---
 
 # cli-anything-meilisearch
 
-Search engine - indexes, documents, search
+meilisearch tool

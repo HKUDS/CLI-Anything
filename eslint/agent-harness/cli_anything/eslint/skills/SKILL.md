@@ -1,8 +1,8 @@
 ---
 name: cli-anything-eslint
-description: ESLint - lint, fix, config, plugins
+description: eslint tool
 ---
 
 # cli-anything-eslint
 
-ESLint - lint, fix, config, plugins
+eslint tool

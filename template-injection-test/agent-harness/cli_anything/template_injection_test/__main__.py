@@ -1,0 +1,2 @@
+from cli_anything.template_injection_test.template_injection_test_cli import main
+main()

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-junit
-description: JUnit - run tests, generate reports
+description: junit tool
 ---
 
 # cli-anything-junit
 
-JUnit - run tests, generate reports
+junit tool

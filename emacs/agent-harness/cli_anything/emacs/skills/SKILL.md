@@ -1,8 +1,8 @@
 ---
 name: cli-anything-emacs
-description: Emacs - edit, eval, compile, dired
+description: emacs tool
 ---
 
 # cli-anything-emacs
 
-Emacs - edit, eval, compile, dired
+emacs tool

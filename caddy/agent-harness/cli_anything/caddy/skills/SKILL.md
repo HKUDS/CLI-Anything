@@ -1,8 +1,8 @@
 ---
 name: cli-anything-caddy
-description: Automatic HTTPS web server
+description: caddy tool
 ---
 
 # cli-anything-caddy
 
-Automatic HTTPS web server
+caddy tool

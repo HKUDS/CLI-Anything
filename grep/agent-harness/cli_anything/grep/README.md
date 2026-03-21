@@ -1,3 +1,3 @@
 # cli-anything-grep
 
-Text search
+grep tool

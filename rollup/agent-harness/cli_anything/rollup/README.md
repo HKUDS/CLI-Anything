@@ -1,3 +1,3 @@
 # cli-anything-rollup
 
-ES module bundler
+rollup tool

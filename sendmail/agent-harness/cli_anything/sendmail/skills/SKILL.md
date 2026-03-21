@@ -1,8 +1,8 @@
 ---
 name: cli-anything-sendmail
-description: Mail transfer agent - send, queue, aliases
+description: sendmail tool
 ---
 
 # cli-anything-sendmail
 
-Mail transfer agent - send, queue, aliases
+sendmail tool

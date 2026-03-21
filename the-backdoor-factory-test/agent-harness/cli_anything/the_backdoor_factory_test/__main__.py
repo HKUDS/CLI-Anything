@@ -1,0 +1,2 @@
+from cli_anything.the_backdoor_factory_test.the_backdoor_factory_test_cli import main
+main()

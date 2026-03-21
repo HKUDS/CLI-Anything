@@ -1,6 +1,6 @@
 # base64
 
-Base64 encode/decode
+base64 tool
 
 Binary: `base64`
-Category: encoding
+Category: utility

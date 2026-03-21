@@ -1,6 +1,6 @@
 # brotli
 
-Brotli compression
+brotli tool
 
 Binary: `brotli`
-Category: compression
+Category: utility

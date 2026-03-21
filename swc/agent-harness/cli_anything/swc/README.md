@@ -1,3 +1,3 @@
 # cli-anything-swc
 
-Rust-based JS compiler
+swc tool

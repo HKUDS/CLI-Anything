@@ -1,8 +1,8 @@
 ---
 name: cli-anything-kustomize
-description: K8s manifests
+description: kustomize tool
 ---
 
 # cli-anything-kustomize
 
-K8s manifests
+kustomize tool

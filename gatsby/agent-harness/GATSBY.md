@@ -1,6 +1,6 @@
 # gatsby
 
-React SSG
+gatsby tool
 
 Binary: `gatsby`
-Category: web
+Category: utility

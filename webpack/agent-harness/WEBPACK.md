@@ -1,6 +1,6 @@
 # webpack
 
-JS bundler
+webpack tool
 
 Binary: `webpack`
-Category: build
+Category: utility

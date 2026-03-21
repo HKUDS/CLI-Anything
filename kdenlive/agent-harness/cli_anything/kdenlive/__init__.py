@@ -1,1 +1,0 @@
-# Kdenlive CLI - Agent Harness

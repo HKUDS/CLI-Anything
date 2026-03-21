@@ -1,3 +1,3 @@
 # cli-anything-kustomize
 
-K8s manifests
+kustomize tool

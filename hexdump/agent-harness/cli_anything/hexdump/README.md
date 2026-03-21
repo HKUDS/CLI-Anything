@@ -1,3 +1,3 @@
 # cli-anything-hexdump
 
-Hex dump viewer
+hexdump tool

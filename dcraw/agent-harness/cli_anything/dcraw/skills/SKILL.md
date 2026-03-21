@@ -1,8 +1,8 @@
 ---
 name: cli-anything-dcraw
-description: RAW decoder
+description: dcraw tool
 ---
 
 # cli-anything-dcraw
 
-RAW decoder
+dcraw tool

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-most
-description: Enhanced pager
+description: most tool
 ---
 
 # cli-anything-most
 
-Enhanced pager
+most tool

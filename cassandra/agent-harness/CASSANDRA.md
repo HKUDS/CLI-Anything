@@ -1,6 +1,6 @@
 # cassandra
 
-Wide column DB
+cassandra tool
 
-Binary: `cqlsh`
-Category: database
+Binary: `cassandra`
+Category: utility

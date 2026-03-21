@@ -1,3 +1,3 @@
 # cli-anything-phpunit
 
-PHP testing
+phpunit tool

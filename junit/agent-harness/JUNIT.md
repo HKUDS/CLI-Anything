@@ -1,6 +1,6 @@
 # junit
 
-JUnit - run tests, generate reports
+junit tool
 
 Binary: `junit`
-Category: testing
+Category: utility

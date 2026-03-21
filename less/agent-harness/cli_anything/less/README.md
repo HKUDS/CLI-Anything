@@ -1,3 +1,3 @@
 # cli-anything-less
 
-Pager
+less tool

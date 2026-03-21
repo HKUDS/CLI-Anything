@@ -1,1 +1,0 @@
-"""Krita CLI — Core modules."""

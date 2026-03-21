@@ -1,8 +1,8 @@
 ---
 name: cli-anything-tracepath
-description: MTU trace
+description: tracepath tool
 ---
 
 # cli-anything-tracepath
 
-MTU trace
+tracepath tool

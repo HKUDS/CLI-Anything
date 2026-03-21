@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-gopherus-test",version="1.0.0",author="cli-anything contributors",description="gopherus-test tool",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-gopherus-test=cli_anything.gopherus_test.gopherus_test_cli:main"]},package_data={"cli_anything.gopherus_test":["skills/*.md"]},include_package_data=True,zip_safe=False)

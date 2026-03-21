@@ -1,8 +1,8 @@
 ---
 name: cli-anything-cucumber
-description: BDD testing
+description: cucumber tool
 ---
 
 # cli-anything-cucumber
 
-BDD testing
+cucumber tool

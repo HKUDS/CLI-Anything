@@ -1,8 +1,8 @@
 ---
 name: cli-anything-envoy
-description: Proxy
+description: envoy tool
 ---
 
 # cli-anything-envoy
 
-Proxy
+envoy tool

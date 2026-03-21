@@ -1,6 +1,6 @@
 # zeromq
 
-ZeroMQ - pub/sub, push/pull, req/rep
+zeromq tool
 
 Binary: `zeromq`
-Category: messaging
+Category: utility

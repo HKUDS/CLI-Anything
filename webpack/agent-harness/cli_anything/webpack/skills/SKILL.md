@@ -1,8 +1,8 @@
 ---
 name: cli-anything-webpack
-description: JS bundler
+description: webpack tool
 ---
 
 # cli-anything-webpack
 
-JS bundler
+webpack tool

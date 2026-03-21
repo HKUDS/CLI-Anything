@@ -1,8 +1,8 @@
 ---
 name: cli-anything-inkscape
-description: Vector graphics editor
+description: inkscape tool
 ---
 
 # cli-anything-inkscape
 
-Vector graphics editor
+inkscape tool

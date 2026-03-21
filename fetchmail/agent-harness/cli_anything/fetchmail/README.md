@@ -1,3 +1,3 @@
 # cli-anything-fetchmail
 
-Mail fetcher
+fetchmail tool

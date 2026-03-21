@@ -1,6 +1,6 @@
 # linkerd
 
-Service mesh
+linkerd tool
 
 Binary: `linkerd`
-Category: kubernetes
+Category: utility

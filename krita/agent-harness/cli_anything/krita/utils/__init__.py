@@ -1,1 +1,0 @@
-"""Krita CLI — Utility modules."""

@@ -1,6 +1,6 @@
 # plantuml
 
-PlantUML - generate UML diagrams
+plantuml tool
 
 Binary: `plantuml`
-Category: diagrams
+Category: utility

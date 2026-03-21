@@ -1,6 +1,6 @@
 # swc
 
-Rust-based JS compiler
+swc tool
 
 Binary: `swc`
-Category: build
+Category: utility

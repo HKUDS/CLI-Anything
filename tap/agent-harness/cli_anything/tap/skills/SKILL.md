@@ -1,8 +1,8 @@
 ---
 name: cli-anything-tap
-description: TAP test framework
+description: tap tool
 ---
 
 # cli-anything-tap
 
-TAP test framework
+tap tool

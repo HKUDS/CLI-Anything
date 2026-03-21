@@ -1,8 +1,8 @@
 ---
 name: cli-anything-ghostscript
-description: PostScript/PDF
+description: ghostscript tool
 ---
 
 # cli-anything-ghostscript
 
-PostScript/PDF
+ghostscript tool

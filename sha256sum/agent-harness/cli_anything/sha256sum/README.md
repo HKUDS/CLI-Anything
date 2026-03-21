@@ -1,3 +1,3 @@
 # cli-anything-sha256sum
 
-SHA256 checksum
+sha256sum tool

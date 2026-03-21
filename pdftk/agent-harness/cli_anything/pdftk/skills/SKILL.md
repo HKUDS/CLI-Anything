@@ -1,8 +1,8 @@
 ---
 name: cli-anything-pdftk
-description: PDF toolkit - merge, split, stamp, fill forms
+description: pdftk tool
 ---
 
 # cli-anything-pdftk
 
-PDF toolkit - merge, split, stamp, fill forms
+pdftk tool

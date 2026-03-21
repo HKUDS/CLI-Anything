@@ -1,6 +1,6 @@
 # scylladb
 
-Fast Cassandra
+scylladb tool
 
-Binary: `cqlsh`
-Category: database
+Binary: `scylladb`
+Category: utility

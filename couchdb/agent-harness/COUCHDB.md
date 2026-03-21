@@ -1,6 +1,6 @@
 # couchdb
 
-CouchDB - document database
+couchdb tool
 
 Binary: `couchdb`
-Category: database
+Category: utility

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-vite
-description: Frontend tooling
+description: vite tool
 ---
 
 # cli-anything-vite
 
-Frontend tooling
+vite tool

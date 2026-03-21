@@ -1,3 +1,3 @@
 # cli-anything-memcached
 
-Distributed cache
+memcached tool

@@ -1,6 +1,6 @@
 # ping
 
-Network ping
+ping tool
 
 Binary: `ping`
-Category: network
+Category: utility

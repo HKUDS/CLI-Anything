@@ -1,3 +1,3 @@
 # cli-anything-phlare
 
-Profiling
+phlare tool

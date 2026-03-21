@@ -1,3 +1,3 @@
 # cli-anything-gatsby
 
-React SSG
+gatsby tool

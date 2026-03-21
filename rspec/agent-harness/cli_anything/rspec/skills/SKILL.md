@@ -1,8 +1,8 @@
 ---
 name: cli-anything-rspec
-description: Ruby testing
+description: rspec tool
 ---
 
 # cli-anything-rspec
 
-Ruby testing
+rspec tool

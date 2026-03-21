@@ -1,24 +1,2 @@
-#!/usr/bin/env python3
-from setuptools import setup, find_namespace_packages
-
-with open("cli_anything/pandoc/README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
-
-setup(
-    name="cli-anything-pandoc",
-    version="1.0.0",
-    author="cli-anything contributors",
-    author_email="",
-    description="CLI harness for Pandoc. Requires: pandoc",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url="https://github.com/HKUDS/CLI-Anything",
-    packages=find_namespace_packages(include=["cli_anything.*"]),
-    python_requires=">=3.10",
-    install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],
-    extras_require={"dev":["pytest>=7.0.0","pytest-cov>=4.0.0"]},
-    entry_points={"console_scripts":["cli-anything-pandoc=cli_anything/pandoc.pandoc_cli:main"]},
-    package_data={"cli_anything/pandoc":["skills/*.md"]},
-    include_package_data=True,
-    zip_safe=False,
-)
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-pandoc",version="1.0.0",author="cli-anything contributors",description="pandoc tool",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-pandoc=cli_anything.pandoc.pandoc_cli:main"]},package_data={"cli_anything.pandoc":["skills/*.md"]},include_package_data=True,zip_safe=False)

@@ -1,6 +1,6 @@
 # meilisearch
 
-Search engine - indexes, documents, search
+meilisearch tool
 
 Binary: `meilisearch`
-Category: search
+Category: utility

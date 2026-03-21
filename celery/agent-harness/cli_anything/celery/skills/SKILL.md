@@ -1,8 +1,8 @@
 ---
 name: cli-anything-celery
-description: Task queue - workers, tasks, inspect, purge
+description: celery tool
 ---
 
 # cli-anything-celery
 
-Task queue - workers, tasks, inspect, purge
+celery tool

@@ -1,6 +1,6 @@
 # pyroscope
 
-Profiling
+pyroscope tool
 
 Binary: `pyroscope`
-Category: monitoring
+Category: utility

@@ -1,10 +1,8 @@
 ---
 name: cli-anything-restic
-description: Backup - init, backup, restore, snapshots
+description: restic tool
 ---
 
 # cli-anything-restic
 
-Backup - init, backup, restore, snapshots
-
-Binary: `restic`
+restic tool

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-vim
-description: Text editor - edit, diff, read, write
+description: vim tool
 ---
 
 # cli-anything-vim
 
-Text editor - edit, diff, read, write
+vim tool

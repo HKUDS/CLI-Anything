@@ -1,3 +1,3 @@
 # cli-anything-brotli
 
-Brotli compression
+brotli tool

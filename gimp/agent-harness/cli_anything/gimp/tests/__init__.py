@@ -1,1 +1,0 @@
-"""GIMP CLI - Tests package."""

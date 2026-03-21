@@ -1,8 +1,8 @@
 ---
 name: cli-anything-btrfs
-description: Btrfs - subvolume, snapshot, balance, scrub
+description: btrfs tool
 ---
 
 # cli-anything-btrfs
 
-Btrfs - subvolume, snapshot, balance, scrub
+btrfs tool

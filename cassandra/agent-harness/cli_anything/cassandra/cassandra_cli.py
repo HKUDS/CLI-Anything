@@ -38,9 +38,9 @@ def cli(ctx,use_json):
 @click.argument("args",nargs=-1)
 @handle_error
 def run_cmd(args):
-    """Run arbitrary cqlsh command."""
+    """Run arbitrary cassandra command."""
     import subprocess
-    result=subprocess.run(["cqlsh"]+list(args),capture_output=True,text=True,timeout=300)
+    result=subprocess.run(["cassandra"]+list(args),capture_output=True,text=True,timeout=300)
     output({"status":"success" if result.returncode==0 else "error","stdout":result.stdout,"stderr":result.stderr})
 @cli.command()
 @handle_error

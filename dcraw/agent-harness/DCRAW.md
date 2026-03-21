@@ -1,6 +1,6 @@
 # dcraw
 
-RAW decoder
+dcraw tool
 
 Binary: `dcraw`
-Category: image
+Category: utility

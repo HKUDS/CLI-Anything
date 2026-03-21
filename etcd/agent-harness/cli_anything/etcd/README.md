@@ -1,3 +1,3 @@
 # cli-anything-etcd
 
-Distributed KV
+etcd tool

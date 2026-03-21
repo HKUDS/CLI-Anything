@@ -1,10 +1,8 @@
 ---
 name: cli-anything-mysql
-description: MySQL query, dump, restore, user management
+description: mysql tool
 ---
 
 # cli-anything-mysql
 
-MySQL query, dump, restore, user management
-
-Binary: `mysql`
+mysql tool

@@ -1,6 +1,6 @@
 # rollup
 
-ES module bundler
+rollup tool
 
 Binary: `rollup`
-Category: build
+Category: utility

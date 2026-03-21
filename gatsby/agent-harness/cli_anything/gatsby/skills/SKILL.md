@@ -1,8 +1,8 @@
 ---
 name: cli-anything-gatsby
-description: React SSG
+description: gatsby tool
 ---
 
 # cli-anything-gatsby
 
-React SSG
+gatsby tool

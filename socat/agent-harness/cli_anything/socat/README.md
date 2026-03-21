@@ -1,3 +1,3 @@
 # cli-anything-socat
 
-Network relay
+socat tool

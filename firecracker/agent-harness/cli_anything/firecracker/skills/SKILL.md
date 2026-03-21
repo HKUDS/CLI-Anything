@@ -1,8 +1,8 @@
 ---
 name: cli-anything-firecracker
-description: MicroVM
+description: firecracker tool
 ---
 
 # cli-anything-firecracker
 
-MicroVM
+firecracker tool

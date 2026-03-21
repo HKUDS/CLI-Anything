@@ -1,8 +1,8 @@
 ---
 name: cli-anything-sphinx
-description: Sphinx - build docs, autodoc, themes
+description: sphinx tool
 ---
 
 # cli-anything-sphinx
 
-Sphinx - build docs, autodoc, themes
+sphinx tool

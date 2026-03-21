@@ -1,8 +1,8 @@
 ---
 name: cli-anything-traceroute
-description: Route trace
+description: traceroute tool
 ---
 
 # cli-anything-traceroute
 
-Route trace
+traceroute tool

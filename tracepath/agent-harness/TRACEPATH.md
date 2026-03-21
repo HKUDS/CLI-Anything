@@ -1,6 +1,6 @@
 # tracepath
 
-MTU trace
+tracepath tool
 
 Binary: `tracepath`
-Category: network
+Category: utility

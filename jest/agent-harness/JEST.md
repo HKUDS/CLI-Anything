@@ -1,6 +1,6 @@
 # jest
 
-Jest - test, coverage, watch, update snapshots
+jest tool
 
 Binary: `jest`
-Category: testing
+Category: utility

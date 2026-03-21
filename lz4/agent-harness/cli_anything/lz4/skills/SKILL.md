@@ -1,8 +1,8 @@
 ---
 name: cli-anything-lz4
-description: LZ4 compression
+description: lz4 tool
 ---
 
 # cli-anything-lz4
 
-LZ4 compression
+lz4 tool

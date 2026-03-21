@@ -1,6 +1,6 @@
 # vim
 
-Text editor - edit, diff, read, write
+vim tool
 
 Binary: `vim`
-Category: editor
+Category: utility

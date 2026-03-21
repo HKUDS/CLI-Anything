@@ -1,8 +1,8 @@
 ---
 name: cli-anything-jekyll
-description: Static site gen
+description: jekyll tool
 ---
 
 # cli-anything-jekyll
 
-Static site gen
+jekyll tool

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-swc
-description: Rust-based JS compiler
+description: swc tool
 ---
 
 # cli-anything-swc
 
-Rust-based JS compiler
+swc tool

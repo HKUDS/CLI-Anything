@@ -1,6 +1,6 @@
 # jekyll
 
-Static site gen
+jekyll tool
 
 Binary: `jekyll`
-Category: web
+Category: utility

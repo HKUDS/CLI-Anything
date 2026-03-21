@@ -38,9 +38,9 @@ def cli(ctx,use_json):
 @click.argument("args",nargs=-1)
 @handle_error
 def run_cmd(args):
-    """Run arbitrary etcdctl command."""
+    """Run arbitrary etcd command."""
     import subprocess
-    result=subprocess.run(["etcdctl"]+list(args),capture_output=True,text=True,timeout=300)
+    result=subprocess.run(["etcd"]+list(args),capture_output=True,text=True,timeout=300)
     output({"status":"success" if result.returncode==0 else "error","stdout":result.stdout,"stderr":result.stderr})
 @cli.command()
 @handle_error

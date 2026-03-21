@@ -1,6 +1,6 @@
 # gzip
 
-Gzip compression
+gzip tool
 
 Binary: `gzip`
-Category: compression
+Category: utility

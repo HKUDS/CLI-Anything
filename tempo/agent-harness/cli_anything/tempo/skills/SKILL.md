@@ -1,8 +1,8 @@
 ---
 name: cli-anything-tempo
-description: Grafana tracing
+description: tempo tool
 ---
 
 # cli-anything-tempo
 
-Grafana tracing
+tempo tool

@@ -1,3 +1,3 @@
 # cli-anything-couchdb
 
-CouchDB - document database
+couchdb tool

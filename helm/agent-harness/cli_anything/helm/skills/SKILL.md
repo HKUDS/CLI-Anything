@@ -1,10 +1,8 @@
 ---
 name: cli-anything-helm
-description: Kubernetes charts - install, upgrade, template
+description: helm tool
 ---
 
 # cli-anything-helm
 
-Kubernetes charts - install, upgrade, template
-
-Binary: `helm`
+helm tool

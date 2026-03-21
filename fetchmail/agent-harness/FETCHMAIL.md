@@ -1,6 +1,6 @@
 # fetchmail
 
-Mail fetcher
+fetchmail tool
 
 Binary: `fetchmail`
-Category: email
+Category: utility

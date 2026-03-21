@@ -1,3 +1,3 @@
 # cli-anything-scylladb
 
-Fast Cassandra
+scylladb tool

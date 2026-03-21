@@ -1,8 +1,8 @@
 ---
 name: cli-anything-gzip
-description: Gzip compression
+description: gzip tool
 ---
 
 # cli-anything-gzip
 
-Gzip compression
+gzip tool

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-containerd
-description: Container runtime
+description: containerd tool
 ---
 
 # cli-anything-containerd
 
-Container runtime
+containerd tool

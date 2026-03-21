@@ -1,3 +1,3 @@
 # cli-anything-ping
 
-Network ping
+ping tool

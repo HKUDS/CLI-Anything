@@ -1,3 +1,3 @@
 # cli-anything-dynamodb
 
-DynamoDB - NoSQL
+dynamodb tool

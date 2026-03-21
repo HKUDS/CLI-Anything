@@ -1,6 +1,6 @@
 # caddy
 
-Automatic HTTPS web server
+caddy tool
 
 Binary: `caddy`
-Category: web
+Category: utility

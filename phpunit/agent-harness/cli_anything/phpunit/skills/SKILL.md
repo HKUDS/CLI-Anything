@@ -1,8 +1,8 @@
 ---
 name: cli-anything-phpunit
-description: PHP testing
+description: phpunit tool
 ---
 
 # cli-anything-phpunit
 
-PHP testing
+phpunit tool

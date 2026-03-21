@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-avahi",version="1.0.0",author="cli-anything contributors",description="avahi tool",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-avahi=cli_anything.avahi.avahi_cli:main"]},package_data={"cli_anything.avahi":["skills/*.md"]},include_package_data=True,zip_safe=False)

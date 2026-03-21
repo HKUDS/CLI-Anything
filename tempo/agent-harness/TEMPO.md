@@ -1,6 +1,6 @@
 # tempo
 
-Grafana tracing
+tempo tool
 
 Binary: `tempo`
-Category: monitoring
+Category: utility

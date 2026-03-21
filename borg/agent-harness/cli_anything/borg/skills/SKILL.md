@@ -1,10 +1,8 @@
 ---
 name: cli-anything-borg
-description: Deduplicated backup - create, list, prune
+description: borg tool
 ---
 
 # cli-anything-borg
 
-Deduplicated backup - create, list, prune
-
-Binary: `borg`
+borg tool

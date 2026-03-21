@@ -1,6 +1,6 @@
 # rspec
 
-Ruby testing
+rspec tool
 
 Binary: `rspec`
-Category: testing
+Category: utility

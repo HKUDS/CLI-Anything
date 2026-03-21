@@ -1,8 +1,8 @@
 ---
 name: cli-anything-ping
-description: Network ping
+description: ping tool
 ---
 
 # cli-anything-ping
 
-Network ping
+ping tool

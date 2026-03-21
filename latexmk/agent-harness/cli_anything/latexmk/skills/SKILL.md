@@ -1,10 +1,8 @@
 ---
 name: cli-anything-latexmk
-description: LaTeX compilation - compile, watch, clean
+description: latexmk tool
 ---
 
 # cli-anything-latexmk
 
-LaTeX compilation - compile, watch, clean
-
-Binary: `latexmk`
+latexmk tool

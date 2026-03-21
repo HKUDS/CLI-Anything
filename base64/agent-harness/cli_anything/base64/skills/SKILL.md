@@ -1,8 +1,8 @@
 ---
 name: cli-anything-base64
-description: Base64 encode/decode
+description: base64 tool
 ---
 
 # cli-anything-base64
 
-Base64 encode/decode
+base64 tool

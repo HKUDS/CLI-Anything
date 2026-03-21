@@ -1,8 +1,8 @@
 ---
 name: cli-anything-plantuml
-description: PlantUML - generate UML diagrams
+description: plantuml tool
 ---
 
 # cli-anything-plantuml
 
-PlantUML - generate UML diagrams
+plantuml tool

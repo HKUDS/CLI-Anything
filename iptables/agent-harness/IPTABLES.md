@@ -1,17 +1,6 @@
 # iptables
 
-Firewall rules - list, add, delete, NAT
+iptables tool
 
 Binary: `iptables`
-Category: security
-
-## Commands
-
-- `run [args...]` - Run arbitrary iptables command
-
-## Usage
-
-```bash
-cli-anything-iptables run --help
-cli-anything-iptables run [args...]
-```
+Category: utility

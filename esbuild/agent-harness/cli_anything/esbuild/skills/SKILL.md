@@ -1,8 +1,8 @@
 ---
 name: cli-anything-esbuild
-description: Fast bundler
+description: esbuild tool
 ---
 
 # cli-anything-esbuild
 
-Fast bundler
+esbuild tool

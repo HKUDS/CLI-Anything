@@ -1,8 +1,8 @@
 ---
 name: cli-anything-prettier
-description: Prettier - format JS/TS/CSS/HTML/JSON
+description: prettier tool
 ---
 
 # cli-anything-prettier
 
-Prettier - format JS/TS/CSS/HTML/JSON
+prettier tool

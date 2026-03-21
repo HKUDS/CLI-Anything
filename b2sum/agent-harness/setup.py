@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-b2sum",version="1.0.0",author="cli-anything contributors",description="b2sum tool",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-b2sum=cli_anything.b2sum.b2sum_cli:main"]},package_data={"cli_anything.b2sum":["skills/*.md"]},include_package_data=True,zip_safe=False)

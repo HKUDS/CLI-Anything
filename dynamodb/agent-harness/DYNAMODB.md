@@ -1,6 +1,6 @@
 # dynamodb
 
-DynamoDB - NoSQL
+dynamodb tool
 
-Binary: `aws`
-Category: database
+Binary: `dynamodb`
+Category: utility

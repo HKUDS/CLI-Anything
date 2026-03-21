@@ -1,6 +1,6 @@
 # ghostscript
 
-PostScript/PDF
+ghostscript tool
 
-Binary: `gs`
-Category: pdf
+Binary: `ghostscript`
+Category: utility

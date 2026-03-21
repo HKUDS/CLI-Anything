@@ -1,8 +1,8 @@
 ---
 name: cli-anything-iproute2
-description: Network - addr, route, link, neigh, rule
+description: iproute2 tool
 ---
 
 # cli-anything-iproute2
 
-Network - addr, route, link, neigh, rule
+iproute2 tool

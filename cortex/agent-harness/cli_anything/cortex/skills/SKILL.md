@@ -1,8 +1,8 @@
 ---
 name: cli-anything-cortex
-description: Prometheus service
+description: cortex tool
 ---
 
 # cli-anything-cortex
 
-Prometheus service
+cortex tool

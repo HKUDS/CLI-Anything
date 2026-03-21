@@ -1,6 +1,6 @@
 # pytest
 
-Pytest - run, markers, fixtures, coverage
+pytest tool
 
 Binary: `pytest`
-Category: testing
+Category: utility

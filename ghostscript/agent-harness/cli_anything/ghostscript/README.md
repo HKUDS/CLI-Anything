@@ -1,3 +1,3 @@
 # cli-anything-ghostscript
 
-PostScript/PDF
+ghostscript tool

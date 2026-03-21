@@ -1,6 +1,6 @@
 # netcat
 
-Network cat
+netcat tool
 
-Binary: `nc`
-Category: network
+Binary: `netcat`
+Category: utility

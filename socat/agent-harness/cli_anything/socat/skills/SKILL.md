@@ -1,8 +1,8 @@
 ---
 name: cli-anything-socat
-description: Network relay
+description: socat tool
 ---
 
 # cli-anything-socat
 
-Network relay
+socat tool

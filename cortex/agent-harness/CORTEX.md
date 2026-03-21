@@ -1,6 +1,6 @@
 # cortex
 
-Prometheus service
+cortex tool
 
 Binary: `cortex`
-Category: monitoring
+Category: utility

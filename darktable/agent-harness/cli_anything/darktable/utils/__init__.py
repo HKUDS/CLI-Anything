@@ -1,1 +1,0 @@
-"""Darktable CLI — Utility modules."""

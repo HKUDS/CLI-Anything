@@ -1,6 +1,6 @@
 # prettier
 
-Prettier - format JS/TS/CSS/HTML/JSON
+prettier tool
 
 Binary: `prettier`
-Category: formatting
+Category: utility

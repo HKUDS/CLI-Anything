@@ -1,8 +1,8 @@
 ---
 name: cli-anything-cassandra
-description: Wide column DB
+description: cassandra tool
 ---
 
 # cli-anything-cassandra
 
-Wide column DB
+cassandra tool

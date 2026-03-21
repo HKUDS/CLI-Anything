@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-ts-rest-test",version="1.0.0",author="cli-anything contributors",description="ts-rest-test tool",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-ts-rest-test=cli_anything.ts_rest_test.ts_rest_test_cli:main"]},package_data={"cli_anything.ts_rest_test":["skills/*.md"]},include_package_data=True,zip_safe=False)

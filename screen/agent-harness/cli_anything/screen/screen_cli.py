@@ -34,6 +34,14 @@ def handle_error(func):
 def cli(ctx,use_json):
     global _json_output;_json_output=use_json
     if ctx.invoked_subcommand is None:ctx.invoke(repl)
+@cli.command("run")
+@click.argument("args",nargs=-1)
+@handle_error
+def run_cmd(args):
+    """Run arbitrary screen command."""
+    import subprocess
+    result=subprocess.run(["screen"]+list(args),capture_output=True,text=True,timeout=300)
+    output({"status":"success" if result.returncode==0 else "error","stdout":result.stdout,"stderr":result.stderr})
 @cli.command()
 @handle_error
 def repl():
@@ -46,7 +54,7 @@ def repl():
             line=skin.get_input(pt_session)
             if not line:continue
             if line.lower() in ("quit","exit","q"):skin.print_goodbye();break
-            if line.lower()=="help":skin.help({"list":"List sessions","create --name N":"Create session","attach --name N":"Attach to session","detach --name N":"Detach session","kill --name N":"Kill session","send --name N --cmd CMD":"Send command"});continue
+            if line.lower()=="help":skin.help({});continue
             try:args=shlex.split(line)
             except:args=line.split()
             try:cli.main(args,standalone_mode=False)
@@ -55,47 +63,5 @@ def repl():
             except Exception as e:skin.error(f"{e}")
         except (EOFError,KeyboardInterrupt):skin.print_goodbye();break
     _repl_mode=False
-@cli.command()
-@handle_error
-def list():
-    from cli_anything.screen.core.terminal import list_sessions
-    result = list_sessions()
-    output(result, "Screen sessions")
-@cli.command()
-@click.option("--name","name",required=True,help="Session name")
-@handle_error
-def create(name):
-    from cli_anything.screen.core.terminal import create_session
-    result = create_session(name)
-    output(result, f"Created session {name}")
-@cli.command()
-@click.option("--name","name",required=True,help="Session name")
-@handle_error
-def attach(name):
-    from cli_anything.screen.core.terminal import attach_session
-    result = attach_session(name)
-    output(result, f"Attached to {name}")
-@cli.command()
-@click.option("--name","name",required=True,help="Session name")
-@handle_error
-def detach(name):
-    from cli_anything.screen.core.terminal import detach_session
-    result = detach_session(name)
-    output(result, f"Detached {name}")
-@cli.command()
-@click.option("--name","name",required=True,help="Session name")
-@handle_error
-def kill(name):
-    from cli_anything.screen.core.terminal import kill_session
-    result = kill_session(name)
-    output(result, f"Killed session {name}")
-@cli.command()
-@click.option("--name","name",required=True,help="Session name")
-@click.option("--cmd","command",required=True,help="Command to send")
-@handle_error
-def send(name,command):
-    from cli_anything.screen.core.terminal import send_command
-    result = send_command(name, command)
-    output(result, f"Sent to {name}")
 def main():cli()
 if __name__=="__main__":main()

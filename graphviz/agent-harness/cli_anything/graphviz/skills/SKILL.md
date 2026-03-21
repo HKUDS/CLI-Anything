@@ -1,8 +1,8 @@
 ---
 name: cli-anything-graphviz
-description: Graphviz - render DOT graphs to PNG/SVG/PDF
+description: graphviz tool
 ---
 
 # cli-anything-graphviz
 
-Graphviz - render DOT graphs to PNG/SVG/PDF
+graphviz tool

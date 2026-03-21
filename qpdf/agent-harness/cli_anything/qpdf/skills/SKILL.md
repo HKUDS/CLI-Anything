@@ -1,8 +1,8 @@
 ---
 name: cli-anything-qpdf
-description: QPDF - linearize, encrypt, split, merge
+description: qpdf tool
 ---
 
 # cli-anything-qpdf
 
-QPDF - linearize, encrypt, split, merge
+qpdf tool

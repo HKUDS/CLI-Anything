@@ -1,3 +1,3 @@
 # cli-anything-bat
 
-Cat with syntax highlighting
+bat tool

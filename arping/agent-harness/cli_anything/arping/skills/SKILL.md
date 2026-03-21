@@ -1,8 +1,8 @@
 ---
 name: cli-anything-arping
-description: ARP ping
+description: arping tool
 ---
 
 # cli-anything-arping
 
-ARP ping
+arping tool

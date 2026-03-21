@@ -1,8 +1,8 @@
 ---
 name: cli-anything-rollup
-description: ES module bundler
+description: rollup tool
 ---
 
 # cli-anything-rollup
 
-ES module bundler
+rollup tool

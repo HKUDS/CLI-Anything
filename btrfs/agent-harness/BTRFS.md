@@ -1,6 +1,6 @@
 # btrfs
 
-Btrfs - subvolume, snapshot, balance, scrub
+btrfs tool
 
 Binary: `btrfs`
-Category: storage
+Category: utility

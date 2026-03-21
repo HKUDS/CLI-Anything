@@ -1,6 +1,6 @@
 # sphinx
 
-Sphinx - build docs, autodoc, themes
+sphinx tool
 
-Binary: `sphinx-build`
-Category: docs
+Binary: `sphinx`
+Category: utility

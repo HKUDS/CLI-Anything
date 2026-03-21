@@ -1,6 +1,6 @@
 # hexdump
 
-Hex dump viewer
+hexdump tool
 
 Binary: `hexdump`
-Category: encoding
+Category: utility

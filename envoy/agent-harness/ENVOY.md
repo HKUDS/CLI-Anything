@@ -1,6 +1,6 @@
 # envoy
 
-Proxy
+envoy tool
 
 Binary: `envoy`
-Category: web
+Category: utility

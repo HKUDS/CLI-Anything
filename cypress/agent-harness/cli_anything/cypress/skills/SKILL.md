@@ -1,8 +1,8 @@
 ---
 name: cli-anything-cypress
-description: E2E testing - run, open, record
+description: cypress tool
 ---
 
 # cli-anything-cypress
 
-E2E testing - run, open, record
+cypress tool

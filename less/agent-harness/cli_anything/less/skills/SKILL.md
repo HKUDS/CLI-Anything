@@ -1,8 +1,8 @@
 ---
 name: cli-anything-less
-description: Pager
+description: less tool
 ---
 
 # cli-anything-less
 
-Pager
+less tool

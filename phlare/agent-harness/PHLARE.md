@@ -1,6 +1,6 @@
 # phlare
 
-Profiling
+phlare tool
 
 Binary: `phlare`
-Category: monitoring
+Category: utility

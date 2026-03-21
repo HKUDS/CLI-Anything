@@ -1,8 +1,8 @@
 ---
 name: cli-anything-fetchmail
-description: Mail fetcher
+description: fetchmail tool
 ---
 
 # cli-anything-fetchmail
 
-Mail fetcher
+fetchmail tool

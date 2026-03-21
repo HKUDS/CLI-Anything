@@ -1,0 +1,2 @@
+from cli_anything.blind_sql_bitshifting_test.blind_sql_bitshifting_test_cli import main
+main()

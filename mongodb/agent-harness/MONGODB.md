@@ -1,17 +1,6 @@
 # mongodb
 
-MongoDB CRUD, dump, restore, aggregation
+mongodb tool
 
 Binary: `mongodb`
-Category: database
-
-## Commands
-
-- `run [args...]` - Run arbitrary mongodb command
-
-## Usage
-
-```bash
-cli-anything-mongodb run --help
-cli-anything-mongodb run [args...]
-```
+Category: utility

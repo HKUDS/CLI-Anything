@@ -1,6 +1,6 @@
 # rawtherapee
 
-RAW processor
+rawtherapee tool
 
-Binary: `rawtherapee-cli`
-Category: image
+Binary: `rawtherapee`
+Category: utility

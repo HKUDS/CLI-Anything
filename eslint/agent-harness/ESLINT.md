@@ -1,6 +1,6 @@
 # eslint
 
-ESLint - lint, fix, config, plugins
+eslint tool
 
 Binary: `eslint`
-Category: linting
+Category: utility

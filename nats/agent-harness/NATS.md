@@ -1,6 +1,6 @@
 # nats
 
-NATS - pub/sub, streams, KV store
+nats tool
 
 Binary: `nats`
-Category: messaging
+Category: utility

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-brotli
-description: Brotli compression
+description: brotli tool
 ---
 
 # cli-anything-brotli
 
-Brotli compression
+brotli tool

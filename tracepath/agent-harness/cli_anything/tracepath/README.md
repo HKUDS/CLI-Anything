@@ -1,3 +1,3 @@
 # cli-anything-tracepath
 
-MTU trace
+tracepath tool

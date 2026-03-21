@@ -1,17 +1,6 @@
 # samba
 
-SMB file shares - list, add, remove
+samba tool
 
-Binary: `smbclient`
-Category: network
-
-## Commands
-
-- `run [args...]` - Run arbitrary smbclient command
-
-## Usage
-
-```bash
-cli-anything-samba run --help
-cli-anything-samba run [args...]
-```
+Binary: `samba`
+Category: utility

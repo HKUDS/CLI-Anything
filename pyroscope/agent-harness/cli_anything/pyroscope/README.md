@@ -1,3 +1,3 @@
 # cli-anything-pyroscope
 
-Profiling
+pyroscope tool

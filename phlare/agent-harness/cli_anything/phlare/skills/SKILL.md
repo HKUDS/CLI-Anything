@@ -1,8 +1,8 @@
 ---
 name: cli-anything-phlare
-description: Profiling
+description: phlare tool
 ---
 
 # cli-anything-phlare
 
-Profiling
+phlare tool

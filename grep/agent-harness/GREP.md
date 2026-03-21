@@ -1,6 +1,6 @@
 # grep
 
-Text search
+grep tool
 
 Binary: `grep`
-Category: text
+Category: utility

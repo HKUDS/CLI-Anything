@@ -1,6 +1,6 @@
 # md5sum
 
-MD5 checksum
+md5sum tool
 
 Binary: `md5sum`
-Category: crypto
+Category: utility

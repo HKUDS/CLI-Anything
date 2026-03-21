@@ -1,3 +1,3 @@
 # cli-anything-cucumber
 
-BDD testing
+cucumber tool

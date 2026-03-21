@@ -1,3 +1,3 @@
 # cli-anything-openresty
 
-Nginx+Lua
+openresty tool

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-pytest
-description: Pytest - run, markers, fixtures, coverage
+description: pytest tool
 ---
 
 # cli-anything-pytest
 
-Pytest - run, markers, fixtures, coverage
+pytest tool

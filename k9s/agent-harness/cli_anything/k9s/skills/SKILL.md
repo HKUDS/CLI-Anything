@@ -1,10 +1,8 @@
 ---
 name: cli-anything-k9s
-description: Kubernetes viewer - pods, deployments, logs
+description: k9s tool
 ---
 
 # cli-anything-k9s
 
-Kubernetes viewer - pods, deployments, logs
-
-Binary: `k9s`
+k9s tool

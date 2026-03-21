@@ -1,6 +1,6 @@
 # iproute2
 
-Network - addr, route, link, neigh, rule
+iproute2 tool
 
-Binary: `ip`
-Category: network
+Binary: `iproute2`
+Category: utility

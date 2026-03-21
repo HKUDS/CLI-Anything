@@ -1,3 +1,3 @@
 # cli-anything-meilisearch
 
-Search engine - indexes, documents, search
+meilisearch tool

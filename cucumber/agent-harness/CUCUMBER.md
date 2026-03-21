@@ -1,6 +1,6 @@
 # cucumber
 
-BDD testing
+cucumber tool
 
 Binary: `cucumber`
-Category: testing
+Category: utility

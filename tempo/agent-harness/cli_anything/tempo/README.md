@@ -1,3 +1,3 @@
 # cli-anything-tempo
 
-Grafana tracing
+tempo tool

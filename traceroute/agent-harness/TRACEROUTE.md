@@ -1,6 +1,6 @@
 # traceroute
 
-Route trace
+traceroute tool
 
 Binary: `traceroute`
-Category: network
+Category: utility

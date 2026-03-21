@@ -1,6 +1,6 @@
 # vite
 
-Frontend tooling
+vite tool
 
 Binary: `vite`
-Category: build
+Category: utility

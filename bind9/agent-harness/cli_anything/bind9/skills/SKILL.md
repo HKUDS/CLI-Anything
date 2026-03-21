@@ -1,10 +1,8 @@
 ---
 name: cli-anything-bind9
-description: DNS - query, zone check, trace, AXFR
+description: bind9 tool
 ---
 
 # cli-anything-bind9
 
-DNS - query, zone check, trace, AXFR
-
-Binary: `dig`
+bind9 tool

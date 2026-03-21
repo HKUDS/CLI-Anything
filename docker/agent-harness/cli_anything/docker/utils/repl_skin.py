@@ -47,7 +47,6 @@ _ACCENT_COLORS = {
     "obs_studio": "\033[38;5;55m",  # purple
     "kdenlive": "\033[38;5;69m",  # slate blue
     "shotcut": "\033[38;5;35m",  # teal green
-    "docker": "\033[38;5;39m",  # Docker
     "vlc": "\033[38;5;208m",  # VLC orange
 }
 _DEFAULT_ACCENT = "\033[38;5;75m"  # default sky blue

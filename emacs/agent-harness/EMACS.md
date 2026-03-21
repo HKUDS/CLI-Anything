@@ -1,6 +1,6 @@
 # emacs
 
-Emacs - edit, eval, compile, dired
+emacs tool
 
 Binary: `emacs`
-Category: editor
+Category: utility

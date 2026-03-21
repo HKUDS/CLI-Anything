@@ -1,6 +1,6 @@
 # esbuild
 
-Fast bundler
+esbuild tool
 
 Binary: `esbuild`
-Category: build
+Category: utility

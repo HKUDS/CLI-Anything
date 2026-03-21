@@ -1,8 +1,8 @@
 ---
 name: cli-anything-sha256sum
-description: SHA256 checksum
+description: sha256sum tool
 ---
 
 # cli-anything-sha256sum
 
-SHA256 checksum
+sha256sum tool

@@ -1,3 +1,3 @@
 # cli-anything-most
 
-Enhanced pager
+most tool

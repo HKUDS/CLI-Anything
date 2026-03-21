@@ -1,6 +1,6 @@
 # most
 
-Enhanced pager
+most tool
 
 Binary: `most`
-Category: terminal
+Category: utility

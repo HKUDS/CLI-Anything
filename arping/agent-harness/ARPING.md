@@ -1,6 +1,6 @@
 # arping
 
-ARP ping
+arping tool
 
 Binary: `arping`
-Category: network
+Category: utility

@@ -1,6 +1,6 @@
 # graphviz
 
-Graphviz - render DOT graphs to PNG/SVG/PDF
+graphviz tool
 
-Binary: `dot`
-Category: diagrams
+Binary: `graphviz`
+Category: utility

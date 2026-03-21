@@ -1,6 +1,6 @@
 # inkscape
 
-Vector graphics editor
+inkscape tool
 
 Binary: `inkscape`
-Category: image
+Category: utility

@@ -1,3 +1,3 @@
 # cli-anything-dcraw
 
-RAW decoder
+dcraw tool

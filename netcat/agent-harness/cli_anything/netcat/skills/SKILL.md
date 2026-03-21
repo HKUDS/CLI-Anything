@@ -1,8 +1,8 @@
 ---
 name: cli-anything-netcat
-description: Network cat
+description: netcat tool
 ---
 
 # cli-anything-netcat
 
-Network cat
+netcat tool

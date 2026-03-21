@@ -1,6 +1,6 @@
 # etcd
 
-Distributed KV
+etcd tool
 
-Binary: `etcdctl`
-Category: database
+Binary: `etcd`
+Category: utility

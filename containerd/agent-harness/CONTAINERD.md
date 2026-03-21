@@ -1,6 +1,6 @@
 # containerd
 
-Container runtime
+containerd tool
 
-Binary: `ctr`
-Category: containers
+Binary: `containerd`
+Category: utility

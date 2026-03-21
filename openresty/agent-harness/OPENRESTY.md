@@ -1,6 +1,6 @@
 # openresty
 
-Nginx+Lua
+openresty tool
 
 Binary: `openresty`
-Category: web
+Category: utility

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-nats
-description: NATS - pub/sub, streams, KV store
+description: nats tool
 ---
 
 # cli-anything-nats
 
-NATS - pub/sub, streams, KV store
+nats tool

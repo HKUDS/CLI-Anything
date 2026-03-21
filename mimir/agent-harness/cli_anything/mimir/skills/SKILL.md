@@ -1,8 +1,8 @@
 ---
 name: cli-anything-mimir
-description: Grafana metrics
+description: mimir tool
 ---
 
 # cli-anything-mimir
 
-Grafana metrics
+mimir tool

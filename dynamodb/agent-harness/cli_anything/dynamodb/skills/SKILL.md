@@ -1,8 +1,8 @@
 ---
 name: cli-anything-dynamodb
-description: DynamoDB - NoSQL
+description: dynamodb tool
 ---
 
 # cli-anything-dynamodb
 
-DynamoDB - NoSQL
+dynamodb tool

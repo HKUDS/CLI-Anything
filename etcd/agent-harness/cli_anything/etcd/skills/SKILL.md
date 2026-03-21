@@ -1,8 +1,8 @@
 ---
 name: cli-anything-etcd
-description: Distributed KV
+description: etcd tool
 ---
 
 # cli-anything-etcd
 
-Distributed KV
+etcd tool

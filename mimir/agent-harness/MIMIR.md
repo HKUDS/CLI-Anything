@@ -1,6 +1,6 @@
 # mimir
 
-Grafana metrics
+mimir tool
 
 Binary: `mimir`
-Category: monitoring
+Category: utility

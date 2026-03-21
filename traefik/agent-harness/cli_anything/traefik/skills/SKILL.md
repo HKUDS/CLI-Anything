@@ -1,10 +1,8 @@
 ---
 name: cli-anything-traefik
-description: Reverse proxy - routers, services, middleware
+description: traefik tool
 ---
 
 # cli-anything-traefik
 
-Reverse proxy - routers, services, middleware
-
-Binary: `traefik`
+traefik tool

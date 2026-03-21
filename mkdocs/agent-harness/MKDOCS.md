@@ -1,6 +1,6 @@
 # mkdocs
 
-MkDocs - build, serve, deploy docs
+mkdocs tool
 
 Binary: `mkdocs`
-Category: docs
+Category: utility

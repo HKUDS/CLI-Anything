@@ -1,8 +1,8 @@
 ---
 name: cli-anything-hexdump
-description: Hex dump viewer
+description: hexdump tool
 ---
 
 # cli-anything-hexdump
 
-Hex dump viewer
+hexdump tool

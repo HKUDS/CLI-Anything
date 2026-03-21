@@ -1,3 +1,3 @@
 # cli-anything-jekyll
 
-Static site gen
+jekyll tool

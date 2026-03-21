@@ -1,8 +1,8 @@
 ---
 name: cli-anything-openresty
-description: Nginx+Lua
+description: openresty tool
 ---
 
 # cli-anything-openresty
 
-Nginx+Lua
+openresty tool

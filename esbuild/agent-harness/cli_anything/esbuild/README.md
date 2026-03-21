@@ -1,3 +1,3 @@
 # cli-anything-esbuild
 
-Fast bundler
+esbuild tool

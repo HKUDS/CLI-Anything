@@ -1,6 +1,6 @@
 # less
 
-Pager
+less tool
 
 Binary: `less`
-Category: terminal
+Category: utility

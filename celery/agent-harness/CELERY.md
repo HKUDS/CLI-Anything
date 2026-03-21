@@ -1,6 +1,6 @@
 # celery
 
-Task queue - workers, tasks, inspect, purge
+celery tool
 
 Binary: `celery`
-Category: messaging
+Category: utility

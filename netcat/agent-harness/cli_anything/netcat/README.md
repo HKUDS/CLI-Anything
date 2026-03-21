@@ -1,3 +1,3 @@
 # cli-anything-netcat
 
-Network cat
+netcat tool

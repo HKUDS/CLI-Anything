@@ -1,6 +1,6 @@
 # memcached
 
-Distributed cache
+memcached tool
 
 Binary: `memcached`
-Category: cache
+Category: utility

@@ -1,8 +1,8 @@
 ---
 name: cli-anything-jest
-description: Jest - test, coverage, watch, update snapshots
+description: jest tool
 ---
 
 # cli-anything-jest
 
-Jest - test, coverage, watch, update snapshots
+jest tool

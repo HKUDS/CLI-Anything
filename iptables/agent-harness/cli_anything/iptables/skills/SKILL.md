@@ -1,10 +1,8 @@
 ---
 name: cli-anything-iptables
-description: Firewall rules - list, add, delete, NAT
+description: iptables tool
 ---
 
 # cli-anything-iptables
 
-Firewall rules - list, add, delete, NAT
-
-Binary: `iptables`
+iptables tool

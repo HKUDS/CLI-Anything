@@ -1,8 +1,8 @@
 ---
 name: cli-anything-pyroscope
-description: Profiling
+description: pyroscope tool
 ---
 
 # cli-anything-pyroscope
 
-Profiling
+pyroscope tool

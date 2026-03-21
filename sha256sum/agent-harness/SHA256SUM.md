@@ -1,6 +1,6 @@
 # sha256sum
 
-SHA256 checksum
+sha256sum tool
 
 Binary: `sha256sum`
-Category: crypto
+Category: utility

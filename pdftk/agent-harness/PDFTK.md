@@ -1,6 +1,6 @@
 # pdftk
 
-PDF toolkit - merge, split, stamp, fill forms
+pdftk tool
 
 Binary: `pdftk`
-Category: pdf
+Category: utility

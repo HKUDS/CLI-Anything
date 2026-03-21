@@ -1,8 +1,8 @@
 ---
 name: cli-anything-grep
-description: Text search
+description: grep tool
 ---
 
 # cli-anything-grep
 
-Text search
+grep tool

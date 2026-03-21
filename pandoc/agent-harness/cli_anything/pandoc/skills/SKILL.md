@@ -1,15 +1,8 @@
-# Pandoc CLI-Anything Skill
+---
+name: cli-anything-pandoc
+description: pandoc tool
+---
 
-## Purpose
-Provide a REPL-driven interface to Pandoc (pandoc).
+# cli-anything-pandoc
 
-## Commands
-- `convert <input> <output>`
-- `info <file>`
-- `formats`
-- `metadata <file>`
-- `toc <file>`
-
-## Usage Pattern
-All commands use subprocess to call pandoc.
-Session provides undo/redo via snapshots.
+pandoc tool

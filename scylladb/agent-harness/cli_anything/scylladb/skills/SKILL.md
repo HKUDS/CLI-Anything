@@ -1,8 +1,8 @@
 ---
 name: cli-anything-scylladb
-description: Fast Cassandra
+description: scylladb tool
 ---
 
 # cli-anything-scylladb
 
-Fast Cassandra
+scylladb tool

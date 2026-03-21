@@ -1,6 +1,6 @@
 # firecracker
 
-MicroVM
+firecracker tool
 
 Binary: `firecracker`
-Category: vm
+Category: utility

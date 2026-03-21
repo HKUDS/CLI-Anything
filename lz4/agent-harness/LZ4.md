@@ -1,6 +1,6 @@
 # lz4
 
-LZ4 compression
+lz4 tool
 
 Binary: `lz4`
-Category: compression
+Category: utility

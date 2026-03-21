@@ -1,3 +1,3 @@
 # cli-anything-rawtherapee
 
-RAW processor
+rawtherapee tool

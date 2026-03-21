@@ -1,8 +1,8 @@
 ---
 name: cli-anything-linkerd
-description: Service mesh
+description: linkerd tool
 ---
 
 # cli-anything-linkerd
 
-Service mesh
+linkerd tool

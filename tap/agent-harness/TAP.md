@@ -1,6 +1,6 @@
 # tap
 
-TAP test framework
+tap tool
 
 Binary: `tap`
-Category: testing
+Category: utility

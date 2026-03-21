@@ -6,14 +6,14 @@ Copy this file into your CLI package at:
 Usage:
     from cli_anything.<software>.utils.repl_skin import ReplSkin
 
-    skin = ReplSkin("darktable", version="1.0.0")
+    skin = ReplSkin("shotcut", version="1.0.0")
     skin.print_banner()
-    prompt_text = skin.prompt(project_name="my_photo", modified=True)
+    prompt_text = skin.prompt(project_name="my_video.mlt", modified=True)
     skin.success("Project saved")
     skin.error("File not found")
     skin.warning("Unsaved changes")
-    skin.info("Processing 24 photos...")
-    skin.status("Export", "JPEG 95% quality")
+    skin.info("Processing 24 clips...")
+    skin.status("Track 1", "3 clips, 00:02:30")
     skin.table(headers, rows)
     skin.print_goodbye()
 """
@@ -48,7 +48,6 @@ _ACCENT_COLORS = {
     "kdenlive": "\033[38;5;69m",  # slate blue
     "shotcut": "\033[38;5;35m",  # teal green
     "vlc": "\033[38;5;208m",  # VLC orange
-    "darktable": "\033[38;5;94m",  # brown/amber
 }
 _DEFAULT_ACCENT = "\033[38;5;75m"  # default sky blue
 
@@ -159,7 +158,7 @@ class ReplSkin:
         top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
         bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
 
-        # Title:  ◆  cli-anything · Darktable
+        # Title:  ◆  cli-anything · Shotcut
         icon = self._c(_CYAN + _BOLD, "◆")
         brand = self._c(_CYAN + _BOLD, "cli-anything")
         dot = self._c(_DARK_GRAY, "·")
@@ -511,7 +510,6 @@ _ANSI_256_TO_HEX = {
     "\033[38;5;69m": "#5f87ff",  # kdenlive slate blue
     "\033[38;5;75m": "#5fafff",  # default sky blue
     "\033[38;5;80m": "#5fd7d7",  # brand cyan
-    "\033[38;5;94m": "#875f00",  # darktable brown/amber
     "\033[38;5;208m": "#ff8700",  # blender deep orange
     "\033[38;5;214m": "#ffaf00",  # gimp warm orange
 }

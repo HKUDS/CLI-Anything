@@ -1,6 +1,6 @@
 # zfs
 
-ZFS - create, destroy, snapshot, send/receive
+zfs tool
 
 Binary: `zfs`
-Category: storage
+Category: utility

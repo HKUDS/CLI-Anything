@@ -1,10 +1,8 @@
 ---
 name: cli-anything-mongodb
-description: MongoDB CRUD, dump, restore, aggregation
+description: mongodb tool
 ---
 
 # cli-anything-mongodb
 
-MongoDB CRUD, dump, restore, aggregation
-
-Binary: `mongodb`
+mongodb tool

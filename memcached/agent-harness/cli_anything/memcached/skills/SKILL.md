@@ -1,8 +1,8 @@
 ---
 name: cli-anything-memcached
-description: Distributed cache
+description: memcached tool
 ---
 
 # cli-anything-memcached
 
-Distributed cache
+memcached tool

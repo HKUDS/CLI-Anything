@@ -1,3 +1,3 @@
 # cli-anything-linkerd
 
-Service mesh
+linkerd tool

@@ -1,6 +1,6 @@
 # kustomize
 
-K8s manifests
+kustomize tool
 
 Binary: `kustomize`
-Category: kubernetes
+Category: utility

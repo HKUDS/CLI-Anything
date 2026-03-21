@@ -1,6 +1,6 @@
 # sendmail
 
-Mail transfer agent - send, queue, aliases
+sendmail tool
 
 Binary: `sendmail`
-Category: email
+Category: utility

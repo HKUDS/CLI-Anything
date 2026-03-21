@@ -1,1 +1,0 @@
-"""Krita CLI — Tests package."""

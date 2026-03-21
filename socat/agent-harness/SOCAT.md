@@ -1,6 +1,6 @@
 # socat
 
-Network relay
+socat tool
 
 Binary: `socat`
-Category: network
+Category: utility

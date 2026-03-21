@@ -1,8 +1,8 @@
 ---
 name: cli-anything-couchdb
-description: CouchDB - document database
+description: couchdb tool
 ---
 
 # cli-anything-couchdb
 
-CouchDB - document database
+couchdb tool

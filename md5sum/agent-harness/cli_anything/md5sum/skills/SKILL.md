@@ -1,8 +1,8 @@
 ---
 name: cli-anything-md5sum
-description: MD5 checksum
+description: md5sum tool
 ---
 
 # cli-anything-md5sum
 
-MD5 checksum
+md5sum tool

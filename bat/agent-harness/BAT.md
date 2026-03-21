@@ -1,6 +1,6 @@
 # bat
 
-Cat with syntax highlighting
+bat tool
 
 Binary: `bat`
-Category: terminal
+Category: utility

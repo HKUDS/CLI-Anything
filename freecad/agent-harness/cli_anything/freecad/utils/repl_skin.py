@@ -48,7 +48,6 @@ _ACCENT_COLORS = {
     "kdenlive": "\033[38;5;69m",  # slate blue
     "shotcut": "\033[38;5;35m",  # teal green
     "vlc": "\033[38;5;208m",  # VLC orange
-    "freecad": "\033[38;5;196m",  # FreeCAD red
 }
 _DEFAULT_ACCENT = "\033[38;5;75m"  # default sky blue
 

@@ -1,6 +1,6 @@
 # mocha
 
-Mocha - test, reporter, grep, timeout
+mocha tool
 
 Binary: `mocha`
-Category: testing
+Category: utility

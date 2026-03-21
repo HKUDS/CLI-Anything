@@ -1,8 +1,8 @@
 ---
 name: cli-anything-rawtherapee
-description: RAW processor
+description: rawtherapee tool
 ---
 
 # cli-anything-rawtherapee
 
-RAW processor
+rawtherapee tool

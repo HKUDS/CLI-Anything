@@ -1,1 +1,0 @@
-"""Blender CLI test suite."""

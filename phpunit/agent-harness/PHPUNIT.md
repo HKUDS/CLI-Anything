@@ -1,6 +1,6 @@
 # phpunit
 
-PHP testing
+phpunit tool
 
 Binary: `phpunit`
-Category: testing
+Category: utility

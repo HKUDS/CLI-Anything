@@ -1,3 +1,3 @@
 # cli-anything-arping
 
-ARP ping
+arping tool

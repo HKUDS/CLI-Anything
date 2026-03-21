@@ -1,17 +1,6 @@
 # traefik
 
-Reverse proxy - routers, services, middleware
+traefik tool
 
 Binary: `traefik`
-Category: web
-
-## Commands
-
-- `run [args...]` - Run arbitrary traefik command
-
-## Usage
-
-```bash
-cli-anything-traefik run --help
-cli-anything-traefik run [args...]
-```
+Category: utility

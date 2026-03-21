@@ -1,6 +1,6 @@
 # qpdf
 
-QPDF - linearize, encrypt, split, merge
+qpdf tool
 
 Binary: `qpdf`
-Category: pdf
+Category: utility
