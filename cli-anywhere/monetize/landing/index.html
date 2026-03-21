@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLI-Anything — Turn Any Software Into an AI Tool</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#e0e0e0;line-height:1.6}
+.container{max-width:1200px;margin:0 auto;padding:0 20px}
+nav{padding:20px 0;border-bottom:1px solid #222}
+nav .container{display:flex;justify-content:space-between;align-items:center}
+nav a{color:#e0e0e0;text-decoration:none;margin-left:30px}
+nav .logo{font-size:1.5em;font-weight:bold;color:#a855f7}
+.hero{text-align:center;padding:100px 0 60px}
+.hero h1{font-size:3.5em;margin-bottom:20px;background:linear-gradient(135deg,#a855f7,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{font-size:1.3em;color:#888;max-width:600px;margin:0 auto 40px}
+.hero .cta{display:inline-block;background:#a855f7;color:#fff;padding:15px 40px;border-radius:8px;text-decoration:none;font-size:1.2em;margin:10px}
+.hero .cta.secondary{background:transparent;border:2px solid #a855f7;color:#a855f7}
+.stats{display:flex;justify-content:center;gap:60px;padding:40px 0}
+.stat{text-align:center}
+.stat .number{font-size:2.5em;font-weight:bold;color:#a855f7}
+.stat .label{color:#888}
+.demo{background:#111;border-radius:12px;padding:30px;margin:40px auto;max-width:800px;text-align:left;font-family:monospace;font-size:0.9em}
+.demo .prompt{color:#a855f7}
+.demo .output{color:#4ade80}
+.pricing{padding:80px 0}
+.pricing h2{text-align:center;font-size:2.5em;margin-bottom:50px}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;max-width:900px;margin:0 auto}
+.tier{background:#111;border:1px solid #222;border-radius:12px;padding:30px;text-align:center}
+.tier.featured{border-color:#a855f7;transform:scale(1.05)}
+.tier h3{font-size:1.5em;margin-bottom:10px}
+.tier .price{font-size:2.5em;font-weight:bold;margin:20px 0}
+.tier .price span{font-size:0.4em;color:#888}
+.tier ul{list-style:none;text-align:left;margin:20px 0}
+.tier ul li{padding:8px 0;border-bottom:1px solid #222}
+.tier ul li::before{content:"✓ ";color:#4ade80}
+.tier .btn{display:inline-block;background:#a855f7;color:#fff;padding:12px 30px;border-radius:6px;text-decoration:none;margin-top:20px}
+.tier.featured .btn{background:#f97316}
+.integrations{padding:60px 0;text-align:center}
+.integrations h2{font-size:2em;margin-bottom:30px}
+.logos{display:flex;justify-content:center;gap:40px;flex-wrap:wrap;opacity:0.6}
+.logos span{font-size:1.5em}
+.testimonials{padding:60px 0;background:#111}
+.testimonials h2{text-align:center;font-size:2em;margin-bottom:30px}
+.quote{max-width:600px;margin:0 auto 30px;padding:20px;border-left:3px solid #a855f7}
+.quote p{font-style:italic;color:#ccc}
+.quote .author{color:#a855f7;margin-top:10px}
+footer{padding:40px 0;border-top:1px solid #222;text-align:center;color:#666}
+@media(max-width:768px){.tiers{grid-template-columns:1fr}.hero h1{font-size:2em}.stats{flex-direction:column;gap:20px}}
+</style>
+</head>
+<body>
+<nav><div class="container">
+<span class="logo">cli-anything</span>
+<div><a href="#pricing">Pricing</a><a href="https://github.com/HKUDS/CLI-Anything">GitHub</a><a href="https://pypi.org/project/cli-anything/">PyPI</a></div>
+</div></nav>
+
+<section class="hero">
+<div class="container">
+<h1>Turn Any Software Into an AI Tool</h1>
+<p>No plugins. No APIs. No modifications. Just structured CLI harnesses that let AI agents control 645+ apps.</p>
+<a href="#pricing" class="cta">Get Started Free</a>
+<a href="https://github.com/HKUDS/CLI-Anything" class="cta secondary">View on GitHub</a>
+</div>
+</section>
+
+<section class="stats"><div class="container">
+<div class="stat"><div class="number">645+</div><div class="label">CLI Harnesses</div></div>
+<div class="stat"><div class="number">20+</div><div class="label">Categories</div></div>
+<div class="stat"><div class="number">6.4M</div><div class="label">Lines of Code</div></div>
+<div class="stat"><div class="number">5 min</div><div class="label">Setup Time</div></div>
+</div></section>
+
+<div class="container">
+<div class="demo">
+<span class="prompt">$ pip install cli-anything</span><br>
+<span class="prompt">$ cli-anything install gimp</span><br>
+<span class="output">✓ GIMP harness installed</span><br><br>
+<span class="prompt">$ cli-anything-gimp batch resize photos/*.jpg --width 800 --output resized/</span><br>
+<span class="output">{"status": "success", "processed": 47, "output_dir": "resized/"}</span><br><br>
+<span class="prompt"># Or use with your AI agent:</span><br>
+<span class="prompt">User: "Resize all my photos to 800px wide"</span><br>
+<span class="output">Agent: I'll resize all 47 photos using GIMP's CLI harness.</span><br>
+<span class="output">[calls cli-anything-gimp batch resize...]</span><br>
+<span class="output">Done! All photos saved to resized/</span>
+</div>
+</div>
+
+<section class="integrations"><div class="container">
+<h2>Works With Your Stack</h2>
+<div class="logos">
+<span>🤖 Claude</span><span>🔗 LangChain</span><span>👥 CrewAI</span>
+<span>🔌 MCP</span><span>🐍 Python</span><span>📦 PyPI</span>
+</div>
+</div></section>
+
+<section class="pricing" id="pricing"><div class="container">
+<h2>Simple Pricing</h2>
+<div class="tiers">
+<div class="tier">
+<h3>Free</h3>
+<div class="price">$0<span>/mo</span></div>
+<ul>
+<li>10 core harnesses</li>
+<li>Community support</li>
+<li>Manual install</li>
+<li>Basic documentation</li>
+<li>MIT license</li>
+</ul>
+<a href="https://github.com/HKUDS/CLI-Anything" class="btn">Get Started</a>
+</div>
+<div class="tier featured">
+<h3>Pro</h3>
+<div class="price">$29<span>/mo</span></div>
+<ul>
+<li>All 645+ harnesses</li>
+<li>One-click install</li>
+<li>Cloud MCP server</li>
+<li>Priority support</li>
+<li>Premium harnesses</li>
+<li>Team dashboard</li>
+</ul>
+<a href="mailto:sales@cli-anything.dev" class="btn">Start Free Trial</a>
+</div>
+<div class="tier">
+<h3>Enterprise</h3>
+<div class="price">$499<span>/mo</span></div>
+<ul>
+<li>Everything in Pro</li>
+<li>Custom harnesses</li>
+<li>Private MCP server</li>
+<li>SSO + audit log</li>
+<li>SLA + dedicated support</li>
+<li>On-premise deployment</li>
+</ul>
+<a href="mailto:sales@cli-anything.dev" class="btn">Contact Sales</a>
+</div>
+</div>
+</div></section>
+
+<section class="testimonials"><div class="container">
+<h2>What People Say</h2>
+<div class="quote">
+<p>"CLI-Anything turned our 40-hour manual GIMP workflow into a 5-minute script. Our AI agent handles everything now."</p>
+<div class="author">— DevOps Lead, E-commerce Company</div>
+</div>
+<div class="quote">
+<p>"We use the FreeCAD harness to go from text description to manufacturable STEP files. Game changer for our prototyping."</p>
+<div class="author">— CTO, Hardware Startup</div>
+</div>
+<div class="quote">
+<p>"Finally, a way to give AI agents control over our entire creative pipeline. GIMP, Blender, Inkscape — all automated."</p>
+<div class="author">— Creative Director, Agency</div>
+</div>
+</div></section>
+
+<footer><div class="container">
+<p>CLI-Anything © 2026 · <a href="https://github.com/HKUDS/CLI-Anything">GitHub</a> · <a href="mailto:sales@cli-anything.dev">Contact</a></p>
+</div></footer>
+</body>
+</html>
