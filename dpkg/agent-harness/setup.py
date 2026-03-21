@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-dpkg",version="1.0.0",author="cli-anything contributors",description="Debian packages - install, remove, query, list",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-dpkg=cli_anything.dpkg.dpkg_cli:main"]},package_data={"cli_anything.dpkg":["skills/*.md"]},include_package_data=True,zip_safe=False)
