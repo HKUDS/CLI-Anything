@@ -1,8 +1,4 @@
 ---
 name: cli-anything-column
-description: column tool
+description: column CLI harness
 ---
-
-# cli-anything-column
-
-column tool

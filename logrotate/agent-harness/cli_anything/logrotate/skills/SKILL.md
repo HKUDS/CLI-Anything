@@ -1,8 +1,4 @@
 ---
 name: cli-anything-logrotate
-description: Log rotation
+description: logrotate CLI harness
 ---
-
-# cli-anything-logrotate
-
-Log rotation

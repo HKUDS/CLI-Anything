@@ -1,6 +1,3 @@
 # head
 
-head tool
-
-Binary: `head`
-Category: utility
+head CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-dig
-description: DNS lookup - A, AAAA, MX, NS, TXT, SOA
+description: dig CLI harness
 ---
-
-# cli-anything-dig
-
-DNS lookup - A, AAAA, MX, NS, TXT, SOA

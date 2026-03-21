@@ -1,8 +1,4 @@
 ---
 name: cli-anything-tsort
-description: tsort tool
+description: tsort CLI harness
 ---
-
-# cli-anything-tsort
-
-tsort tool

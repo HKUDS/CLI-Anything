@@ -1,8 +1,4 @@
 ---
 name: cli-anything-gzip
-description: gzip tool
+description: gzip CLI harness
 ---
-
-# cli-anything-gzip
-
-gzip tool

@@ -1,0 +1,3 @@
+# shasum
+
+shasum CLI harness

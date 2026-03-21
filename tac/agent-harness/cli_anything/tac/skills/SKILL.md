@@ -1,8 +1,4 @@
 ---
 name: cli-anything-tac
-description: tac tool
+description: tac CLI harness
 ---
-
-# cli-anything-tac
-
-tac tool

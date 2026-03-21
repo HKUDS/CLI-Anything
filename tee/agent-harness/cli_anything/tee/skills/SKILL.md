@@ -1,8 +1,4 @@
 ---
 name: cli-anything-tee
-description: Split output to files and stdout
+description: tee CLI harness
 ---
-
-# cli-anything-tee
-
-Split output to files and stdout

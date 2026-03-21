@@ -1,8 +1,4 @@
 ---
 name: cli-anything-md5sum
-description: md5sum tool
+description: md5sum CLI harness
 ---
-
-# cli-anything-md5sum
-
-md5sum tool

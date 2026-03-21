@@ -1,6 +1,3 @@
 # last
 
-Login history
-
-Binary: `last`
-Category: system
+last CLI harness

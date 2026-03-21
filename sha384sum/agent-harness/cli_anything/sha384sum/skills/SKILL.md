@@ -1,8 +1,4 @@
 ---
 name: cli-anything-sha384sum
-description: sha384sum tool
+description: sha384sum CLI harness
 ---
-
-# cli-anything-sha384sum
-
-sha384sum tool

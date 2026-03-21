@@ -1,8 +1,4 @@
 ---
 name: cli-anything-ed
-description: ed tool
+description: ed CLI harness
 ---
-
-# cli-anything-ed
-
-ed tool

@@ -1,6 +1,3 @@
 # lzma
 
-lzma tool
-
-Binary: `lzma`
-Category: utility
+lzma CLI harness

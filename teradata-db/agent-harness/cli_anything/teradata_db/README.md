@@ -1,0 +1,1 @@
+# cli-anything-teradata-db

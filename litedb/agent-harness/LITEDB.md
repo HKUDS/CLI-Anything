@@ -1,0 +1,3 @@
+# litedb
+
+litedb CLI harness

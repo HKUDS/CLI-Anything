@@ -1,8 +1,4 @@
 ---
 name: cli-anything-alpine
-description: alpine tool
+description: alpine CLI harness
 ---
-
-# cli-anything-alpine
-
-alpine tool

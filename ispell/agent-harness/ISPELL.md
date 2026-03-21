@@ -1,0 +1,3 @@
+# ispell
+
+ispell CLI harness

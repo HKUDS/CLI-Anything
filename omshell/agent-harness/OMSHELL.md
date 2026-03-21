@@ -1,0 +1,3 @@
+# omshell
+
+omshell CLI harness

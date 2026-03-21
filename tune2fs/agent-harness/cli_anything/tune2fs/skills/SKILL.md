@@ -1,8 +1,4 @@
 ---
 name: cli-anything-tune2fs
-description: tune2fs tool
+description: tune2fs CLI harness
 ---
-
-# cli-anything-tune2fs
-
-tune2fs tool

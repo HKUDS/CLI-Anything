@@ -1,0 +1,3 @@
+# capnproto
+
+capnproto CLI harness

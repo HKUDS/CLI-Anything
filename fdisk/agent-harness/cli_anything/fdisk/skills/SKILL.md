@@ -1,8 +1,4 @@
 ---
 name: cli-anything-fdisk
-description: Disk partitioning
+description: fdisk CLI harness
 ---
-
-# cli-anything-fdisk
-
-Disk partitioning

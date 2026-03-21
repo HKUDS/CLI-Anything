@@ -34,6 +34,14 @@ def handle_error(func):
 def cli(ctx,use_json):
     global _json_output;_json_output=use_json
     if ctx.invoked_subcommand is None:ctx.invoke(repl)
+@cli.command("run")
+@click.argument("args",nargs=-1)
+@handle_error
+def run_cmd(args):
+    """Run arbitrary command."""
+    import subprocess
+    result=subprocess.run(["awk"]+list(args),capture_output=True,text=True,timeout=300)
+    output({"status":"success" if result.returncode==0 else "error","stdout":result.stdout,"stderr":result.stderr})
 @cli.command()
 @handle_error
 def repl():
@@ -46,7 +54,7 @@ def repl():
             line=skin.get_input(pt_session)
             if not line:continue
             if line.lower() in ("quit","exit","q"):skin.print_goodbye();break
-            if line.lower()=="help":skin.help({"filter FILE --program P":"Filter with program","filter FILE --field N":"Extract field N","filter FILE --pattern P --action A":"Filter and act","sum FILE --column N":"Sum column","count FILE --pattern P":"Count matches"});continue
+            if line.lower()=="help":skin.help({});continue
             try:args=shlex.split(line)
             except:args=line.split()
             try:cli.main(args,standalone_mode=False)
@@ -55,32 +63,5 @@ def repl():
             except Exception as e:skin.error(f"{e}")
         except (EOFError,KeyboardInterrupt):skin.print_goodbye();break
     _repl_mode=False
-@cli.command()
-@click.argument("filepath")
-@click.option("--program","program",help="AWK program")
-@click.option("--field","field",type=int,help="Extract field N")
-@click.option("--pattern","pattern",help="Match pattern")
-@click.option("--action","action",help="Action on match")
-@handle_error
-def filter(filepath,program,field,pattern,action):
-    from cli_anything.awk.core.text import awk_filter
-    result = awk_filter(filepath, program=program, field=field, pattern=pattern, action=action)
-    output(result, "Filter results")
-@cli.command()
-@click.argument("filepath")
-@click.option("--column","column",required=True,type=int,help="Column number")
-@handle_error
-def sum(filepath,column):
-    from cli_anything.awk.core.text import awk_sum
-    result = awk_sum(filepath, column)
-    output(result, f"Sum of column {column}")
-@cli.command()
-@click.argument("filepath")
-@click.option("--pattern","pattern",required=True,help="Pattern to count")
-@handle_error
-def count(filepath,pattern):
-    from cli_anything.awk.core.text import awk_count
-    result = awk_count(filepath, pattern)
-    output(result, f"Count of '{pattern}'")
 def main():cli()
 if __name__=="__main__":main()

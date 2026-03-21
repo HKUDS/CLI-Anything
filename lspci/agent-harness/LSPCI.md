@@ -1,6 +1,3 @@
 # lspci
 
-PCI devices
-
-Binary: `lspci`
-Category: hardware
+lspci CLI harness

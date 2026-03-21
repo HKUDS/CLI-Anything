@@ -1,6 +1,3 @@
 # fdisk
 
-Disk partitioning
-
-Binary: `fdisk`
-Category: storage
+fdisk CLI harness

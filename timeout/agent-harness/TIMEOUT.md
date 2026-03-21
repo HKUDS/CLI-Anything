@@ -1,6 +1,3 @@
 # timeout
 
-Run with time limit
-
-Binary: `timeout`
-Category: system
+timeout CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-rexec
-description: rexec tool
+description: rexec CLI harness
 ---
-
-# cli-anything-rexec
-
-rexec tool

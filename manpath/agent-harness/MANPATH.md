@@ -1,0 +1,3 @@
+# manpath
+
+manpath CLI harness

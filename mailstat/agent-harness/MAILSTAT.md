@@ -1,0 +1,3 @@
+# mailstat
+
+mailstat CLI harness

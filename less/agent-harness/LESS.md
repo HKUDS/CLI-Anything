@@ -1,6 +1,3 @@
 # less
 
-less tool
-
-Binary: `less`
-Category: utility
+less CLI harness

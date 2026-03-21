@@ -1,0 +1,3 @@
+# zdump
+
+zdump CLI harness

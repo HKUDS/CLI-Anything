@@ -1,0 +1,3 @@
+# wipefs
+
+wipefs CLI harness

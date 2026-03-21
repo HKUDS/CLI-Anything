@@ -1,0 +1,3 @@
+# nisdomainname
+
+nisdomainname CLI harness

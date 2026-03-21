@@ -1,8 +1,4 @@
 ---
 name: cli-anything-lzma
-description: lzma tool
+description: lzma CLI harness
 ---
-
-# cli-anything-lzma
-
-lzma tool

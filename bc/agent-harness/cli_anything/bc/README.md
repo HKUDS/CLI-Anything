@@ -1,3 +1,1 @@
 # cli-anything-bc
-
-Calculator

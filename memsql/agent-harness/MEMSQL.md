@@ -1,0 +1,3 @@
+# memsql
+
+memsql CLI harness

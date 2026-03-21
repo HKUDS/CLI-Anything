@@ -1,8 +1,4 @@
 ---
 name: cli-anything-dmesg
-description: Kernel messages
+description: dmesg CLI harness
 ---
-
-# cli-anything-dmesg
-
-Kernel messages

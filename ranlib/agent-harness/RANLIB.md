@@ -1,0 +1,3 @@
+# ranlib
+
+ranlib CLI harness

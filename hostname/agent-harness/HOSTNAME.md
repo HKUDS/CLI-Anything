@@ -1,6 +1,3 @@
 # hostname
 
-Hostname
-
-Binary: `hostname`
-Category: system
+hostname CLI harness

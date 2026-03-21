@@ -1,0 +1,3 @@
+# bzdiff
+
+bzdiff CLI harness

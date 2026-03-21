@@ -1,6 +1,3 @@
 # cut
 
-cut tool
-
-Binary: `cut`
-Category: utility
+cut CLI harness

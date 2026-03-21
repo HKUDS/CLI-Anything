@@ -1,8 +1,4 @@
 ---
 name: cli-anything-last
-description: Login history
+description: last CLI harness
 ---
-
-# cli-anything-last
-
-Login history

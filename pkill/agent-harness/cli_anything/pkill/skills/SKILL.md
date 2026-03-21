@@ -1,8 +1,4 @@
 ---
 name: cli-anything-pkill
-description: Kill processes by name
+description: pkill CLI harness
 ---
-
-# cli-anything-pkill
-
-Kill processes by name

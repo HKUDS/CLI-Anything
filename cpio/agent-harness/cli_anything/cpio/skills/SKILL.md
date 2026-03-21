@@ -1,8 +1,4 @@
 ---
 name: cli-anything-cpio
-description: cpio tool
+description: cpio CLI harness
 ---
-
-# cli-anything-cpio
-
-cpio tool

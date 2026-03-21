@@ -1,8 +1,4 @@
 ---
 name: cli-anything-seq
-description: seq tool
+description: seq CLI harness
 ---
-
-# cli-anything-seq
-
-seq tool

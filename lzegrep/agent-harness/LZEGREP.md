@@ -1,0 +1,3 @@
+# lzegrep
+
+lzegrep CLI harness

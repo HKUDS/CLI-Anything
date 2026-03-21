@@ -1,0 +1,3 @@
+# getent
+
+getent CLI harness

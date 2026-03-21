@@ -1,0 +1,3 @@
+# psfstriptable
+
+psfstriptable CLI harness

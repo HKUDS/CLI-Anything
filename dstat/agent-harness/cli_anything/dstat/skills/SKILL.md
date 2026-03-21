@@ -1,8 +1,4 @@
 ---
 name: cli-anything-dstat
-description: Resource stats
+description: dstat CLI harness
 ---
-
-# cli-anything-dstat
-
-Resource stats

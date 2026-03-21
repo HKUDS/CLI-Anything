@@ -1,8 +1,4 @@
 ---
 name: cli-anything-rsh
-description: rsh tool
+description: rsh CLI harness
 ---
-
-# cli-anything-rsh
-
-rsh tool

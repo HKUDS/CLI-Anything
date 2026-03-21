@@ -1,0 +1,3 @@
+# fastapi
+
+fastapi CLI harness

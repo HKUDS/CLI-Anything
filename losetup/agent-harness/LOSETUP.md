@@ -1,0 +1,3 @@
+# losetup
+
+losetup CLI harness

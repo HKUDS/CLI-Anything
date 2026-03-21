@@ -1,8 +1,4 @@
 ---
 name: cli-anything-express
-description: Express.js - generate, routes, middleware
+description: express CLI harness
 ---
-
-# cli-anything-express
-
-Express.js - generate, routes, middleware

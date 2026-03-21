@@ -1,0 +1,3 @@
+# zipdetails
+
+zipdetails CLI harness

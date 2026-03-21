@@ -1,0 +1,3 @@
+# xzdiff
+
+xzdiff CLI harness

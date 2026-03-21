@@ -1,8 +1,4 @@
 ---
 name: cli-anything-comm
-description: comm tool
+description: comm CLI harness
 ---
-
-# cli-anything-comm
-
-comm tool

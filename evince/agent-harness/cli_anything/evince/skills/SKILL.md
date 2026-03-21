@@ -1,8 +1,4 @@
 ---
 name: cli-anything-evince
-description: evince tool
+description: evince CLI harness
 ---
-
-# cli-anything-evince
-
-evince tool

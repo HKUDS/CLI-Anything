@@ -1,8 +1,4 @@
 ---
 name: cli-anything-watch
-description: Execute periodically
+description: watch CLI harness
 ---
-
-# cli-anything-watch
-
-Execute periodically

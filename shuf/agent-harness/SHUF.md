@@ -1,6 +1,3 @@
 # shuf
 
-shuf tool
-
-Binary: `shuf`
-Category: utility
+shuf CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-mtr
-description: Network diagnostics
+description: mtr CLI harness
 ---
-
-# cli-anything-mtr
-
-Network diagnostics

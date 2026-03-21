@@ -1,0 +1,2 @@
+from cli_anything.systemd_socket_activate.systemd_socket_activate_cli import main
+main()

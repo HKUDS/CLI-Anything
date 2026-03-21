@@ -1,6 +1,3 @@
 # watch
 
-Execute periodically
-
-Binary: `watch`
-Category: system
+watch CLI harness

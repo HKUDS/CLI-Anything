@@ -1,0 +1,3 @@
+# whatis
+
+whatis CLI harness

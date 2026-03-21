@@ -1,0 +1,3 @@
+# ariadb
+
+ariadb CLI harness

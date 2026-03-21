@@ -1,8 +1,4 @@
 ---
 name: cli-anything-fold
-description: fold tool
+description: fold CLI harness
 ---
-
-# cli-anything-fold
-
-fold tool

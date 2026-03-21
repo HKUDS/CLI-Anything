@@ -1,8 +1,4 @@
 ---
 name: cli-anything-irc
-description: IRC client
+description: irc CLI harness
 ---
-
-# cli-anything-irc
-
-IRC client

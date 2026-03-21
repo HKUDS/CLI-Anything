@@ -1,0 +1,3 @@
+# geomesa
+
+geomesa CLI harness

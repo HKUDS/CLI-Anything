@@ -1,8 +1,4 @@
 ---
 name: cli-anything-lastlog
-description: Last login info
+description: lastlog CLI harness
 ---
-
-# cli-anything-lastlog
-
-Last login info

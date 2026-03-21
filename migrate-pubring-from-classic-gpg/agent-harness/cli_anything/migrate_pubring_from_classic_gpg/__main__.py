@@ -1,0 +1,2 @@
+from cli_anything.migrate_pubring_from_classic_gpg.migrate_pubring_from_classic_gpg_cli import main
+main()

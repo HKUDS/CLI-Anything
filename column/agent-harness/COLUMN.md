@@ -1,6 +1,3 @@
 # column
 
-column tool
-
-Binary: `column`
-Category: utility
+column CLI harness

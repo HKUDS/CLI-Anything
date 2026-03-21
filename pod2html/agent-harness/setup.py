@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-pod2html",version="1.0.0",author="cli-anything contributors",description="pod2html CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-pod2html=cli_anything.pod2html.pod2html_cli:main"]},package_data={"cli_anything.pod2html":["skills/*.md"]},include_package_data=True,zip_safe=False)

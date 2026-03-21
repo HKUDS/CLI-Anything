@@ -1,10 +1,4 @@
 ---
 name: cli-anything-dotnet
-description: .NET - build, run, test, publish
+description: dotnet CLI harness
 ---
-
-# cli-anything-dotnet
-
-.NET - build, run, test, publish
-
-Binary: `dotnet`

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-lpstat
-description: lpstat tool
+description: lpstat CLI harness
 ---
-
-# cli-anything-lpstat
-
-lpstat tool

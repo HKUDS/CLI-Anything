@@ -38,7 +38,7 @@ def cli(ctx,use_json):
 @click.argument("args",nargs=-1)
 @handle_error
 def run_cmd(args):
-    """Run arbitrary hexdump command."""
+    """Run arbitrary command."""
     import subprocess
     result=subprocess.run(["hexdump"]+list(args),capture_output=True,text=True,timeout=300)
     output({"status":"success" if result.returncode==0 else "error","stdout":result.stdout,"stderr":result.stderr})

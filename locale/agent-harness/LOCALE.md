@@ -1,0 +1,3 @@
+# locale
+
+locale CLI harness

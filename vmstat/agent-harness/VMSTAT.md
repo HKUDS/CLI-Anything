@@ -1,6 +1,3 @@
 # vmstat
 
-Memory statistics
-
-Binary: `vmstat`
-Category: monitoring
+vmstat CLI harness

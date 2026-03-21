@@ -1,8 +1,4 @@
 ---
 name: cli-anything-hostname
-description: Hostname
+description: hostname CLI harness
 ---
-
-# cli-anything-hostname
-
-Hostname

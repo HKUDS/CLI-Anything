@@ -1,8 +1,4 @@
 ---
 name: cli-anything-pgrep
-description: Find processes
+description: pgrep CLI harness
 ---
-
-# cli-anything-pgrep
-
-Find processes

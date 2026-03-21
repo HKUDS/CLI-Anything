@@ -1,8 +1,4 @@
 ---
 name: cli-anything-lpoptions
-description: lpoptions tool
+description: lpoptions CLI harness
 ---
-
-# cli-anything-lpoptions
-
-lpoptions tool

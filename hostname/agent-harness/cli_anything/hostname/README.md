@@ -1,3 +1,1 @@
 # cli-anything-hostname
-
-Hostname

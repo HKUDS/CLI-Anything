@@ -1,6 +1,3 @@
 # dmesg
 
-Kernel messages
-
-Binary: `dmesg`
-Category: system
+dmesg CLI harness

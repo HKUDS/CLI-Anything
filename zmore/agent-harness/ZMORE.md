@@ -1,0 +1,3 @@
+# zmore
+
+zmore CLI harness

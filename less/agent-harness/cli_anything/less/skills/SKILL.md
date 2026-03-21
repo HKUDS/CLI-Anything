@@ -1,8 +1,4 @@
 ---
 name: cli-anything-less
-description: less tool
+description: less CLI harness
 ---
-
-# cli-anything-less
-
-less tool

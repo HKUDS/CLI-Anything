@@ -1,0 +1,3 @@
+# dircolors
+
+dircolors CLI harness

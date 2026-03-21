@@ -1,0 +1,3 @@
+# bzcat
+
+bzcat CLI harness

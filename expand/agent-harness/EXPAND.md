@@ -1,6 +1,3 @@
 # expand
 
-expand tool
-
-Binary: `expand`
-Category: utility
+expand CLI harness

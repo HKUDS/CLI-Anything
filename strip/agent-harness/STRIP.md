@@ -1,0 +1,3 @@
+# strip
+
+strip CLI harness

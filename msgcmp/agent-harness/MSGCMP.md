@@ -1,0 +1,3 @@
+# msgcmp
+
+msgcmp CLI harness

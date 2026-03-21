@@ -1,0 +1,3 @@
+# amidi
+
+amidi CLI harness

@@ -1,6 +1,3 @@
 # rexec
 
-rexec tool
-
-Binary: `rexec`
-Category: utility
+rexec CLI harness

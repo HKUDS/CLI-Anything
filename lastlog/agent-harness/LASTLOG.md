@@ -1,6 +1,3 @@
 # lastlog
 
-Last login info
-
-Binary: `lastlog`
-Category: system
+lastlog CLI harness

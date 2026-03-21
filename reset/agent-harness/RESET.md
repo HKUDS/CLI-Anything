@@ -1,0 +1,3 @@
+# reset
+
+reset CLI harness

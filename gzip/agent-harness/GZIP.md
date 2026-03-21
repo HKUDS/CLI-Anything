@@ -1,6 +1,3 @@
 # gzip
 
-gzip tool
-
-Binary: `gzip`
-Category: utility
+gzip CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-factor
-description: factor tool
+description: factor CLI harness
 ---
-
-# cli-anything-factor
-
-factor tool

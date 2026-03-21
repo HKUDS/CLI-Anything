@@ -1,6 +1,3 @@
 # bun
 
-JS runtime
-
-Binary: `bun`
-Category: packages
+bun CLI harness

@@ -1,0 +1,3 @@
+# kbdrate
+
+kbdrate CLI harness

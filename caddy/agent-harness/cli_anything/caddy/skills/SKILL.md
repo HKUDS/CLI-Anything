@@ -1,8 +1,4 @@
 ---
 name: cli-anything-caddy
-description: caddy tool
+description: caddy CLI harness
 ---
-
-# cli-anything-caddy
-
-caddy tool

@@ -1,0 +1,3 @@
+# fincore
+
+fincore CLI harness

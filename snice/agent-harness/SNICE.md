@@ -1,0 +1,3 @@
+# snice
+
+snice CLI harness

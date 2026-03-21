@@ -1,8 +1,4 @@
 ---
 name: cli-anything-timeout
-description: Run with time limit
+description: timeout CLI harness
 ---
-
-# cli-anything-timeout
-
-Run with time limit

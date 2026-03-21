@@ -1,0 +1,3 @@
+# dynomite
+
+dynomite CLI harness

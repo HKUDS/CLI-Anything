@@ -1,8 +1,4 @@
 ---
 name: cli-anything-lsusb
-description: USB devices
+description: lsusb CLI harness
 ---
-
-# cli-anything-lsusb
-
-USB devices

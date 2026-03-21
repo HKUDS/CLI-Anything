@@ -1,0 +1,2 @@
+from cli_anything.systemd_machine_id_setup.systemd_machine_id_setup_cli import main
+main()

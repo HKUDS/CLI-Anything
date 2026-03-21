@@ -1,6 +1,3 @@
 # iconv
 
-Encoding conversion
-
-Binary: `iconv`
-Category: encoding
+iconv CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-head
-description: head tool
+description: head CLI harness
 ---
-
-# cli-anything-head
-
-head tool

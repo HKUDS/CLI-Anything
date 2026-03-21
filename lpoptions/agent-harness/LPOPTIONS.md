@@ -1,6 +1,3 @@
 # lpoptions
 
-lpoptions tool
-
-Binary: `lpoptions`
-Category: utility
+lpoptions CLI harness

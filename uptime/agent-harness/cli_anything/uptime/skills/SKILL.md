@@ -1,8 +1,4 @@
 ---
 name: cli-anything-uptime
-description: System uptime
+description: uptime CLI harness
 ---
-
-# cli-anything-uptime
-
-System uptime

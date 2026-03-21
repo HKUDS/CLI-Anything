@@ -1,0 +1,2 @@
+from cli_anything.update_default_wordlist.update_default_wordlist_cli import main
+main()

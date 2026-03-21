@@ -1,0 +1,3 @@
+# setmetamode
+
+setmetamode CLI harness

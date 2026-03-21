@@ -1,0 +1,3 @@
+# gpgconf
+
+gpgconf CLI harness

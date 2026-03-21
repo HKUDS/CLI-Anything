@@ -1,8 +1,4 @@
 ---
 name: cli-anything-mawk
-description: mawk tool
+description: mawk CLI harness
 ---
-
-# cli-anything-mawk
-
-mawk tool

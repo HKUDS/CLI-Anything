@@ -1,0 +1,3 @@
+# hsqldb
+
+hsqldb CLI harness

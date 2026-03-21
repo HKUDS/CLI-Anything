@@ -1,6 +1,3 @@
 # route
 
-Routing table
-
-Binary: `route`
-Category: network
+route CLI harness

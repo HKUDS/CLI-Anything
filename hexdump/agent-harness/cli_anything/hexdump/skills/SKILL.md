@@ -1,8 +1,4 @@
 ---
 name: cli-anything-hexdump
-description: hexdump tool
+description: hexdump CLI harness
 ---
-
-# cli-anything-hexdump
-
-hexdump tool

@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-mii-tool",version="1.0.0",author="cli-anything contributors",description="mii-tool CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-mii-tool=cli_anything.mii_tool.mii_tool_cli:main"]},package_data={"cli_anything.mii_tool":["skills/*.md"]},include_package_data=True,zip_safe=False)

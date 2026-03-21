@@ -1,8 +1,4 @@
 ---
 name: cli-anything-mdadm
-description: mdadm tool
+description: mdadm CLI harness
 ---
-
-# cli-anything-mdadm
-
-mdadm tool

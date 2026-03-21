@@ -1,8 +1,4 @@
 ---
 name: cli-anything-expand
-description: expand tool
+description: expand CLI harness
 ---
-
-# cli-anything-expand
-
-expand tool

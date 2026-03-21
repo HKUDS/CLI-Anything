@@ -1,0 +1,3 @@
+# aumix
+
+aumix CLI harness

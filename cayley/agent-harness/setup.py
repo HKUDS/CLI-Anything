@@ -1,0 +1,2 @@
+from setuptools import setup,find_namespace_packages
+setup(name="cli-anything-cayley",version="1.0.0",author="cli-anything contributors",description="cayley CLI harness",url="https://github.com/HKUDS/CLI-Anything",packages=find_namespace_packages(include=["cli_anything.*"]),python_requires=">=3.10",install_requires=["click>=8.0.0","prompt-toolkit>=3.0.0"],entry_points={"console_scripts":["cli-anything-cayley=cli_anything.cayley.cayley_cli:main"]},package_data={"cli_anything.cayley":["skills/*.md"]},include_package_data=True,zip_safe=False)

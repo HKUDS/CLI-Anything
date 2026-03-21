@@ -1,8 +1,4 @@
 ---
 name: cli-anything-dmidecode
-description: DMI decoder
+description: dmidecode CLI harness
 ---
-
-# cli-anything-dmidecode
-
-DMI decoder

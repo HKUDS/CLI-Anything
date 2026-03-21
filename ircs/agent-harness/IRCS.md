@@ -1,0 +1,3 @@
+# ircs
+
+ircs CLI harness

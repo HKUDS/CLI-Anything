@@ -34,16 +34,14 @@ def handle_error(func):
 def cli(ctx,use_json):
     global _json_output;_json_output=use_json
     if ctx.invoked_subcommand is None:ctx.invoke(repl)
-
 @cli.command("run")
 @click.argument("args",nargs=-1)
 @handle_error
 def run_cmd(args):
-    """Run arbitrary express command."""
+    """Run arbitrary command."""
     import subprocess
     result=subprocess.run(["express"]+list(args),capture_output=True,text=True,timeout=300)
     output({"status":"success" if result.returncode==0 else "error","stdout":result.stdout,"stderr":result.stderr})
-
 @cli.command()
 @handle_error
 def repl():

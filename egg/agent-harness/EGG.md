@@ -1,0 +1,3 @@
+# egg
+
+egg CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-route
-description: Routing table
+description: route CLI harness
 ---
-
-# cli-anything-route
-
-Routing table

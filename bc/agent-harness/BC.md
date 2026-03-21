@@ -1,6 +1,3 @@
 # bc
 
-Calculator
-
-Binary: `bc`
-Category: math
+bc CLI harness

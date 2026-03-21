@@ -1,6 +1,3 @@
 # dstat
 
-Resource stats
-
-Binary: `dstat`
-Category: monitoring
+dstat CLI harness

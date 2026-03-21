@@ -1,6 +1,3 @@
 # sha384sum
 
-sha384sum tool
-
-Binary: `sha384sum`
-Category: utility
+sha384sum CLI harness

@@ -1,6 +1,3 @@
 # hexdump
 
-hexdump tool
-
-Binary: `hexdump`
-Category: utility
+hexdump CLI harness

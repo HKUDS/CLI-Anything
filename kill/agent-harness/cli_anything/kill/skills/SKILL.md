@@ -1,8 +1,4 @@
 ---
 name: cli-anything-kill
-description: Signal processes
+description: kill CLI harness
 ---
-
-# cli-anything-kill
-
-Signal processes

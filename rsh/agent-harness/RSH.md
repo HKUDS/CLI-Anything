@@ -1,6 +1,3 @@
 # rsh
 
-rsh tool
-
-Binary: `rsh`
-Category: utility
+rsh CLI harness

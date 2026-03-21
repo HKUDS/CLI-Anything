@@ -1,0 +1,3 @@
+# lzgrep
+
+lzgrep CLI harness

@@ -34,6 +34,14 @@ def handle_error(func):
 def cli(ctx,use_json):
     global _json_output;_json_output=use_json
     if ctx.invoked_subcommand is None:ctx.invoke(repl)
+@cli.command("run")
+@click.argument("args",nargs=-1)
+@handle_error
+def run_cmd(args):
+    """Run arbitrary command."""
+    import subprocess
+    result=subprocess.run(["lsof"]+list(args),capture_output=True,text=True,timeout=300)
+    output({"status":"success" if result.returncode==0 else "error","stdout":result.stdout,"stderr":result.stderr})
 @cli.command()
 @handle_error
 def repl():
@@ -46,7 +54,7 @@ def repl():
             line=skin.get_input(pt_session)
             if not line:continue
             if line.lower() in ("quit","exit","q"):skin.print_goodbye();break
-            if line.lower()=="help":skin.help({"list":"List open files","list --pid PID":"List by PID","list --port PORT":"List by port","list --user USER":"List by user","list --file FILE":"List by file","list --network":"List network files"});continue
+            if line.lower()=="help":skin.help({});continue
             try:args=shlex.split(line)
             except:args=line.split()
             try:cli.main(args,standalone_mode=False)
@@ -55,16 +63,5 @@ def repl():
             except Exception as e:skin.error(f"{e}")
         except (EOFError,KeyboardInterrupt):skin.print_goodbye();break
     _repl_mode=False
-@cli.command()
-@click.option("--pid",type=int,help="Filter by PID")
-@click.option("--port",type=int,help="Filter by port")
-@click.option("--user","user",help="Filter by user")
-@click.option("--file","file_path",help="Filter by file path")
-@click.option("--network",is_flag=True,help="Show network files only")
-@handle_error
-def list(pid,port,user,file_path,network):
-    from cli_anything.lsof.core.files import list_files
-    result = list_files(pid=pid, port=port, user=user, file_path=file_path, network=network)
-    output(result, "Open files")
 def main():cli()
 if __name__=="__main__":main()

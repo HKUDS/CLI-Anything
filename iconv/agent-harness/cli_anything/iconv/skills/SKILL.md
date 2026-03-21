@@ -1,8 +1,4 @@
 ---
 name: cli-anything-iconv
-description: Encoding conversion
+description: iconv CLI harness
 ---
-
-# cli-anything-iconv
-
-Encoding conversion

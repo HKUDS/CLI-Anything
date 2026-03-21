@@ -1,8 +1,4 @@
 ---
 name: cli-anything-lsblk
-description: Block devices
+description: lsblk CLI harness
 ---
-
-# cli-anything-lsblk
-
-Block devices

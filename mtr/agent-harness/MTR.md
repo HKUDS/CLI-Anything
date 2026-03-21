@@ -1,6 +1,3 @@
 # mtr
 
-Network diagnostics
-
-Binary: `mtr`
-Category: network
+mtr CLI harness

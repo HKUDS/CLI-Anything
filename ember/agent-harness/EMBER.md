@@ -1,0 +1,3 @@
+# ember
+
+ember CLI harness

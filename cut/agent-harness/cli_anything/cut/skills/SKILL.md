@@ -1,8 +1,4 @@
 ---
 name: cli-anything-cut
-description: cut tool
+description: cut CLI harness
 ---
-
-# cli-anything-cut
-
-cut tool

@@ -1,0 +1,3 @@
+# localedef
+
+localedef CLI harness

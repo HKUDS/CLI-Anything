@@ -1,8 +1,4 @@
 ---
 name: cli-anything-mpstat
-description: CPU statistics
+description: mpstat CLI harness
 ---
-
-# cli-anything-mpstat
-
-CPU statistics

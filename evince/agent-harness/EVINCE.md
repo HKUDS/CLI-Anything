@@ -1,6 +1,3 @@
 # evince
 
-evince tool
-
-Binary: `evince`
-Category: utility
+evince CLI harness

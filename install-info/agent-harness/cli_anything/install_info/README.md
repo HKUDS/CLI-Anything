@@ -1,0 +1,1 @@
+# cli-anything-install-info

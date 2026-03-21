@@ -1,6 +1,3 @@
 # join
 
-join tool
-
-Binary: `join`
-Category: utility
+join CLI harness

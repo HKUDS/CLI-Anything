@@ -1,6 +1,3 @@
 # kill
 
-Signal processes
-
-Binary: `kill`
-Category: system
+kill CLI harness

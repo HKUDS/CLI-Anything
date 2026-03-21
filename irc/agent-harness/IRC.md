@@ -1,6 +1,3 @@
 # irc
 
-IRC client
-
-Binary: `irssi`
-Category: communication
+irc CLI harness

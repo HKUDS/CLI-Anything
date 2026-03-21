@@ -1,6 +1,3 @@
 # cpio
 
-cpio tool
-
-Binary: `cpio`
-Category: utility
+cpio CLI harness

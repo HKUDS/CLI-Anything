@@ -1,8 +1,4 @@
 ---
 name: cli-anything-dc
-description: dc tool
+description: dc CLI harness
 ---
-
-# cli-anything-dc
-
-dc tool

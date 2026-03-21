@@ -1,8 +1,4 @@
 ---
 name: cli-anything-fsck
-description: Filesystem check and repair
+description: fsck CLI harness
 ---
-
-# cli-anything-fsck
-
-Filesystem check and repair

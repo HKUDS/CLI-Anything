@@ -1,0 +1,3 @@
+# shred
+
+shred CLI harness

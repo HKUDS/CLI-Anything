@@ -1,0 +1,3 @@
+# lzcat
+
+lzcat CLI harness

@@ -1,0 +1,1 @@
+# cli-anything-fastify-framework

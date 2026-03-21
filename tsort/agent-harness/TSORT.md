@@ -1,6 +1,3 @@
 # tsort
 
-tsort tool
-
-Binary: `tsort`
-Category: utility
+tsort CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-bpftrace
-description: eBPF tracing
+description: bpftrace CLI harness
 ---
-
-# cli-anything-bpftrace
-
-eBPF tracing

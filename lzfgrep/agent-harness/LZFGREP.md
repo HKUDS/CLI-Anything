@@ -1,0 +1,3 @@
+# lzfgrep
+
+lzfgrep CLI harness

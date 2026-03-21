@@ -1,8 +1,4 @@
 ---
 name: cli-anything-join
-description: join tool
+description: join CLI harness
 ---
-
-# cli-anything-join
-
-join tool

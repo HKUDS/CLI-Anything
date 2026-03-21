@@ -1,6 +1,3 @@
 # alpine
 
-alpine tool
-
-Binary: `alpine`
-Category: utility
+alpine CLI harness

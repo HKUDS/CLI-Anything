@@ -1,0 +1,3 @@
+# zipinfo
+
+zipinfo CLI harness

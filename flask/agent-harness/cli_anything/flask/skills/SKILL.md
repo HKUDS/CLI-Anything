@@ -1,8 +1,4 @@
 ---
 name: cli-anything-flask
-description: Flask - run, routes, shell, db
+description: flask CLI harness
 ---
-
-# cli-anything-flask
-
-Flask - run, routes, shell, db

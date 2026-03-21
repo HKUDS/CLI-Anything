@@ -1,8 +1,4 @@
 ---
 name: cli-anything-hd
-description: hd tool
+description: hd CLI harness
 ---
-
-# cli-anything-hd
-
-hd tool

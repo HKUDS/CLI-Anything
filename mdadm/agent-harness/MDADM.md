@@ -1,6 +1,3 @@
 # mdadm
 
-mdadm tool
-
-Binary: `mdadm`
-Category: utility
+mdadm CLI harness

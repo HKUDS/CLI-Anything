@@ -1,0 +1,3 @@
+# adonis
+
+adonis CLI harness

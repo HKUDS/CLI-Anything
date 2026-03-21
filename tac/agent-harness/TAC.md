@@ -1,6 +1,3 @@
 # tac
 
-tac tool
-
-Binary: `tac`
-Category: utility
+tac CLI harness

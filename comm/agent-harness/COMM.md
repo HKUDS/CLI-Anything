@@ -1,6 +1,3 @@
 # comm
 
-comm tool
-
-Binary: `comm`
-Category: utility
+comm CLI harness

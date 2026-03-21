@@ -1,8 +1,4 @@
 ---
 name: cli-anything-shuf
-description: shuf tool
+description: shuf CLI harness
 ---
-
-# cli-anything-shuf
-
-shuf tool

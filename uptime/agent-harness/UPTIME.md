@@ -1,6 +1,3 @@
 # uptime
 
-System uptime
-
-Binary: `uptime`
-Category: system
+uptime CLI harness

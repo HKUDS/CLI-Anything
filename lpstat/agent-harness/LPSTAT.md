@@ -1,6 +1,3 @@
 # lpstat
 
-lpstat tool
-
-Binary: `lpstat`
-Category: utility
+lpstat CLI harness

@@ -1,0 +1,3 @@
+# infocmp
+
+infocmp CLI harness

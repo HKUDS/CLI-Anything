@@ -1,8 +1,4 @@
 ---
 name: cli-anything-realpath
-description: Resolve absolute path
+description: realpath CLI harness
 ---
-
-# cli-anything-realpath
-
-Resolve absolute path

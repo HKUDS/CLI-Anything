@@ -1,0 +1,3 @@
+# grails
+
+grails CLI harness

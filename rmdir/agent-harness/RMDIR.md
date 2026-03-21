@@ -1,0 +1,3 @@
+# rmdir
+
+rmdir CLI harness

@@ -1,8 +1,4 @@
 ---
 name: cli-anything-vmstat
-description: Memory statistics
+description: vmstat CLI harness
 ---
-
-# cli-anything-vmstat
-
-Memory statistics

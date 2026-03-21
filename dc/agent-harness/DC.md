@@ -1,6 +1,3 @@
 # dc
 
-dc tool
-
-Binary: `dc`
-Category: utility
+dc CLI harness

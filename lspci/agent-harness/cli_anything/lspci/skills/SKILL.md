@@ -1,8 +1,4 @@
 ---
 name: cli-anything-lspci
-description: PCI devices
+description: lspci CLI harness
 ---
-
-# cli-anything-lspci
-
-PCI devices

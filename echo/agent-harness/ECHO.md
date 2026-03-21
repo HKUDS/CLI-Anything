@@ -1,0 +1,3 @@
+# echo
+
+echo CLI harness

@@ -1,0 +1,3 @@
+# cmp
+
+cmp CLI harness

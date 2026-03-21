@@ -1,0 +1,3 @@
+# sdiff
+
+sdiff CLI harness

@@ -1,0 +1,3 @@
+# xzcmp
+
+xzcmp CLI harness

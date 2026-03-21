@@ -1,6 +1,3 @@
 # factor
 
-factor tool
-
-Binary: `factor`
-Category: utility
+factor CLI harness

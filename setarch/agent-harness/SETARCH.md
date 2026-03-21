@@ -1,0 +1,3 @@
+# setarch
+
+setarch CLI harness

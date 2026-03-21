@@ -1,0 +1,3 @@
+# soelim
+
+soelim CLI harness

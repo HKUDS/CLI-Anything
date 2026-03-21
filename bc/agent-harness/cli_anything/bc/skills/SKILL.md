@@ -1,8 +1,4 @@
 ---
 name: cli-anything-bc
-description: Calculator
+description: bc CLI harness
 ---
-
-# cli-anything-bc
-
-Calculator

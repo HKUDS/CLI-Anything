@@ -1,0 +1,3 @@
+# modinfo
+
+modinfo CLI harness

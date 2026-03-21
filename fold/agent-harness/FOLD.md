@@ -1,6 +1,3 @@
 # fold
 
-fold tool
-
-Binary: `fold`
-Category: utility
+fold CLI harness

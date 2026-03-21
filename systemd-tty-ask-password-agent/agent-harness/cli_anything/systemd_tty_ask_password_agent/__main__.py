@@ -1,0 +1,2 @@
+from cli_anything.systemd_tty_ask_password_agent.systemd_tty_ask_password_agent_cli import main
+main()

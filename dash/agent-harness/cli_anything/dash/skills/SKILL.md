@@ -1,8 +1,4 @@
 ---
 name: cli-anything-dash
-description: dash tool
+description: dash CLI harness
 ---
-
-# cli-anything-dash
-
-dash tool

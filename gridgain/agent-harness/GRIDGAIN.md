@@ -1,0 +1,3 @@
+# gridgain
+
+gridgain CLI harness

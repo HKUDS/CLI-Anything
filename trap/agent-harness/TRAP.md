@@ -1,0 +1,3 @@
+# trap
+
+trap CLI harness

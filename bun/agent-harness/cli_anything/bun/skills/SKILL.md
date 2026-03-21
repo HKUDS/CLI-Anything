@@ -1,8 +1,4 @@
 ---
 name: cli-anything-bun
-description: JS runtime
+description: bun CLI harness
 ---
-
-# cli-anything-bun
-
-JS runtime

@@ -1,0 +1,3 @@
+# watchgnupg
+
+watchgnupg CLI harness

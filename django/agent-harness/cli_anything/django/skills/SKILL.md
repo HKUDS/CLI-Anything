@@ -1,8 +1,4 @@
 ---
 name: cli-anything-django
-description: Django - startproject, migrate, runserver, test
+description: django CLI harness
 ---
-
-# cli-anything-django
-
-Django - startproject, migrate, runserver, test

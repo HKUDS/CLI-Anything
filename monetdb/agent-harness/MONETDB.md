@@ -1,0 +1,3 @@
+# monetdb
+
+monetdb CLI harness

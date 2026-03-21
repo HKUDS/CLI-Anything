@@ -1,0 +1,2 @@
+from cli_anything.update_dictcommon_hunspell.update_dictcommon_hunspell_cli import main
+main()

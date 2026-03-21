@@ -1,8 +1,4 @@
 ---
 name: cli-anything-mqtt
-description: MQTT - publish, subscribe, brokers
+description: mqtt CLI harness
 ---
-
-# cli-anything-mqtt
-
-MQTT - publish, subscribe, brokers
