@@ -24,18 +24,17 @@ Usage:
     cli-anything-comfyui repl
 """
 
-import sys
-import os
 import json
-import click
+import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import click
 
 from cli_anything.comfyui.core import workflows as workflow_mod
 from cli_anything.comfyui.core import queue as queue_mod
 from cli_anything.comfyui.core import models as models_mod
 from cli_anything.comfyui.core import images as images_mod
 from cli_anything.comfyui.utils.comfyui_backend import api_get, DEFAULT_BASE_URL
+from cli_anything.comfyui.utils.repl_skin import ReplSkin
 
 # Global state
 _json_output = False
@@ -348,41 +347,41 @@ def system_info():
 
 
 # ── REPL ─────────────────────────────────────────────────────────
+
+REPL_COMMANDS = {
+    "workflow list|load|validate": "Workflow file management",
+    "queue prompt|status|clear|history|interrupt": "Generation queue management",
+    "models checkpoints|loras|vaes|controlnets|node-info|list-nodes": "Model discovery",
+    "images list|download|download-all": "Generated image management",
+    "system stats|info": "Server status and information",
+    "quit": "Exit the REPL",
+}
+
+
 @cli.command()
 @handle_error
 def repl():
     """Start interactive REPL session."""
-    click.echo("ComfyUI CLI REPL — type 'help' for commands, 'quit' to exit")
-    click.echo(f"Server: {_base_url}")
+    skin = ReplSkin("comfyui", version="1.0.0")
+    skin.print_banner()
 
     try:
         api_get(_base_url, "/system_stats")
-        click.echo("Connected to ComfyUI server.")
-    except Exception as e:
-        click.echo(f"Warning: Could not connect to ComfyUI: {e}", err=True)
+        click.echo(f"Connected to ComfyUI server at {_base_url}")
+    except Exception:
+        click.echo(f"Warning: Could not connect to ComfyUI at {_base_url}", err=True)
 
-    repl_commands = {
-        "workflow":  "list|load|validate",
-        "queue":     "prompt|status|clear|history|interrupt",
-        "models":    "checkpoints|loras|vaes|controlnets|node-info|list-nodes",
-        "images":    "list|download|download-all",
-        "system":    "stats|info",
-        "help":      "Show this help",
-        "quit":      "Exit REPL",
-    }
-
+    prompt_session = skin.create_prompt_session()
     while True:
         try:
-            line = click.prompt("comfyui", prompt_suffix="> ", default="", show_default=False)
-            line = line.strip()
+            line = skin.get_input(prompt_session).strip()
             if not line:
                 continue
             if line.lower() in ("quit", "exit", "q"):
-                click.echo("Goodbye.")
+                skin.print_goodbye()
                 break
             if line.lower() == "help":
-                for cmd, subs in repl_commands.items():
-                    click.echo(f"  {cmd:<12} {subs}")
+                skin.help(REPL_COMMANDS)
                 continue
 
             args = line.split()
@@ -390,13 +389,14 @@ def repl():
                 cli.main(args, standalone_mode=False)
             except SystemExit:
                 pass
-            except click.exceptions.UsageError as e:
-                click.echo(f"Usage error: {e}", err=True)
-            except Exception as e:
-                click.echo(f"Error: {e}", err=True)
+            except click.exceptions.UsageError as exc:
+                skin.error(str(exc))
+            except Exception as exc:
+                skin.error(str(exc))
 
         except (EOFError, KeyboardInterrupt):
-            click.echo("\nGoodbye.")
+            click.echo("")
+            skin.print_goodbye()
             break
 
 
