@@ -14,6 +14,56 @@ import tempfile
 from typing import Optional
 
 
+# Allowlisted codecs for melt/ffmpeg rendering.
+# An AI agent controls the codec parameters — accepting arbitrary strings
+# could let a compromised or prompt-injected agent pass crafted values to
+# the melt subprocess.  Only codecs known to produce valid output are
+# permitted; callers can extend ALLOWED_VCODECS / ALLOWED_ACODECS if needed.
+ALLOWED_VCODECS = frozenset({
+    "libx264", "libx265", "libvpx", "libvpx-vp9",
+    "mpeg4", "mpeg2video", "mjpeg", "huffyuv", "ffv1",
+    "prores", "prores_ks", "dnxhd",
+    "png", "gif", "rawvideo",
+    "libaom-av1", "libsvtav1",
+    "h264_nvenc", "hevc_nvenc", "h264_vaapi", "hevc_vaapi",
+})
+
+ALLOWED_ACODECS = frozenset({
+    "aac", "libmp3lame", "libvorbis", "libopus",
+    "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le",
+    "flac", "alac", "ac3", "eac3",
+    "wmav2",
+})
+
+
+def _validate_codec(value: str, allowed: frozenset, label: str) -> str:
+    """Validate that a codec name is in the allowlist."""
+    if not value:
+        return value
+    if value not in allowed:
+        raise ValueError(
+            f"Unsupported {label}: '{value}'. "
+            f"Allowed values: {sorted(allowed)}"
+        )
+    return value
+
+
+# Arguments that could override validated codec or consumer settings.
+_BLOCKED_ARG_PREFIXES = ("vcodec=", "acodec=", "-consumer")
+
+
+def _validate_extra_args(extra_args: list) -> list:
+    """Reject extra_args that would bypass codec or consumer validation."""
+    for arg in extra_args:
+        for prefix in _BLOCKED_ARG_PREFIXES:
+            if arg.startswith(prefix):
+                raise ValueError(
+                    f"extra_args cannot override '{prefix.rstrip('=')}'. "
+                    f"Use the dedicated parameter instead."
+                )
+    return extra_args
+
+
 def find_melt() -> str:
     """Find the melt executable. Raises RuntimeError if not found."""
     path = shutil.which("melt")
@@ -68,6 +118,9 @@ def render_mlt(
     Returns:
         Dict with output path, file size, method
     """
+    _validate_codec(vcodec, ALLOWED_VCODECS, "video codec")
+    _validate_codec(acodec, ALLOWED_ACODECS, "audio codec")
+
     if not os.path.exists(mlt_path):
         raise FileNotFoundError(f"MLT file not found: {mlt_path}")
 
@@ -85,6 +138,7 @@ def render_mlt(
     ]
 
     if extra_args:
+        _validate_extra_args(extra_args)
         cmd.extend(extra_args)
 
     result = subprocess.run(
@@ -129,6 +183,9 @@ def render_color_bars(
 
     This doesn't require any input files — perfect for E2E testing.
     """
+    _validate_codec(vcodec, ALLOWED_VCODECS, "video codec")
+    _validate_codec(acodec, ALLOWED_ACODECS, "audio codec")
+
     if os.path.exists(output_path) and not overwrite:
         raise FileExistsError(f"Output file exists: {output_path}")
 

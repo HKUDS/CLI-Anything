@@ -65,7 +65,7 @@ Ollama already provides a clean REST API. Our CLI wraps it with:
 | `ollama ps` | `model ps` |
 | `ollama run <model> <prompt>` | `generate text --model <name> --prompt "..."` |
 | (no equivalent) | `generate chat --model <name> --message "..."` |
-| (no equivalent) | `embed text --model <name> --input "..."` |
+| (no equivalent) | `embed text --model <name> --input "..." [--input "..."]` |
 | `ollama serve` | (external — must be running) |
 
 ## Model Parameters (options)

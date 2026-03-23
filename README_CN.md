@@ -5,6 +5,8 @@
 CLI-Anything：连接 AI Agent 与全世界软件的桥梁</strong><br>
 </p>
 
+**🌐 [CLI-Hub](https://hkuds.github.io/CLI-Anything/)**：一站式浏览和安装所有社区 CLI。有新软件的 CLI？[提交 PR](https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md) — Hub 会即时更新。
+
 <p align="center">
   <a href="#-快速上手"><img src="https://img.shields.io/badge/快速上手-5_分钟-blue?style=for-the-badge" alt="Quick Start"></a>
   <a href="#-实测展示"><img src="https://img.shields.io/badge/Demo-11_款软件-green?style=for-the-badge" alt="Demos"></a>
@@ -56,7 +58,7 @@ CLI 是人类和 AI Agent 共通的万能接口：
 
 - **Python 3.10+**
 - 目标软件已安装（如 GIMP、Blender、LibreOffice 或你自己的应用）
-- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [更多平台](#-更多平台即将支持)
+- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [更多平台](#-更多平台即将支持)
 
 ### 选择你的平台
 
@@ -274,6 +276,30 @@ Use CLI-Anything to validate ./libreoffice
 
 这个 Codex skill 复用了 Claude Code 插件和 OpenCode 命令所使用的同一套方法论，
 不会改变生成出来的 Python harness 结构。
+
+</details>
+
+<details>
+
+<summary><h4 id="-github-copilot-cli">⚡ GitHub Copilot CLI <sup><code>社区贡献</code></sup></h4></summary>
+
+**第一步：安装插件**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+cd CLI-Anything
+copilot plugin install ./cli-anything-plugin
+```
+
+这将 CLI-Anything 插件安装到 GitHub Copilot CLI 中。插件应该已经在你的 GitHub Copilot CLI 会话中可用了。
+
+**第二步：在 GitHub Copilot CLI 中使用 CLI-Anything**
+
+```bash
+/cli-anything:cli-anything ./gimp
+/cli-anything:refine ./gimp "批处理和滤镜"
+/cli-anything:validate ./gimp
+```
 
 </details>
 

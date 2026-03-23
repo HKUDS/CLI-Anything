@@ -134,6 +134,24 @@
 
     .search:focus { border-color: var(--accent); }
 
+    .sort-select {
+      padding: 0.6rem 2.5rem 0.6rem 1rem;
+      background: var(--surface) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%238b949e" d="M6 9L2 5h8z"/></svg>') no-repeat right 0.75rem center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      min-width: 180px;
+    }
+
+    .sort-select:focus { border-color: var(--accent); }
+    .sort-select:hover { border-color: var(--accent); }
+
     .filter-btn {
       padding: 0.45rem 0.85rem;
       background: var(--surface);
@@ -295,6 +313,12 @@
       margin-left: 0.25rem;
     }
 
+    .card-date {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
     .category-tag {
       font-size: 0.72rem;
       color: var(--text-muted);
@@ -363,6 +387,11 @@
 
   <div class="controls">
     <input class="search" type="text" placeholder="Search CLIs..." id="search">
+    <select class="sort-select" id="sort">
+      <option value="updated">Sort: Last Updated</option>
+      <option value="name">Sort: Name</option>
+      <option value="category">Sort: Category</option>
+    </select>
     <div id="filters"></div>
   </div>
 
@@ -378,10 +407,15 @@
       '../../registry.json',
       'https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/registry.json'
     ];
+    const DATES_URLS = [
+      'https://hkuds.github.io/CLI-Anything/registry-dates.json',
+      '../../registry-dates.json'
+    ];
     const EXTERNAL_LINK_SVG = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5H4.56l6.72 6.72a.75.75 0 1 1-1.06 1.06L3.5 4.56v2.69a.75.75 0 0 1-1.5 0v-3.5A1.75 1.75 0 0 1 3.75 2Zm7.5 0h1A1.75 1.75 0 0 1 14 3.75v8.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-1a.75.75 0 0 1 1.5 0v1c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25h-1a.75.75 0 0 1 0-1.5Z"/></svg>';
 
     let clis = [];
     let activeFilter = 'all';
+    let sortBy = 'updated';
 
     async function loadRegistry() {
       try {
@@ -392,9 +426,22 @@
             if (resp.ok) break;
           } catch (_) { continue; }
         }
-        if (!resp || !resp.ok) throw new Error('All sources failed');
+        if (!resp || !resp.ok) throw new Error('Registry load failed');
         const data = await resp.json();
         clis = data.clis;
+
+        // Load dates separately
+        for (const url of DATES_URLS) {
+          try {
+            const datesResp = await fetch(url);
+            if (datesResp.ok) {
+              const dates = await datesResp.json();
+              clis.forEach(c => c.last_modified = dates[c.name]);
+              break;
+            }
+          } catch (_) { continue; }
+        }
+
         document.getElementById('cli-count').textContent = clis.length;
         const categories = [...new Set(clis.map(c => c.category))];
         document.getElementById('category-count').textContent = categories.length;
@@ -449,6 +496,17 @@
         return matchFilter && matchSearch;
       });
 
+      filtered.sort((a, b) => {
+        if (sortBy === 'updated') {
+          return (b.last_modified || '').localeCompare(a.last_modified || '');
+        } else if (sortBy === 'name') {
+          return a.display_name.localeCompare(b.display_name);
+        } else if (sortBy === 'category') {
+          return a.category.localeCompare(b.category) || a.display_name.localeCompare(b.display_name);
+        }
+        return 0;
+      });
+
       const grid = document.getElementById('grid');
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="empty">No CLIs match your search.</div>';
@@ -473,6 +531,9 @@
               <a href="${esc(c.contributor_url)}" target="_blank">${esc(c.contributor)}</a>${isTeam ? '' : '<span class="community-badge">Community</span>'}
             </div>`
           : '';
+        const dateHtml = c.last_modified
+          ? `<div class="card-date">Last Update Date: ${esc(c.last_modified)}</div>`
+          : '';
 
         return `
           <div class="card">
@@ -485,6 +546,7 @@
             </div>
             <div class="card-desc">${esc(c.description)}</div>
             ${contributorHtml}
+            ${dateHtml}
             ${requiresHtml}
             <div class="card-install">
               <code>${esc(c.install_cmd)}</code>
@@ -510,6 +572,10 @@
     }
 
     document.getElementById('search').addEventListener('input', render);
+    document.getElementById('sort').addEventListener('change', (e) => {
+      sortBy = e.target.value;
+      render();
+    });
     loadRegistry();
   </script>
 </body>

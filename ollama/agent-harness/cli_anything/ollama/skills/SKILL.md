@@ -155,6 +155,7 @@ cli-anything-ollama generate chat --model llama3.2 --file messages.json
 
 ```bash
 cli-anything-ollama embed text --model nomic-embed-text --input "Hello world"
+cli-anything-ollama embed text --model nomic-embed-text --input "Hello" --input "World"
 ```
 
 

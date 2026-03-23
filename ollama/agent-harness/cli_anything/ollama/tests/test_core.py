@@ -316,6 +316,19 @@ class TestEmbedCommands:
         assert "embeddings" in data
 
     @patch("cli_anything.ollama.core.embeddings.api_post")
+    def test_embed_text_multiple_inputs_json(self, mock_api, runner):
+        mock_api.return_value = {"embeddings": [[0.1, 0.2], [0.3, 0.4]]}
+        result = runner.invoke(cli, ["--json", "embed", "text",
+                                     "--model", "nomic-embed-text",
+                                     "--input", "Hello",
+                                     "--input", "World"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data["embeddings"]) == 2
+        call_data = mock_api.call_args[0][2]
+        assert call_data["input"] == ["Hello", "World"]
+
+    @patch("cli_anything.ollama.core.embeddings.api_post")
     def test_embed_text_human(self, mock_api, runner):
         mock_api.return_value = {"embeddings": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]]}
         result = runner.invoke(cli, ["embed", "text",

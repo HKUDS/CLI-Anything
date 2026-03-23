@@ -81,6 +81,7 @@ generate chat --model <name> --message "user:Hello" [--message "assistant:Hi"]
 
 ```bash
 embed text --model <name> --input "Text to embed"
+embed text --model <name> --input "First text" --input "Second text"
 ```
 
 ### Server

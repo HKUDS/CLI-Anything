@@ -14,9 +14,14 @@
 !.gitignore
 !/README.md
 !/CONTRIBUTING.md
+!/SECURITY.md
 !/assets/
 !/.claude-plugin/
 !/.github/
+/.github/*
+!/.github/workflows/
+!/.github/scripts/
+!/.github/PULL_REQUEST_TEMPLATE.md
 
 # Step 3: Allow cli-anything-plugin, codex-skill, and skill_generation tests
 !/cli-anything-plugin/
@@ -40,7 +45,9 @@
 !/mermaid/
 !/adguardhome/
 !/renderdoc/
+!/novita/
 !/ollama/
+!/browser/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -75,6 +82,8 @@
 /renderdoc/.*
 /ollama/*
 /ollama/.*
+/browser/*
+/browser/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -92,7 +101,9 @@
 !/mermaid/agent-harness/
 !/adguardhome/agent-harness/
 !/renderdoc/agent-harness/
+!/novita/agent-harness/
 !/ollama/agent-harness/
+!/browser/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
@@ -123,6 +134,7 @@ assets/gen_typing_gif.py
 !/docs/
 /docs/*
 !/docs/hub/
+/docs/hub/registry-dates.json
 !/notebooklm/
 /notebooklm/*
 /notebooklm/.*
