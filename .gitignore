@@ -55,6 +55,7 @@
 !/browser/
 !/musescore/
 !/krita/
+!/freecad/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -97,6 +98,8 @@
 /musescore/.*
 /krita/*
 /krita/.*
+/freecad/*
+/freecad/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -120,6 +123,7 @@
 !/browser/agent-harness/
 !/musescore/agent-harness/
 !/krita/agent-harness/
+!/freecad/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/

@@ -90,6 +90,20 @@
       "contributor_url": "https://github.com/Bortlesboat"
     },
     {
+      "name": "freecad",
+      "display_name": "FreeCAD",
+      "version": "0.1.0",
+      "description": "Parametric 3D modeling and export via FreeCAD --python",
+      "requires": "FreeCAD",
+      "homepage": "https://www.freecad.org",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=freecad/agent-harness",
+      "entry_point": "cli-anything-freecad",
+      "skill_md": "freecad/agent-harness/cli_anything/freecad/skills/SKILL.md",
+      "category": "3d",
+      "contributor": "Tokyosunrise",
+      "contributor_url": "https://github.com/Tokyosunrise"
+    },
+    {
       "name": "drawio",
       "display_name": "Draw.io",
       "version": "1.0.0",
