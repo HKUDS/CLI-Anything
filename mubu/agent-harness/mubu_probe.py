@@ -222,7 +222,7 @@ def iter_json_objects_from_text(text: str) -> Iterable[dict[str, Any]]:
             break
         try:
             obj, consumed = decoder.raw_decode(text[start:])
-        except Exception:
+        except Exception as e:
             cursor = start + 2
             continue
         if isinstance(obj, dict):

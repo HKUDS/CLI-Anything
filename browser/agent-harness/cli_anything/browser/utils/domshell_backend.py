@@ -187,7 +187,7 @@ async def _stop_daemon() -> None:
         await _daemon_session.__aexit__(None, None, None)
         if _daemon_client_context:
             await _daemon_client_context.__aexit__(None, None, None)
-    except Exception:
+    except Exception as e:
         pass  # Ignore cleanup errors
     finally:
         _daemon_session = None

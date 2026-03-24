@@ -677,7 +677,7 @@ def repl(project_path):
             proj = s.get_project()
             if proj and isinstance(proj, dict):
                 return proj.get("name", "")
-        except Exception:
+        except Exception as e:
             pass
         return ""
 
@@ -685,7 +685,7 @@ def repl(project_path):
         try:
             s = get_session()
             return s.is_modified() if hasattr(s, "is_modified") else False
-        except Exception:
+        except Exception as e:
             return False
 
     while True:

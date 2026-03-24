@@ -75,7 +75,7 @@ def _configure_adguardhome(port: int, username: str, password: str) -> bool:
     try:
         r = requests.post(url, json=payload, timeout=10)
         return r.status_code == 200
-    except Exception:
+    except Exception as e:
         return False
 
 

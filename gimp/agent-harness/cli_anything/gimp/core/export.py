@@ -73,7 +73,7 @@ def render(
                 preset=preset, overwrite=overwrite,
                 quality=quality, format_override=format_override,
             )
-    except Exception:
+    except Exception as e:
         pass  # fall through to Pillow
 
     # --- Pillow fallback ---

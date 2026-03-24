@@ -134,7 +134,7 @@ def login() -> dict:
             "name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
             "account_id": user.get("account_id", ""),
         }
-    except Exception:
+    except Exception as e:
         return {
             "status": "logged_in",
             "message": "Tokens saved. Could not verify user info.",
@@ -171,7 +171,7 @@ def login_with_code(code: str) -> dict:
             "user": user.get("email", "unknown"),
             "name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
         }
-    except Exception:
+    except Exception as e:
         return {"status": "logged_in", "message": "Tokens saved."}
 
 

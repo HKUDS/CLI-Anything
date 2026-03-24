@@ -465,7 +465,7 @@ def repl():
             skin.warning("OAuth configured but not logged in. Run: auth login")
         else:
             skin.info("Not configured. Run: auth setup --client-id <ID> --client-secret <SECRET>")
-    except Exception:
+    except Exception as e:
         skin.info("Run 'auth setup' to configure OAuth credentials.")
 
     while True:
@@ -474,7 +474,7 @@ def repl():
             try:
                 status = auth_mod.get_auth_status()
                 context = status.get("user", "") if status.get("authenticated") else ""
-            except Exception:
+            except Exception as e:
                 context = ""
 
             line = skin.get_input(pt_session, context=context)

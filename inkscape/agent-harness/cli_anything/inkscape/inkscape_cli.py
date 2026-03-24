@@ -990,7 +990,7 @@ def repl(project_path):
             s = get_session()
             if s.has_project():
                 return s.project_path or "untitled"
-        except Exception:
+        except Exception as e:
             pass
         return ""
 

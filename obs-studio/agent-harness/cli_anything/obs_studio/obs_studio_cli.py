@@ -781,7 +781,7 @@ def repl(project_path):
             if sess.has_project():
                 info = proj_mod.get_project_info(sess.get_project())
                 return info.get("name", "")
-        except Exception:
+        except Exception as e:
             pass
         return ""
 

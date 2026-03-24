@@ -94,7 +94,7 @@ def list_workflows(directory: str) -> list[dict]:
                 data = json.load(f)
             node_count = len(data) if isinstance(data, dict) else 0
             valid = isinstance(data, dict)
-        except Exception:
+        except Exception as e:
             node_count = 0
             valid = False
 

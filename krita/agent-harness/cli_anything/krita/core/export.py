@@ -397,7 +397,7 @@ def export_image(
             output_path=output_path,
             export_options=export_options,
         )
-    except Exception:
+    except Exception as e:
         # Re-raise so callers can handle backend failures
         raise
 

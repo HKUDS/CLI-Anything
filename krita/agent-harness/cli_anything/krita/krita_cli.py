@@ -549,7 +549,7 @@ def repl(ctx, project_path):
 
     try:
         pt_session = skin.create_prompt_session()
-    except Exception:
+    except Exception as e:
         pt_session = None
 
     commands_dict = {
