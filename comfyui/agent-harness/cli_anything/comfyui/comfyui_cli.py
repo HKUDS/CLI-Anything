@@ -29,6 +29,7 @@ import os
 import json
 import shlex
 import click
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,10 +38,19 @@ from cli_anything.comfyui.core import queue as queue_mod
 from cli_anything.comfyui.core import models as models_mod
 from cli_anything.comfyui.core import images as images_mod
 from cli_anything.comfyui.utils.comfyui_backend import api_get, DEFAULT_BASE_URL
+from cli_anything.comfyui.core.session import Session
 
-# Global state
+# ── Global State ────────────────────────────────────────────────
 _json_output = False
 _base_url = DEFAULT_BASE_URL
+_session: Optional[Session] = None
+
+
+def get_session(project_path: Optional[str] = None) -> Session:
+    global _session
+    if _session is None:
+        _session = Session(project_path)
+    return _session
 
 
 def output(data, message: str = ""):
@@ -102,11 +112,12 @@ def handle_error(func):
 
 # ── Main CLI Group ──────────────────────────────────────────────
 @click.group(invoke_without_command=True)
+@click.option("--project", "-p", type=click.Path(), help="Path to the JSON project file")
 @click.option("--json", "use_json", is_flag=True, help="Output as JSON")
 @click.option("--url", default=DEFAULT_BASE_URL, show_default=True,
               help="ComfyUI server URL")
 @click.pass_context
-def cli(ctx, use_json, url):
+def cli(ctx, project, use_json, url):
     """ComfyUI CLI — AI image generation from the command line.
 
     Run without a subcommand to enter interactive REPL mode.
@@ -114,6 +125,9 @@ def cli(ctx, use_json, url):
     global _json_output, _base_url
     _json_output = use_json
     _base_url = url
+    
+    # Load session if project path is provided
+    get_session(project)
 
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl)
