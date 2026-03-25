@@ -113,4 +113,16 @@ def grep_elements(session: "Session", pattern: str, path: str = "") -> dict:
     """
     target_path = path if path else session.working_dir
     use_daemon = session.daemon_mode
-    return backend.grep(pattern, target_path, use_daemon=use_daemon)
+
+    # DOMShell's grep searches from the server-side CWD. To root the search
+    # at the requested path, cd there first, grep, then restore.
+    if target_path and target_path != "/":
+        cd_result = backend.cd(target_path, use_daemon=use_daemon)
+        if hasattr(cd_result, 'isError') and cd_result.isError:
+            return cd_result
+
+    try:
+        return backend.grep(pattern, use_daemon=use_daemon)
+    finally:
+        if target_path and target_path != "/":
+            backend.cd(session.working_dir or "/", use_daemon=use_daemon)

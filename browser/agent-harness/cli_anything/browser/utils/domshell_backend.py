@@ -13,6 +13,7 @@ Chrome Web Store: https://chromewebstore.google.com/detail/domshell-%E2%80%94-br
 """
 
 import asyncio
+import os
 import subprocess
 import shutil
 from typing import Any, Optional
@@ -20,8 +21,29 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # DOMShell MCP server command
+# The harness connects to a running DOMShell server via domshell-proxy (stdio bridge).
+# Configure via environment variables:
+#   DOMSHELL_TOKEN  — auth token (required, must match the running server)
+#   DOMSHELL_PORT   — MCP HTTP port of the running server (default: 3001)
 DEFAULT_SERVER_CMD = "npx"
-DEFAULT_SERVER_ARGS = ["@apireno/domshell"]
+
+
+def _build_server_args() -> list[str]:
+    """Build server args at call time so env var changes are honored."""
+    token = os.environ.get("DOMSHELL_TOKEN", "")
+    if not token:
+        raise RuntimeError(
+            "DOMSHELL_TOKEN environment variable is required.\n"
+            "Set it to the auth token of your running DOMShell server.\n"
+            "Example: export DOMSHELL_TOKEN=<token from DOMShell startup>"
+        )
+    port = os.environ.get("DOMSHELL_PORT", "3001")
+    return [
+        "-p", "@apireno/domshell",
+        "domshell-proxy",
+        "--port", port,
+        "--token", token,
+    ]
 
 # Daemon mode: persistent MCP connection
 _daemon_session: Optional[ClientSession] = None
@@ -120,7 +142,7 @@ async def _call_tool(
     # Spawn new MCP server process
     server_params = StdioServerParameters(
         command=DEFAULT_SERVER_CMD,
-        args=DEFAULT_SERVER_ARGS
+        args=_build_server_args()
     )
 
     try:
@@ -157,7 +179,7 @@ async def _start_daemon() -> bool:
 
     server_params = StdioServerParameters(
         command=DEFAULT_SERVER_CMD,
-        args=DEFAULT_SERVER_ARGS
+        args=_build_server_args()
     )
 
     try:
@@ -217,7 +239,7 @@ def ls(path: str = "/", use_daemon: bool = False) -> dict:
         >>> ls("/")
         {"path": "/", "entries": [{"name": "main", "role": "landmark", ...}]}
     """
-    result = asyncio.run(_call_tool("domshell_ls", {"path": path}, use_daemon))
+    result = asyncio.run(_call_tool("domshell_ls", {"options": path}, use_daemon))
     return result
 
 
@@ -253,16 +275,17 @@ def cat(path: str, use_daemon: bool = False) -> dict:
         >>> cat("/main/button[0]")
         {"name": "Submit", "role": "button", "text": "Submit", ...}
     """
-    result = asyncio.run(_call_tool("domshell_cat", {"path": path}, use_daemon))
+    result = asyncio.run(_call_tool("domshell_cat", {"name": path}, use_daemon))
     return result
 
 
-def grep(pattern: str, path: str = "/", use_daemon: bool = False) -> dict:
+def grep(pattern: str, use_daemon: bool = False) -> dict:
     """Search for pattern in accessibility tree.
+
+    Searches from the current working directory.
 
     Args:
         pattern: Text pattern to search for
-        path: Root path for search (default: "/")
         use_daemon: Use persistent daemon connection if available
 
     Returns:
@@ -274,7 +297,7 @@ def grep(pattern: str, path: str = "/", use_daemon: bool = False) -> dict:
     """
     result = asyncio.run(_call_tool(
         "domshell_grep",
-        {"pattern": pattern, "path": path},
+        {"pattern": pattern},
         use_daemon
     ))
     return result
@@ -294,7 +317,7 @@ def click(path: str, use_daemon: bool = False) -> dict:
         >>> click("/main/button[0]")
         {"action": "click", "path": "/main/button[0]", "status": "success"}
     """
-    result = asyncio.run(_call_tool("domshell_click", {"path": path}, use_daemon))
+    result = asyncio.run(_call_tool("domshell_click", {"name": path}, use_daemon))
     return result
 
 
@@ -358,6 +381,9 @@ def forward(use_daemon: bool = False) -> dict:
 def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
     """Type text into an input element.
 
+    Focuses the element first (via domshell_focus), then types. Both operations
+    run in a single MCP session so that focus state is preserved.
+
     Args:
         path: Path to input element
         text: Text to type
@@ -366,12 +392,23 @@ def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
     Returns:
         Dict with action result
     """
-    result = asyncio.run(_call_tool(
-        "domshell_type",
-        {"path": path, "text": text},
-        use_daemon
-    ))
-    return result
+    async def _focus_and_type():
+        global _daemon_session
+        if use_daemon and _daemon_session is not None:
+            await _daemon_session.call_tool("domshell_focus", {"name": path})
+            return await _daemon_session.call_tool("domshell_type", {"text": text})
+
+        server_params = StdioServerParameters(
+            command=DEFAULT_SERVER_CMD,
+            args=_build_server_args()
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                await session.call_tool("domshell_focus", {"name": path})
+                return await session.call_tool("domshell_type", {"text": text})
+
+    return asyncio.run(_focus_and_type())
 
 
 # ── Daemon control functions ───────────────────────────────────────────

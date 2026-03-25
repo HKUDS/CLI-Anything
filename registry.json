@@ -326,6 +326,20 @@
       "category": "design",
       "contributor": "zhangxilong-43",
       "contributor_url": "https://github.com/zhangxilong-43"
+    },
+    {
+      "name": "iterm2",
+      "display_name": "iTerm2",
+      "version": "1.0.0",
+      "description": "Control a running iTerm2 instance — manage windows, tabs, split panes, send text, read output, run tmux -CC, broadcast keystrokes, and configure preferences.",
+      "requires": "iTerm2.app (macOS only)",
+      "homepage": "https://iterm2.com",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=iterm2/agent-harness",
+      "entry_point": "cli-anything-iterm2",
+      "skill_md": "iterm2/agent-harness/cli_anything/iterm2_ctl/skills/SKILL.md",
+      "category": "devops",
+      "contributor": "voidfreud",
+      "contributor_url": "https://github.com/voidfreud"
     }
   ]
 }
