@@ -1,4 +1,4 @@
 interface:
   display_name: "CLI-Anything"
-  short_description: "Build or refine CLI-Anything harnesses from Codex."
-  default_prompt: "Use CLI-Anything to build, refine, test, or validate a harness for the user's target software or source repository."
+  short_description: "Build, refine, test, and validate self-contained CLI-Anything harnesses from Codex."
+  default_prompt: "Use CLI-Anything to build, refine, test, or validate a CLI-Anything harness for the user's target software or source repository. Prefer repo-local official plugin files when available; otherwise use the bundled HARNESS, REPL skin, skill generator, and template."
