@@ -4,9 +4,21 @@ Tests URL validation, DOM sanitization, and security utilities.
 These tests don't require DOMShell backend.
 """
 
+import importlib
 import os
 
 import pytest
+
+from cli_anything.browser.utils import security
+
+
+def _reload_security_module():
+    """Reload the security module to pick up env var changes."""
+    importlib.reload(security)
+
+
+# Reload once at import to ensure clean state
+_reload_security_module()
 
 from cli_anything.browser.utils.security import (
     get_allowed_schemes,
@@ -113,8 +125,10 @@ class TestURLValidation:
     def test_malformed_url(self):
         """Malformed URL should be rejected."""
         is_valid, error = validate_url("not a url")
-        # May pass or fail depending on urlparse behavior
-        # If it passes, it's treated as a path without scheme
+        # Scheme-less URLs are now rejected (explicit scheme required)
+        assert not is_valid
+        assert isinstance(error, str)
+        assert "scheme" in error.lower()
 
     def test_url_with_newline_injection(self):
         """URL with newline should be handled safely."""
@@ -122,6 +136,40 @@ class TestURLValidation:
         # urlparse should handle this, but we check it doesn't crash
         assert isinstance(is_valid, bool)
         assert isinstance(error, str)
+
+    def test_scheme_less_url_rejected(self):
+        """Scheme-less URLs should be rejected."""
+        is_valid, error = validate_url("example.com")
+        assert not is_valid
+        assert "scheme" in error.lower()
+
+    def test_scheme_less_url_with_path_rejected(self):
+        """Scheme-less URLs with path should be rejected."""
+        is_valid, error = validate_url("example.com/path")
+        assert not is_valid
+        assert "scheme" in error.lower()
+
+    def test_uppercase_scheme_accepted(self, monkeypatch):
+        """Uppercase schemes in env var should work after normalization."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_ALLOWED_SCHEMES", "HTTP,HTTPS")
+        _reload_security_module()
+        is_valid, error = validate_url("http://example.com")
+        assert is_valid
+        assert error == ""
+
+    def test_url_without_hostname_rejected(self):
+        """URL without hostname should be rejected."""
+        is_valid, error = validate_url("http://")
+        assert not is_valid
+        assert "hostname" in error.lower()
+
+    def test_fdn_example_com_not_blocked(self, monkeypatch):
+        """fdn.example.com should NOT be blocked (not an IPv6 ULA)."""
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_BLOCK_PRIVATE", raising=False)
+        _reload_security_module()
+        is_valid, error = validate_url("http://fdn.example.com")
+        assert is_valid
+        assert error == ""
 
     def test_ipv4_localhost(self):
         """127.0.0.1 should be detected (blocking depends on env var)."""
@@ -158,21 +206,46 @@ class TestURLValidation:
 class TestPrivateNetworkBlocking:
     """Test private network blocking (controlled by env var)."""
 
-    def test_private_network_blocking_disabled_by_default(self):
+    def test_private_network_blocking_disabled_by_default(self, monkeypatch):
         """By default, private network blocking should be disabled."""
+        # Ensure env var is not set
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_BLOCK_PRIVATE", raising=False)
+        _reload_security_module()
         assert not is_private_network_blocked()
 
-    def test_localhost_not_blocked_by_default(self):
+    def test_localhost_not_blocked_by_default(self, monkeypatch):
         """localhost should not be blocked by default."""
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_BLOCK_PRIVATE", raising=False)
+        _reload_security_module()
         is_valid, error = validate_url("http://localhost:3000")
         assert is_valid
         assert error == ""
 
-    def test_127_0_0_1_not_blocked_by_default(self):
+    def test_127_0_0_1_not_blocked_by_default(self, monkeypatch):
         """127.0.0.1 should not be blocked by default."""
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_BLOCK_PRIVATE", raising=False)
+        _reload_security_module()
         is_valid, error = validate_url("http://127.0.0.1:8080")
         assert is_valid
         assert error == ""
+
+    def test_private_network_blocking_enabled(self, monkeypatch):
+        """When enabled, localhost should be blocked."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_BLOCK_PRIVATE", "true")
+        _reload_security_module()
+        assert is_private_network_blocked()
+
+        is_valid, error = validate_url("http://localhost:3000")
+        assert not is_valid
+        assert "blocked" in error.lower()
+
+    def test_127_0_0_1_blocked_when_enabled(self, monkeypatch):
+        """When enabled, 127.0.0.1 should be blocked."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_BLOCK_PRIVATE", "true")
+        _reload_security_module()
+        is_valid, error = validate_url("http://127.0.0.1:8080")
+        assert not is_valid
+        assert "blocked" in error.lower()
 
 
 class TestDOMSanitization:
@@ -274,6 +347,8 @@ class TestUtilityFunctions:
         assert "http" in schemes
         assert "https" in schemes
 
-    def test_is_private_network_blocked_default(self):
+    def test_is_private_network_blocked_default(self, monkeypatch):
         """By default, private network blocking should be False."""
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_BLOCK_PRIVATE", raising=False)
+        _reload_security_module()
         assert not is_private_network_blocked()
