@@ -683,6 +683,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 138</td>
 </tr>
 <tr>
+<td align="center"><strong>⛓️ ETH2 QuickStart</strong></td>
+<td>Ethereum Node Deployment</td>
+<td><code>cli-anything-eth2-quickstart</code></td>
+<td>eth2-quickstart shell automation + JSON health checks</td>
+<td align="center">✅ 14</td>
+</tr>
+<tr>
 <td align="center"><strong>🧜 Mermaid Live Editor</strong></td>
 <td>Diagramming</td>
 <td><code>cli-anything-mermaid</code></td>
@@ -765,6 +772,7 @@ kdenlive      155 passed  ✅   (111 unit + 44 e2e)
 shotcut       154 passed  ✅   (110 unit + 44 e2e)
 zoom           22 passed  ✅   (22 unit + 0 e2e)
 drawio        138 passed  ✅   (116 unit + 22 e2e)
+eth2-quickstart 14 passed ✅   (11 unit + 3 e2e)
 mermaid        10 passed  ✅   (5 unit + 5 e2e)
 anygen         50 passed  ✅   (40 unit + 10 e2e)
 notebooklm     21 passed  ✅   (21 unit + 0 e2e)
@@ -774,7 +782,7 @@ ollama         98 passed  ✅   (87 unit + 11 e2e)
 sketch         19 passed  ✅   (19 jest, Node.js)
 renderdoc      59 passed  ✅   (45 unit + 14 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        1,917 passed  ✅   100% pass rate
+TOTAL        1,931 passed  ✅   100% pass rate
 ```
 
 ---
@@ -836,6 +844,7 @@ cli-anything/
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22 tests)
 ├── 🎵 musescore/agent-harness/          # MuseScore CLI (56 tests)
 ├── 📐 drawio/agent-harness/             # Draw.io CLI (138 tests)
+├── ⛓️ eth2-quickstart/agent-harness/    # ETH2 QuickStart CLI (14 tests)
 ├── 🧜 mermaid/agent-harness/            # Mermaid Live Editor CLI (10 tests)
 ├── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)
 ├── 🖼️ comfyui/agent-harness/            # ComfyUI CLI (70 tests)

@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-18"
+    "updated": "2026-03-28"
   },
   "clis": [
     {
@@ -102,6 +102,20 @@
       "category": "diagrams",
       "contributor": "zhangxilong-43",
       "contributor_url": "https://github.com/zhangxilong-43"
+    },
+    {
+      "name": "eth2-quickstart",
+      "display_name": "ETH2 QuickStart",
+      "version": "1.0.0",
+      "description": "Hardened Ethereum node deployment and operations via the eth2-quickstart automation scripts",
+      "requires": null,
+      "homepage": "https://github.com/chimera-defi/eth2-quickstart",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=eth2-quickstart/agent-harness",
+      "entry_point": "cli-anything-eth2-quickstart",
+      "skill_md": "eth2-quickstart/agent-harness/cli_anything/eth2_quickstart/skills/SKILL.md",
+      "category": "devops",
+      "contributor": "chimera-defi",
+      "contributor_url": "https://github.com/chimera-defi"
     },
     {
       "name": "gimp",
