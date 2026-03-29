@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=HKUDS&project=CLI-Anything&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 <h1 align="center"><img src="assets/icon.png" alt="" width="64" style="vertical-align: middle;">&nbsp; CLI-Anything: Making ALL Software Agent-Native</h1>
 
 <p align="center">
