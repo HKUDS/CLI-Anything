@@ -234,7 +234,7 @@ cli-anything-blender --help
 /help cli-anything:validate
 
 # Or read the command docs
-cat commands/cli-anything.md
+cat skills/cli-anything/SKILL.md
 ```
 
 ## Success!

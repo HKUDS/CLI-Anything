@@ -1,3 +1,9 @@
+---
+name: validate
+description: Validate a CLI harness against HARNESS.md standards and best practices. Use to check quality and compliance of a built CLI harness.
+tools: Read, Bash, Glob, Grep
+---
+
 # cli-anything:validate Command
 
 Validate a CLI harness against HARNESS.md standards and best practices.

@@ -1,3 +1,9 @@
+---
+name: refine
+description: Refine an existing CLI harness to improve coverage of the software's functions and usage patterns. Use after initial build with /cli-anything.
+tools: Read, Glob, Grep, Bash, Write, Edit, Agent
+---
+
 # cli-anything:refine Command
 
 Refine an existing CLI harness to improve coverage of the software's functions and usage patterns.

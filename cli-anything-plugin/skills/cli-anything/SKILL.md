@@ -1,3 +1,9 @@
+---
+name: cli-anything
+description: Build a complete, stateful CLI harness for any GUI application. Use when user wants to create a CLI interface for a desktop app from its source code or GitHub repo.
+tools: Read, Glob, Grep, Bash, Write, Edit, Agent, WebFetch
+---
+
 # cli-anything Command
 
 Build a complete, stateful CLI harness for any GUI application.

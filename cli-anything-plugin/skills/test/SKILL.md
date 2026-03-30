@@ -1,3 +1,9 @@
+---
+name: test
+description: Run tests for a CLI-Anything harness and update TEST.md with results. Use after building or refining a CLI harness.
+tools: Read, Bash, Glob
+---
+
 # cli-anything:test Command
 
 Run tests for a CLI harness and update TEST.md with results.

@@ -1,3 +1,9 @@
+---
+name: list
+description: List all available CLI-Anything tools (installed and generated). Use when user wants to see what cli-anything harnesses exist.
+tools: Read, Bash, Glob
+---
+
 # cli-anything:list Command
 
 List all available CLI-Anything tools (installed and generated).
