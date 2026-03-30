@@ -10,6 +10,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
 
 from cli_anything.freecad.core.document import ensure_collection
+from cli_anything.freecad.utils.compat import require_version, V1_1
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1145,6 +1146,7 @@ def draft_fillet_2d(
     obj = _get_draft(project, index)
     obj["properties"]["_fillet_radius"] = float(radius)
     if edges is not None:
+        require_version(V1_1, "edge-selective 2D fillet")
         obj["properties"]["_fillet_edges"] = list(edges)
     return obj
 

@@ -316,9 +316,9 @@
     {
       "name": "freecad",
       "display_name": "FreeCAD",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "description": "Parametric 3D CAD modeling via FreeCAD CLI (258 commands: Part, Sketcher, PartDesign, Assembly, Mesh, TechDraw, Draft, FEM, CAM, and more)",
-      "requires": "FreeCAD >= 1.1 (freecad.org)",
+      "requires": "FreeCAD >= 1.0.2 (freecad.org; 1.1+ recommended)",
       "homepage": "https://www.freecad.org",
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=freecad/agent-harness",
       "entry_point": "cli-anything-freecad",

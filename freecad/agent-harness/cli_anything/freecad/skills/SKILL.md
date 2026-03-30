@@ -9,7 +9,9 @@ Complete CLI harness for **FreeCAD** — 258 commands across 17 groups covering 
 
 ## Prerequisites
 
-FreeCAD must be installed: `freecadcmd` must be in PATH.
+FreeCAD >= 1.0.2 must be installed: `freecadcmd` must be in PATH.
+FreeCAD 1.1+ recommended for full feature set (LocalCoordinateSystem,
+tapping, tie constraints, etc.).
 
 ## Installation
 
