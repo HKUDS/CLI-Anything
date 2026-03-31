@@ -118,6 +118,8 @@
 /renderdoc/.*
 /cloudcompare/*
 /cloudcompare/.*
+/wiremock/*
+/wiremock/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -149,6 +151,8 @@
 !/rms/agent-harness/
 !/renderdoc/agent-harness/
 !/cloudcompare/agent-harness/
+!/wiremock/
+!/wiremock/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/

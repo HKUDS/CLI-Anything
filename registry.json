@@ -2,9 +2,23 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-26"
+    "updated": "2026-03-31"
   },
   "clis": [
+    {
+      "name": "wiremock",
+      "display_name": "WireMock",
+      "version": "0.1.0",
+      "description": "HTTP mock server management — create stubs, inspect requests, record traffic, and manage scenarios via WireMock REST API",
+      "requires": "WireMock server running (java -jar wiremock-standalone.jar)",
+      "homepage": "https://wiremock.org",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wiremock/agent-harness",
+      "entry_point": "cli-anything-wiremock",
+      "skill_md": "wiremock/agent-harness/cli_anything/wiremock/skills/SKILL.md",
+      "category": "testing",
+      "contributor": "fabiomantel",
+      "contributor_url": "https://github.com/fabiomantel"
+    },
     {
       "name": "anygen",
       "display_name": "AnyGen",
