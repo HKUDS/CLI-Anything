@@ -98,15 +98,25 @@ def _print_table(rows: list[dict[str, Any]]) -> None:
     click.echo(header)
     click.echo("-+-".join("-" * col_widths[k] for k in simple_keys))
 
+    # Color rules for specific columns
+    color_rules = {
+        "status": {"success": GREEN, "error": RED, "running": ORANGE, "waiting": CYAN},
+        "active": {"True": GREEN, "False": DIM},
+    }
+
     for row in rows:
         vals = []
         for k in simple_keys:
             v = str(row.get(k, ""))
             w = col_widths[k]
             if len(v) > w and w > 3:
-                vals.append(v[: w - 1] + "\u2026")
+                cell = v[: w - 1] + "\u2026"
             else:
-                vals.append(v.ljust(w)[:w])
+                cell = v.ljust(w)[:w]
+            # Apply color if column has a rule
+            if k in color_rules and v in color_rules[k]:
+                cell = click.style(cell, fg=color_rules[k][v])
+            vals.append(cell)
         click.echo(" | ".join(vals))
 
 

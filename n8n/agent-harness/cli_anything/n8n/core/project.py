@@ -21,8 +21,11 @@ def load_config() -> dict[str, Any]:
     """Load config from file, overlaid with env vars."""
     cfg = dict(DEFAULTS)
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE) as f:
-            cfg.update(json.load(f))
+        try:
+            with open(CONFIG_FILE) as f:
+                cfg.update(json.load(f))
+        except (json.JSONDecodeError, ValueError):
+            pass  # Corrupted config — fall back to defaults + env vars
     if url := os.environ.get("N8N_BASE_URL"):
         cfg["base_url"] = url
     if key := os.environ.get("N8N_API_KEY"):
@@ -31,10 +34,13 @@ def load_config() -> dict[str, Any]:
 
 
 def save_config(cfg: dict[str, Any]) -> Path:
-    """Persist config to disk."""
+    """Persist config to disk with restricted permissions."""
+    import os
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(str(CONFIG_DIR), 0o700)
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+    os.chmod(str(CONFIG_FILE), 0o600)
     return CONFIG_FILE
 
 

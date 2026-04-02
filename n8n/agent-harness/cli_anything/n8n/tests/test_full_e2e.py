@@ -51,7 +51,7 @@ class TestCLISubprocess:
             [*_resolve_cli(), "--version"], capture_output=True, text=True, timeout=10,
         )
         assert result.returncode == 0
-        assert "1.1.0" in result.stdout
+        assert "2.2.1" in result.stdout
 
     def test_workflow_help(self):
         result = subprocess.run(
@@ -61,6 +61,183 @@ class TestCLISubprocess:
         assert "list" in result.stdout
         assert "set-tags" in result.stdout
         assert "transfer" in result.stdout
+        assert "export" in result.stdout
+        assert "import" in result.stdout
+
+    def test_status_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "status", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "overview" in result.stdout.lower()
+
+    def test_execution_watch_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "execution", "watch", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "interval" in result.stdout
+
+    def test_config_test_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "config", "test", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "connection" in result.stdout.lower()
+
+    def test_workflow_search_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "search", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "QUERY" in result.stdout
+
+    def test_workflow_bulk_activate_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "bulk-activate", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "--tag" in result.stdout
+        assert "--search" in result.stdout
+
+    def test_workflow_backup_all_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "backup-all", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "--dir" in result.stdout
+
+    def test_workflow_restore_all_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "restore-all", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "--dry-run" in result.stdout
+
+    def test_workflow_diff_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "diff", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "SOURCE" in result.stdout
+
+    def test_execution_errors_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "execution", "errors", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "--details" in result.stdout
+
+    def test_template_search_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "template", "search", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "QUERY" in result.stdout
+
+    def test_template_deploy_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "template", "deploy", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "TEMPLATE_ID" in result.stdout
+
+    def test_workflow_validate_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "validate", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "SOURCE" in result.stdout
+
+    def test_workflow_test_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "test", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "WORKFLOW_ID" in result.stdout
+
+    def test_workflow_autofix_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "autofix", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "--apply" in result.stdout
+
+    def test_workflow_patch_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "patch", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "--rename" in result.stdout
+        assert "--enable-node" in result.stdout
+        assert "--remove-node" in result.stdout
+        assert "--connect" in result.stdout
+
+    def test_health_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "health", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "--diagnostic" in result.stdout
+
+    def test_workflow_versions_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "versions", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "rollback" in result.stdout
+        assert "prune" in result.stdout
+        assert "stats" in result.stdout
+
+    def test_workflow_scaffold_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "scaffold", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "webhook" in result.stdout
+        assert "ai-agent" in result.stdout
+
+    def test_workflow_patterns(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "workflow", "patterns"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "webhook" in result.stdout
+        assert "database" in result.stdout
+
+    def test_expression_validate_valid(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "expression", "={{$json.name}}"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "valid" in result.stdout.lower()
+
+    def test_expression_validate_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "expression", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+
+    def test_node_search_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "node", "search", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "QUERY" in result.stdout
+
+    def test_node_info_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "node", "info", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "PACKAGE_NAME" in result.stdout
+
+    def test_completions_help(self):
+        result = subprocess.run(
+            [*_resolve_cli(), "completions", "--help"], capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == 0
+        assert "bash" in result.stdout
 
     def test_credential_help(self):
         result = subprocess.run(

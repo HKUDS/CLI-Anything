@@ -255,3 +255,245 @@ class TestLoadJsonArg:
         from cli_anything.n8n.n8n_cli import _load_json_arg
         with pytest.raises(ValueError, match="File not found"):
             _load_json_arg("@/nonexistent/file.json")
+
+    def test_load_from_file(self, tmp_path):
+        from cli_anything.n8n.n8n_cli import _load_json_arg
+        f = tmp_path / "test.json"
+        f.write_text('{"name": "from_file"}')
+        result = _load_json_arg(f"@{f}")
+        assert result == {"name": "from_file"}
+
+
+# ─── CLI commands (subprocess) ──────────────────────────────────────────────
+
+class TestCLICommands:
+    def test_export_import_roundtrip(self, tmp_path):
+        """Test that export strips server fields using the REAL _clean_for_api."""
+        from cli_anything.n8n.n8n_cli import _clean_for_api, _load_json_arg
+        # Simulate export data (what get_workflow returns)
+        server_data = {
+            "id": "abc123",
+            "name": "Test WF",
+            "nodes": [{"type": "n8n-nodes-base.manualTrigger"}],
+            "connections": {},
+            "settings": {},
+            "createdAt": "2026-01-01",
+            "updatedAt": "2026-01-02",
+            "versionId": "v1",
+            "shared": [{"role": "owner"}],
+        }
+        # Use the REAL function, not a reimplementation
+        export_data = _clean_for_api(server_data)
+        assert "id" not in export_data
+        assert "createdAt" not in export_data
+        assert "name" in export_data
+        assert "nodes" in export_data
+
+        # Write and read back
+        out = tmp_path / "export.json"
+        out.write_text(json.dumps(export_data, indent=2))
+        loaded = _load_json_arg(f"@{out}")
+        assert loaded["name"] == "Test WF"
+        assert "id" not in loaded
+
+
+class TestVersions:
+    def test_save_and_list(self, tmp_path, monkeypatch):
+        from cli_anything.n8n.core import versions as ver
+        monkeypatch.setattr(ver, "DB_DIR", tmp_path)
+        monkeypatch.setattr(ver, "DB_PATH", tmp_path / "versions.db")
+
+        wf = {"name": "Test WF", "nodes": [], "connections": {}}
+        v1 = ver.save_snapshot("wf1", wf, "update")
+        assert v1 == 1
+        v2 = ver.save_snapshot("wf1", {**wf, "name": "Updated"}, "patch")
+        assert v2 == 2
+
+        vers = ver.list_versions("wf1")
+        assert len(vers) == 2
+        assert vers[0]["version_number"] == 2
+
+    def test_get_snapshot(self, tmp_path, monkeypatch):
+        from cli_anything.n8n.core import versions as ver
+        monkeypatch.setattr(ver, "DB_DIR", tmp_path)
+        monkeypatch.setattr(ver, "DB_PATH", tmp_path / "versions.db")
+
+        wf = {"name": "Original", "nodes": [{"name": "A"}]}
+        ver.save_snapshot("wf1", wf, "update")
+        snapshot = ver.get_snapshot("wf1", 1)
+        assert snapshot["name"] == "Original"
+        assert snapshot["nodes"][0]["name"] == "A"
+
+    def test_prune(self, tmp_path, monkeypatch):
+        from cli_anything.n8n.core import versions as ver
+        monkeypatch.setattr(ver, "DB_DIR", tmp_path)
+        monkeypatch.setattr(ver, "DB_PATH", tmp_path / "versions.db")
+
+        for i in range(5):
+            ver.save_snapshot("wf1", {"name": f"v{i}"}, "test")
+        deleted = ver.prune_versions("wf1", keep=2)
+        assert deleted == 3
+        remaining = ver.list_versions("wf1")
+        assert len(remaining) == 2
+
+    def test_stats(self, tmp_path, monkeypatch):
+        from cli_anything.n8n.core import versions as ver
+        monkeypatch.setattr(ver, "DB_DIR", tmp_path)
+        monkeypatch.setattr(ver, "DB_PATH", tmp_path / "versions.db")
+
+        ver.save_snapshot("wf1", {"name": "A"}, "test")
+        ver.save_snapshot("wf2", {"name": "B"}, "test")
+        st = ver.stats()
+        assert st["total_versions"] == 2
+        assert st["workflows_tracked"] == 2
+
+
+class TestFixers:
+    def test_expression_format(self):
+        from cli_anything.n8n.core.fixers import autofix
+        wf = {"name": "Test", "nodes": [{"name": "Node1", "type": "n8n-nodes-base.set", "parameters": {"value": "{{$json.name}}"}}], "connections": {}}
+        _, fixes = autofix(wf, apply=False)
+        assert any(f.fix_type == "expression-format" for f in fixes)
+
+    def test_expression_format_apply(self):
+        from cli_anything.n8n.core.fixers import autofix
+        wf = {"name": "Test", "nodes": [{"name": "Node1", "type": "n8n-nodes-base.set", "parameters": {"value": "{{$json.name}}"}}], "connections": {}}
+        fixed, fixes = autofix(wf, apply=True)
+        assert fixed["nodes"][0]["parameters"]["value"] == "={{$json.name}}"
+
+    def test_webhook_missing_path(self):
+        from cli_anything.n8n.core.fixers import autofix
+        wf = {"name": "Test", "nodes": [{"name": "Webhook", "type": "n8n-nodes-base.webhook", "parameters": {}}], "connections": {}}
+        _, fixes = autofix(wf, apply=False)
+        assert any(f.fix_type == "webhook-missing-path" for f in fixes)
+
+    def test_orphan_connection(self):
+        from cli_anything.n8n.core.fixers import autofix
+        wf = {"name": "Test", "nodes": [{"name": "A", "type": "test"}], "connections": {"NonExistent": {"main": [[{"node": "A", "type": "main", "index": 0}]]}}}
+        fixed, fixes = autofix(wf, apply=True)
+        assert "NonExistent" not in fixed["connections"]
+
+    def test_no_issues(self):
+        from cli_anything.n8n.core.fixers import autofix
+        wf = {"name": "Test", "nodes": [{"name": "A", "type": "n8n-nodes-base.manualTrigger", "parameters": {}}], "connections": {}}
+        _, fixes = autofix(wf, apply=False)
+        assert len(fixes) == 0
+
+    def test_null_nodes_no_crash(self):
+        """Bug fix: autofix must not crash when nodes or connections are None."""
+        from cli_anything.n8n.core.fixers import autofix
+        wf = {"name": "Test", "nodes": None, "connections": None}
+        _, fixes = autofix(wf, apply=False)
+        assert isinstance(fixes, list)
+
+    def test_expression_in_list_apply(self):
+        """Bug fix: _set_nested must handle bracket notation for list items."""
+        from cli_anything.n8n.core.fixers import autofix
+        wf = {
+            "name": "Test",
+            "nodes": [{"name": "Set", "type": "n8n-nodes-base.set", "parameters": {
+                "assignments": [{"name": "x", "value": "{{$json.y}}"}]
+            }}],
+            "connections": {},
+        }
+        fixed, fixes = autofix(wf, apply=True)
+        # The fix should update the value inside the list, not create a corrupted key
+        assert "assignments[0]" not in fixed["nodes"][0]["parameters"]
+        assert fixed["nodes"][0]["parameters"]["assignments"][0]["value"] == "={{$json.y}}"
+
+
+class TestNodes:
+    @patch("cli_anything.n8n.core.nodes.requests.get")
+    def test_search_nodes(self, mock_get):
+        from cli_anything.n8n.core import nodes as nd
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"total": 100, "objects": [{"package": {"name": "n8n-nodes-test", "version": "1.0.0", "description": "Test", "publisher": {"username": "dev"}}}]}
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+        result = nd.search_nodes("test")
+        assert result["total"] == 100
+
+    @patch("cli_anything.n8n.core.nodes.requests.get")
+    def test_get_node_info(self, mock_get):
+        from cli_anything.n8n.core import nodes as nd
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"name": "n8n-nodes-test", "description": "Test pkg", "dist-tags": {"latest": "1.0.0"}, "versions": {"1.0.0": {"license": "MIT", "n8n": {"nodes": [{"type": "testNode"}], "credentials": []}, "keywords": []}}, "author": {"name": "dev"}}
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+        result = nd.get_node_info("n8n-nodes-test")
+        assert result["name"] == "n8n-nodes-test"
+        assert len(result["n8n_nodes"]) == 1
+
+
+class TestScaffolds:
+    def test_list_patterns(self):
+        from cli_anything.n8n.core.scaffolds import list_patterns
+        patterns = list_patterns()
+        assert len(patterns) == 5
+        names = {p["name"] for p in patterns}
+        assert "webhook" in names
+        assert "ai-agent" in names
+
+    def test_get_scaffold(self):
+        from cli_anything.n8n.core.scaffolds import get_scaffold
+        wf = get_scaffold("webhook")
+        assert wf["name"] == "Webhook Processing"
+        assert len(wf["nodes"]) > 0
+        assert "connections" in wf
+
+    def test_get_scaffold_custom_name(self):
+        from cli_anything.n8n.core.scaffolds import get_scaffold
+        wf = get_scaffold("api", name="My API Flow")
+        assert wf["name"] == "My API Flow"
+
+    def test_get_scaffold_invalid(self):
+        from cli_anything.n8n.core.scaffolds import get_scaffold
+        with pytest.raises(ValueError, match="Unknown pattern"):
+            get_scaffold("nonexistent")
+
+
+class TestExpressions:
+    def test_valid_expression(self):
+        from cli_anything.n8n.core.expressions import validate_expression
+        result = validate_expression("={{$json.name}}")
+        assert result.valid
+        assert len(result.issues) == 0
+
+    def test_mismatched_braces(self):
+        from cli_anything.n8n.core.expressions import validate_expression
+        result = validate_expression("={{$json.name}")
+        assert not result.valid
+        assert any("Mismatched" in i for i in result.issues)
+
+    def test_missing_equals_prefix(self):
+        from cli_anything.n8n.core.expressions import validate_expression
+        result = validate_expression("{{$json.name}}")
+        assert result.valid  # valid but with warning
+        assert any("prefix" in w for w in result.warnings)
+
+    def test_json_bracket_without_quotes(self):
+        from cli_anything.n8n.core.expressions import validate_expression
+        result = validate_expression("={{$json[key]}}")
+        assert any("quotes" in i for i in result.issues)
+
+
+class TestTemplates:
+    @patch("cli_anything.n8n.core.templates.requests.get")
+    def test_search_templates(self, mock_get):
+        from cli_anything.n8n.core import templates as tmpl
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"totalWorkflows": 5, "workflows": [{"id": 1, "name": "Test"}]}
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+        result = tmpl.search_templates("telegram")
+        assert result["totalWorkflows"] == 5
+
+    @patch("cli_anything.n8n.core.templates.requests.get")
+    def test_get_template(self, mock_get):
+        from cli_anything.n8n.core import templates as tmpl
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"workflow": {"name": "My Template", "nodes": []}}
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+        result = tmpl.get_template(123)
+        assert result["workflow"]["name"] == "My Template"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cli-anything-n8n"
-version = "1.1.0"
+version = "2.2.1"
 description = "CLI harness for n8n workflow automation — CLI-Anything pattern (n8n API v1.1.1)"
 readme = "cli_anything/n8n/README.md"
 license = {text = "MIT"}
