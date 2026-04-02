@@ -35,7 +35,11 @@ def emit(data, as_json: bool) -> None:
 
 
 def backend_from_context(ctx: click.Context) -> Eth2QuickStartBackend:
-    return Eth2QuickStartBackend(ctx.obj["repo_root"])
+    try:
+        return Eth2QuickStartBackend(ctx.obj["repo_root"])
+    except RuntimeError as exc:
+        fail(str(exc), ctx.obj["as_json"])
+        raise AssertionError("unreachable")
 
 
 def fail(message: str, as_json: bool) -> None:

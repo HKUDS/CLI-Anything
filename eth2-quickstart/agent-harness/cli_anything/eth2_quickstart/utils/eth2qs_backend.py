@@ -13,21 +13,40 @@ class Eth2QuickStartBackend:
         self.repo_root = find_repo_root(repo_root)
 
     def _run(self, command: list[str]) -> dict:
-        completed = subprocess.run(
-            command,
-            cwd=str(self.repo_root),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        return {
-            "command": command,
-            "cwd": str(self.repo_root),
-            "exit_code": completed.returncode,
-            "stdout": completed.stdout.strip(),
-            "stderr": completed.stderr.strip(),
-            "ok": completed.returncode == 0,
-        }
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(self.repo_root),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            return {
+                "command": command,
+                "cwd": str(self.repo_root),
+                "exit_code": completed.returncode,
+                "stdout": completed.stdout.strip(),
+                "stderr": completed.stderr.strip(),
+                "ok": completed.returncode == 0,
+            }
+        except FileNotFoundError as exc:
+            return {
+                "command": command,
+                "cwd": str(self.repo_root),
+                "exit_code": 127,
+                "stdout": "",
+                "stderr": f"{command[0]}: command not found ({exc})",
+                "ok": False,
+            }
+        except PermissionError as exc:
+            return {
+                "command": command,
+                "cwd": str(self.repo_root),
+                "exit_code": 126,
+                "stdout": "",
+                "stderr": f"{command[0]}: permission denied ({exc})",
+                "ok": False,
+            }
 
     def run_wrapper(self, *args: str) -> dict:
         return self._run([str(wrapper_path(self.repo_root)), *args])
@@ -35,4 +54,3 @@ class Eth2QuickStartBackend:
     def run_script(self, relative_path: str, *args: str) -> dict:
         script_path = self.repo_root / Path(relative_path)
         return self._run([str(script_path), *args])
-

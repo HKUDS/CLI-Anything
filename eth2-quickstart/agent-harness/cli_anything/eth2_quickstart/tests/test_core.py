@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -79,6 +80,12 @@ class TestCLI:
         assert result.exit_code == 0
         assert "setup-node" in result.output
         assert "health-check" in result.output
+
+    def test_missing_repo_root_returns_clean_json_error(self, runner: CliRunner):
+        result = runner.invoke(cli, ["--json", "health-check"])
+        assert result.exit_code == 1
+        payload = json.loads(result.output)
+        assert "Could not locate an eth2-quickstart checkout" in payload["error"]
 
     @patch("cli_anything.eth2_quickstart.eth2_quickstart_cli.Eth2QuickStartBackend")
     def test_health_check_json(self, backend_cls, runner: CliRunner, repo_root: Path):
@@ -215,3 +222,24 @@ class TestCLI:
         assert payload["doctor"]["summary"]["status"] == "warn"
         assert payload["plan"]["next_action"] == "phase2"
 
+
+class TestBackendErrors:
+    def test_run_handles_missing_wrapper(self, repo_root: Path):
+        from cli_anything.eth2_quickstart.utils.eth2qs_backend import Eth2QuickStartBackend
+
+        backend = Eth2QuickStartBackend(str(repo_root))
+        result = backend._run(["/definitely/missing/eth2qs.sh"])
+        assert result["ok"] is False
+        assert result["exit_code"] == 127
+        assert "command not found" in result["stderr"]
+
+    @patch("cli_anything.eth2_quickstart.utils.eth2qs_backend.subprocess.run")
+    def test_run_handles_permission_error(self, run_mock, repo_root: Path):
+        from cli_anything.eth2_quickstart.utils.eth2qs_backend import Eth2QuickStartBackend
+
+        run_mock.side_effect = PermissionError("no execute bit")
+        backend = Eth2QuickStartBackend(str(repo_root))
+        result = backend._run(["/tmp/not-executable"])
+        assert result["ok"] is False
+        assert result["exit_code"] == 126
+        assert "permission denied" in result["stderr"]
