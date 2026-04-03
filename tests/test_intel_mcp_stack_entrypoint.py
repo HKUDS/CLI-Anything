@@ -13,9 +13,11 @@ class IntelMcpStackEntrypointTests(unittest.TestCase):
         script_path = REPO_ROOT / "scripts" / "test_intel_mcp_stack.sh"
         script = script_path.read_text(encoding="utf-8")
 
-        self.assertIn("test_intel_skill_runtime.py", script)
-        self.assertIn("test_intel_mcp_server.py", script)
-        self.assertIn("test_intel_mcp_doctor.py", script)
-        self.assertIn("test_intel_plugin_manifest.py", script)
+        self.assertIn('SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"', script)
+        self.assertIn('cd "$REPO_ROOT"', script)
+        self.assertIn("tests.test_intel_skill_runtime", script)
+        self.assertIn("tests.test_intel_mcp_server", script)
+        self.assertIn("tests.test_intel_mcp_doctor", script)
+        self.assertIn("tests.test_intel_plugin_manifest", script)
         self.assertIn("intel_mcp_doctor.py", script)
         self.assertIn("--strict", script)

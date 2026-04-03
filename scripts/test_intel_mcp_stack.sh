@@ -1,12 +1,15 @@
 #!/bin/sh
 set -eu
 
-REPO_ROOT="/Users/lixun/Documents/codex "
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+cd "$REPO_ROOT"
 
 python3 -m unittest \
-  "$REPO_ROOT/tests/test_intel_skill_runtime.py" \
-  "$REPO_ROOT/tests/test_intel_mcp_server.py" \
-  "$REPO_ROOT/tests/test_intel_mcp_doctor.py" \
-  "$REPO_ROOT/tests/test_intel_plugin_manifest.py"
+  tests.test_intel_skill_runtime \
+  tests.test_intel_mcp_server \
+  tests.test_intel_mcp_doctor \
+  tests.test_intel_plugin_manifest
 
 python3 "$REPO_ROOT/scripts/intel_mcp_doctor.py" --pretty --strict
