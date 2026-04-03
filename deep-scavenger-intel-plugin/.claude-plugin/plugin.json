@@ -1,0 +1,35 @@
+{
+  "name": "deep-scavenger-intel-tools",
+  "description": "Read-only MCP wrapper for Deep Scavenger intel surfaces, exposing intel-health, intel-ops-overview, and intel-briefing over stdio.",
+  "author": {
+    "name": "lixun"
+  },
+  "metadata": {
+    "version": "2026-04-03.v1",
+    "mcp": {
+      "transport": "stdio",
+      "entrypoint": "./bin/run-intel-mcp.sh",
+      "toolRegistry": "../agent_skills/intel_tool_registry.json",
+      "readOnly": true,
+      "tools": [
+        "intel-health",
+        "intel-ops-overview",
+        "intel-briefing"
+      ],
+      "prompts": [
+        "intel-duty-officer",
+        "source-health-triage",
+        "briefing-analyst"
+      ],
+      "resources": [
+        "dsintel://registry/tools",
+        "dsintel://contracts/intel-skill-tool-contracts",
+        "dsintel://contracts/quickstart",
+        "dsintel://docs/plugin-readme",
+        "dsintel://skills/intel-duty-officer",
+        "dsintel://skills/source-health-triage",
+        "dsintel://skills/briefing-analyst"
+      ]
+    }
+  }
+}

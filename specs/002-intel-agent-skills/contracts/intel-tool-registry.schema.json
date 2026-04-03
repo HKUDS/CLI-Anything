@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Deep Scavenger Intel Tool Registry",
+  "type": "object",
+  "required": [
+    "kind",
+    "registry_version",
+    "contract_version",
+    "base_url",
+    "tools"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "deep-scavenger-tool-registry"
+    },
+    "registry_version": {
+      "type": "string"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "base_url": {
+      "type": "string"
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "aliases",
+          "title",
+          "description",
+          "read_only",
+          "surface",
+          "input_schema",
+          "output_contract",
+          "used_by",
+          "cli"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "read_only": {
+            "const": true
+          },
+          "surface": {
+            "type": "object",
+            "required": [
+              "type",
+              "method",
+              "path"
+            ],
+            "properties": {
+              "type": {
+                "const": "http"
+              },
+              "method": {
+                "const": "GET"
+              },
+              "path": {
+                "type": "string"
+              },
+              "auxiliary_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "selection_strategy": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "input_schema": {
+            "type": "object"
+          },
+          "output_contract": {
+            "type": "object"
+          },
+          "used_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cli": {
+            "type": "object",
+            "required": [
+              "command"
+            ],
+            "properties": {
+              "command": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

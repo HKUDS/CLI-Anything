@@ -1,0 +1,175 @@
+{
+  "$schema": "/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/intel-tool-registry.schema.json",
+  "kind": "deep-scavenger-tool-registry",
+  "registry_version": "2026-04-03.v1",
+  "contract_version": "2026-04-03.v1",
+  "base_url": "http://127.0.0.1:8767",
+  "tools": [
+    {
+      "name": "intel-health",
+      "aliases": [
+        "get_health_snapshot"
+      ],
+      "title": "Deep Scavenger Health Snapshot",
+      "description": "Read-only runtime health surface for source freshness, local AI control plane, scoring state, and control-plane fanout state.",
+      "read_only": true,
+      "surface": {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/health"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "description": "Optional Deep Scavenger ClawFeed base URL override."
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_contract": {
+        "envelope_fields": [
+          "tool_name",
+          "contract_version",
+          "endpoint_used",
+          "request_payload",
+          "raw_response",
+          "error"
+        ],
+        "required_raw_fields": [
+          "status",
+          "source_health",
+          "local_ai_control_plane",
+          "scoring_pipeline",
+          "control_plane_alerts"
+        ],
+        "required_control_plane_event_fields": [
+          "kind",
+          "summary",
+          "dedupe_key",
+          "recommended_action"
+        ]
+      },
+      "used_by": [
+        "intel-duty-officer",
+        "source-health-triage"
+      ],
+      "cli": {
+        "command": "python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-health --pretty"
+      }
+    },
+    {
+      "name": "intel-ops-overview",
+      "aliases": [
+        "get_ops_overview"
+      ],
+      "title": "Deep Scavenger Ops Overview",
+      "description": "Read-only operator control-plane overview for alerts, harness state, scoring backlog, latest briefing summary, and alert fanout context.",
+      "read_only": true,
+      "surface": {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/ops_overview"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "description": "Optional Deep Scavenger ClawFeed base URL override."
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_contract": {
+        "envelope_fields": [
+          "tool_name",
+          "contract_version",
+          "endpoint_used",
+          "request_payload",
+          "raw_response",
+          "error"
+        ],
+        "required_raw_fields": [
+          "summary",
+          "alerts",
+          "scoring_pipeline",
+          "harness_overview",
+          "latest_briefing",
+          "control_plane_alerts"
+        ],
+        "required_control_plane_event_fields": [
+          "kind",
+          "summary",
+          "dedupe_key",
+          "recommended_action"
+        ]
+      },
+      "used_by": [
+        "intel-duty-officer",
+        "source-health-triage",
+        "briefing-analyst"
+      ],
+      "cli": {
+        "command": "python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-ops-overview --pretty"
+      }
+    },
+    {
+      "name": "intel-briefing",
+      "aliases": [
+        "get_latest_briefing",
+        "get_briefing_snapshot"
+      ],
+      "title": "Deep Scavenger Latest Briefing",
+      "description": "Read-only latest briefing surface with protocol-first selection over /api/briefing and /api/deep_briefings.",
+      "read_only": true,
+      "surface": {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/briefing",
+        "auxiliary_paths": [
+          "/api/deep_briefings"
+        ],
+        "selection_strategy": "prefer_latest_protocol_backed_briefing_else_latest_briefing"
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "description": "Optional Deep Scavenger ClawFeed base URL override."
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_contract": {
+        "envelope_fields": [
+          "tool_name",
+          "contract_version",
+          "endpoint_used",
+          "request_payload",
+          "raw_response",
+          "error"
+        ],
+        "required_raw_fields": [
+          "date",
+          "content",
+          "protocol_available"
+        ],
+        "protocol_backed_fields": [
+          "briefing_protocol",
+          "final_claims",
+          "trace_generated_at"
+        ]
+      },
+      "used_by": [
+        "intel-duty-officer",
+        "briefing-analyst"
+      ],
+      "cli": {
+        "command": "python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-briefing --pretty"
+      }
+    }
+  ]
+}

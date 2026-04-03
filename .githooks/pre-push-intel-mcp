@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+exec sh "/Users/lixun/Documents/codex /scripts/test_intel_mcp_stack.sh"

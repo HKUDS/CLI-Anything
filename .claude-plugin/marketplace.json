@@ -1,10 +1,10 @@
 {
-  "name": "cli-anything",
+  "name": "codex-local-marketplace",
   "owner": {
-    "name": "cli-anything contributors"
+    "name": "lixun"
   },
   "metadata": {
-    "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology."
+    "description": "Local plugin marketplace for CLI-Anything and Deep Scavenger Intel MCP tools."
   },
   "plugins": [
     {
@@ -13,6 +13,15 @@
       "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology.",
       "author": {
         "name": "cli-anything contributors"
+      },
+      "category": "development"
+    },
+    {
+      "name": "deep-scavenger-intel-tools",
+      "source": "./deep-scavenger-intel-plugin",
+      "description": "Read-only MCP wrapper for Deep Scavenger intel surfaces, exposing intel-health, intel-ops-overview, and intel-briefing over stdio.",
+      "author": {
+        "name": "lixun"
       },
       "category": "development"
     }
