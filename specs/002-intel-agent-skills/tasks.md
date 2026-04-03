@@ -1,6 +1,6 @@
 # Tasks: Intel Agent Skills Control Plane
 
-**Input**: Design documents from `/Users/lixun/Documents/codex /specs/002-intel-agent-skills/`  
+**Input**: Design documents from `specs/002-intel-agent-skills/`  
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/, quickstart.md
 
 **Tests**: Tests are required for this feature because the constitution demands
@@ -15,9 +15,9 @@ implemented and validated independently.
 **Purpose**: Lock the cross-workspace scope, file locations, and shared contract
 surfaces before building any skill.
 
-- [ ] T001 Confirm target implementation paths under `/Users/lixun/Documents/codex /.agents/skills/`, `/Users/lixun/.openclaw/skills/deep-scavenger/`, and `/Users/lixun/.openclaw/skills/clawfeed/`
+- [ ] T001 Confirm target implementation paths under `.agents/skills/`, `/Users/lixun/.openclaw/skills/deep-scavenger/`, and `/Users/lixun/.openclaw/skills/clawfeed/`
 - [ ] T002 [P] Add or refresh shared skill contract fixtures under `/Users/lixun/.openclaw/skills/deep-scavenger/scripts/` and `/Users/lixun/.openclaw/skills/clawfeed/test/`
-- [ ] T003 [P] Add or update operator-facing validation notes in `/Users/lixun/Documents/codex /specs/002-intel-agent-skills/quickstart.md`
+- [ ] T003 [P] Add or update operator-facing validation notes in `specs/002-intel-agent-skills/quickstart.md`
 
 ---
 
@@ -29,10 +29,10 @@ by all three skills.
 **⚠️ CRITICAL**: No user story work should be considered complete until this
 phase is done.
 
-- [ ] T004 [P] Add contract coverage for the shared output envelope against `/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json`
+- [ ] T004 [P] Add contract coverage for the shared output envelope against `specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json`
 - [ ] T005 [P] Add route or helper coverage for required runtime-backed tool surfaces in `/Users/lixun/.openclaw/skills/clawfeed/test/source-health-route.test.mjs`
 - [ ] T006 Implement or tighten shared read-only tool helpers over `/api/health`, `/api/ops_overview`, and briefing routes in `/Users/lixun/.openclaw/skills/clawfeed/src/server.mjs`
-- [ ] T007 Implement shared skill output normalization helpers in the chosen skill host layer under `/Users/lixun/Documents/codex /.agents/skills/`
+- [ ] T007 Implement shared skill output normalization helpers in the chosen skill host layer under `.agents/skills/`
 - [ ] T008 Expose or normalize bounded source-health inputs needed by triage in `/Users/lixun/.openclaw/skills/deep-scavenger/scripts/`
 
 **Checkpoint**: Shared tool contracts and output envelope are stable.
@@ -50,15 +50,15 @@ summary without mutation.
 
 ### Tests for User Story 1
 
-- [ ] T009 [P] [US1] Add contract tests for duty-officer output shape under `/Users/lixun/Documents/codex /.agents/skills/intel-duty-officer/`
+- [ ] T009 [P] [US1] Add contract tests for duty-officer output shape under `.agents/skills/intel-duty-officer/`
 - [ ] T010 [P] [US1] Add fixture-backed degraded-state tests for ops/health summary composition in `/Users/lixun/.openclaw/skills/deep-scavenger/scripts/`
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Create `/Users/lixun/Documents/codex /.agents/skills/intel-duty-officer/SKILL.md`
+- [ ] T011 [US1] Create `.agents/skills/intel-duty-officer/SKILL.md`
 - [ ] T012 [US1] Implement duty-officer helper or adapter code in the chosen skill host layer
 - [ ] T013 [US1] Map duty-officer evidence citations to runtime snapshots from `/api/health` and `/api/ops_overview`
-- [ ] T014 [US1] Validate duty-officer against the quickstart scenarios in `/Users/lixun/Documents/codex /specs/002-intel-agent-skills/quickstart.md`
+- [ ] T014 [US1] Validate duty-officer against the quickstart scenarios in `specs/002-intel-agent-skills/quickstart.md`
 
 **Checkpoint**: One operator-facing skill can summarize live system state from runtime truth.
 
@@ -79,7 +79,7 @@ fixtures and verify that it distinguishes those classes.
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] Create `/Users/lixun/Documents/codex /.agents/skills/source-health-triage/SKILL.md`
+- [ ] T017 [US2] Create `.agents/skills/source-health-triage/SKILL.md`
 - [ ] T018 [US2] Implement bounded source-health snapshot resolution over runtime tool surfaces
 - [ ] T019 [US2] Implement triage reasoning that preserves uncertainty and competing explanations when evidence conflicts
 - [ ] T020 [US2] Validate source-health-triage against quickstart degraded-state scenarios
@@ -103,7 +103,7 @@ protocol data.
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Create `/Users/lixun/Documents/codex /.agents/skills/briefing-analyst/SKILL.md`
+- [ ] T023 [US3] Create `.agents/skills/briefing-analyst/SKILL.md`
 - [ ] T024 [US3] Implement briefing-analysis helpers over latest briefing and briefing protocol surfaces
 - [ ] T025 [US3] Preserve evidence citations and explicit confidence/action-bias reasoning in the skill output envelope
 - [ ] T026 [US3] Validate briefing-analyst against quickstart scenarios and latest live briefing availability
@@ -116,8 +116,8 @@ protocol data.
 
 **Purpose**: Final validation, documentation sync, and forward-compatible boundaries.
 
-- [ ] T027 [P] Run end-to-end quickstart validation and record evidence in `/Users/lixun/Documents/codex /specs/002-intel-agent-skills/quickstart.md`
-- [ ] T028 [P] Sync skill-surface documentation into `/Users/lixun/Documents/codex /AGENTS.md` and `/Users/lixun/Documents/codex /CLAUDE.md` if operator behavior changes
+- [ ] T027 [P] Run end-to-end quickstart validation and record evidence in `specs/002-intel-agent-skills/quickstart.md`
+- [ ] T028 [P] Sync skill-surface documentation into `AGENTS.md` and `CLAUDE.md` if operator behavior changes
 - [ ] T029 Verify that all three skills remain read-only and do not bypass runtime authority with direct SQL or uncontrolled file reads
 
 ---

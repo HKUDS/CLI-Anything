@@ -31,7 +31,7 @@ SERVER_INSTRUCTIONS = (
     "Read-only Deep Scavenger runtime tools. Do not assume mutation support. "
     "Use intel-health, intel-ops-overview, and intel-briefing as the source of truth."
 )
-REPO_ROOT = Path("/Users/lixun/Documents/codex ")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 RESOURCE_CATALOG = {
     "dsintel://registry/tools": {

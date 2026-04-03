@@ -26,7 +26,7 @@ Scavenger control plane.
 1. Run:
 
    ```bash
-   python3 /Users/lixun/Documents/codex /scripts/intel_skill_runtime.py --skill intel-duty-officer --pretty
+   python3 scripts/intel_skill_runtime.py --skill intel-duty-officer --pretty
    ```
 
 2. Use the returned JSON envelope as the primary source for your answer.

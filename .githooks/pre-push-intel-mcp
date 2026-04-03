@@ -1,4 +1,12 @@
 #!/bin/sh
 set -eu
 
-exec sh "/Users/lixun/Documents/codex /scripts/test_intel_mcp_stack.sh"
+HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "$HOOK_DIR/../.." && pwd)"
+STACK_SCRIPT="$REPO_ROOT/scripts/test_intel_mcp_stack.sh"
+
+if [ ! -f "$STACK_SCRIPT" ]; then
+  exit 0
+fi
+
+exec sh "$STACK_SCRIPT"

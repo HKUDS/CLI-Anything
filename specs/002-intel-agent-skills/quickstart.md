@@ -11,6 +11,7 @@ without allowing skills to become a second source of truth.
 - Deep Scavenger runtime is running
 - Local health surfaces are current enough to evaluate source freshness and
   latest briefing state
+- Commands below assume your shell is at the repository root
 
 ## Validation Flow
 
@@ -34,8 +35,8 @@ Expected result:
 Check that the runtime surfaces required by the skill layer are present:
 
 ```bash
-python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --list-tools --pretty
-python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --print-registry --pretty
+python3 scripts/intel_tool_runtime.py --list-tools --pretty
+python3 scripts/intel_tool_runtime.py --print-registry --pretty
 curl -s http://127.0.0.1:8767/api/health > /tmp/intel-skill-health.json
 curl -s http://127.0.0.1:8767/api/ops_overview > /tmp/intel-skill-ops.json
 curl -s http://127.0.0.1:8767/api/briefing > /tmp/intel-skill-briefing.json
@@ -60,7 +61,7 @@ printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"quickstart","version":"1.0.0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-  | python3 /Users/lixun/Documents/codex /scripts/intel_mcp_server.py
+  | python3 scripts/intel_mcp_server.py
 ```
 
 Expected result:
@@ -77,7 +78,7 @@ printf '%s\n%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '{"jsonrpc":"2.0","id":2,"method":"prompts/list","params":{}}' \
   '{"jsonrpc":"2.0","id":3,"method":"prompts/get","params":{"name":"source-health-triage","arguments":{"target":"reddit"}}}' \
-  | python3 /Users/lixun/Documents/codex /scripts/intel_mcp_server.py
+  | python3 scripts/intel_mcp_server.py
 ```
 
 Expected result:
@@ -93,7 +94,7 @@ printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"quickstart","version":"1.0.0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}' \
-  | python3 /Users/lixun/Documents/codex /scripts/intel_mcp_server.py
+  | python3 scripts/intel_mcp_server.py
 ```
 
 Expected result:
@@ -109,7 +110,7 @@ python3 - <<'PY'
 import json
 from pathlib import Path
 
-repo = Path('/Users/lixun/Documents/codex ')
+repo = Path.cwd()
 marketplace = json.loads((repo / '.claude-plugin/marketplace.json').read_text())
 plugin = json.loads((repo / 'deep-scavenger-intel-plugin/.claude-plugin/plugin.json').read_text())
 print([entry['name'] for entry in marketplace['plugins']])
@@ -127,34 +128,34 @@ Expected result:
 Install or repair client registration if needed:
 
 ```bash
-python3 /Users/lixun/Documents/codex /scripts/install_intel_mcp_clients.py --pretty
+python3 scripts/install_intel_mcp_clients.py --pretty
 ```
 
 For one-command local bootstrap of client config, repo-local release gate, and
 full validation:
 
 ```bash
-sh /Users/lixun/Documents/codex /scripts/bootstrap_intel_mcp_plugin.sh
+sh scripts/bootstrap_intel_mcp_plugin.sh
 ```
 
 Check registration state without writing:
 
 ```bash
-python3 /Users/lixun/Documents/codex /scripts/install_intel_mcp_clients.py --pretty --check
+python3 scripts/install_intel_mcp_clients.py --pretty --check
 ```
 
 Run the local doctor to verify wrapper, Claude config, Codex config, a live MCP
 handshake, and real `tools/call` responses in one pass:
 
 ```bash
-python3 /Users/lixun/Documents/codex /scripts/intel_mcp_doctor.py --pretty
+python3 scripts/intel_mcp_doctor.py --pretty
 ```
 
 Use strict mode when you want a non-zero exit code for missing client
 registration or a broken handshake:
 
 ```bash
-python3 /Users/lixun/Documents/codex /scripts/intel_mcp_doctor.py --pretty --strict
+python3 scripts/intel_mcp_doctor.py --pretty --strict
 ```
 
 Expected result:
@@ -172,7 +173,7 @@ Expected result:
 For one-command validation of the current MCP stack:
 
 ```bash
-sh /Users/lixun/Documents/codex /scripts/test_intel_mcp_stack.sh
+sh scripts/test_intel_mcp_stack.sh
 ```
 
 Expected result:
@@ -183,7 +184,7 @@ Expected result:
 For an optional repo-local `pre-push` release gate:
 
 ```bash
-sh /Users/lixun/Documents/codex /scripts/install_intel_mcp_pre_push_hook.sh
+sh scripts/install_intel_mcp_pre_push_hook.sh
 ```
 
 Expected result:

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path("/Users/lixun/Documents/codex ")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -462,7 +462,9 @@ class IntelToolRegistryTests(unittest.TestCase):
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(registry["$schema"], str(schema_path))
+        self.assertFalse(str(registry["$schema"]).startswith("/"))
+        resolved_schema = (registry_path.parent / registry["$schema"]).resolve()
+        self.assertEqual(resolved_schema, schema_path.resolve())
         self.assertEqual(schema["title"], "Deep Scavenger Intel Tool Registry")
         self.assertEqual(schema["properties"]["kind"]["const"], registry["kind"])
 

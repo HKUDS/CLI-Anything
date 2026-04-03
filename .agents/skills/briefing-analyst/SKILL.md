@@ -24,7 +24,7 @@ and final claims without reading raw storage directly.
 1. Run:
 
    ```bash
-   python3 /Users/lixun/Documents/codex /scripts/intel_skill_runtime.py --skill briefing-analyst --pretty
+   python3 scripts/intel_skill_runtime.py --skill briefing-analyst --pretty
    ```
 
 2. Use the returned envelope as the primary source for your answer.

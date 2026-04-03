@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 
-REPO_ROOT = Path("/Users/lixun/Documents/codex ")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -211,7 +211,7 @@ command = "{wrapper_path}"
         with tempfile.TemporaryDirectory() as tmpdir:
             hook_path = Path(tmpdir) / "pre-push"
             hook_path.write_text(
-                "#!/bin/sh\nexec sh '/Users/lixun/Documents/codex /scripts/test_intel_mcp_stack.sh'\n",
+                "#!/bin/sh\nHOOK_DIR=\"$(CDPATH= cd -- \\\"$(dirname -- \\\"$0\\\")\\\" && pwd)\"\nREPO_ROOT=\"$(CDPATH= cd -- \"$HOOK_DIR/../..\" && pwd)\"\nSTACK_SCRIPT=\"$REPO_ROOT/scripts/test_intel_mcp_stack.sh\"\nexec sh \"$STACK_SCRIPT\"\n",
                 encoding="utf-8",
             )
 

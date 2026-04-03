@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path("/Users/lixun/Documents/codex ")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -68,7 +68,7 @@ class IntelMcpHookInstallTests(unittest.TestCase):
             self.assertIn("not_installed", missing.stdout)
 
             (hooks_dir / "pre-push").write_text(
-                "#!/bin/sh\nexec sh '/Users/lixun/Documents/codex /scripts/test_intel_mcp_stack.sh'\n",
+                "#!/bin/sh\nexec sh \"$PWD/scripts/test_intel_mcp_stack.sh\"\n",
                 encoding="utf-8",
             )
             installed = subprocess.run(

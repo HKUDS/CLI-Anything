@@ -1,7 +1,7 @@
 # Implementation Plan: Intel Agent Skills Control Plane
 
-**Branch**: `002-intel-agent-skills` | **Date**: 2026-04-03 | **Spec**: [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/spec.md](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/spec.md)  
-**Input**: Feature specification from `/Users/lixun/Documents/codex /specs/002-intel-agent-skills/spec.md`
+**Branch**: `002-intel-agent-skills` | **Date**: 2026-04-03 | **Spec**: `specs/002-intel-agent-skills/spec.md`  
+**Input**: Feature specification from `specs/002-intel-agent-skills/spec.md`
 
 ## Summary
 
@@ -20,7 +20,7 @@ skill wrappers may be Markdown workflow definitions plus Python/Node helper
 scripts as needed  
 **Primary Dependencies**: existing `/api/health`, `/api/ops_overview`,
 `/api/briefing`, `/api/deep_briefings`, watchdog status files, runtime scoring
-and briefing outputs, skill host contracts under `/Users/lixun/Documents/codex /.agents/skills/`  
+and briefing outputs, skill host contracts under `.agents/skills/`  
 **Storage**: Existing SQLite, JSON, and runtime sidecar files remain
 authoritative; no new database or prompt-only source of truth  
 **Testing**: Spec-level contract docs plus fixture-backed runtime tests, skill
@@ -66,7 +66,7 @@ constitution violations.
 ### Documentation (this feature)
 
 ```text
-/Users/lixun/Documents/codex /specs/002-intel-agent-skills/
+specs/002-intel-agent-skills/
 ├── spec.md
 ├── plan.md
 ├── research.md
@@ -83,7 +83,7 @@ constitution violations.
 ### Source Code (planned implementation targets)
 
 ```text
-/Users/lixun/Documents/codex /.agents/skills/
+.agents/skills/
 ├── intel-duty-officer/
 │   └── SKILL.md
 ├── source-health-triage/
@@ -120,7 +120,7 @@ surfaces stay in the operational workspaces.
 - Fixture-backed degraded-state testing is required because healthy-live-only
   testing will not cover stale, partial, or conflicting states.
 
-See: [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/research.md](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/research.md)
+See: `specs/002-intel-agent-skills/research.md`
 
 ## Phase 1: Design & Contracts
 
@@ -132,10 +132,10 @@ See: [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/research.md](/U
   behavior, and skill-level output behavior.
 
 Artifacts:
-- [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/data-model.md](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/data-model.md)
-- [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/intel-skill-tool-contracts.md](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/intel-skill-tool-contracts.md)
-- [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json)
-- [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/quickstart.md](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/quickstart.md)
+- `specs/002-intel-agent-skills/data-model.md`
+- `specs/002-intel-agent-skills/contracts/intel-skill-tool-contracts.md`
+- `specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json`
+- `specs/002-intel-agent-skills/quickstart.md`
 
 ## Implementation Strategy
 

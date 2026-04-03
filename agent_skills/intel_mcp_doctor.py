@@ -11,10 +11,10 @@ from typing import Any
 from agent_skills.intel_mcp import MCP_PROTOCOL_VERSION, PROMPT_CATALOG, RESOURCE_CATALOG
 
 
-REPO_ROOT = Path("/Users/lixun/Documents/codex ")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WRAPPER_PATH = REPO_ROOT / "deep-scavenger-intel-plugin/bin/run-intel-mcp.sh"
-DEFAULT_CLAUDE_CONFIG_PATH = Path("/Users/lixun/.claude.json")
-DEFAULT_CODEX_CONFIG_PATH = Path("/Users/lixun/.codex/config.toml")
+DEFAULT_CLAUDE_CONFIG_PATH = Path.home() / ".claude.json"
+DEFAULT_CODEX_CONFIG_PATH = Path.home() / ".codex/config.toml"
 DEFAULT_GIT_HOOK_PATH = REPO_ROOT / ".git/hooks/pre-push"
 SERVER_NAME = "deep-scavenger-intel-tools"
 

@@ -30,7 +30,7 @@ not mutate any runtime state.
 ## Usage Example
 
 ```bash
-python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-health --pretty
+python3 scripts/intel_tool_runtime.py --tool intel-health --pretty
 ```
 
 ## Output Contract

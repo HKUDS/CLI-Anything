@@ -10,10 +10,9 @@ support the first three Deep Scavenger agent skills.
 - All tools are read-only in this feature.
 - All tools must expose a versionable contract, even if implemented on top of an
   existing HTTP route.
-- Concrete tool descriptors live in
-  [/Users/lixun/Documents/codex /agent_skills/intel_tool_registry.json](/Users/lixun/Documents/codex /agent_skills/intel_tool_registry.json).
+- Concrete tool descriptors live in `agent_skills/intel_tool_registry.json`.
 - The registry schema lives in
-  [/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/intel-tool-registry.schema.json](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/intel-tool-registry.schema.json).
+  `specs/002-intel-agent-skills/contracts/intel-tool-registry.schema.json`.
 - All skill conclusions must cite one or more tool outputs.
 - Missing required tools must produce explicit contract failure, not silent
   fallback to prompt-only reasoning.
@@ -32,9 +31,8 @@ bind to the concrete `intel-*` descriptors.
 
 The current MCP-facing wrapper is:
 
-- [/Users/lixun/Documents/codex /scripts/intel_mcp_server.py](/Users/lixun/Documents/codex /scripts/intel_mcp_server.py)
-- Local plugin entry:
-  [/Users/lixun/Documents/codex /deep-scavenger-intel-plugin/.claude-plugin/plugin.json](/Users/lixun/Documents/codex /deep-scavenger-intel-plugin/.claude-plugin/plugin.json)
+- `scripts/intel_mcp_server.py`
+- Local plugin entry: `deep-scavenger-intel-plugin/.claude-plugin/plugin.json`
 
 It currently exposes `initialize`, `prompts/list`, `prompts/get`,
 `resources/list`, `resources/read`, `tools/list`, `tools/call`, and `ping`
@@ -184,4 +182,4 @@ briefing route
 ## Output Contract
 
 All skills must emit the shared output envelope defined in
-[/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json](/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json).
+`specs/002-intel-agent-skills/contracts/skill-output-envelope.schema.json`.

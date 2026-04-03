@@ -1,5 +1,5 @@
 {
-  "$schema": "/Users/lixun/Documents/codex /specs/002-intel-agent-skills/contracts/intel-tool-registry.schema.json",
+  "$schema": "../specs/002-intel-agent-skills/contracts/intel-tool-registry.schema.json",
   "kind": "deep-scavenger-tool-registry",
   "registry_version": "2026-04-03.v1",
   "contract_version": "2026-04-03.v1",
@@ -56,7 +56,7 @@
         "source-health-triage"
       ],
       "cli": {
-        "command": "python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-health --pretty"
+        "command": "python3 scripts/intel_tool_runtime.py --tool intel-health --pretty"
       }
     },
     {
@@ -112,7 +112,7 @@
         "briefing-analyst"
       ],
       "cli": {
-        "command": "python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-ops-overview --pretty"
+        "command": "python3 scripts/intel_tool_runtime.py --tool intel-ops-overview --pretty"
       }
     },
     {
@@ -168,7 +168,7 @@
         "briefing-analyst"
       ],
       "cli": {
-        "command": "python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-briefing --pretty"
+        "command": "python3 scripts/intel_tool_runtime.py --tool intel-briefing --pretty"
       }
     }
   ]

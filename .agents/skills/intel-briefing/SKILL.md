@@ -27,7 +27,7 @@ not mutate any runtime state.
 ## Usage Example
 
 ```bash
-python3 /Users/lixun/Documents/codex /scripts/intel_tool_runtime.py --tool intel-briefing --pretty
+python3 scripts/intel_tool_runtime.py --tool intel-briefing --pretty
 ```
 
 ## Output Contract

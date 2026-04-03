@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Any
 
 
-REPO_ROOT = Path("/Users/lixun/Documents/codex ")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WRAPPER_PATH = REPO_ROOT / "deep-scavenger-intel-plugin/bin/run-intel-mcp.sh"
-DEFAULT_CLAUDE_CONFIG_PATH = Path("/Users/lixun/.claude.json")
-DEFAULT_CODEX_CONFIG_PATH = Path("/Users/lixun/.codex/config.toml")
+DEFAULT_CLAUDE_CONFIG_PATH = Path.home() / ".claude.json"
+DEFAULT_CODEX_CONFIG_PATH = Path.home() / ".codex/config.toml"
 SERVER_NAME = "deep-scavenger-intel-tools"
 
 
@@ -58,6 +58,7 @@ def check_claude_config(config_path: Path, *, expected_command: str) -> dict[str
 
 def install_claude_config(config_path: Path, *, command: str) -> dict[str, Any]:
     payload: dict[str, Any]
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     if config_path.exists():
         payload = json.loads(config_path.read_text(encoding="utf-8"))
     else:
@@ -101,6 +102,7 @@ def check_codex_config(config_path: Path, *, expected_command: str) -> dict[str,
 
 
 def install_codex_config(config_path: Path, *, command: str) -> dict[str, Any]:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     section_text = _desired_codex_section(command)
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     pattern = re.compile(

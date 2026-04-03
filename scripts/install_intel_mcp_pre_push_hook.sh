@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-REPO_ROOT="/Users/lixun/Documents/codex "
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 HOOK_TEMPLATE="$REPO_ROOT/.githooks/pre-push-intel-mcp"
 HOOKS_DIR="$REPO_ROOT/.git/hooks"
 FORCE=0

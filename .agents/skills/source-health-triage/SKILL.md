@@ -25,7 +25,7 @@ in `/api/health` and `/api/ops_overview`.
 1. Run:
 
    ```bash
-   python3 /Users/lixun/Documents/codex /scripts/intel_skill_runtime.py --skill source-health-triage --target <source-key-or-pipeline-target> --pretty
+   python3 scripts/intel_skill_runtime.py --skill source-health-triage --target <source-key-or-pipeline-target> --pretty
    ```
 
 2. Use the returned envelope as the primary source for your answer.

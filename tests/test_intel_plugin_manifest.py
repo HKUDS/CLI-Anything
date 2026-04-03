@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path("/Users/lixun/Documents/codex ")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class IntelPluginManifestTests(unittest.TestCase):
@@ -55,9 +55,10 @@ class IntelPluginManifestTests(unittest.TestCase):
         readme_path = REPO_ROOT / "deep-scavenger-intel-plugin" / "README.md"
         readme = readme_path.read_text(encoding="utf-8")
 
+        self.assertNotIn("/Users/lixun/Documents/codex ", readme)
         self.assertIn("scripts/intel_mcp_doctor.py", readme)
-        self.assertIn("/Users/lixun/.claude.json", readme)
-        self.assertIn("/Users/lixun/.codex/config.toml", readme)
+        self.assertIn("~/.claude.json", readme)
+        self.assertIn("~/.codex/config.toml", readme)
         self.assertIn("intel-duty-officer", readme)
         self.assertIn("source-health-triage", readme)
         self.assertIn("briefing-analyst", readme)
@@ -67,6 +68,7 @@ class IntelPluginManifestTests(unittest.TestCase):
         self.assertIn("install_intel_mcp_pre_push_hook.sh", readme)
         self.assertIn("install_intel_mcp_clients.py", readme)
         self.assertIn("bootstrap_intel_mcp_plugin.sh", readme)
+        self.assertIn("python3 scripts/intel_mcp_server.py", readme)
 
 
 if __name__ == "__main__":
