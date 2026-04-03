@@ -19,9 +19,10 @@ import os
 import json
 import click
 from typing import Optional
+from pathlib import Path
 
-# Add parent to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add harness root to path for direct source execution
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cli_anything.shotcut.core.session import Session
 from cli_anything.shotcut.core import project as proj_mod
@@ -114,7 +115,6 @@ def handle_error(func):
 
 
 _repl_mode = False
-_auto_save = False
 
 
 # ============================================================================
@@ -125,23 +125,17 @@ _auto_save = False
 @click.option("--json", "json_mode", is_flag=True, help="Output in JSON format")
 @click.option("--session", "session_id", default=None, help="Session ID to use/resume")
 @click.option("--project", "project_path", default=None, help="Open a project file")
-@click.option("-s", "--save", "auto_save", is_flag=True, 
-              help="Auto-save project after each mutation command (one-shot mode)")
 @click.pass_context
-def cli(ctx, json_mode, session_id, project_path, auto_save):
+def cli(ctx, json_mode, session_id, project_path):
     """Shotcut CLI — Video editing from the command line.
 
     A stateful CLI for manipulating Shotcut/MLT video projects.
     Designed for AI agents and power users.
 
     Run without a subcommand to enter interactive REPL mode.
-    
-    Use -s/--save to automatically save changes after each mutation command.
-    This is useful in one-shot mode where each command runs in a new process.
     """
-    global _json_output, _session, _auto_save
+    global _json_output, _session
     _json_output = json_mode
-    _auto_save = auto_save
 
     if session_id:
         _session = Session(session_id)
@@ -151,24 +145,8 @@ def cli(ctx, json_mode, session_id, project_path, auto_save):
     if project_path:
         _session.open_project(project_path)
 
-    # Register auto-save callback to run after each command
-    ctx.call_on_close(_auto_save_callback)
-
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl, project_path=None)
-
-
-def _auto_save_callback():
-    """Auto-save callback that runs after each command."""
-    global _auto_save, _session
-    if _auto_save and _session and _session.is_open and _session.is_modified:
-        # Don't auto-save if we're in REPL mode (user can explicitly save)
-        if not _repl_mode:
-            try:
-                _session.save_project()
-                click.echo(f"Auto-saved to: {_session.project_path}")
-            except Exception as e:
-                click.echo(f"Auto-save failed: {e}", err=True)
 
 
 # ============================================================================
@@ -1226,5 +1204,9 @@ def _run_repl(s: Session, skin):
 # Entry point
 # ============================================================================
 
-if __name__ == "__main__":
+def main():
     cli()
+
+
+if __name__ == "__main__":
+    main()

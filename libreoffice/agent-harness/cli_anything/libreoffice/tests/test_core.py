@@ -7,9 +7,10 @@ import json
 import os
 import sys
 import tempfile
+from pathlib import Path
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from cli_anything.libreoffice.core.document import (
     create_document, open_document, save_document,
@@ -31,6 +32,7 @@ from cli_anything.libreoffice.core.styles import (
     create_style, modify_style, remove_style, list_styles,
     get_style, apply_style,
 )
+from cli_anything.libreoffice.core import export as export_mod
 from cli_anything.libreoffice.core.session import Session
 
 
@@ -660,3 +662,28 @@ class TestSession:
         assert len(sess.get_project()["content"]) == 1
         sess.undo()
         assert len(sess.get_project()["content"]) == 0
+
+
+# ── Export Tests ────────────────────────────────────────────────
+
+class TestExport:
+    def test_get_preset_info_returns_canonical_extension_for_odt(self):
+        assert callable(export_mod.get_preset_info)
+        info = export_mod.get_preset_info("odt")
+        assert info["extension"] == ".odt"
+
+    def test_get_preset_info_preserves_list_fields(self):
+        listed = next(item for item in export_mod.list_presets() if item["name"] == "pdf")
+        detail = export_mod.get_preset_info("pdf")
+
+        for key in ("name", "format", "extension", "description"):
+            assert detail[key] == listed[key]
+
+    def test_get_preset_info_preserves_legacy_ext_field(self):
+        info = export_mod.get_preset_info("odt")
+        assert info["ext"] == ".odt"
+        assert info["ext"] == info["extension"]
+
+    def test_get_preset_info_unknown_name_raises_value_error(self):
+        with pytest.raises(ValueError, match="Unknown preset"):
+            export_mod.get_preset_info("bogus")

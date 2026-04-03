@@ -19,9 +19,10 @@ import os
 import json
 import click
 from typing import Optional
+from pathlib import Path
 
-# Add parent to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add harness root to path for direct source execution
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cli_anything.drawio.core.session import Session
 from cli_anything.drawio.core import project as proj_mod
@@ -801,6 +802,9 @@ def _run_repl(s: Session, skin):
         except Exception as e:
             skin.error(str(e))
 
+def main():
+    cli()
+
 
 if __name__ == "__main__":
-    cli()
+    main()

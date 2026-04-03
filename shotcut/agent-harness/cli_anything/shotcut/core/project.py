@@ -87,6 +87,11 @@ def new_project(session: Session, profile_name: str = "hd1080p30") -> dict:
     }
 
 
+def create_project(session: Session, profile_name: str = "hd1080p30") -> dict:
+    """Compatibility alias for :func:`new_project`."""
+    return new_project(session, profile_name)
+
+
 def open_project(session: Session, path: str) -> dict:
     """Open an existing .mlt project file.
 
@@ -223,6 +228,11 @@ def project_info(session: Session) -> dict:
         "tracks": tracks_info,
         "global_filters": filters_info,
     }
+
+
+def get_project_info(session: Session) -> dict:
+    """Compatibility alias for :func:`project_info`."""
+    return project_info(session)
 
 
 def list_profiles() -> dict:

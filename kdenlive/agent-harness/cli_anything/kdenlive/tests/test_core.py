@@ -7,9 +7,10 @@ import json
 import os
 import sys
 import tempfile
+from pathlib import Path
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from cli_anything.kdenlive.core.project import (
     create_project, open_project, save_project, get_project_info,
@@ -36,6 +37,7 @@ from cli_anything.kdenlive.core.guides import (
 from cli_anything.kdenlive.core.export import (
     generate_kdenlive_xml, list_render_presets, RENDER_PRESETS,
 )
+from cli_anything.kdenlive.core import export as export_mod
 from cli_anything.kdenlive.core.session import Session
 from cli_anything.kdenlive.utils.mlt_xml import (
     seconds_to_timecode, timecode_to_seconds, seconds_to_frames,
@@ -787,3 +789,38 @@ class TestSession:
 
         sess.undo()
         assert len(sess.get_project()["bin"]) == 0
+
+
+# ── Export Tests ────────────────────────────────────────────────
+
+class TestExport:
+    def test_list_presets_alias_exists_and_is_callable(self):
+        assert hasattr(export_mod, "list_presets")
+        assert callable(export_mod.list_presets)
+
+    def test_list_presets_alias_matches_legacy_render_presets(self):
+        assert export_mod.list_presets() == list_render_presets()
+
+    def test_list_presets_alias_exposes_representative_preset_names(self):
+        names = [preset["name"] for preset in export_mod.list_presets()]
+        assert "h264_hq" in names
+        assert "prores" in names
+
+    def test_get_preset_info_exists_and_is_callable(self):
+        assert hasattr(export_mod, "get_preset_info")
+        assert callable(export_mod.get_preset_info)
+
+    def test_get_preset_info_returns_valid_non_default_preset(self):
+        preset = export_mod.get_preset_info("prores")
+        assert preset["name"] == "prores"
+        assert preset["extension"] == "mov"
+        assert preset["vcodec"] == "prores_ks"
+
+    def test_get_preset_info_matches_list_presets_entry(self):
+        preset = export_mod.get_preset_info("webm_vp9")
+        listed = next(item for item in export_mod.list_presets() if item["name"] == "webm_vp9")
+        assert preset == listed
+
+    def test_get_preset_info_unknown_name_raises_value_error(self):
+        with pytest.raises(ValueError, match="Unknown preset"):
+            export_mod.get_preset_info("dnxhd")

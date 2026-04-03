@@ -96,3 +96,23 @@ def list_render_presets() -> List[Dict[str, Any]]:
             "extension": p["extension"],
         })
     return result
+
+
+def list_presets() -> List[Dict[str, Any]]:
+    """Compatibility alias for :func:`list_render_presets`."""
+    return list_render_presets()
+
+
+def get_preset_info(name: str) -> Dict[str, Any]:
+    """Return metadata for a single render preset."""
+    if name not in RENDER_PRESETS:
+        raise ValueError(f"Unknown preset: {name!r}")
+
+    preset = RENDER_PRESETS[name]
+    return {
+        "name": name,
+        "description": preset["description"],
+        "vcodec": preset["vcodec"],
+        "acodec": preset["acodec"],
+        "extension": preset["extension"],
+    }

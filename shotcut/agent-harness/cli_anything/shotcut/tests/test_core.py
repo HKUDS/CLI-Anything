@@ -1,13 +1,16 @@
 """Tests for the Shotcut CLI core modules."""
 
 import os
+import re
 import sys
 import json
 import tempfile
+import subprocess
+from pathlib import Path
 import pytest
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Add harness root to path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from cli_anything.shotcut.core.session import Session
 from cli_anything.shotcut.core import project as proj_mod
@@ -27,6 +30,36 @@ from cli_anything.shotcut.utils.mlt_xml import (
     get_all_producers, get_playlist_entries, find_element_by_id,
     add_filter_to_element,
 )
+from cli_anything.shotcut import shotcut_cli
+
+
+class TestEntrypointContract:
+    def test_cli_exports_main_and_main_is_callable(self):
+        assert hasattr(shotcut_cli, "main")
+        assert callable(shotcut_cli.main)
+
+    def test_setup_entrypoint_targets_main(self):
+        setup_py = Path(__file__).resolve().parents[3] / "setup.py"
+        setup_text = setup_py.read_text(encoding="utf-8")
+        assert "cli_anything.shotcut.shotcut_cli:main" in setup_text
+
+    def test_module_main_guard_dispatches_through_main(self):
+        cli_py = Path(shotcut_cli.__file__)
+        cli_text = cli_py.read_text(encoding="utf-8")
+        assert re.search(
+            r'if __name__ == "__main__":\n\s+main\(\)',
+            cli_text,
+        )
+
+    def test_direct_script_execution_uses_main_entrypoint(self):
+        cli_py = Path(shotcut_cli.__file__)
+        result = subprocess.run(
+            [sys.executable, str(cli_py), "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
 
 
 # ============================================================================
@@ -235,16 +268,44 @@ class TestSession:
 # ============================================================================
 
 class TestProject:
+    def test_project_aliases_exist(self):
+        assert hasattr(proj_mod, "create_project")
+        assert callable(proj_mod.create_project)
+        assert hasattr(proj_mod, "get_project_info")
+        assert callable(proj_mod.get_project_info)
+
     def test_new_project(self):
         s = Session()
         result = proj_mod.new_project(s, "hd1080p30")
         assert result["profile"] == "hd1080p30"
         assert s.is_open
 
+    def test_create_project_alias_equivalent_to_new_project(self):
+        s1 = Session()
+        s2 = Session()
+        result1 = proj_mod.create_project(s1, "4k30")
+        result2 = proj_mod.new_project(s2, "4k30")
+        assert result1 == result2
+        assert result1["profile"] == "4k30"
+        assert result1["resolution"] == "3840x2160"
+        assert s1.is_open
+        assert s2.is_open
+        assert s1.root is not None
+        assert s2.root is not None
+        assert s1.get_profile()["width"] == "3840"
+        assert s1.get_profile()["height"] == "2160"
+        assert s2.get_profile()["width"] == "3840"
+        assert s2.get_profile()["height"] == "2160"
+
     def test_new_project_invalid_profile(self):
         s = Session()
         with pytest.raises(ValueError):
             proj_mod.new_project(s, "invalid_profile")
+
+    def test_create_project_alias_preserves_invalid_profile_error(self):
+        s = Session()
+        with pytest.raises(ValueError):
+            proj_mod.create_project(s, "invalid_profile")
 
     def test_project_info(self):
         s = Session()
@@ -253,6 +314,16 @@ class TestProject:
         assert "profile" in info
         assert "tracks" in info
         assert "media_clips" in info
+
+    def test_get_project_info_alias_equivalent_to_project_info(self):
+        s = Session()
+        proj_mod.new_project(s, "hd1080p30")
+        assert proj_mod.get_project_info(s) == proj_mod.project_info(s)
+
+    def test_get_project_info_alias_preserves_no_project_error(self):
+        s = Session()
+        with pytest.raises(RuntimeError, match="No project is open"):
+            proj_mod.get_project_info(s)
 
     def test_list_profiles(self):
         profiles = proj_mod.list_profiles()

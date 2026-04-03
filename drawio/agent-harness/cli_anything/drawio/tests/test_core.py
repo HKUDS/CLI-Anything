@@ -1,13 +1,16 @@
 """Tests for the Draw.io CLI core modules."""
 
 import os
+import re
 import sys
 import json
 import tempfile
+import subprocess
+from pathlib import Path
 import pytest
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Add harness root to path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from cli_anything.drawio.core.session import Session
 from cli_anything.drawio.core import project as proj_mod
@@ -16,6 +19,36 @@ from cli_anything.drawio.core import connectors as conn_mod
 from cli_anything.drawio.core import pages as pages_mod
 from cli_anything.drawio.core import export as export_mod
 from cli_anything.drawio.utils import drawio_xml
+from cli_anything.drawio import drawio_cli
+
+
+class TestEntrypointContract:
+    def test_cli_exports_main_and_main_is_callable(self):
+        assert hasattr(drawio_cli, "main")
+        assert callable(drawio_cli.main)
+
+    def test_setup_entrypoint_targets_main(self):
+        setup_py = Path(__file__).resolve().parents[3] / "setup.py"
+        setup_text = setup_py.read_text(encoding="utf-8")
+        assert "cli_anything.drawio.drawio_cli:main" in setup_text
+
+    def test_module_main_guard_dispatches_through_main(self):
+        cli_py = Path(drawio_cli.__file__)
+        cli_text = cli_py.read_text(encoding="utf-8")
+        assert re.search(
+            r'if __name__ == "__main__":\n\s+main\(\)',
+            cli_text,
+        )
+
+    def test_direct_script_execution_uses_main_entrypoint(self):
+        cli_py = Path(drawio_cli.__file__)
+        result = subprocess.run(
+            [sys.executable, str(cli_py), "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "Usage:" in result.stdout
 
 
 # ============================================================================
@@ -373,12 +406,35 @@ class TestSession:
 # ============================================================================
 
 class TestProject:
+    def test_project_aliases_exist(self):
+        assert hasattr(proj_mod, "create_project")
+        assert callable(proj_mod.create_project)
+        assert hasattr(proj_mod, "get_project_info")
+        assert callable(proj_mod.get_project_info)
+
     def test_new_project(self):
         s = Session()
         result = proj_mod.new_project(s, "letter")
         assert result["action"] == "new_project"
         assert result["preset"] == "letter"
         assert s.is_open
+
+    def test_create_project_alias_equivalent_to_new_project(self):
+        s1 = Session()
+        s2 = Session()
+        result1 = proj_mod.create_project(s1, "custom", width=1920, height=1080)
+        result2 = proj_mod.new_project(s2, "custom", width=1920, height=1080)
+        assert result1 == result2
+        assert result1["preset"] == "custom"
+        assert result1["page_size"] == "1920x1080"
+        assert s1.is_open
+        assert s2.is_open
+        assert s1.root is not None
+        assert s2.root is not None
+        assert drawio_xml.get_model(s1.root).get("pageWidth") == "1920"
+        assert drawio_xml.get_model(s1.root).get("pageHeight") == "1080"
+        assert drawio_xml.get_model(s2.root).get("pageWidth") == "1920"
+        assert drawio_xml.get_model(s2.root).get("pageHeight") == "1080"
 
     def test_new_project_all_presets(self):
         for name in proj_mod.PAGE_PRESETS:
@@ -391,6 +447,11 @@ class TestProject:
         s = Session()
         with pytest.raises(ValueError, match="Unknown preset"):
             proj_mod.new_project(s, "nonexistent")
+
+    def test_create_project_alias_preserves_invalid_preset_error(self):
+        s = Session()
+        with pytest.raises(ValueError, match="Unknown preset"):
+            proj_mod.create_project(s, "nonexistent")
 
     def test_new_project_custom_size(self):
         s = Session()
@@ -424,6 +485,17 @@ class TestProject:
         info = proj_mod.project_info(s)
         assert len(info["shapes"]) == 2
         assert info["canvas"]["pageWidth"] == "850"
+
+    def test_get_project_info_alias_equivalent_to_project_info(self):
+        s = Session()
+        proj_mod.new_project(s, "letter")
+        shapes_mod.add_shape(s, "rectangle", label="A")
+        assert proj_mod.get_project_info(s) == proj_mod.project_info(s)
+
+    def test_get_project_info_alias_preserves_no_project_error(self):
+        s = Session()
+        with pytest.raises(RuntimeError, match="No project is open"):
+            proj_mod.get_project_info(s)
 
     def test_project_info_no_project(self):
         s = Session()
@@ -674,6 +746,37 @@ class TestExport:
         assert "png" in names
         assert "pdf" in names
         assert "svg" in names
+
+    def test_list_presets_alias_exists_and_is_callable(self):
+        assert hasattr(export_mod, "list_presets")
+        assert callable(export_mod.list_presets)
+
+    def test_list_presets_alias_matches_list_formats(self):
+        assert export_mod.list_presets() == export_mod.list_formats()
+
+    def test_list_presets_alias_exposes_representative_format_names(self):
+        names = [preset["name"] for preset in export_mod.list_presets()]
+        assert "png" in names
+        assert "vsdx" in names
+
+    def test_get_preset_info_exists_and_is_callable(self):
+        assert hasattr(export_mod, "get_preset_info")
+        assert callable(export_mod.get_preset_info)
+
+    def test_get_preset_info_returns_valid_non_default_format(self):
+        preset = export_mod.get_preset_info("vsdx")
+        assert preset["name"] == "vsdx"
+        assert preset["ext"] == ".vsdx"
+        assert "Visio" in preset["description"]
+
+    def test_get_preset_info_matches_list_presets_entry(self):
+        preset = export_mod.get_preset_info("svg")
+        listed = next(item for item in export_mod.list_presets() if item["name"] == "svg")
+        assert preset == listed
+
+    def test_get_preset_info_unknown_name_raises_value_error(self):
+        with pytest.raises(ValueError, match="Unknown preset"):
+            export_mod.get_preset_info("bmp")
 
     def test_export_xml_direct(self):
         """XML export doesn't need draw.io CLI."""

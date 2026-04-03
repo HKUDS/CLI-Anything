@@ -60,7 +60,11 @@ def get_preset_info(name: str) -> Dict[str, Any]:
             f"Available: {', '.join(EXPORT_PRESETS.keys())}"
         )
     p = EXPORT_PRESETS[name]
-    return {"name": name, **p}
+    return {
+        "name": name,
+        "extension": p["ext"],
+        **p,
+    }
 
 
 def to_odt(project: Dict[str, Any], path: str, overwrite: bool = False) -> Dict[str, Any]:

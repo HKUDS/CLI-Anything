@@ -49,6 +49,12 @@ def new_project(session: Session, preset: str = "letter",
     }
 
 
+def create_project(session: Session, preset: str = "letter",
+                   width: Optional[int] = None, height: Optional[int] = None) -> dict:
+    """Compatibility alias for :func:`new_project`."""
+    return new_project(session, preset, width, height)
+
+
 def open_project(session: Session, path: str) -> dict:
     """Open an existing .drawio project file."""
     session.open_project(path)
@@ -115,6 +121,11 @@ def project_info(session: Session) -> dict:
         "shapes": shapes,
         "edges": edges,
     }
+
+
+def get_project_info(session: Session) -> dict:
+    """Compatibility alias for :func:`project_info`."""
+    return project_info(session)
 
 
 def list_presets() -> dict:

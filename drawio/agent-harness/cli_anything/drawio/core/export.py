@@ -28,6 +28,18 @@ def list_formats() -> list[dict]:
     ]
 
 
+def list_presets() -> list[dict]:
+    """Compatibility alias for :func:`list_formats`."""
+    return list_formats()
+
+
+def get_preset_info(name: str) -> dict:
+    """Return metadata for a single export preset."""
+    if name not in EXPORT_FORMATS:
+        raise ValueError(f"Unknown preset: {name!r}")
+    return {"name": name, **EXPORT_FORMATS[name]}
+
+
 def render(session: Session, output_path: str,
            fmt: str = "png",
            page_index: Optional[int] = None,
