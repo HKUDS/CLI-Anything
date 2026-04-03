@@ -19,7 +19,7 @@ setup(
     description="CLI harness for Draw.io - Diagram creation and export via draw.io CLI. Requires: draw.io desktop app (draw.io --export)",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/anthropics/cli-anything",
+    url="https://github.com/HKUDS/CLI-Anything",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -47,6 +47,9 @@ setup(
         "console_scripts": [
             "cli-anything-drawio=cli_anything.drawio.drawio_cli:main",
         ],
+    },
+    package_data={
+        "cli_anything.drawio": ["skills/*.md"],
     },
     include_package_data=True,
     zip_safe=False,
