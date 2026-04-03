@@ -1,0 +1,4 @@
+anthropic>=0.49.0
+jieba>=0.42.1
+openai>=1.68.2
+PyYAML>=6.0.2

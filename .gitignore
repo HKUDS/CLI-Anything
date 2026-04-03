@@ -2,6 +2,7 @@
 # Only track:
 #   - cli-anything-plugin/**
 #   - codex-skill/**
+#   - writing-lab/**
 #   - */agent-harness/**  (under each software dir)
 #   - .gitignore
 # Everything else is ignored.
@@ -18,6 +19,8 @@
 !/assets/
 !/.claude-plugin/
 !/.github/
+!/writing-lab/
+!/writing-lab/**
 /.github/*
 !/.github/workflows/
 !/.github/scripts/
@@ -181,6 +184,10 @@
 **/*.blend
 **/*.xcf
 **/*.mlt
+/writing-lab/runs/*
+!/writing-lab/runs/.gitkeep
+/writing-lab/strategy_history/*
+!/writing-lab/strategy_history/.gitkeep
 
 # Step 8: But allow assets images
 !/assets/*.png

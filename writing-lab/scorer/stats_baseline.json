@@ -1,0 +1,36 @@
+{
+  "avg_sentence_length": 28.47,
+  "long_sentence_ratio": 0.3941,
+  "mid_sentence_ratio": 0.3295,
+  "short_sentence_ratio": 0.2764,
+  "number_ratio": 0.285,
+  "transition_words": {
+    "只是": 253,
+    "其实": 173,
+    "但是": 170,
+    "实际上": 43,
+    "不过": 28
+  },
+  "example_words": {
+    "像": 424,
+    "比如": 296,
+    "例如": 79
+  },
+  "forbidden_ai_words": [
+    "总而言之",
+    "综上所述",
+    "首先",
+    "其次",
+    "最后",
+    "值得注意的是",
+    "不得不说",
+    "毋庸置疑",
+    "令人印象深刻",
+    "值得一提"
+  ],
+  "forbidden_openings": [
+    "关于XXX，说一个",
+    "今天我们来聊",
+    "近期XXX成为了热点"
+  ]
+}
