@@ -21,7 +21,7 @@ Let's build a CLI for a simple GUI application:
 
 ```bash
 # Build complete CLI harness for GIMP
-/cli-anything gimp
+/cli-anything /home/user/gimp
 ```
 
 This will:
@@ -36,6 +36,13 @@ This will:
 **Time:** ~10-15 minutes (depending on complexity)
 
 **Output:** `/root/cli-anything/gimp/agent-harness/`
+
+## Discover Existing Tools
+
+```bash
+# List installed and generated CLI-Anything tools
+/cli-anything:list --json
+```
 
 ## Install the CLI
 

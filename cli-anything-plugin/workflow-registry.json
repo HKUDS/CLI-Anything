@@ -1,0 +1,99 @@
+[
+  {
+    "command": "cli-anything",
+    "kind": "top-level-command",
+    "phaseSpan": "Phase 0-7",
+    "acceptedInputs": [
+      "local software path",
+      "GitHub repository URL"
+    ],
+    "artifactsOut": [
+      "software-specific CLI harness",
+      "agent-harness/cli_anything/<software>/",
+      "SOP document",
+      "test suite",
+      "packaging metadata"
+    ],
+    "publishType": "harness-build",
+    "expectedFiles": [
+      "README.md",
+      "commands/cli-anything.md"
+    ],
+    "notes": "Builds a complete stateful CLI harness from source or a repository URL."
+  },
+  {
+    "command": "refine",
+    "kind": "refinement-command",
+    "phaseSpan": "Phase 1-6",
+    "acceptedInputs": [
+      "local software path",
+      "optional focus string"
+    ],
+    "artifactsOut": [
+      "new or expanded commands",
+      "additional tests",
+      "updated docs"
+    ],
+    "publishType": "harness-refinement",
+    "expectedFiles": [
+      "commands/refine.md"
+    ],
+    "notes": "Expands coverage of an existing harness without removing commands."
+  },
+  {
+    "command": "test",
+    "kind": "verification-command",
+    "phaseSpan": "Phase 5-6",
+    "acceptedInputs": [
+      "local software path",
+      "GitHub repository URL"
+    ],
+    "artifactsOut": [
+      "pytest run output",
+      "TEST.md results appendix"
+    ],
+    "publishType": "test-run",
+    "expectedFiles": [
+      "commands/test.md"
+    ],
+    "notes": "Runs tests for a harness and records the results."
+  },
+  {
+    "command": "validate",
+    "kind": "verification-command",
+    "phaseSpan": "Phase 1-7",
+    "acceptedInputs": [
+      "local software path",
+      "GitHub repository URL"
+    ],
+    "artifactsOut": [
+      "validation report",
+      "standards compliance summary"
+    ],
+    "publishType": "validation",
+    "expectedFiles": [
+      "commands/validate.md",
+      "HARNESS.md"
+    ],
+    "notes": "Checks generated harnesses against HARNESS.md standards."
+  },
+  {
+    "command": "list",
+    "kind": "discovery-command",
+    "phaseSpan": "Cross-cutting",
+    "acceptedInputs": [
+      "optional path",
+      "optional depth",
+      "optional json flag"
+    ],
+    "artifactsOut": [
+      "generated tool inventory",
+      "installed tool inventory"
+    ],
+    "publishType": "inventory",
+    "expectedFiles": [
+      "commands/list.md"
+    ],
+    "notes": "Scans installed and generated CLI-Anything tools."
+  }
+]

@@ -64,7 +64,7 @@ git push origin v1.0.0
 # Create GitHub release
 gh release create v1.0.0 \
   --title "cli-anything Plugin v1.0.0" \
-  --notes "Initial release with 4 commands and complete 6-phase methodology"
+  --notes "Initial release with 5 commands and complete 7-phase methodology"
 ```
 
 ### 3. Install from GitHub

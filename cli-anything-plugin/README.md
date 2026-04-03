@@ -46,9 +46,6 @@ The result: A stateful CLI with REPL mode, JSON output, undo/redo, and full test
 - `pytest` - Testing framework
 - HARNESS.md (included in this plugin at `~/.claude/plugins/cli-anything/HARNESS.md`)
 
-**Windows note:** Claude Code runs shell commands via `bash`. On Windows, install Git for Windows (includes `bash` and
-`cygpath`) or use WSL; otherwise commands may fail with `cygpath: command not found`.
-
 Install Python dependencies:
 ```bash
 pip install click pytest
@@ -69,15 +66,14 @@ Build a complete CLI harness for any software application. Accepts a local path 
 /cli-anything https://github.com/blender/blender
 ```
 
-This runs all phases:
+This runs all 7 phases:
 1. Source Acquisition (clone if GitHub URL)
 2. Codebase Analysis
 3. CLI Architecture Design
 4. Implementation
 5. Test Planning
 6. Test Implementation & Documentation
-7. SKILL.md Generation
-8. PyPI Publishing and Installation
+7. PyPI Publishing and Installation
 
 ### `/cli-anything:refine <software-path> [focus]`
 
@@ -213,16 +209,6 @@ Run and document:
 
 **Output:** `TEST.md` Part 2 (the results)
 
-### Phase 6.5: SKILL.md Generation
-
-Generate AI-discoverable skill definition:
-- Extract CLI metadata using `skill_generator.py`
-- Generate SKILL.md with YAML frontmatter (name, description)
-- Include command groups, examples, and agent-specific guidance
-- Output to `cli_anything/<software>/skills/SKILL.md` (inside the Python package)
-
-**Output:** SKILL.md file for AI agent discovery
-
 ### Phase 7: PyPI Publishing and Installation
 
 Package and install:
@@ -253,8 +239,6 @@ Package and install:
             │   ├── session.py     # Undo/redo
             │   ├── export.py      # Rendering/export
             │   └── ...            # Domain-specific modules
-            ├── skills/            # AI-discoverable skill definition
-            │   └── SKILL.md       # Installed with the package via package_data
             ├── utils/             # Utilities
             │   ├── __init__.py
             │   ├── repl_skin.py   # Unified REPL skin (copy from plugin)
@@ -318,13 +302,6 @@ The cli-anything methodology has successfully built CLIs for:
 - Architecture analysis
 - Test plans and results
 
-### SKILL.md Generation
-- Automatic skill definition generation for AI agent discovery
-- YAML frontmatter with name and description for triggering
-- Command groups and usage examples
-- Agent-specific guidance for programmatic usage
-- Follows skill-creator methodology
-
 ### PyPI Distribution
 - PEP 420 namespace packages under `cli_anything.*`
 - Unified package naming: `cli-anything-<software>`
@@ -355,9 +332,8 @@ The cli-anything methodology has successfully built CLIs for:
 3. **Test thoroughly** - Aim for 100% pass rate
 4. **Document everything** - Future you will thank you
 5. **Use the validation command** - Catch issues early
-6. **Generate SKILL.md** - Make CLIs discoverable by AI agents
-7. **Install to PATH** - Make CLIs discoverable by running Phase 7
-8. **Publish to PyPI** - Share your CLI with the community
+6. **Install to PATH** - Make CLIs discoverable by running Phase 7
+7. **Publish to PyPI** - Share your CLI with the community
 
 ## Installation and Distribution
 
@@ -440,16 +416,9 @@ Inspired by the ralph-loop plugin's iterative development approach.
 
 ## Version History
 
-### 1.1.0 (2026-03-12)
-- Added SKILL.md generation (Phase 6.5)
-- New `skill_generator.py` module for extracting CLI metadata
-- Jinja2-based `SKILL.md.template` for customizable skill definitions
-- SKILL.md files follow skill-creator methodology with YAML frontmatter
-- AI agents can discover and use generated CLIs via SKILL.md files
-
 ### 1.0.0 (2026-03-05)
 - Initial release
-- Support for 4 commands: cli-anything, refine, test, validate
+- Support for 5 commands: cli-anything, refine, test, validate, list
 - Complete 7-phase methodology implementation
 - Comprehensive documentation
 - PyPI publishing support with namespace isolation
