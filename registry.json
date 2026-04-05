@@ -1,7 +1,7 @@
 {
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
-    "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
+    "description": "CLI-Hub \u2014 Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
     "updated": "2026-03-31"
   },
   "clis": [
@@ -9,7 +9,7 @@
       "name": "wiremock",
       "display_name": "WireMock",
       "version": "0.1.0",
-      "description": "HTTP mock server management — create stubs, inspect requests, record traffic, and manage scenarios via WireMock REST API",
+      "description": "HTTP mock server management \u2014 create stubs, inspect requests, record traffic, and manage scenarios via WireMock REST API",
       "requires": "WireMock server running (java -jar wiremock-standalone.jar)",
       "homepage": "https://wiremock.org",
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wiremock/agent-harness",
@@ -317,7 +317,7 @@
       "name": "musescore",
       "display_name": "MuseScore",
       "version": "1.0.0",
-      "description": "CLI for music notation — transpose, export PDF/audio/MIDI, extract parts, manage instruments",
+      "description": "CLI for music notation \u2014 transpose, export PDF/audio/MIDI, extract parts, manage instruments",
       "requires": "MuseScore 4 (musescore.org)",
       "homepage": "https://musescore.org",
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=musescore/agent-harness",
@@ -359,7 +359,7 @@
       "name": "iterm2",
       "display_name": "iTerm2",
       "version": "1.0.0",
-      "description": "Control a running iTerm2 instance — manage windows, tabs, split panes, send text, read output, run tmux -CC, broadcast keystrokes, and configure preferences.",
+      "description": "Control a running iTerm2 instance \u2014 manage windows, tabs, split panes, send text, read output, run tmux -CC, broadcast keystrokes, and configure preferences.",
       "requires": "iTerm2.app (macOS only)",
       "homepage": "https://iterm2.com",
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=iterm2/agent-harness",
@@ -415,7 +415,7 @@
       "name": "videocaptioner",
       "display_name": "VideoCaptioner",
       "version": "1.0.0",
-      "description": "AI-powered video captioning — transcribe speech, optimize/translate subtitles, burn styled subtitles into video",
+      "description": "AI-powered video captioning \u2014 transcribe speech, optimize/translate subtitles, burn styled subtitles into video",
       "requires": "videocaptioner (pip install videocaptioner), ffmpeg",
       "homepage": "https://github.com/WEIFENG2333/VideoCaptioner",
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=videocaptioner/agent-harness",
@@ -466,6 +466,34 @@
       "category": "graphics",
       "contributor": "Taeyoung96",
       "contributor_url": "https://github.com/Taeyoung96"
+    },
+    {
+      "name": "n8n",
+      "display_name": "n8n",
+      "version": "2.3.0",
+      "description": "Workflow automation management via n8n REST API \u2014 66 commands for workflows, executions, credentials, variables, tags, templates, and more",
+      "requires": "n8n >= 1.0.0 (self-hosted or cloud)",
+      "homepage": "https://n8n.io",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=n8n/agent-harness",
+      "entry_point": "cli-anything-n8n",
+      "skill_md": "n8n/agent-harness/cli_anything/n8n/skills/SKILL.md",
+      "category": "automation",
+      "contributor": "webcomunicasolutions",
+      "contributor_url": "https://github.com/webcomunicasolutions"
+    },
+    {
+      "name": "n8n",
+      "display_name": "n8n",
+      "version": "2.3.0",
+      "description": "Workflow automation management via n8n REST API — 66 commands for workflows, executions, credentials, variables, tags, templates, and more",
+      "requires": "n8n >= 1.0.0 (self-hosted or cloud)",
+      "homepage": "https://n8n.io",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=n8n/agent-harness",
+      "entry_point": "cli-anything-n8n",
+      "skill_md": "n8n/agent-harness/cli_anything/n8n/skills/SKILL.md",
+      "category": "automation",
+      "contributor": "webcomunicasolutions",
+      "contributor_url": "https://github.com/webcomunicasolutions"
     }
   ]
 }

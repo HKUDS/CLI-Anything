@@ -715,6 +715,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 158</td>
 </tr>
 <tr>
+<td align="center"><strong>⚡ <a href="n8n/agent-harness/">n8n</a></strong></td>
+<td>Workflow Automation</td>
+<td><code>cli-anything-n8n</code></td>
+<td>n8n REST API v1.1.1</td>
+<td align="center">✅ <a href="n8n/agent-harness/">66 cmds</a></td>
+</tr>
+<tr>
 <td align="center"><strong>📚 <a href="zotero/agent-harness/">Zotero</a></strong></td>
 <td>Reference Management</td>
 <td><code>cli-anything-zotero</code></td>
