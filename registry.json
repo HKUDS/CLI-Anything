@@ -466,6 +466,20 @@
       "category": "graphics",
       "contributor": "Taeyoung96",
       "contributor_url": "https://github.com/Taeyoung96"
+    },
+    {
+      "name": "n8n",
+      "display_name": "n8n",
+      "version": "2.4.4",
+      "description": "Workflow automation via n8n REST API — 55+ commands for workflows, executions, credentials, variables, tags, templates",
+      "requires": "n8n >= 1.0.0 (self-hosted or cloud)",
+      "homepage": "https://n8n.io",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=n8n/agent-harness",
+      "entry_point": "cli-anything-n8n",
+      "skill_md": "n8n/agent-harness/cli_anything/n8n/skills/SKILL.md",
+      "category": "automation",
+      "contributor": "webcomunicasolutions",
+      "contributor_url": "https://github.com/webcomunicasolutions"
     }
   ]
 }
