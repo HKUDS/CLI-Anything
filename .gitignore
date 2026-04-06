@@ -72,6 +72,7 @@
 !/comfyui/
 !/adguardhome/
 !/novita/
+!/minimax/
 !/ollama/
 !/browser/
 !/musescore/
@@ -165,6 +166,7 @@
 !/comfyui/agent-harness/
 !/adguardhome/agent-harness/
 !/novita/agent-harness/
+!/minimax/agent-harness/
 !/ollama/agent-harness/
 !/browser/agent-harness/
 !/musescore/agent-harness/
