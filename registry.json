@@ -508,6 +508,20 @@
       "category": "gamedev",
       "contributor": "omerarslan0",
       "contributor_url": "https://github.com/omerarslan0"
+    },
+    {
+      "name": "minimax",
+      "display_name": "MiniMax",
+      "version": "1.0.0",
+      "description": "Chat and TTS via MiniMax AI API — MiniMax-M2.7 chat models and speech-2.8-hd TTS",
+      "requires": "MINIMAX_API_KEY",
+      "homepage": "https://platform.minimax.io",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=minimax/agent-harness",
+      "entry_point": "cli-anything-minimax",
+      "skill_md": "minimax/agent-harness/cli_anything/minimax/skills/SKILL.md",
+      "category": "ai",
+      "contributor": "ximi",
+      "contributor_url": "https://github.com/ximi"
     }
   ]
 }
