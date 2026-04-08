@@ -326,6 +326,9 @@ class TestEdgeCases:
         assert metadata.skill_intro == ""  # No README → empty intro
         assert metadata.version == "1.0.0"
         assert metadata.command_groups == []
+        # skill_description must not contain trailing " - ..." when intro is empty
+        assert " - " not in metadata.skill_description
+        assert not metadata.skill_description.endswith("...")
 
     def test_harness_with_system_package(self, tmp_path):
         """README with apt install instructions should extract system_package."""
