@@ -53,6 +53,28 @@ python3 -m pytest cli/tests/test_core.py -v
 python3 -m pytest cli/tests/test_full_e2e.py -v
 ```
 
+## Evaluation (Eval Harness)
+
+Run a lightweight evaluation suite and generate reports:
+
+```bash
+# Default output: eval_results/<timestamp>/
+python3 -m cli.audacity_cli eval
+
+# Custom output directory
+python3 -m cli.audacity_cli eval --out ./eval_out
+
+# Compare to a baseline and fail on regression
+python3 -m cli.audacity_cli eval --baseline baseline.json --fail-on-regression
+
+# Update (write) baseline JSON
+python3 -m cli.audacity_cli eval --baseline baseline.json --update-baseline
+```
+
+Outputs:
+- `eval_report.json` and `eval_report.md`
+- `artifacts/` directory for task outputs
+
 ## Command Groups
 
 | Group | Commands |

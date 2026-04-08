@@ -25,5 +25,9 @@ setup(
             "cli-anything-mermaid=cli_anything.mermaid.mermaid_cli:main",
         ]
     },
+    package_data={
+        "cli_anything.mermaid": ["skills/*.md"],
+    },
+    include_package_data=True,
     python_requires=">=3.10",
 )

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <AssemblyName>STS2_Bridge</AssemblyName>
+    <RootNamespace>STS2_Bridge</RootNamespace>
+    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == ''">/path/to/sts2/data_dir</STS2GameDataDir>
+  </PropertyGroup>
+
+  <Target Name="ValidateGameDir" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(STS2GameDataDir)/sts2.dll')" Text="STS2GameDataDir is invalid. Expected sts2.dll at $(STS2GameDataDir)/sts2.dll" />
+    <Error Condition="!Exists('$(STS2GameDataDir)/GodotSharp.dll')" Text="STS2GameDataDir is invalid. Expected GodotSharp.dll at $(STS2GameDataDir)/GodotSharp.dll" />
+    <Error Condition="!Exists('$(STS2GameDataDir)/0Harmony.dll')" Text="STS2GameDataDir is invalid. Expected 0Harmony.dll at $(STS2GameDataDir)/0Harmony.dll" />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="sts2">
+      <HintPath>$(STS2GameDataDir)/sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>$(STS2GameDataDir)/GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(STS2GameDataDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

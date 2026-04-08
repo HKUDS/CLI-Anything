@@ -1,0 +1,132 @@
+{
+  "tokens": "../tokens/default.json",
+  "pages": [
+    {
+      "name": "登录页",
+      "artboards": [
+        {
+          "name": "Mobile - Login",
+          "width": 375,
+          "height": 812,
+          "backgroundColor": "#FFFFFF",
+          "layout": {
+            "type": "vertical-stack",
+            "paddingTop": 120,
+            "paddingHorizontal": 24,
+            "gap": 16
+          },
+          "layers": [
+            {
+              "type": "text",
+              "name": "title",
+              "value": "欢迎回来",
+              "style": "$heading1"
+            },
+            {
+              "type": "text",
+              "name": "subtitle",
+              "value": "请登录您的账户",
+              "style": "$bodySecondary"
+            },
+            {
+              "type": "spacer",
+              "height": 24
+            },
+            {
+              "type": "group",
+              "name": "emailInput",
+              "layout": {
+                "type": "horizontal-stack",
+                "gap": 12,
+                "alignItems": "center",
+                "paddingHorizontal": 16
+              },
+              "style": "$inputField",
+              "children": [
+                {
+                  "type": "text",
+                  "name": "emailIcon",
+                  "value": "E",
+                  "style": { "fontSize": 18, "color": "#64748B" }
+                },
+                {
+                  "type": "text",
+                  "name": "emailPlaceholder",
+                  "value": "请输入邮箱地址",
+                  "style": "$placeholder"
+                }
+              ]
+            },
+            {
+              "type": "group",
+              "name": "passwordInput",
+              "layout": {
+                "type": "horizontal-stack",
+                "gap": 12,
+                "alignItems": "center",
+                "paddingHorizontal": 16
+              },
+              "style": "$inputField",
+              "children": [
+                {
+                  "type": "text",
+                  "name": "lockIcon",
+                  "value": "P",
+                  "style": { "fontSize": 18, "color": "#64748B" }
+                },
+                {
+                  "type": "text",
+                  "name": "passwordPlaceholder",
+                  "value": "请输入密码",
+                  "style": "$placeholder"
+                }
+              ]
+            },
+            {
+              "type": "spacer",
+              "height": 8
+            },
+            {
+              "type": "rectangle",
+              "name": "loginButton",
+              "height": 48,
+              "width": "fill",
+              "style": "$primaryButton",
+              "label": {
+                "value": "登 录",
+                "style": "$buttonText"
+              }
+            },
+            {
+              "type": "spacer",
+              "height": 8
+            },
+            {
+              "type": "group",
+              "name": "bottomLinks",
+              "layout": {
+                "type": "horizontal-stack",
+                "justifyContent": "space-between"
+              },
+              "width": "fill",
+              "children": [
+                {
+                  "type": "text",
+                  "name": "forgotPassword",
+                  "value": "忘记密码？",
+                  "style": "$link"
+                },
+                {
+                  "type": "text",
+                  "name": "register",
+                  "value": "注册新账户",
+                  "style": "$link"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

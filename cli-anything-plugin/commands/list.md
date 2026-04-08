@@ -94,24 +94,24 @@ def build_glob_patterns(base_path, depth):
 patterns = build_glob_patterns(search_path, max_depth)
 for pattern in patterns:
     for init_file in glob.glob(pattern, recursive=True):
-    parts = Path(init_file).parts
-    # Find cli_anything/<software> pattern
-    for i, p in enumerate(parts):
-        if p == "cli_anything" and i + 1 < len(parts):
-            software = parts[i + 1]
-            # Get agent-harness directory as source
-            agent_harness_idx = parts.index("agent-harness") if "agent-harness" in parts else i - 1
-            source = str(Path(*parts[:agent_harness_idx + 2]))  # up to agent-harness
-            # Extract version from setup.py (setup.py is in agent-harness/, not cli_anything/)
-            setup_path = Path(*parts[:agent_harness_idx + 1]) / "setup.py"
-            version = extract_version_from_setup(setup_path)
-            generated[software] = {
-                "status": "generated",
-                "version": version,
-                "executable": None,
-                "source": source
-            }
-            break
+        parts = Path(init_file).parts
+        # Find cli_anything/<software> pattern
+        for i, p in enumerate(parts):
+            if p == "cli_anything" and i + 1 < len(parts):
+                software = parts[i + 1]
+                # Get agent-harness directory as source
+                agent_harness_idx = parts.index("agent-harness") if "agent-harness" in parts else i - 1
+                source = str(Path(*parts[:agent_harness_idx + 2]))  # up to agent-harness
+                # Extract version from setup.py (setup.py is in agent-harness/, not cli_anything/)
+                setup_path = Path(*parts[:agent_harness_idx + 1]) / "setup.py"
+                version = extract_version_from_setup(setup_path)
+                generated[software] = {
+                    "status": "generated",
+                    "version": version,
+                    "executable": None,
+                    "source": source
+                }
+                break
 ```
 
 ### 3. Merge Results

@@ -1,0 +1,10 @@
+{
+  "id": "STS2_Bridge",
+  "name": "STS2 Bridge",
+  "author": "kunology",
+  "description": "Local bridge plugin for Slay the Spire 2",
+  "version": "0.3.0",
+  "has_pck": false,
+  "has_dll": true,
+  "affects_gameplay": false
+}

@@ -46,6 +46,9 @@ setup(
             "cli-anything-comfyui=cli_anything.comfyui.comfyui_cli:main",
         ],
     },
+    package_data={
+        "cli_anything.comfyui": ["skills/*.md"],
+    },
     include_package_data=True,
     zip_safe=False,
 )

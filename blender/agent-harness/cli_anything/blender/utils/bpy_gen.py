@@ -521,7 +521,7 @@ def _engine_to_bpy(engine: str) -> str:
     """Convert engine name to bpy enum value."""
     mapping = {
         "CYCLES": "CYCLES",
-        "EEVEE": "BLENDER_EEVEE_NEXT",
+        "EEVEE": "BLENDER_EEVEE",
         "WORKBENCH": "BLENDER_WORKBENCH",
     }
     return mapping.get(engine, "CYCLES")

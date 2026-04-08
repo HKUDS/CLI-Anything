@@ -5,6 +5,8 @@
 CLI-Anything: AIエージェントと世界のソフトウェアの架け橋</strong><br>
 </p>
 
+**🌐 [CLI-Hub](https://hkuds.github.io/CLI-Anything/)**: コミュニティが構築した全CLIを **[CLI-Hub](https://hkuds.github.io/CLI-Anything/)** で探索、ワンコマンドでインストール。自分のCLIを追加したい？[PRを送信](https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md) — Hubは即座に更新されます。
+
 <p align="center">
   <a href="#-クイックスタート"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="クイックスタート"></a>
   <a href="#-デモンストレーション"><img src="https://img.shields.io/badge/Demos-11_Apps-green?style=for-the-badge" alt="デモ"></a>
@@ -56,7 +58,7 @@ CLIは人間とAIエージェント両方にとって普遍的なインターフ
 
 - **Python 3.10+**
 - 対象ソフトウェアがインストール済みであること（例：GIMP、Blender、LibreOffice、または独自のアプリケーション）
-- サポートされているAIコーディングエージェント: [Claude Code](#-claude-code) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [その他のプラットフォーム](#-その他のプラットフォーム近日公開)
+- サポートされているAIコーディングエージェント: [Claude Code](#-claude-code) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [その他のプラットフォーム](#-その他のプラットフォーム近日公開)
 
 ### プラットフォームを選択
 
@@ -268,6 +270,30 @@ CLI-Anythingを使って./libreofficeを検証して
 ```
 
 CodexスキルはClaude CodeプラグインおよびOpenCodeコマンドと同じ方法論を適用しつつ、生成されるPythonハーネスのフォーマットは変更されません。
+</details>
+
+<details>
+
+<summary><h4 id="-github-copilot-cli">⚡ GitHub Copilot CLI <sup><code>コミュニティ</code></sup></h4></summary>
+
+**ステップ1: プラグインのインストール**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+cd CLI-Anything
+copilot plugin install ./cli-anything-plugin
+```
+
+これにより、CLI-Anything プラグインが GitHub Copilot CLI にインストールされます。プラグインはすでに GitHub Copilot CLI セッションで利用できるはずです。
+
+**ステップ2: GitHub Copilot CLIからCLI-Anythingを使用**
+
+```bash
+/cli-anything:cli-anything ./gimp
+/cli-anything:refine ./gimp "バッチ処理とフィルタ"
+/cli-anything:validate ./gimp
+```
+
 </details>
 
 <details>

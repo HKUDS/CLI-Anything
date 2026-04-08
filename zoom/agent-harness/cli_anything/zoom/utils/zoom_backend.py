@@ -5,6 +5,9 @@ It is the only module that makes network requests.
 """
 
 import json
+import os
+import platform
+import subprocess
 import time
 import requests
 from pathlib import Path
@@ -25,9 +28,35 @@ TOKEN_FILE = CONFIG_DIR / "tokens.json"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 
+def _restrict_path(path: Path, mode: int):
+    """Set file/directory permissions, with icacls enforcement on Windows.
+
+    On Unix, uses os.chmod directly.
+    On Windows, os.chmod only controls the read-only flag, so we also
+    run icacls to grant access exclusively to the current user.
+    """
+    try:
+        path.chmod(mode)
+    except OSError:
+        pass
+
+    if platform.system() == "Windows":
+        try:
+            username = os.environ.get("USERNAME", "")
+            if username:
+                subprocess.run(
+                    ["icacls", str(path), "/inheritance:r",
+                     "/grant:r", f"{username}:(F)"],
+                    capture_output=True, timeout=10,
+                )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # icacls not available or timed out — best effort
+
+
 def get_config_dir() -> Path:
-    """Get or create config directory."""
+    """Get or create config directory with owner-only permissions (0o700)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    _restrict_path(CONFIG_DIR, 0o700)
     return CONFIG_DIR
 
 
@@ -40,10 +69,11 @@ def load_config() -> dict:
 
 
 def save_config(config: dict):
-    """Save OAuth app config."""
+    """Save OAuth app config with owner-only permissions (0o600)."""
     get_config_dir()
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
+    _restrict_path(CONFIG_FILE, 0o600)
 
 
 def load_tokens() -> dict:
@@ -55,11 +85,12 @@ def load_tokens() -> dict:
 
 
 def save_tokens(tokens: dict):
-    """Save OAuth tokens to disk."""
+    """Save OAuth tokens to disk with owner-only permissions (0o600)."""
     get_config_dir()
     tokens["saved_at"] = time.time()
     with open(TOKEN_FILE, "w") as f:
         json.dump(tokens, f, indent=2)
+    _restrict_path(TOKEN_FILE, 0o600)
 
 
 def get_authorize_url(client_id: str, redirect_uri: str) -> str:

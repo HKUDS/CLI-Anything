@@ -212,7 +212,10 @@ def render_scene(
     os.makedirs(script_dir, exist_ok=True)
 
     script_path = os.path.join(script_dir, "_render_script.py")
-    script_content = generate_bpy_script(project, output_path, frame=frame, animation=animation)
+    # Ensure output_path is absolute before passing it to the script generator
+    # as Blender's background process may have a different CWD.
+    abs_output_path = os.path.abspath(output_path)
+    script_content = generate_bpy_script(project, abs_output_path, frame=frame, animation=animation)
 
     with open(script_path, "w") as f:
         f.write(script_content)

@@ -1,0 +1,2 @@
+include DIFY_WORKFLOW.md
+recursive-include cli_anything *.md

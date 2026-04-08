@@ -17,6 +17,7 @@ Usage:
 import sys
 import os
 import json
+import shlex
 import click
 from typing import Optional
 
@@ -896,8 +897,11 @@ def repl(project_path):
                 skin.help(_repl_commands)
                 continue
 
-            # Parse and execute command
-            args = line.split()
+            # Parse and execute command (shlex handles quoted strings with spaces)
+            try:
+                args = shlex.split(line)
+            except ValueError:
+                args = line.split()
             try:
                 cli.main(args, standalone_mode=False)
             except SystemExit:

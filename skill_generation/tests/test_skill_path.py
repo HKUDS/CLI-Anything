@@ -143,17 +143,24 @@ class TestInstalledHarnesses:
     """Verify each real harness has SKILL.md in the correct package location."""
 
     HARNESSES = [
-        ("gimp", "gimp"),
-        ("blender", "blender"),
-        ("inkscape", "inkscape"),
+        ("adguardhome", "adguardhome"),
+        ("anygen", "anygen"),
         ("audacity", "audacity"),
-        ("libreoffice", "libreoffice"),
-        ("obs-studio", "obs_studio"),
+        ("blender", "blender"),
+        ("comfyui", "comfyui"),
+        ("drawio", "drawio"),
+        ("gimp", "gimp"),
+        ("inkscape", "inkscape"),
         ("kdenlive", "kdenlive"),
+        ("libreoffice", "libreoffice"),
+        ("mermaid", "mermaid"),
+        ("mubu", "mubu"),
+        ("notebooklm", "notebooklm"),
+        ("novita", "novita"),
+        ("obs-studio", "obs_studio"),
+        ("ollama", "ollama"),
         ("shotcut", "shotcut"),
         ("zoom", "zoom"),
-        ("drawio", "drawio"),
-        ("anygen", "anygen"),
     ]
 
     @pytest.mark.parametrize("dir_name,pkg_name", HARNESSES)
@@ -186,4 +193,6 @@ class TestInstalledHarnesses:
         setup_path = repo_root / dir_name / "agent-harness" / "setup.py"
         content = setup_path.read_text()
         assert "package_data" in content, f"Missing package_data in {setup_path}"
-        assert "skills/*.md" in content, f"Missing skills/*.md in package_data: {setup_path}"
+        # Accept both glob style ("skills/*.md") and explicit style ("SKILL.md" in a .skills key)
+        has_skill_ref = "skills/*.md" in content or ("skills" in content and "SKILL.md" in content)
+        assert has_skill_ref, f"Missing skills/*.md or SKILL.md in package_data: {setup_path}"

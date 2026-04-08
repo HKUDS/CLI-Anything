@@ -1,0 +1,17 @@
+include:
+  - SKILL.md
+
+# Prevent Jekyll from processing SKILL.md
+exclude: []
+
+# Keep markdown files as-is
+markdown: kramdown
+kramdown:
+  input: GFM
+
+# Static files to copy without processing
+defaults:
+  - scope:
+      path: "SKILL.md"
+    values:
+      layout: none

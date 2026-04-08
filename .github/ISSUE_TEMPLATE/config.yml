@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: "\U0001F44B Contributor Sign-Up"
+    url: https://github.com/HKUDS/CLI-Anything/issues/new?template=contributor-signup.yml
+    about: Want to contribute a new CLI and gain reviewer/merge access? Sign up here!
   - name: Questions & Discussions
     url: https://github.com/HKUDS/CLI-Anything/discussions
     about: Please ask questions and discuss ideas here instead of opening an issue.

@@ -1,0 +1,117 @@
+{
+  "colors": {
+    "primary": "#3B82F6",
+    "primaryDark": "#1D4ED8",
+    "secondary": "#64748B",
+    "background": "#FFFFFF",
+    "surface": "#F8FAFC",
+    "text": "#0F172A",
+    "textSecondary": "#64748B",
+    "border": "#E2E8F0",
+    "error": "#EF4444",
+    "success": "#10B981"
+  },
+  "typography": {
+    "fontFamily": "PingFang SC",
+    "fallbackFontFamily": "Helvetica Neue"
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "xxl": 48
+  },
+  "radius": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "xl": 16,
+    "full": 9999
+  },
+  "shadows": {
+    "sm": { "offsetX": 0, "offsetY": 1, "blurRadius": 2, "color": "#0000000D" },
+    "md": { "offsetX": 0, "offsetY": 4, "blurRadius": 6, "color": "#0000001A" },
+    "lg": { "offsetX": 0, "offsetY": 10, "blurRadius": 15, "color": "#00000026" }
+  },
+  "styles": {
+    "$heading1": {
+      "fontSize": 28,
+      "fontWeight": "bold",
+      "color": "$text",
+      "lineHeight": 36
+    },
+    "$heading2": {
+      "fontSize": 22,
+      "fontWeight": "bold",
+      "color": "$text",
+      "lineHeight": 30
+    },
+    "$heading3": {
+      "fontSize": 18,
+      "fontWeight": "bold",
+      "color": "$text",
+      "lineHeight": 26
+    },
+    "$body": {
+      "fontSize": 15,
+      "color": "$text",
+      "lineHeight": 22
+    },
+    "$bodySecondary": {
+      "fontSize": 15,
+      "color": "$textSecondary",
+      "lineHeight": 22
+    },
+    "$caption": {
+      "fontSize": 12,
+      "color": "$textSecondary",
+      "lineHeight": 16
+    },
+    "$placeholder": {
+      "fontSize": 15,
+      "color": "$border",
+      "lineHeight": 20
+    },
+    "$inputField": {
+      "backgroundColor": "$surface",
+      "borderColor": "$border",
+      "borderWidth": 1,
+      "cornerRadius": "$md",
+      "height": 48,
+      "width": "fill",
+      "paddingHorizontal": 16
+    },
+    "$primaryButton": {
+      "backgroundColor": "$primary",
+      "cornerRadius": "$lg",
+      "shadow": "$md"
+    },
+    "$secondaryButton": {
+      "backgroundColor": "$surface",
+      "borderColor": "$primary",
+      "borderWidth": 1,
+      "cornerRadius": "$lg"
+    },
+    "$buttonText": {
+      "fontSize": 16,
+      "fontWeight": "bold",
+      "color": "#FFFFFF",
+      "textAlign": "center"
+    },
+    "$link": {
+      "fontSize": 14,
+      "color": "$primary"
+    },
+    "$card": {
+      "backgroundColor": "#FFFFFF",
+      "cornerRadius": "$lg",
+      "shadow": "$md"
+    },
+    "$divider": {
+      "backgroundColor": "$border",
+      "height": 1
+    }
+  }
+}

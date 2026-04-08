@@ -255,15 +255,16 @@ def shape():
 @click.option("--width", "-w", type=float, default=120, help="Width")
 @click.option("--height", "-h", type=float, default=60, help="Height")
 @click.option("--page", type=int, default=0, help="Page index")
+@click.option("--id", "cell_id", default=None, help="Custom cell ID (auto-generated if omitted)")
 @handle_error
-def shape_add(shape_type, label, x, y, width, height, page):
+def shape_add(shape_type, label, x, y, width, height, page, cell_id):
     """Add a shape to the diagram.
 
     SHAPE_TYPE: rectangle, rounded, ellipse, diamond, triangle, hexagon,
     cylinder, cloud, parallelogram, process, document, callout, note, actor, text
     """
     session = get_session()
-    result = shapes_mod.add_shape(session, shape_type, x, y, width, height, label, page)
+    result = shapes_mod.add_shape(session, shape_type, x, y, width, height, label, page, cell_id)
     output(result, f"Added {shape_type}: {result['id']}")
 
 
@@ -380,11 +381,12 @@ def connect():
               help="Edge style")
 @click.option("--label", "-l", default="", help="Edge label")
 @click.option("--page", type=int, default=0, help="Page index")
+@click.option("--id", "edge_id", default=None, help="Custom edge ID (auto-generated if omitted)")
 @handle_error
-def connect_add(source_id, target_id, edge_style, label, page):
+def connect_add(source_id, target_id, edge_style, label, page, edge_id):
     """Add a connector between two shapes."""
     session = get_session()
-    result = conn_mod.add_connector(session, source_id, target_id, edge_style, label, page)
+    result = conn_mod.add_connector(session, source_id, target_id, edge_style, label, page, edge_id)
     output(result, f"Connected: {source_id} → {target_id}")
 
 

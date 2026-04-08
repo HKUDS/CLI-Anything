@@ -15,5 +15,9 @@ setup(
             "cli-anything-adguardhome=cli_anything.adguardhome.adguardhome_cli:main",
         ],
     },
+    package_data={
+        "cli_anything.adguardhome": ["skills/*.md"],
+    },
+    include_package_data=True,
     python_requires=">=3.10",
 )

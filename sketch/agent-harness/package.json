@@ -1,0 +1,26 @@
+{
+  "name": "sketch-harness",
+  "version": "1.0.0",
+  "description": "CLI tool to generate Sketch files from JSON design specs — CLI-Anything harness for Sketch",
+  "main": "src/cli.js",
+  "bin": {
+    "sketch-cli": "src/cli.js"
+  },
+  "scripts": {
+    "test": "jest --verbose",
+    "build:login": "node src/cli.js build --input examples/login-page.json --output output/login-page.sketch",
+    "build:dashboard": "node src/cli.js build --input examples/dashboard.json --output output/dashboard.sketch",
+    "build:cards": "node src/cli.js build --input examples/card-list.json --output output/card-list.sketch",
+    "build:all": "npm run build:login && npm run build:dashboard && npm run build:cards"
+  },
+  "dependencies": {
+    "sketch-constructor": "^1.26.0",
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -18,6 +18,7 @@ Usage:
 import sys
 import os
 import json
+import shlex
 import click
 from typing import Optional
 
@@ -134,6 +135,15 @@ def cli(ctx, use_json, project_path):
 
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl, project_path=None)
+
+
+@cli.result_callback()
+def auto_save_on_cli(result, **kwargs):
+    """Auto-save project after CLI commands when --project is specified."""
+    if not _repl_mode:
+        sess = get_session()
+        if sess.has_project() and sess._modified and sess.project_path:
+            proj_mod.save_project(sess.get_project(), sess.project_path)
 
 
 # ── Project Commands ─────────────────────────────────────────────
@@ -761,8 +771,11 @@ def repl(project_path):
                 skin.help(_repl_commands)
                 continue
 
-            # Parse and execute command
-            args = line.split()
+            # Parse and execute command (shlex handles quoted strings with spaces)
+            try:
+                args = shlex.split(line)
+            except ValueError:
+                args = line.split()
             try:
                 cli.main(args, standalone_mode=False)
             except SystemExit:

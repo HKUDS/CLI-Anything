@@ -15,7 +15,8 @@ def list_shapes(session: Session, diagram_index: int = 0) -> list[dict]:
 def add_shape(session: Session, shape_type: str = "rectangle",
               x: float = 100, y: float = 100,
               width: float = 120, height: float = 60,
-              label: str = "", diagram_index: int = 0) -> dict:
+              label: str = "", diagram_index: int = 0,
+              cell_id: str = None) -> dict:
     """Add a shape to the diagram.
 
     Args:
@@ -26,6 +27,7 @@ def add_shape(session: Session, shape_type: str = "rectangle",
         x, y: Position.
         width, height: Dimensions.
         label: Text label.
+        cell_id: Optional custom ID. Auto-generated if not provided.
 
     Returns:
         Dict with action and new shape info.
@@ -33,10 +35,13 @@ def add_shape(session: Session, shape_type: str = "rectangle",
     if not session.is_open:
         raise RuntimeError("No project is open")
 
+    if cell_id is not None and drawio_xml.find_cell_by_id(session.root, cell_id, diagram_index) is not None:
+        raise ValueError(f"Cell ID already exists: {cell_id}")
+
     session.checkpoint()
     cell_id = drawio_xml.add_vertex(
         session.root, shape_type, x, y, width, height, label,
-        diagram_index=diagram_index,
+        diagram_index=diagram_index, cell_id=cell_id,
     )
 
     return {

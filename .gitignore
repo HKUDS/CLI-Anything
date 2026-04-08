@@ -14,15 +14,46 @@
 !.gitignore
 !/README.md
 !/CONTRIBUTING.md
+!/SECURITY.md
 !/assets/
+!/.pi-extension/
+/.pi-extension/cli-anything/node_modules
 !/.claude-plugin/
 !/.github/
+/.github/*
+!/.github/workflows/
+!/.github/scripts/
+!/.github/PULL_REQUEST_TEMPLATE.md
+!/.github/ISSUE_TEMPLATE/
+
+# Allow examples directory
+!/examples/
+# Ignore everything inside examples first
+/examples/*
+# Then allow only the subdirs and files we need
+!/examples/README.md
+!/examples/drawio/
+!/examples/slay_the_spire_ii/
+!/examples/videocaptioner/
+# Inside each subdir, ignore everything then allow specific files
+/examples/drawio/*
+!/examples/drawio/drawio_demo.gif
+!/examples/drawio/https_handshake.png
+/examples/slay_the_spire_ii/*
+!/examples/slay_the_spire_ii/example_preview.gif
+/examples/videocaptioner/*
+!/examples/videocaptioner/videocaptioner_before.png
+!/examples/videocaptioner/videocaptioner_after.png
 
 # Step 3: Allow cli-anything-plugin, codex-skill, and skill_generation tests
 !/cli-anything-plugin/
 !/codex-skill/
 !/skill_generation/
 !/openclaw-skill/
+!/cli-hub-meta-skill/
+
+# Ignore cli-hub-skill (auto-generated, not tracked)
+/cli-hub-skill/
 
 # Step 4: Allow each software dir (top level only)
 !/gimp/
@@ -30,15 +61,35 @@
 !/inkscape/
 !/audacity/
 !/libreoffice/
+!/zotero/
 !/mubu/
 !/obs-studio/
 !/kdenlive/
 !/shotcut/
 !/anygen/
 !/zoom/
+!/sketch/
 !/drawio/
+!/godot/
 !/mermaid/
+!/comfyui/
+!/dify-workflow/
 !/adguardhome/
+!/novita/
+!/ollama/
+!/browser/
+!/seaclip/
+!/pm2/
+!/chromadb/
+!/musescore/
+!/krita/
+!/freecad/
+!/iterm2/
+!/slay_the_spire_ii/
+!/rms/
+!/renderdoc/
+!/cloudcompare/
+!/openscreen/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -51,6 +102,8 @@
 /audacity/.*
 /libreoffice/*
 /libreoffice/.*
+/zotero/*
+/zotero/.*
 /mubu/*
 /mubu/.*
 /obs-studio/*
@@ -63,12 +116,54 @@
 /anygen/.*
 /zoom/*
 /zoom/.*
+/sketch/*
+/sketch/.*
 /drawio/*
 /drawio/.*
+/godot/*
+/godot/.*
 /mermaid/*
 /mermaid/.*
+/comfyui/*
+/comfyui/.*
+/dify-workflow/*
+/dify-workflow/.*
 /adguardhome/*
 /adguardhome/.*
+/ollama/*
+/ollama/.*
+/browser/*
+/browser/.*
+/seaclip/*
+/seaclip/.*
+/pm2/*
+/pm2/.*
+/chromadb/*
+/chromadb/.*
+/musescore/*
+/musescore/.*
+/krita/*
+/krita/.*
+/freecad/*
+/freecad/.*
+/iterm2/*
+/iterm2/.*
+/slay_the_spire_ii/*
+/slay_the_spire_ii/.*
+/rms/*
+/rms/.*
+/renderdoc/*
+/renderdoc/.*
+/cloudcompare/*
+/cloudcompare/.*
+/openscreen/*
+/openscreen/.*
+/cloudanalyzer/*
+/cloudanalyzer/.*
+/wiremock/*
+/wiremock/.*
+/exa/*
+/exa/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -76,15 +171,41 @@
 !/inkscape/agent-harness/
 !/audacity/agent-harness/
 !/libreoffice/agent-harness/
+!/zotero/agent-harness/
 !/mubu/agent-harness/
 !/obs-studio/agent-harness/
 !/kdenlive/agent-harness/
 !/shotcut/agent-harness/
 !/anygen/agent-harness/
 !/zoom/agent-harness/
+!/sketch/agent-harness/
 !/drawio/agent-harness/
+!/godot/agent-harness/
 !/mermaid/agent-harness/
+!/comfyui/agent-harness/
+!/dify-workflow/agent-harness/
 !/adguardhome/agent-harness/
+!/novita/agent-harness/
+!/ollama/agent-harness/
+!/browser/agent-harness/
+!/seaclip/agent-harness/
+!/pm2/agent-harness/
+!/chromadb/agent-harness/
+!/musescore/agent-harness/
+!/krita/agent-harness/
+!/freecad/agent-harness/
+!/iterm2/agent-harness/
+!/slay_the_spire_ii/agent-harness/
+!/slay_the_spire_ii/README.md
+!/rms/agent-harness/
+!/renderdoc/agent-harness/
+!/cloudcompare/agent-harness/
+!/openscreen/agent-harness/
+!/cloudanalyzer/
+!/cloudanalyzer/agent-harness/
+!/wiremock/
+!/wiremock/agent-harness/
+!/exa/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
@@ -94,12 +215,10 @@
 **/build/
 **/.pytest_cache/
 **/*.egg
-**/*.mp4
 **/*.wav
 **/*.blend
 **/*.xcf
 **/*.mlt
-**/*.drawio
 
 # Step 8: But allow assets images
 !/assets/*.png
@@ -115,7 +234,11 @@ assets/gen_typing_gif.py
 !/docs/
 /docs/*
 !/docs/hub/
+/docs/hub/registry-dates.json
 !/notebooklm/
 /notebooklm/*
 /notebooklm/.*
 !/notebooklm/agent-harness/
+!/intelwatch/agent-harness/
+!/intelwatch/
+!/exa/

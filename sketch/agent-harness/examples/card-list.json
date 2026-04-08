@@ -1,0 +1,230 @@
+{
+  "tokens": "../tokens/default.json",
+  "pages": [
+    {
+      "name": "卡片列表",
+      "artboards": [
+        {
+          "name": "Mobile - Card List",
+          "width": 375,
+          "height": 900,
+          "backgroundColor": "#F1F5F9",
+          "layout": {
+            "type": "vertical-stack",
+            "paddingTop": 60,
+            "paddingHorizontal": 16,
+            "gap": 12
+          },
+          "layers": [
+            {
+              "type": "text",
+              "name": "pageTitle",
+              "value": "推荐内容",
+              "style": "$heading2"
+            },
+            {
+              "type": "spacer",
+              "height": 4
+            },
+            {
+              "type": "group",
+              "name": "card1",
+              "width": "fill",
+              "style": "$card",
+              "layout": {
+                "type": "vertical-stack",
+                "paddingTop": 0,
+                "gap": 0
+              },
+              "children": [
+                {
+                  "type": "rectangle",
+                  "name": "card1Image",
+                  "width": "fill",
+                  "height": 160,
+                  "style": {
+                    "backgroundColor": "#DBEAFE",
+                    "cornerRadius": 0
+                  }
+                },
+                {
+                  "type": "group",
+                  "name": "card1Content",
+                  "width": "fill",
+                  "layout": {
+                    "type": "vertical-stack",
+                    "paddingTop": 12,
+                    "paddingBottom": 16,
+                    "paddingHorizontal": 16,
+                    "gap": 6
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "name": "card1Title",
+                      "value": "设计系统搭建指南",
+                      "style": "$heading3"
+                    },
+                    {
+                      "type": "text",
+                      "name": "card1Desc",
+                      "value": "从零开始搭建企业级设计系统，包含组件库、Token 体系和协作流程",
+                      "style": "$bodySecondary",
+                      "width": "fill",
+                      "height": 40
+                    },
+                    {
+                      "type": "group",
+                      "name": "card1Meta",
+                      "layout": {
+                        "type": "horizontal-stack",
+                        "justifyContent": "space-between"
+                      },
+                      "width": "fill",
+                      "children": [
+                        {
+                          "type": "text",
+                          "name": "card1Author",
+                          "value": "张设计",
+                          "style": "$caption"
+                        },
+                        {
+                          "type": "text",
+                          "name": "card1Date",
+                          "value": "2026-03-20",
+                          "style": "$caption"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "group",
+              "name": "card2",
+              "width": "fill",
+              "style": "$card",
+              "layout": {
+                "type": "vertical-stack",
+                "paddingTop": 0,
+                "gap": 0
+              },
+              "children": [
+                {
+                  "type": "rectangle",
+                  "name": "card2Image",
+                  "width": "fill",
+                  "height": 160,
+                  "style": {
+                    "backgroundColor": "#FEE2E2",
+                    "cornerRadius": 0
+                  }
+                },
+                {
+                  "type": "group",
+                  "name": "card2Content",
+                  "width": "fill",
+                  "layout": {
+                    "type": "vertical-stack",
+                    "paddingTop": 12,
+                    "paddingBottom": 16,
+                    "paddingHorizontal": 16,
+                    "gap": 6
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "name": "card2Title",
+                      "value": "AI 辅助设计工作流",
+                      "style": "$heading3"
+                    },
+                    {
+                      "type": "text",
+                      "name": "card2Desc",
+                      "value": "探索如何用 AI 工具提升设计效率，从灵感生成到设计稿输出的完整流程",
+                      "style": "$bodySecondary",
+                      "width": "fill",
+                      "height": 40
+                    },
+                    {
+                      "type": "group",
+                      "name": "card2Meta",
+                      "layout": {
+                        "type": "horizontal-stack",
+                        "justifyContent": "space-between"
+                      },
+                      "width": "fill",
+                      "children": [
+                        {
+                          "type": "text",
+                          "name": "card2Author",
+                          "value": "李产品",
+                          "style": "$caption"
+                        },
+                        {
+                          "type": "text",
+                          "name": "card2Date",
+                          "value": "2026-03-18",
+                          "style": "$caption"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "group",
+              "name": "card3",
+              "width": "fill",
+              "style": "$card",
+              "layout": {
+                "type": "horizontal-stack",
+                "gap": 12,
+                "paddingHorizontal": 16,
+                "paddingTop": 12,
+                "paddingBottom": 12,
+                "alignItems": "center"
+              },
+              "children": [
+                {
+                  "type": "oval",
+                  "name": "card3Avatar",
+                  "width": 48,
+                  "height": 48,
+                  "style": {
+                    "backgroundColor": "#E0E7FF"
+                  }
+                },
+                {
+                  "type": "group",
+                  "name": "card3TextGroup",
+                  "width": 240,
+                  "layout": {
+                    "type": "vertical-stack",
+                    "gap": 4
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "name": "card3Title",
+                      "value": "响应式布局最佳实践",
+                      "style": "$body"
+                    },
+                    {
+                      "type": "text",
+                      "name": "card3Subtitle",
+                      "value": "王前端 · 2026-03-15",
+                      "style": "$caption"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

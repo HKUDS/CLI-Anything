@@ -27,6 +27,7 @@ Usage:
 import sys
 import os
 import json
+import shlex
 import click
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -385,7 +386,10 @@ def repl():
                     click.echo(f"  {cmd:<12} {subs}")
                 continue
 
-            args = line.split()
+            try:
+                args = shlex.split(line)
+            except ValueError:
+                args = line.split()
             try:
                 cli.main(args, standalone_mode=False)
             except SystemExit:

@@ -1,0 +1,55 @@
+name: "\U0001F31F CLI Wishlist"
+description: "Suggest a software, codebase, or service you'd like CLI-Anything to support."
+title: "[Wishlist] "
+labels: ["wishlist"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Request a New CLI
+
+        Is there a software, codebase, or service you wish had a CLI-Anything harness? Let us know!
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Desktop Software
+        - Web Service / SaaS
+        - Developer Tool / Codebase
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: software-name
+    attributes:
+      label: Software / Service Name
+      placeholder: "e.g., Godot, Ardour, FreeCAD, Darktable, etc."
+    validations:
+      required: true
+
+  - type: input
+    id: software-link
+    attributes:
+      label: Link
+      placeholder: "e.g., https://www.darktable.org/"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Brief use-case
+      placeholder: "e.g., Automate batch photo editing and RAW processing via command line..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why should CLI-Anything support this?
+      placeholder: "e.g., Darktable has a large photography community and supports Lua scripting, making CLI integration feasible..."
+    validations:
+      required: true

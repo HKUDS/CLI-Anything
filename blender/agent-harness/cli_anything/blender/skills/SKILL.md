@@ -19,7 +19,7 @@ pip install cli-anything-blender
 
 **Prerequisites:**
 - Python 3.10+
-- blender must be installed on your system
+- blender (>= 4.2) must be installed on your system
 
 
 ## Usage
@@ -228,7 +228,7 @@ When using this CLI programmatically:
 1. **Always use `--json` flag** for parseable output
 2. **Check return codes** - 0 for success, non-zero for errors
 3. **Parse stderr** for error messages on failure
-4. **Use absolute paths** for all file operations
+4. **MANDATORY: Use absolute paths** for all file operations (rendering, project files). Relative paths are prone to failure in background execution.
 5. **Verify outputs exist** after export operations
 
 ## More Information

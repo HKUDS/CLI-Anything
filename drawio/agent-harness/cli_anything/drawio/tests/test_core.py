@@ -66,6 +66,34 @@ class TestDrawioXml:
         assert edges[0].get("target") == v2
         assert edges[0].get("value") == "connects"
 
+    def test_add_vertex_custom_id(self):
+        root = drawio_xml.create_blank_diagram()
+        cell_id = drawio_xml.add_vertex(root, "rectangle", 0, 0, 100, 50, "X", cell_id="my-node")
+        assert cell_id == "my-node"
+        assert drawio_xml.find_cell_by_id(root, "my-node") is not None
+
+    def test_add_vertex_duplicate_id_raises(self):
+        root = drawio_xml.create_blank_diagram()
+        drawio_xml.add_vertex(root, "rectangle", 0, 0, 100, 50, cell_id="dup")
+        with pytest.raises(ValueError, match="already exists"):
+            drawio_xml.add_vertex(root, "ellipse", 200, 0, 100, 50, cell_id="dup")
+
+    def test_add_edge_custom_id(self):
+        root = drawio_xml.create_blank_diagram()
+        v1 = drawio_xml.add_vertex(root, "rectangle", 0, 0, 100, 50)
+        v2 = drawio_xml.add_vertex(root, "rectangle", 200, 0, 100, 50)
+        edge_id = drawio_xml.add_edge(root, v1, v2, edge_id="my-edge")
+        assert edge_id == "my-edge"
+        assert drawio_xml.find_cell_by_id(root, "my-edge") is not None
+
+    def test_add_edge_duplicate_id_raises(self):
+        root = drawio_xml.create_blank_diagram()
+        v1 = drawio_xml.add_vertex(root, "rectangle", 0, 0, 100, 50)
+        v2 = drawio_xml.add_vertex(root, "rectangle", 200, 0, 100, 50)
+        drawio_xml.add_edge(root, v1, v2, edge_id="dup-edge")
+        with pytest.raises(ValueError, match="already exists"):
+            drawio_xml.add_edge(root, v1, v2, edge_id="dup-edge")
+
     def test_remove_cell(self):
         root = drawio_xml.create_blank_diagram()
         v1 = drawio_xml.add_vertex(root, "rectangle", 10, 20, 120, 60, "A")

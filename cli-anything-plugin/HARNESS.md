@@ -89,35 +89,9 @@ Perform the analysis:
    Generate valid intermediate files, then invoke the real software for conversion.
 6. **Add session management** — State persistence, undo/redo
 
-   **Session file locking** — When saving session JSON, use exclusive file locking
-   to prevent concurrent writes from corrupting data. Never use bare
-   `open("w") + json.dump()` — `open("w")` truncates the file before any lock
-   can be acquired. Instead, open with `"r+"`, lock, then truncate inside the lock:
-   ```python
-   def _locked_save_json(path, data, **dump_kwargs) -> None:
-       """Atomically write JSON with exclusive file locking."""
-       try:
-           f = open(path, "r+")            # no truncation on open
-       except FileNotFoundError:
-           os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-           f = open(path, "w")             # first save — file doesn't exist yet
-       with f:
-           _locked = False
-           try:
-               import fcntl
-               fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-               _locked = True
-           except (ImportError, OSError):
-               pass                        # Windows / unsupported FS — proceed unlocked
-           try:
-               f.seek(0)
-               f.truncate()                # truncate INSIDE the lock
-               json.dump(data, f, **dump_kwargs)
-               f.flush()
-           finally:
-               if _locked:
-                   fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-   ```
+   **Session file locking** — Use exclusive file locking for session JSON saves
+   to prevent concurrent write corruption. See [`guides/session-locking.md`](guides/session-locking.md)
+   for the `_locked_save_json` pattern (open `"r+"`, lock, then truncate inside the lock).
 7. **Add the REPL with unified skin** — Interactive mode wrapping the subcommands.
    - Copy `repl_skin.py` from the plugin (`cli-anything-plugin/repl_skin.py`) into
      `utils/repl_skin.py` in your CLI package
@@ -296,60 +270,16 @@ definition that can be loaded by Claude Code or other AI assistants.
    ---
    ```
 
-2. **Markdown Body** — Usage instructions including:
-   - Installation prerequisites
-   - Basic command syntax
-   - Command groups and their functions
-   - Usage examples
-   - Agent-specific guidance (JSON output, error handling)
+2. **Markdown Body** — Installation prerequisites, command syntax, command groups,
+   usage examples, and agent-specific guidance (JSON output, error handling).
 
-**Generation Process:**
+**Generation & Customization:** Use `skill_generator.py` to extract CLI metadata
+automatically, or customize via the Jinja2 template at `templates/SKILL.md.template`.
+See [`guides/skill-generation.md`](guides/skill-generation.md) for the full generation
+process, template customization options, and manual generation commands.
 
-1. **Extract CLI metadata** using `skill_generator.py`:
-   ```python
-   from skill_generator import generate_skill_file
-
-   skill_path = generate_skill_file(
-       harness_path="/path/to/agent-harness"
-   )
-   # Default output: cli_anything/<software>/skills/SKILL.md
-   ```
-
-2. **The generator automatically extracts:**
-   - Software name and version from setup.py
-   - Command groups from the CLI file (Click decorators)
-   - Documentation from README.md
-   - System package requirements
-
-3. **Customize the template** (optional):
-   - Default template: `templates/SKILL.md.template`
-   - Uses Jinja2 placeholders for dynamic content
-   - Can be extended for software-specific sections
-
-**Output Location:**
-
-SKILL.md is generated inside the Python package so it is installed with `pip install`:
-```
-<software>/
-└── agent-harness/
-    └── cli_anything/
-        └── <software>/
-            └── skills/
-                └── SKILL.md
-```
-
-**Manual Generation:**
-
-```bash
-cd cli-anything-plugin
-python skill_generator.py /path/to/software/agent-harness
-```
-
-**Integration with CLI Build:**
-
-The SKILL.md generation should be run after Phase 6 (Test Documentation) completes
-successfully, ensuring the CLI is fully documented and tested before creating the
-skill definition.
+**Output Location:** SKILL.md lives inside the Python package at
+`cli_anything/<software>/skills/SKILL.md` so it is installed with `pip install`.
 
 **Key Principles:**
 
@@ -361,20 +291,11 @@ skill definition.
 
 **Skill Path in CLI Banner:**
 
-ReplSkin auto-detects `skills/SKILL.md` inside the package and displays the absolute
-path in the startup banner. AI agents can read the file at the displayed path:
+ReplSkin auto-detects `skills/SKILL.md` inside the package directory and displays
+the absolute path in the startup banner. AI agents can read the skill file at the
+displayed path to learn the CLI's full capabilities.
 
-```python
-# In the REPL initialization (e.g., shotcut_cli.py)
-from cli_anything.<software>.utils.repl_skin import ReplSkin
-
-skin = ReplSkin("<software>", version="1.0.0")
-skin.print_banner()  # Auto-detects and displays: ◇ Skill: /path/to/cli_anything/<software>/skills/SKILL.md
-```
-
-**Package Data:**
-
-Ensure `setup.py` includes the skill file as package data so it is installed with pip:
+**Package Data:** Ensure `setup.py` includes the skill file so it ships with pip:
 
 ```python
 package_data={
@@ -382,7 +303,18 @@ package_data={
 },
 ```
 
-## Critical Lessons Learned
+### Phase 7: PyPI Publishing and Installation
+
+After building and testing the CLI, make it installable and discoverable using
+**PEP 420 namespace packages** under the shared `cli_anything` namespace.
+
+See [`guides/pypi-publishing.md`](guides/pypi-publishing.md) for the full setup.py template,
+namespace package structure, import conventions, and verification steps.
+
+**Key rule:** `cli_anything/` has **no** `__init__.py` (namespace package). Each
+sub-package (`gimp/`, `blender/`, etc.) **does** have `__init__.py`.
+
+## Architecture Patterns & Pitfalls
 
 ### Use the Real Software — Don't Reimplement It
 
@@ -445,33 +377,25 @@ the input. Users can't tell anything happened.
 
 **Priority order for rendering:** native engine → translated filtergraph → script.
 
+### MCP Backend Pattern
+
+For software that exposes an MCP (Model Context Protocol) server instead of a traditional
+CLI (e.g., DOMShell for browser automation). See [`guides/mcp-backend.md`](guides/mcp-backend.md)
+for the full backend wrapper pattern, session management, daemon mode, and example implementations.
+
+**Use when:** no native CLI exists, software has an MCP server, or you need agent-native tool integration.
+
 ### Filter Translation Pitfalls
 
-When translating effects between formats (e.g., MLT → ffmpeg), watch for:
-
-- **Duplicate filter types:** Some tools (ffmpeg) don't allow the same filter twice
-  in a chain. If your project has both `brightness` and `saturation` filters, and
-  both map to ffmpeg's `eq=`, you must **merge** them into a single `eq=brightness=X:saturation=Y`.
-- **Ordering constraints:** ffmpeg's `concat` filter requires **interleaved** stream
-  ordering: `[v0][a0][v1][a1][v2][a2]`, NOT grouped `[v0][v1][v2][a0][a1][a2]`.
-  The error message ("media type mismatch") is cryptic if you don't know this.
-- **Parameter space differences:** Effect parameters often use different scales.
-  MLT brightness `1.15` = +15%, but ffmpeg `eq=brightness=0.06` on a -1..1 scale.
-  Document every mapping explicitly.
-- **Unmappable effects:** Some effects have no equivalent in the render tool. Handle
-  gracefully (warn, skip) rather than crash.
+When translating effects between formats (e.g., MLT → ffmpeg), watch for duplicate filter
+merging, interleaved stream ordering, parameter scale differences, and unmappable effects.
+See [`guides/filter-translation.md`](guides/filter-translation.md) for detailed rules and examples.
 
 ### Timecode Precision
 
-Non-integer frame rates (29.97fps = 30000/1001) cause cumulative rounding errors:
-
-- **Use `round()`, not `int()`** for float-to-frame conversion. `int(9000 * 29.97)`
-  truncates and loses frames; `round()` gets the right answer.
-- **Use integer arithmetic for timecode display.** Convert frames → total milliseconds
-  via `round(frames * fps_den * 1000 / fps_num)`, then decompose with integer
-  division. Avoid intermediate floats that drift over long durations.
-- **Accept ±1 frame tolerance** in roundtrip tests at non-integer FPS. Exact equality
-  is mathematically impossible.
+Non-integer frame rates (29.97fps) cause cumulative rounding errors. Key rules: use
+`round()` not `int()`, use integer arithmetic for display, accept ±1 frame tolerance.
+See [`guides/timecode-precision.md`](guides/timecode-precision.md) for the full approach.
 
 ### Output Verification Methodology
 
@@ -565,53 +489,52 @@ Real-world workflow test scenarios should include:
 - Save/load round-trips of complex projects
 - Iterative refinement (add, modify, remove, re-add)
 
-## Key Principles
+## Principles & Rules
 
-- **Use the real software** — The CLI MUST invoke the actual application for rendering
-  and export. Generate valid intermediate files (ODF, MLT XML, .blend, SVG), then hand
-  them to the real software. Never reimplement the rendering engine in Python.
-- **The software is a hard dependency** — Not optional, not gracefully degraded. If
-  LibreOffice isn't installed, `cli-anything-libreoffice` must error clearly, not
-  silently produce inferior output with a fallback library.
+These are non-negotiable. Every harness MUST follow all of them.
+
+**Backend & Rendering:**
+- **The real software is a hard dependency.** The CLI MUST invoke the actual application
+  (LibreOffice, Blender, GIMP, etc.) for rendering and export. Do NOT reimplement
+  rendering in Python. Do NOT gracefully degrade to a fallback library. If the software
+  is not installed, error with clear install instructions.
 - **Manipulate the native format directly** — Parse and modify the app's native project
   files (MLT XML, ODF, SVG, etc.) as the data layer.
 - **Leverage existing CLI tools** — Use `libreoffice --headless`, `blender --background`,
   `melt`, `ffmpeg`, `inkscape --actions`, `sox` as subprocesses for rendering.
-- **Verify rendering produces correct output** — See "The Rendering Gap" above.
-- **E2E tests must produce real artifacts** — PDF, DOCX, rendered images, videos.
-  Print output paths so users can inspect. Never test only the intermediate format.
+- **Verify rendering produces correct output** — See "The Rendering Gap" in
+  Architecture Patterns & Pitfalls above.
+- **Every filter/effect in the registry MUST have a corresponding render mapping**
+  or be explicitly documented as "project-only (not rendered)".
+
+**CLI Design:**
 - **Fail loudly and clearly** — Agents need unambiguous error messages to self-correct.
 - **Be idempotent where possible** — Running the same command twice should be safe.
 - **Provide introspection** — `info`, `list`, `status` commands are critical for agents
   to understand current state before acting.
-- **JSON output mode** — Every command should support `--json` for machine parsing.
+- **JSON output mode** — Every command MUST support `--json` for machine parsing.
+- **Use the unified REPL skin** — Copy `cli-anything-plugin/repl_skin.py` to
+  `utils/repl_skin.py` and use `ReplSkin` for banner, prompt, help, and messages.
+  REPL MUST be the default behavior (`invoke_without_command=True`).
 
-## Rules
-
-- **The real software MUST be a hard dependency.** The CLI must invoke the actual
-  software (LibreOffice, Blender, GIMP, etc.) for rendering and export. Do NOT
-  reimplement rendering in Python. Do NOT gracefully degrade to a fallback library.
-  If the software is not installed, the CLI must error with clear install instructions.
-- **Every `cli_anything/<software>/` directory MUST contain a `README.md`** that explains how to
-  install the software dependency, install the CLI, run tests, and shows basic usage.
+**Testing:**
 - **E2E tests MUST invoke the real software** and produce real output files (PDF, DOCX,
-  rendered images, videos). Tests must verify output exists, has correct format, and
-  print artifact paths so users can inspect results. Never test only intermediate files.
-- **Every export/render function MUST be verified** with programmatic output analysis
-  before being marked as working. "It ran without errors" is not sufficient.
-- **Every filter/effect in the registry MUST have a corresponding render mapping**
-  or be explicitly documented as "project-only (not rendered)".
-- **Test suites MUST include real-file E2E tests**, not just unit tests with synthetic
-  data. Format assumptions break constantly with real media.
+  rendered images, videos). Verify output exists, has correct format (magic bytes, ZIP
+  structure), and print artifact paths for manual inspection. Never test only
+  intermediate files.
+- **Every export/render function MUST be verified** with programmatic output analysis.
+  "It ran without errors" is not sufficient.
 - **E2E tests MUST include subprocess tests** that invoke the installed
   `cli-anything-<software>` command via `_resolve_cli()`. Tests must work against
   the actual installed package, not just source imports.
-- **Every `cli_anything/<software>/tests/` directory MUST contain a `TEST.md`** documenting what the tests
-  cover, what realistic workflows are tested, and the full test results output.
-- **Every CLI MUST use the unified REPL skin** (`repl_skin.py`) for the interactive mode.
-  Copy `cli-anything-plugin/repl_skin.py` to `utils/repl_skin.py` and use `ReplSkin`
-  for the banner, prompt, help, messages, and goodbye. REPL MUST be the default behavior
-  when the CLI is invoked without a subcommand (`invoke_without_command=True`).
+- **Test suites MUST include real-file E2E tests**, not just unit tests with synthetic
+  data. Format assumptions break constantly with real media.
+
+**Documentation:**
+- **Every `cli_anything/<software>/` directory MUST contain a `README.md`** explaining
+  how to install the software dependency, install the CLI, run tests, and basic usage.
+- **Every `cli_anything/<software>/tests/` directory MUST contain a `TEST.md`**
+  documenting test coverage, realistic workflows tested, and full test results output.
 
 ## Directory Structure
 
@@ -665,6 +588,7 @@ This same SOP applies to any GUI application:
 | Shotcut/Kdenlive | `melt` or `ffmpeg` | .mlt (XML) | `apt install melt ffmpeg` | Build MLT XML → melt/ffmpeg renders video |
 | Audacity | `sox` | .aup3 | `apt install sox` | Generate sox commands → sox processes audio |
 | OBS Studio | `obs-websocket` | scene.json | `apt install obs-studio` | WebSocket API → OBS captures/records |
+| Browser (DOMShell) | `npx @apireno/domshell` (MCP) | Accessibility Tree (virtual FS) | `npm install -g npx` (if needed) + Chrome ext | MCP SDK → DOMShell tools → filesystem navigation |
 
 **The software is a required dependency, not optional.** The CLI generates valid
 intermediate files (ODF, MLT XML, bpy scripts, SVG) and hands them to the real
@@ -674,106 +598,10 @@ command-line interface TO the software, not a replacement for it.
 The pattern is always the same: **build the data → call the real software → verify
 the output**.
 
-### Phase 7: PyPI Publishing and Installation
+## Guides Reference
 
-After building and testing the CLI, make it installable and discoverable.
-
-All cli-anything CLIs use **PEP 420 namespace packages** under the shared
-`cli_anything` namespace. This allows multiple CLI packages to be installed
-side-by-side in the same Python environment without conflicts.
-
-1. **Structure the package** as a namespace package:
-   ```
-   agent-harness/
-   ├── setup.py
-   └── cli_anything/           # NO __init__.py here (namespace package)
-       └── <software>/         # e.g., gimp, blender, audacity
-           ├── __init__.py     # HAS __init__.py (regular sub-package)
-           ├── <software>_cli.py
-           ├── core/
-           ├── utils/
-           └── tests/
-   ```
-
-   The key rule: `cli_anything/` has **no** `__init__.py`. Each sub-package
-   (`gimp/`, `blender/`, etc.) **does** have `__init__.py`. This is what
-   enables multiple packages to contribute to the same namespace.
-
-2. **Create setup.py** in the `agent-harness/` directory:
-   ```python
-   from setuptools import setup, find_namespace_packages
-
-   setup(
-       name="cli-anything-<software>",
-       version="1.0.0",
-       packages=find_namespace_packages(include=["cli_anything.*"]),
-       install_requires=[
-           "click>=8.0.0",
-           "prompt-toolkit>=3.0.0",
-           # Add Python library dependencies here
-       ],
-       entry_points={
-           "console_scripts": [
-               "cli-anything-<software>=cli_anything.<software>.<software>_cli:main",
-           ],
-       },
-       python_requires=">=3.10",
-   )
-   ```
-
-   **Important details:**
-   - Use `find_namespace_packages`, NOT `find_packages`
-   - Use `include=["cli_anything.*"]` to scope discovery
-   - Entry point format: `cli_anything.<software>.<software>_cli:main`
-   - The **system package** (LibreOffice, Blender, etc.) is a **hard dependency**
-     that cannot be expressed in `install_requires`. Document it in README.md and
-     have the backend module raise a clear error with install instructions:
-     ```python
-     # In utils/<software>_backend.py
-     def find_<software>():
-         path = shutil.which("<software>")
-         if path:
-             return path
-         raise RuntimeError(
-             "<Software> is not installed. Install it with:\n"
-             "  apt install <software>   # Debian/Ubuntu\n"
-             "  brew install <software>  # macOS"
-         )
-     ```
-
-3. **All imports** use the `cli_anything.<software>` prefix:
-   ```python
-   from cli_anything.gimp.core.project import create_project
-   from cli_anything.gimp.core.session import Session
-   from cli_anything.blender.core.scene import create_scene
-   ```
-
-4. **Test local installation**:
-   ```bash
-   cd /root/cli-anything/<software>/agent-harness
-   pip install -e .
-   ```
-
-5. **Verify PATH installation**:
-   ```bash
-   which cli-anything-<software>
-   cli-anything-<software> --help
-   ```
-
-6. **Run tests against the installed command**:
-   ```bash
-   cd /root/cli-anything/<software>/agent-harness
-   CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<software>/tests/ -v -s
-   ```
-   The output must show `[_resolve_cli] Using installed command: /path/to/cli-anything-<software>`
-   confirming subprocess tests ran against the real installed binary, not a module fallback.
-
-7. **Verify namespace works across packages** (when multiple CLIs installed):
-   ```python
-   import cli_anything.gimp
-   import cli_anything.blender
-   # Both resolve to their respective source directories
-   ```
+Detailed guides live in `guides/`. Use this table to decide which ones to read
+based on the software you're building a harness for.
 
 **Why namespace packages:**
 - Multiple CLIs coexist in the same Python environment without conflicts

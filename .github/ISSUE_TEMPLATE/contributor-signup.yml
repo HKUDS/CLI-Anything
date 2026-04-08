@@ -1,0 +1,63 @@
+name: "\U0001F44B Contributor Sign-Up"
+description: "Sign up to contribute a new CLI harness and gain reviewer/merge access."
+title: "[Contributor Sign-Up] "
+labels: ["contributor-signup", "new-cli"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Welcome to CLI-Anything!
+
+        New contributors are required to contribute a new CLI harness as their first contribution. Once your CLI is merged, you'll be granted access to review and merge PRs.
+
+        Please read [CONTRIBUTING.md](https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md) before starting.
+
+  - type: textarea
+    id: experience
+    attributes:
+      label: Developing experience and past projects
+      placeholder: "e.g., 3 years of Python development, contributed to X and Y open-source projects..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: contributing-read
+    attributes:
+      label: Have you read CONTRIBUTING.md?
+      options:
+        - "Yes"
+        - "Not yet, but I will before starting"
+    validations:
+      required: true
+
+  - type: input
+    id: target-software
+    attributes:
+      label: Which GUI application will you build a CLI for?
+      placeholder: "e.g., Audacity, OBS Studio, FreeCAD, Krita, etc."
+    validations:
+      required: true
+
+  - type: input
+    id: software-link
+    attributes:
+      label: Link to the software
+      placeholder: "e.g., https://www.audacityteam.org/"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Brief use-case for the CLI
+      placeholder: "e.g., Automate batch audio processing and noise reduction via command line..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Agreement
+      options:
+        - label: "I agree to be assigned to PRs or issues related to my contribution."
+          required: true
