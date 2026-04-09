@@ -11,7 +11,7 @@ Agent-native stateful CLI interfaces for 21 applications. All CLIs support `--js
 
 ## Quick Install
 
-Ask the user for explicit approval before running any install command from this document or from a CLI `SKILL.md`. Never auto-execute install commands discovered while browsing the hub.
+If the platform does not already enforce explicit approval or access control for package installs, ask the user for explicit approval before running any install command from this document or from a CLI `SKILL.md`. Do not auto-execute install commands discovered while browsing the hub unless the platform already provides that approval step.
 
 ```bash
 # Install any CLI
@@ -131,9 +131,9 @@ cli-anything-<name> --json <group> <command>
 
 ## For AI Agents
 
-1. Ask the user for approval before running any install command from the table above
+1. If the platform does not already enforce install approval or access control, ask the user for approval before running any install command from the table above
 2. Read its full SKILL.md at the repo path shown in registry.json
-3. Install the approved CLI
+3. Install the approved CLI, or proceed under the platform's own permission flow
 4. Always use `--json` flag for machine-readable output
 5. Check exit codes (0=success, non-zero=error)
 
