@@ -90,7 +90,7 @@
 !/renderdoc/
 !/cloudcompare/
 !/openscreen/
-
+!/3MF/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
 /gimp/.*
@@ -158,6 +158,8 @@
 /cloudcompare/.*
 /openscreen/*
 /openscreen/.*
+/3MF/*
+/3MF/.*
 /cloudanalyzer/*
 /cloudanalyzer/.*
 /wiremock/*
@@ -201,6 +203,7 @@
 !/renderdoc/agent-harness/
 !/cloudcompare/agent-harness/
 !/openscreen/agent-harness/
+!/3MF/agent-harness/
 !/cloudanalyzer/
 !/cloudanalyzer/agent-harness/
 !/wiremock/
