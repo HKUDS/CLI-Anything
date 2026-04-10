@@ -578,6 +578,20 @@
       "category": "graphics",
       "contributor": "rsasaki0109",
       "contributor_url": "https://github.com/rsasaki0109"
+    },
+    {
+      "name": "3mf",
+      "display_name": "3MF",
+      "version": "1.0.0",
+      "description": "Mesh geometry editor for 3D printing files — detect and resize cylindrical holes, repair meshes, compare 3MF files",
+      "requires": "Python 3.10+; numpy, scipy, trimesh",
+      "homepage": "https://3mf.io",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=3MF/agent-harness",
+      "entry_point": "cli-anything-3mf",
+      "skill_md": "3MF/agent-harness/cli_anything/threemf/skills/SKILL.md",
+      "category": "graphics",
+      "contributor": "hiSandog",
+      "contributor_url": "https://github.com/hiSandog"
     }
   ]
 }
