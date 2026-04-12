@@ -32,11 +32,19 @@ def main():
         "## Quick Install",
         "",
         "```bash",
-        "# Install any CLI",
-        f"pip install git+{data['meta']['repo']}.git#subdirectory=<name>/agent-harness",
+        "# First, install the CLI Hub package manager",
+        "pip install cli-anything-hub",
         "",
-        "# Example: Install GIMP CLI",
-        f"pip install git+{data['meta']['repo']}.git#subdirectory=gimp/agent-harness",
+        "# Browse available CLIs",
+        "cli-hub list",
+        "",
+        "# Install any CLI by name",
+        "cli-hub install gimp",
+        "cli-hub install blender",
+        "",
+        "# Search by category or keyword",
+        "cli-hub search image",
+        "cli-hub search 3d",
         "```",
         "",
         "## Available CLIs",
@@ -53,12 +61,19 @@ def main():
         for cli in sorted(clis, key=lambda x: x['name']):
             name = cli['display_name']
             desc = cli['description']
-            install = f"`{cli['install_cmd']}`"
+            install = f"`cli-hub install {cli['name']}`"
             lines.append(f"| **{name}** | {desc} | {install} |")
 
         lines.append("")
 
     lines.extend([
+        "## How It Works",
+        "",
+        "`cli-hub` is a lightweight wrapper around `pip`. When you run `cli-hub install gimp`,",
+        "it installs a separate Python package (`cli-anything-gimp`) with its own CLI entry point",
+        "(`cli-anything-gimp`). Each CLI is an independent pip package — `cli-hub` simply resolves",
+        "names from the registry and tracks installs.",
+        "",
         "## Usage Pattern",
         "",
         "All CLIs follow the same pattern:",
@@ -76,15 +91,17 @@ def main():
         "",
         "## For AI Agents",
         "",
-        "1. Install the CLI you need from the table above",
-        "2. Read its full SKILL.md at the repo path shown in registry.json",
-        "3. Always use `--json` flag for machine-readable output",
-        "4. Check exit codes (0=success, non-zero=error)",
+        "1. Install the hub: `pip install cli-anything-hub`",
+        "2. Install the CLI you need: `cli-hub install <name>` (installs `cli-anything-<name>` pip package)",
+        "3. Run: `cli-anything-<name>` for REPL, or `cli-anything-<name> <command>` for one-shot",
+        "4. Read its full SKILL.md at the repo path shown in registry.json",
+        "5. Always use `--json` flag for machine-readable output",
+        "6. Check exit codes (0=success, non-zero=error)",
         "",
         "## More Info",
         "",
         f"- Repository: {data['meta']['repo']}",
-        "- Web Hub: https://hkuds.github.io/CLI-Anything/",
+        "- Web Hub: https://clianything.cc",
         f"- Last Updated: {data['meta']['updated']}",
     ])
 

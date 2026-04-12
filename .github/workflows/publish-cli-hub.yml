@@ -1,0 +1,48 @@
+name: Publish cli-anything-hub to PyPI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cli-hub/**"
+      - "!cli-hub/tests/**"
+      - "!cli-hub/README.md"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # required for trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check if version already published
+        id: check
+        run: |
+          VERSION=$(python -c "import re; print(re.search(r'version=\"([^\"]+)\"', open('cli-hub/setup.py').read()).group(1))")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/cli-anything-hub/$VERSION/json")
+          if [ "$STATUS" = "200" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Version $VERSION already on PyPI — skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Version $VERSION not on PyPI — will publish."
+          fi
+
+      - name: Build package
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          pip install build
+          cd cli-hub
+          python -m build
+
+      - name: Publish to PyPI
+        if: steps.check.outputs.skip == 'false'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: cli-hub/dist/

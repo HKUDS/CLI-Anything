@@ -7,6 +7,8 @@ on:
     paths:
       - '*/agent-harness/**'
       - 'registry.json'
+      - 'cli-hub/**'
+      - 'docs/hub/**'
       - '.github/workflows/deploy-pages.yml'
       - '.github/scripts/update_registry_dates.py'
       - '.github/scripts/generate_meta_skill.py'
@@ -41,8 +43,22 @@ jobs:
       - name: Generate meta-skill
         run: python3 .github/scripts/generate_meta_skill.py
 
-      - name: Copy catalog as .txt to avoid Jekyll processing
-        run: cp cli-hub-skill/SKILL.md docs/hub/SKILL.txt
+      - name: Install AWS CLI
+        run: pip install awscli
+
+      - name: Upload SKILL.md to DO Spaces
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+        run: |
+          aws s3 cp cli-hub-skill/SKILL.md \
+            s3://${{ secrets.DO_SPACES_BUCKET }}/SKILL.md \
+            --endpoint-url ${{ secrets.DO_SPACES_ENDPOINT }} \
+            --acl public-read \
+            --content-type text/markdown
+
+      - name: Copy registry.json to hub for cli-hub access
+        run: cp registry.json docs/hub/registry.json
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1

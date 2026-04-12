@@ -30,10 +30,12 @@ def get_client() -> Exa:
             "EXA_API_KEY environment variable is not set.\n"
             "Get a free key at https://dashboard.exa.ai/api-keys"
         )
-    return Exa(
+    client = Exa(
         api_key=api_key,
         user_agent="cli-anything",
     )
+    client.headers["x-exa-integration"] = "cli-anything"
+    return client
 
 
 def check_connectivity() -> dict[str, Any]:

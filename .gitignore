@@ -51,6 +51,7 @@
 !/skill_generation/
 !/openclaw-skill/
 !/cli-hub-meta-skill/
+!/cli-hub/
 
 # Ignore cli-hub-skill (auto-generated, not tracked)
 /cli-hub-skill/
@@ -78,6 +79,9 @@
 !/novita/
 !/ollama/
 !/browser/
+!/seaclip/
+!/pm2/
+!/chromadb/
 !/musescore/
 !/krita/
 !/freecad/
@@ -87,6 +91,7 @@
 !/renderdoc/
 !/cloudcompare/
 !/openscreen/
+!/n8n/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -131,6 +136,12 @@
 /ollama/.*
 /browser/*
 /browser/.*
+/seaclip/*
+/seaclip/.*
+/pm2/*
+/pm2/.*
+/chromadb/*
+/chromadb/.*
 /musescore/*
 /musescore/.*
 /krita/*
@@ -149,10 +160,14 @@
 /cloudcompare/.*
 /openscreen/*
 /openscreen/.*
+/cloudanalyzer/*
+/cloudanalyzer/.*
 /wiremock/*
 /wiremock/.*
 /exa/*
 /exa/.*
+/n8n/*
+/n8n/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -177,6 +192,9 @@
 !/novita/agent-harness/
 !/ollama/agent-harness/
 !/browser/agent-harness/
+!/seaclip/agent-harness/
+!/pm2/agent-harness/
+!/chromadb/agent-harness/
 !/musescore/agent-harness/
 !/krita/agent-harness/
 !/freecad/agent-harness/
@@ -187,9 +205,12 @@
 !/renderdoc/agent-harness/
 !/cloudcompare/agent-harness/
 !/openscreen/agent-harness/
+!/cloudanalyzer/
+!/cloudanalyzer/agent-harness/
 !/wiremock/
 !/wiremock/agent-harness/
 !/exa/agent-harness/
+!/n8n/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
@@ -223,6 +244,5 @@ assets/gen_typing_gif.py
 /notebooklm/*
 /notebooklm/.*
 !/notebooklm/agent-harness/
-!/intelwatch/agent-harness/
 !/intelwatch/
-!/exa/
+!/intelwatch/agent-harness/

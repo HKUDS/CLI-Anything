@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.0,<76.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-n8n"
+version = "2.4.7"
+description = "CLI harness for n8n workflow automation — CLI-Anything pattern (n8n API v1.1.1)"
+readme = "cli_anything/n8n/README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Juan Jose Sanchez Bernal", email = "info@webcomunica.solutions"},
+]
+maintainers = [
+    {name = "Webcomunica Soluciones Informaticas", email = "info@webcomunica.solutions"},
+]
+keywords = ["n8n", "cli", "workflow", "automation", "cli-anything", "ai-agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "click>=8.0.0",
+    "prompt-toolkit>=3.0.0",
+    "requests>=2.28.0",
+]
+
+[project.urls]
+Homepage = "https://webcomunica.solutions"
+Documentation = "https://optimizaconia.es"
+Repository = "https://github.com/webcomunicasolutions/cli-n8n"
+Issues = "https://github.com/webcomunicasolutions/cli-n8n/issues"
+Changelog = "https://github.com/webcomunicasolutions/cli-n8n/blob/main/CHANGELOG.md"
+
+[project.scripts]
+cli-anything-n8n = "cli_anything.n8n.n8n_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.n8n" = ["skills/*.md", "README.md"]
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: end-to-end tests requiring a running n8n instance",
+]
+testpaths = ["cli_anything/n8n/tests"]

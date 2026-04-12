@@ -161,9 +161,18 @@
     .hero-tagline strong { color: var(--text); font-weight: 600; }
 
     /* ── Empower card ── */
-    .empower-card {
-      max-width: 560px;
+    .empower-row {
+      display: flex;
+      gap: 1rem;
+      max-width: 1100px;
       margin: 0 auto 1.5rem;
+      align-items: stretch;
+    }
+
+    .empower-card {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -226,6 +235,43 @@
 
     .empower-prompt strong { color: var(--text-secondary); font-weight: 600; }
     .empower-prompt em { color: var(--accent); font-style: italic; }
+
+    .empower-available {
+      margin: 0.25rem 0 0.5rem;
+      font-size: 0.78rem;
+      color: var(--text-tertiary);
+    }
+    .empower-available a { color: var(--accent); text-decoration: none; }
+    .empower-available a:hover { text-decoration: underline; }
+
+    .empower-card.empower-self::before { background: var(--green); }
+    .empower-card.empower-self h3 span { color: var(--green); }
+    .empower-self .cmd-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+    }
+    .empower-self .cmd-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem 0.65rem;
+      font-size: 0.76rem;
+    }
+    .empower-self .cmd-item:hover { border-color: var(--text-tertiary); }
+    .empower-self .cmd-item .cmd-name {
+      color: var(--green);
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .empower-self .cmd-item .cmd-desc {
+      color: var(--text-tertiary);
+      font-size: 0.72rem;
+    }
 
     .hero-actions {
       display: flex;
@@ -547,10 +593,11 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.75rem;
       color: var(--text-secondary);
-      white-space: nowrap;
+      white-space: pre-line;
       overflow: hidden;
       text-overflow: ellipsis;
       flex: 1;
+      line-height: 1.6;
     }
 
     .card-copy-btn {
@@ -732,7 +779,9 @@
       .filter-row { padding: 0.75rem 1.25rem 0; }
       .nav { padding: 0.75rem 1.25rem; }
       .footer { padding: 1.5rem 1.25rem; flex-direction: column; align-items: flex-start; }
-      .empower-card { margin: 0 auto 1.25rem; padding: 1.25rem; }
+      .empower-row { flex-direction: column; }
+      .empower-card { margin: 0 0 1rem; padding: 1.25rem; }
+      .empower-self .cmd-grid { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 400px) {
@@ -754,7 +803,7 @@
   <nav class="nav">
     <a class="nav-brand" href="#">CLI-Hub</a>
     <div class="nav-links">
-      <a class="nav-link" href="./SKILL.txt" target="_blank">
+      <a class="nav-link" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">
         SKILL
       </a>
       <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
@@ -776,8 +825,10 @@
     <h1><span class="hero-accent">CLI-</span><span class="hero-dim">Anything</span> <span class="hero-accent">Hub</span></h1>
     <p class="hero-tagline"><strong>Any software. Any codebase. Any Web API.</strong> Generate an agent-native CLI and let AI agents operate it &mdash; install with a single pip command.</p>
 
+    <div class="empower-row">
     <div class="empower-card">
       <h3>Empower your agents &mdash; <span>install in one command</span></h3>
+      <p class="empower-available">Available on: <a href="https://clawhub.ai/yuh-yang/cli-anything-hub" target="_blank">ClawHub</a>, <a href="https://www.skillhub.club/web/skills/itsyuhao-cli-anything-hub" target="_blank">SkillHub</a>, <a href="https://skillhub.cn/skills/cli-hub-meta-skill" target="_blank">SkillHub.cn</a></p>
       <div class="install-row">
         <span class="chip-label">OpenClaw</span>
         <code>openclaw skills install cli-anything-hub</code>
@@ -793,8 +844,25 @@
       </div>
     </div>
 
+    <div class="empower-card empower-self">
+      <h3>Empower yourself &mdash; <span>your CLI toolkit</span></h3>
+      <div class="install-row">
+        <code>pip install cli-anything-hub</code>
+        <button class="copy-btn" onclick="copyCmd(this, 'pip install cli-anything-hub')">Copy</button>
+      </div>
+      <div class="cmd-grid">
+        <div class="cmd-item"><span class="cmd-name">cli-hub list</span><span class="cmd-desc">Browse all CLIs</span></div>
+        <div class="cmd-item"><span class="cmd-name">cli-hub search</span><span class="cmd-desc">Find by keyword</span></div>
+        <div class="cmd-item"><span class="cmd-name">cli-hub install</span><span class="cmd-desc">Install a CLI</span></div>
+        <div class="cmd-item"><span class="cmd-name">cli-hub info</span><span class="cmd-desc">CLI details</span></div>
+        <div class="cmd-item"><span class="cmd-name">cli-hub update</span><span class="cmd-desc">Update a CLI</span></div>
+        <div class="cmd-item"><span class="cmd-name">cli-hub uninstall</span><span class="cmd-desc">Remove a CLI</span></div>
+      </div>
+    </div>
+    </div>
+
     <div class="hero-actions">
-      <a class="btn-primary" href="./SKILL.txt" target="_blank">Agent SKILL (SKILL.txt)</a>
+      <a class="btn-primary" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">Agent SKILL (SKILL.md)</a>
       <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
         <svg viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
         Star on GitHub
@@ -807,7 +875,7 @@
       </a>
     </div>
 
-    <p class="hero-hint">Feed <a href="./SKILL.txt" target="_blank">SKILL.txt</a> to your AI agent for autonomous CLI discovery &amp; installation</p>
+    <p class="hero-hint">Feed <a href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">SKILL.md</a> to your AI agent for autonomous CLI discovery &amp; installation</p>
 
     <p class="hero-cta">We welcome contributions for <em>any</em> application &mdash; desktop apps, dev tools, cloud services, SaaS APIs, creative suites, and beyond. If it has a GUI or an API, it deserves an agent-native CLI. Read the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contributing Guide</a>, use the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md" target="_blank">PR Template</a>, and bring it to the hub!</p>
 
@@ -1031,8 +1099,8 @@
             ${dateHtml}
             ${requiresHtml}
             <div class="card-install">
-              <code>${esc(c.install_cmd)}</code>
-              <button class="card-copy-btn" onclick="copyCmd(this, '${esc(c.install_cmd)}')">Copy</button>
+              <code>pip install cli-anything-hub\ncli-hub install ${esc(c.name)}</code>
+              <button class="card-copy-btn" onclick="copyCmd(this, 'pip install cli-anything-hub &amp;&amp; cli-hub install ${esc(c.name)}')">Copy</button>
             </div>
             <div class="card-footer">
               <div class="card-links">${sourceLink}${skillLink ? ' &middot; ' + skillLink : ''}</div>
@@ -1083,18 +1151,47 @@
       const isWebdriver = navigator.webdriver === true;
       let humanConfirmed = false;
 
+      // ── Send event to BOTH Umami website IDs ──
+      // The global `umami` object only binds to one script tag, so we also
+      // POST directly to the send API for the second site.
+      const UMAMI_SEND = 'https://cloud.umami.is/api/send';
+      const DUAL_WEBSITE_IDS = [
+        '07082d05-efd3-4f85-a7a1-b426b0e8bfaa',
+        'a076c661-bed1-405c-a522-813794e688b4',
+      ];
+      function trackBoth(eventName, eventData) {
+        // POST directly to both sites — do NOT also call umami.track()
+        // because that would double-count on whichever site umami is bound to.
+        DUAL_WEBSITE_IDS.forEach(wid => {
+          const payload = {
+            type: 'event',
+            payload: {
+              website: wid,
+              hostname: location.hostname,
+              url: location.pathname,
+              name: eventName,
+              data: eventData || {},
+            },
+          };
+          fetch(UMAMI_SEND, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true,
+          }).catch(() => {});
+        });
+      }
+
       // Tag the visit type via Umami custom events
-      if (typeof umami !== 'undefined') {
-        if (isKnownAgent || isWebdriver) {
-          umami.track('visit-agent', { ua: ua.slice(0, 200) });
-        }
+      if (isKnownAgent || isWebdriver) {
+        trackBoth('visit-agent', { ua: ua.slice(0, 200) });
       }
 
       // Wait for Umami to load, then tag
       window.addEventListener('load', () => {
         setTimeout(() => {
-          if (typeof umami !== 'undefined' && (isKnownAgent || isWebdriver)) {
-            umami.track('visit-agent', { ua: ua.slice(0, 200) });
+          if (isKnownAgent || isWebdriver) {
+            trackBoth('visit-agent', { ua: ua.slice(0, 200) });
           }
         }, 500);
       });
@@ -1103,9 +1200,7 @@
       function onHumanInteraction() {
         if (humanConfirmed) return;
         humanConfirmed = true;
-        if (typeof umami !== 'undefined') {
-          umami.track('visit-human');
-        }
+        trackBoth('visit-human');
         // Clean up listeners
         ['mousemove', 'touchstart', 'scroll', 'keydown', 'click'].forEach(evt => {
           document.removeEventListener(evt, onHumanInteraction);
