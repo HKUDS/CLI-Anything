@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-unimol-tools"
+version = "1.0.0"
+description = "Molecular property prediction CLI for AI agents"
+authors = [{name = "CLI-Anything Contributors"}]
+requires-python = ">=3.9"
+dependencies = [
+    "click>=8.0.0",
+    "prompt-toolkit>=3.0.0",
+]
+
+[project.optional-dependencies]
+backend = [
+    "unimol_tools>=1.0.0",
+    "huggingface_hub",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+cli-anything-unimol-tools = "cli_anything.unimol_tools.unimol_tools_cli:main"
+
+[tool.setuptools]
+packages = [
+    "cli_anything.unimol_tools",
+    "cli_anything.unimol_tools.core",
+    "cli_anything.unimol_tools.utils",
+    "cli_anything.unimol_tools.tests",
+    "cli_anything.unimol_tools.skills",
+]
+
+[tool.setuptools.package-dir]
+"cli_anything.unimol_tools" = "cli_anything/unimol_tools"
