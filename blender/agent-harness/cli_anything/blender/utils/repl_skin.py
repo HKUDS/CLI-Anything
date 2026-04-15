@@ -7,7 +7,7 @@ Usage:
     from cli_anything.<software>.utils.repl_skin import ReplSkin
 
     skin = ReplSkin("shotcut", version="1.0.0")
-    skin.print_banner()
+    skin.print_banner()  # auto-detects skills/SKILL.md inside the package
     prompt_text = skin.prompt(project_name="my_video.mlt", modified=True)
     skin.success("Project saved")
     skin.error("File not found")
@@ -97,7 +97,7 @@ class ReplSkin:
     """
 
     def __init__(self, software: str, version: str = "1.0.0",
-                 history_file: str | None = None):
+                 history_file: str | None = None, skill_path: str | None = None):
         """Initialize the REPL skin.
 
         Args:
@@ -105,10 +105,23 @@ class ReplSkin:
             version: CLI version string.
             history_file: Path for persistent command history.
                          Defaults to ~/.cli-anything-<software>/history
+            skill_path: Path to the SKILL.md file for agent discovery.
+                        Auto-detected from the package's skills/ directory if not provided.
+                        Displayed in banner for AI agents to know where to read skill info.
         """
         self.software = software.lower().replace("-", "_")
         self.display_name = software.replace("_", " ").title()
         self.version = version
+
+        # Auto-detect skill path from package layout:
+        #   cli_anything/<software>/utils/repl_skin.py  (this file)
+        #   cli_anything/<software>/skills/SKILL.md     (target)
+        if skill_path is None:
+            from pathlib import Path
+            _auto = Path(__file__).resolve().parent.parent / "skills" / "SKILL.md"
+            if _auto.is_file():
+                skill_path = str(_auto)
+        self.skill_path = skill_path
         self.accent = _ACCENT_COLORS.get(self.software, _DEFAULT_ACCENT)
 
         # History file
@@ -142,42 +155,18 @@ class ReplSkin:
     # ── Banner ────────────────────────────────────────────────────────
 
     def print_banner(self):
-        """Print the startup banner with branding."""
-        inner = 54
-
-        def _box_line(content: str) -> str:
-            """Wrap content in box drawing, padding to inner width."""
-            pad = inner - _visible_len(content)
-            vl = self._c(_DARK_GRAY, _V_LINE)
-            return f"{vl}{content}{' ' * max(0, pad)}{vl}"
-
-        top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
-        bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
-
-        # Title:  ◆  cli-anything · Shotcut
-        icon = self._c(_CYAN + _BOLD, "◆")
-        brand = self._c(_CYAN + _BOLD, "cli-anything")
-        dot = self._c(_DARK_GRAY, "·")
-        name = self._c(self.accent + _BOLD, self.display_name)
-        title = f" {icon}  {brand} {dot} {name}"
-
-        ver = f" {self._c(_DARK_GRAY, f'   v{self.version}')}"
-        tip = f" {self._c(_DARK_GRAY, '   Type help for commands, quit to exit')}"
-        empty = ""
-
-        print(top)
-        print(_box_line(title))
-        print(_box_line(ver))
-        print(_box_line(empty))
-        print(_box_line(tip))
-        print(bot)
+        """Print a compact startup banner."""
+        title = f"{self.display_name} v{self.version}"
+        tip = "Type help for commands, quit to exit"
+        print(title)
+        print(tip)
         print()
 
     # ── Prompt ────────────────────────────────────────────────────────
 
     def prompt(self, project_name: str = "", modified: bool = False,
                context: str = "") -> str:
-        """Build a styled prompt string for prompt_toolkit or input().
+        """Build a plain prompt string for interactive use.
 
         Args:
             project_name: Current project name (empty if none open).
@@ -187,28 +176,15 @@ class ReplSkin:
         Returns:
             Formatted prompt string.
         """
-        parts = []
+        parts = [self.software]
 
-        # Icon
-        if self._color:
-            parts.append(f"{_CYAN}◆{_RESET} ")
-        else:
-            parts.append("> ")
-
-        # Software name
-        parts.append(self._c(self.accent + _BOLD, self.software))
-
-        # Project context
         if project_name or context:
             ctx = context or project_name
             mod = "*" if modified else ""
-            parts.append(f" {self._c(_DARK_GRAY, '[')}")
-            parts.append(self._c(_LIGHT_GRAY, f"{ctx}{mod}"))
-            parts.append(self._c(_DARK_GRAY, ']'))
+            parts.append(f"[{ctx}{mod}]")
 
-        parts.append(self._c(_GRAY, " ❯ "))
-
-        return "".join(parts)
+        parts.append(">")
+        return " ".join(parts) + " "
 
     def prompt_tokens(self, project_name: str = "", modified: bool = False,
                       context: str = ""):
@@ -219,11 +195,7 @@ class ReplSkin:
         Returns:
             list of (style, text) tuples for prompt_toolkit.
         """
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
-        tokens = []
-
-        tokens.append(("class:icon", "◆ "))
-        tokens.append(("class:software", self.software))
+        tokens = [("class:software", self.software)]
 
         if project_name or context:
             ctx = context or project_name
@@ -232,7 +204,7 @@ class ReplSkin:
             tokens.append(("class:context", f"{ctx}{mod}"))
             tokens.append(("class:bracket", "]"))
 
-        tokens.append(("class:arrow", " ❯ "))
+        tokens.append(("class:arrow", " > "))
 
         return tokens
 
@@ -393,24 +365,22 @@ class ReplSkin:
     # ── Help display ──────────────────────────────────────────────────
 
     def help(self, commands: dict[str, str]):
-        """Print a formatted help listing.
+        """Print a compact help listing.
 
         Args:
             commands: Dict of command -> description pairs.
         """
-        self.section("Commands")
+        print("Commands:")
         max_cmd = max(len(c) for c in commands) if commands else 0
         for cmd, desc in commands.items():
-            cmd_styled = self._c(self.accent, f"  {cmd:<{max_cmd}}")
-            desc_styled = self._c(_GRAY, f"  {desc}")
-            print(f"{cmd_styled}{desc_styled}")
+            print(f"  {cmd:<{max_cmd}}  {desc}")
         print()
 
     # ── Goodbye ───────────────────────────────────────────────────────
 
     def print_goodbye(self):
-        """Print a styled goodbye message."""
-        print(f"\n  {_ICON_SMALL} {self._c(_GRAY, 'Goodbye!')}\n")
+        """Print a compact goodbye message."""
+        print("Goodbye!\n")
 
     # ── Prompt toolkit session factory ────────────────────────────────
 

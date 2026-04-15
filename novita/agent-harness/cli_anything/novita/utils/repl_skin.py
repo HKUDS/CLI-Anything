@@ -7,7 +7,7 @@ Usage:
     from cli_anything.<software>.utils.repl_skin import ReplSkin
 
     skin = ReplSkin("shotcut", version="1.0.0")
-    skin.print_banner()
+    skin.print_banner()  # auto-detects skills/SKILL.md inside the package
     prompt_text = skin.prompt(project_name="my_video.mlt", modified=True)
     skin.success("Project saved")
     skin.error("File not found")
@@ -30,7 +30,7 @@ _ITALIC = "\033[3m"
 _UNDERLINE = "\033[4m"
 
 # Brand colors
-_CYAN = "\033[38;5;80m"  # cli-anything brand cyan
+_CYAN = "\033[38;5;80m"       # cli-anything brand cyan
 _CYAN_BG = "\033[48;5;80m"
 _WHITE = "\033[97m"
 _GRAY = "\033[38;5;245m"
@@ -39,18 +39,16 @@ _LIGHT_GRAY = "\033[38;5;250m"
 
 # Software accent colors — each software gets a unique accent
 _ACCENT_COLORS = {
-    "gimp": "\033[38;5;214m",  # warm orange
-    "blender": "\033[38;5;208m",  # deep orange
-    "inkscape": "\033[38;5;39m",  # bright blue
-    "audacity": "\033[38;5;33m",  # navy blue
-    "libreoffice": "\033[38;5;40m",  # green
-    "obs_studio": "\033[38;5;55m",  # purple
-    "kdenlive": "\033[38;5;69m",  # slate blue
-    "shotcut": "\033[38;5;35m",  # teal green
-    "anygen": "\033[38;5;141m",  # soft violet
-    "novita": "\033[38;5;81m",  # vivid blue (for Novita AI)
+    "gimp":        "\033[38;5;214m",   # warm orange
+    "blender":     "\033[38;5;208m",   # deep orange
+    "inkscape":    "\033[38;5;39m",    # bright blue
+    "audacity":    "\033[38;5;33m",    # navy blue
+    "libreoffice": "\033[38;5;40m",    # green
+    "obs_studio":  "\033[38;5;55m",    # purple
+    "kdenlive":    "\033[38;5;69m",    # slate blue
+    "shotcut":     "\033[38;5;35m",    # teal green
 }
-_DEFAULT_ACCENT = "\033[38;5;75m"  # default sky blue
+_DEFAULT_ACCENT = "\033[38;5;75m"      # default sky blue
 
 # Status colors
 _GREEN = "\033[38;5;78m"
@@ -83,7 +81,6 @@ _CROSS = "┼"
 def _strip_ansi(text: str) -> str:
     """Remove ANSI escape codes for length calculation."""
     import re
-
     return re.sub(r"\033\[[^m]*m", "", text)
 
 
@@ -99,9 +96,8 @@ class ReplSkin:
     across all CLI harnesses built with the cli-anything methodology.
     """
 
-    def __init__(
-        self, software: str, version: str = "1.0.0", history_file: str | None = None
-    ):
+    def __init__(self, software: str, version: str = "1.0.0",
+                 history_file: str | None = None, skill_path: str | None = None):
         """Initialize the REPL skin.
 
         Args:
@@ -109,16 +105,28 @@ class ReplSkin:
             version: CLI version string.
             history_file: Path for persistent command history.
                          Defaults to ~/.cli-anything-<software>/history
+            skill_path: Path to the SKILL.md file for agent discovery.
+                        Auto-detected from the package's skills/ directory if not provided.
+                        Displayed in banner for AI agents to know where to read skill info.
         """
         self.software = software.lower().replace("-", "_")
         self.display_name = software.replace("_", " ").title()
         self.version = version
+
+        # Auto-detect skill path from package layout:
+        #   cli_anything/<software>/utils/repl_skin.py  (this file)
+        #   cli_anything/<software>/skills/SKILL.md     (target)
+        if skill_path is None:
+            from pathlib import Path
+            _auto = Path(__file__).resolve().parent.parent / "skills" / "SKILL.md"
+            if _auto.is_file():
+                skill_path = str(_auto)
+        self.skill_path = skill_path
         self.accent = _ACCENT_COLORS.get(self.software, _DEFAULT_ACCENT)
 
         # History file
         if history_file is None:
             from pathlib import Path
-
             hist_dir = Path.home() / f".cli-anything-{self.software}"
             hist_dir.mkdir(parents=True, exist_ok=True)
             self.history_file = str(hist_dir / "history")
@@ -147,43 +155,18 @@ class ReplSkin:
     # ── Banner ────────────────────────────────────────────────────────
 
     def print_banner(self):
-        """Print the startup banner with branding."""
-        inner = 54
-
-        def _box_line(content: str) -> str:
-            """Wrap content in box drawing, padding to inner width."""
-            pad = inner - _visible_len(content)
-            vl = self._c(_DARK_GRAY, _V_LINE)
-            return f"{vl}{content}{' ' * max(0, pad)}{vl}"
-
-        top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
-        bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
-
-        # Title:  ◆  cli-anything · Novita
-        icon = self._c(_CYAN + _BOLD, "◆")
-        brand = self._c(_CYAN + _BOLD, "cli-anything")
-        dot = self._c(_DARK_GRAY, "·")
-        name = self._c(self.accent + _BOLD, self.display_name)
-        title = f" {icon}  {brand} {dot} {name}"
-
-        ver = f" {self._c(_DARK_GRAY, f'   v{self.version}')}"
-        tip = f" {self._c(_DARK_GRAY, '   Type help for commands, quit to exit')}"
-        empty = ""
-
-        print(top)
-        print(_box_line(title))
-        print(_box_line(ver))
-        print(_box_line(empty))
-        print(_box_line(tip))
-        print(bot)
+        """Print a compact startup banner."""
+        title = f"{self.display_name} v{self.version}"
+        tip = "Type help for commands, quit to exit"
+        print(title)
+        print(tip)
         print()
 
     # ── Prompt ────────────────────────────────────────────────────────
 
-    def prompt(
-        self, project_name: str = "", modified: bool = False, context: str = ""
-    ) -> str:
-        """Build a styled prompt string for prompt_toolkit or input().
+    def prompt(self, project_name: str = "", modified: bool = False,
+               context: str = "") -> str:
+        """Build a plain prompt string for interactive use.
 
         Args:
             project_name: Current project name (empty if none open).
@@ -193,32 +176,18 @@ class ReplSkin:
         Returns:
             Formatted prompt string.
         """
-        parts = []
+        parts = [self.software]
 
-        # Icon
-        if self._color:
-            parts.append(f"{_CYAN}◆{_RESET} ")
-        else:
-            parts.append("> ")
-
-        # Software name
-        parts.append(self._c(self.accent + _BOLD, self.software))
-
-        # Project context
         if project_name or context:
             ctx = context or project_name
             mod = "*" if modified else ""
-            parts.append(f" {self._c(_DARK_GRAY, '[')}")
-            parts.append(self._c(_LIGHT_GRAY, f"{ctx}{mod}"))
-            parts.append(self._c(_DARK_GRAY, "]"))
+            parts.append(f"[{ctx}{mod}]")
 
-        parts.append(self._c(_GRAY, " ❯ "))
+        parts.append(">")
+        return " ".join(parts) + " "
 
-        return "".join(parts)
-
-    def prompt_tokens(
-        self, project_name: str = "", modified: bool = False, context: str = ""
-    ):
+    def prompt_tokens(self, project_name: str = "", modified: bool = False,
+                      context: str = ""):
         """Build prompt_toolkit formatted text tokens for the prompt.
 
         Use with prompt_toolkit's FormattedText for proper ANSI handling.
@@ -226,11 +195,7 @@ class ReplSkin:
         Returns:
             list of (style, text) tuples for prompt_toolkit.
         """
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
-        tokens = []
-
-        tokens.append(("class:icon", "◆ "))
-        tokens.append(("class:software", self.software))
+        tokens = [("class:software", self.software)]
 
         if project_name or context:
             ctx = context or project_name
@@ -239,7 +204,7 @@ class ReplSkin:
             tokens.append(("class:context", f"{ctx}{mod}"))
             tokens.append(("class:bracket", "]"))
 
-        tokens.append(("class:arrow", " ❯ "))
+        tokens.append(("class:arrow", " > "))
 
         return tokens
 
@@ -256,25 +221,23 @@ class ReplSkin:
 
         accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
 
-        return Style.from_dict(
-            {
-                "icon": "#5fdfdf bold",  # cyan brand color
-                "software": f"{accent_hex} bold",
-                "bracket": "#585858",
-                "context": "#bcbcbc",
-                "arrow": "#808080",
-                # Completion menu
-                "completion-menu.completion": "bg:#303030 #bcbcbc",
-                "completion-menu.completion.current": f"bg:{accent_hex} #000000",
-                "completion-menu.meta.completion": "bg:#303030 #808080",
-                "completion-menu.meta.completion.current": f"bg:{accent_hex} #000000",
-                # Auto-suggest
-                "auto-suggest": "#585858",
-                # Bottom toolbar
-                "bottom-toolbar": "bg:#1c1c1c #808080",
-                "bottom-toolbar.text": "#808080",
-            }
-        )
+        return Style.from_dict({
+            "icon": "#5fdfdf bold",     # cyan brand color
+            "software": f"{accent_hex} bold",
+            "bracket": "#585858",
+            "context": "#bcbcbc",
+            "arrow": "#808080",
+            # Completion menu
+            "completion-menu.completion": "bg:#303030 #bcbcbc",
+            "completion-menu.completion.current": f"bg:{accent_hex} #000000",
+            "completion-menu.meta.completion": "bg:#303030 #808080",
+            "completion-menu.meta.completion.current": f"bg:{accent_hex} #000000",
+            # Auto-suggest
+            "auto-suggest": "#585858",
+            # Bottom toolbar
+            "bottom-toolbar": "bg:#1c1c1c #808080",
+            "bottom-toolbar.text": "#808080",
+        })
 
     # ── Messages ──────────────────────────────────────────────────────
 
@@ -351,7 +314,8 @@ class ReplSkin:
 
     # ── Table display ─────────────────────────────────────────────────
 
-    def table(self, headers: list[str], rows: list[list[str]], max_col_width: int = 40):
+    def table(self, headers: list[str], rows: list[list[str]],
+              max_col_width: int = 40):
         """Print a formatted table with box-drawing characters.
 
         Args:
@@ -377,7 +341,8 @@ class ReplSkin:
 
         # Header
         header_cells = [
-            self._c(_CYAN + _BOLD, pad(h, col_widths[i])) for i, h in enumerate(headers)
+            self._c(_CYAN + _BOLD, pad(h, col_widths[i]))
+            for i, h in enumerate(headers)
         ]
         sep = self._c(_DARK_GRAY, f" {_V_LINE} ")
         header_line = f"  {sep.join(header_cells)}"
@@ -385,9 +350,7 @@ class ReplSkin:
 
         # Separator
         sep_parts = [self._c(_DARK_GRAY, _H_LINE * w) for w in col_widths]
-        sep_line = self._c(
-            _DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}"
-        )
+        sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
         print(sep_line)
 
         # Rows
@@ -402,24 +365,22 @@ class ReplSkin:
     # ── Help display ──────────────────────────────────────────────────
 
     def help(self, commands: dict[str, str]):
-        """Print a formatted help listing.
+        """Print a compact help listing.
 
         Args:
             commands: Dict of command -> description pairs.
         """
-        self.section("Commands")
+        print("Commands:")
         max_cmd = max(len(c) for c in commands) if commands else 0
         for cmd, desc in commands.items():
-            cmd_styled = self._c(self.accent, f"  {cmd:<{max_cmd}}")
-            desc_styled = self._c(_GRAY, f"  {desc}")
-            print(f"{cmd_styled}{desc_styled}")
+            print(f"  {cmd:<{max_cmd}}  {desc}")
         print()
 
     # ── Goodbye ───────────────────────────────────────────────────────
 
     def print_goodbye(self):
-        """Print a styled goodbye message."""
-        print(f"\n  {_ICON_SMALL} {self._c(_GRAY, 'Goodbye!')}\n")
+        """Print a compact goodbye message."""
+        print("Goodbye!\n")
 
     # ── Prompt toolkit session factory ────────────────────────────────
 
@@ -447,13 +408,8 @@ class ReplSkin:
         except ImportError:
             return None
 
-    def get_input(
-        self,
-        pt_session,
-        project_name: str = "",
-        modified: bool = False,
-        context: str = "",
-    ) -> str:
+    def get_input(self, pt_session, project_name: str = "",
+                  modified: bool = False, context: str = "") -> str:
         """Get input from user using prompt_toolkit or fallback.
 
         Args:
@@ -467,7 +423,6 @@ class ReplSkin:
         """
         if pt_session is not None:
             from prompt_toolkit.formatted_text import FormattedText
-
             tokens = self.prompt_tokens(project_name, modified, context)
             return pt_session.prompt(FormattedText(tokens)).strip()
         else:
@@ -485,10 +440,8 @@ class ReplSkin:
         Returns:
             A callable that returns FormattedText for the toolbar.
         """
-
         def toolbar():
             from prompt_toolkit.formatted_text import FormattedText
-
             parts = []
             for i, (k, v) in enumerate(items.items()):
                 if i > 0:
@@ -496,23 +449,20 @@ class ReplSkin:
                 parts.append(("class:bottom-toolbar.text", f" {k}: "))
                 parts.append(("class:bottom-toolbar", v))
             return FormattedText(parts)
-
         return toolbar
 
 
 # ── ANSI 256-color to hex mapping (for prompt_toolkit styles) ─────────
 
 _ANSI_256_TO_HEX = {
-    "\033[38;5;33m": "#0087ff",  # audacity navy blue
-    "\033[38;5;35m": "#00af5f",  # shotcut teal
-    "\033[38;5;39m": "#00afff",  # inkscape bright blue
-    "\033[38;5;40m": "#00d700",  # libreoffice green
-    "\033[38;5;55m": "#5f00af",  # obs purple
-    "\033[38;5;69m": "#5f87ff",  # kdenlive slate blue
-    "\033[38;5;75m": "#5fafff",  # default sky blue
-    "\033[38;5;80m": "#5fd7d7",  # brand cyan
-    "\033[38;5;81m": "#5fd7ff",  # novita vivid blue
-    "\033[38;5;141m": "#af87ff",  # anygen soft violet
+    "\033[38;5;33m":  "#0087ff",  # audacity navy blue
+    "\033[38;5;35m":  "#00af5f",  # shotcut teal
+    "\033[38;5;39m":  "#00afff",  # inkscape bright blue
+    "\033[38;5;40m":  "#00d700",  # libreoffice green
+    "\033[38;5;55m":  "#5f00af",  # obs purple
+    "\033[38;5;69m":  "#5f87ff",  # kdenlive slate blue
+    "\033[38;5;75m":  "#5fafff",  # default sky blue
+    "\033[38;5;80m":  "#5fd7d7",  # brand cyan
     "\033[38;5;208m": "#ff8700",  # blender deep orange
     "\033[38;5;214m": "#ffaf00",  # gimp warm orange
 }

@@ -6,25 +6,20 @@ Copy this file into your CLI package at:
 Usage:
     from cli_anything.<software>.utils.repl_skin import ReplSkin
 
-    skin = ReplSkin("n8n", version="2.4.7")
+    skin = ReplSkin("shotcut", version="1.0.0")
     skin.print_banner()  # auto-detects skills/SKILL.md inside the package
-    prompt_text = skin.prompt(project_name="my_workflow", modified=True)
-    skin.success("Workflow activated")
-    skin.error("Connection failed")
+    prompt_text = skin.prompt(project_name="my_video.mlt", modified=True)
+    skin.success("Project saved")
+    skin.error("File not found")
     skin.warning("Unsaved changes")
-    skin.info("Processing 24 workflows...")
-    skin.status("Status", "Connected")
+    skin.info("Processing 24 clips...")
+    skin.status("Track 1", "3 clips, 00:02:30")
     skin.table(headers, rows)
     skin.print_goodbye()
 """
 
-import json
 import os
-import shutil
 import sys
-from typing import Any
-
-import click
 
 # ── ANSI color codes (no external deps for core styling) ──────────────
 
@@ -52,7 +47,6 @@ _ACCENT_COLORS = {
     "obs_studio":  "\033[38;5;55m",    # purple
     "kdenlive":    "\033[38;5;69m",    # slate blue
     "shotcut":     "\033[38;5;35m",    # teal green
-    "n8n":         "\033[38;5;203m",   # n8n coral/red (#EA4B71)
 }
 _DEFAULT_ACCENT = "\033[38;5;75m"      # default sky blue
 
@@ -161,52 +155,18 @@ class ReplSkin:
     # ── Banner ────────────────────────────────────────────────────────
 
     def print_banner(self):
-        """Print the startup banner with branding."""
-        inner = 54
-
-        def _box_line(content: str) -> str:
-            """Wrap content in box drawing, padding to inner width."""
-            pad = inner - _visible_len(content)
-            vl = self._c(_DARK_GRAY, _V_LINE)
-            return f"{vl}{content}{' ' * max(0, pad)}{vl}"
-
-        top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
-        bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
-
-        # Title:  ◆  cli-anything · N8N
-        icon = self._c(_CYAN + _BOLD, "◆")
-        brand = self._c(_CYAN + _BOLD, "cli-anything")
-        dot = self._c(_DARK_GRAY, "·")
-        name = self._c(self.accent + _BOLD, self.display_name)
-        title = f" {icon}  {brand} {dot} {name}"
-
-        ver = f" {self._c(_DARK_GRAY, f'   v{self.version}')}"
-        tip = f" {self._c(_DARK_GRAY, '   Type help for commands, quit to exit')}"
-        empty = ""
-
-        # Skill path for agent discovery
-        skill_line = None
-        if self.skill_path:
-            skill_icon = self._c(_MAGENTA, "◇")
-            skill_label = self._c(_DARK_GRAY, "   Skill:")
-            skill_path_display = self._c(_LIGHT_GRAY, self.skill_path)
-            skill_line = f" {skill_icon} {skill_label} {skill_path_display}"
-
-        print(top)
-        print(_box_line(title))
-        print(_box_line(ver))
-        if skill_line:
-            print(_box_line(skill_line))
-        print(_box_line(empty))
-        print(_box_line(tip))
-        print(bot)
+        """Print a compact startup banner."""
+        title = f"{self.display_name} v{self.version}"
+        tip = "Type help for commands, quit to exit"
+        print(title)
+        print(tip)
         print()
 
     # ── Prompt ────────────────────────────────────────────────────────
 
     def prompt(self, project_name: str = "", modified: bool = False,
                context: str = "") -> str:
-        """Build a styled prompt string for prompt_toolkit or input().
+        """Build a plain prompt string for interactive use.
 
         Args:
             project_name: Current project name (empty if none open).
@@ -216,28 +176,15 @@ class ReplSkin:
         Returns:
             Formatted prompt string.
         """
-        parts = []
+        parts = [self.software]
 
-        # Icon
-        if self._color:
-            parts.append(f"{_CYAN}◆{_RESET} ")
-        else:
-            parts.append("> ")
-
-        # Software name
-        parts.append(self._c(self.accent + _BOLD, self.software))
-
-        # Project context
         if project_name or context:
             ctx = context or project_name
             mod = "*" if modified else ""
-            parts.append(f" {self._c(_DARK_GRAY, '[')}")
-            parts.append(self._c(_LIGHT_GRAY, f"{ctx}{mod}"))
-            parts.append(self._c(_DARK_GRAY, ']'))
+            parts.append(f"[{ctx}{mod}]")
 
-        parts.append(self._c(_GRAY, " ❯ "))
-
-        return "".join(parts)
+        parts.append(">")
+        return " ".join(parts) + " "
 
     def prompt_tokens(self, project_name: str = "", modified: bool = False,
                       context: str = ""):
@@ -248,10 +195,7 @@ class ReplSkin:
         Returns:
             list of (style, text) tuples for prompt_toolkit.
         """
-        tokens = []
-
-        tokens.append(("class:icon", "◆ "))
-        tokens.append(("class:software", self.software))
+        tokens = [("class:software", self.software)]
 
         if project_name or context:
             ctx = context or project_name
@@ -260,7 +204,7 @@ class ReplSkin:
             tokens.append(("class:context", f"{ctx}{mod}"))
             tokens.append(("class:bracket", "]"))
 
-        tokens.append(("class:arrow", " ❯ "))
+        tokens.append(("class:arrow", " > "))
 
         return tokens
 
@@ -362,7 +306,7 @@ class ReplSkin:
         pct = int(current / total * 100) if total > 0 else 0
         bar_width = 20
         filled = int(bar_width * current / total) if total > 0 else 0
-        bar = "\u2588" * filled + "\u2591" * (bar_width - filled)
+        bar = "█" * filled + "░" * (bar_width - filled)
         text = f"  {self._c(_CYAN, bar)} {self._c(_GRAY, f'{pct:3d}%')}"
         if label:
             text += f" {self._c(_LIGHT_GRAY, label)}"
@@ -405,7 +349,9 @@ class ReplSkin:
         print(header_line)
 
         # Separator
-        print(self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}"))
+        sep_parts = [self._c(_DARK_GRAY, _H_LINE * w) for w in col_widths]
+        sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
+        print(sep_line)
 
         # Rows
         for row in rows:
@@ -419,24 +365,22 @@ class ReplSkin:
     # ── Help display ──────────────────────────────────────────────────
 
     def help(self, commands: dict[str, str]):
-        """Print a formatted help listing.
+        """Print a compact help listing.
 
         Args:
             commands: Dict of command -> description pairs.
         """
-        self.section("Commands")
+        print("Commands:")
         max_cmd = max(len(c) for c in commands) if commands else 0
         for cmd, desc in commands.items():
-            cmd_styled = self._c(self.accent, f"  {cmd:<{max_cmd}}")
-            desc_styled = self._c(_GRAY, f"  {desc}")
-            print(f"{cmd_styled}{desc_styled}")
+            print(f"  {cmd:<{max_cmd}}  {desc}")
         print()
 
     # ── Goodbye ───────────────────────────────────────────────────────
 
     def print_goodbye(self):
-        """Print a styled goodbye message."""
-        print(f"\n  {_ICON_SMALL} {self._c(_GRAY, 'Goodbye!')}\n")
+        """Print a compact goodbye message."""
+        print("Goodbye!\n")
 
     # ── Prompt toolkit session factory ────────────────────────────────
 
@@ -450,6 +394,7 @@ class ReplSkin:
             from prompt_toolkit import PromptSession
             from prompt_toolkit.history import FileHistory
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+            from prompt_toolkit.formatted_text import FormattedText
 
             style = self.get_prompt_style()
 
@@ -518,141 +463,6 @@ _ANSI_256_TO_HEX = {
     "\033[38;5;69m":  "#5f87ff",  # kdenlive slate blue
     "\033[38;5;75m":  "#5fafff",  # default sky blue
     "\033[38;5;80m":  "#5fd7d7",  # brand cyan
-    "\033[38;5;203m": "#ff5f5f",  # n8n coral
     "\033[38;5;208m": "#ff8700",  # blender deep orange
     "\033[38;5;214m": "#ffaf00",  # gimp warm orange
 }
-
-
-# ── Module-level convenience wrappers ─────────────────────────────────
-# These delegate to a lazily-initialized ReplSkin singleton so that
-# n8n_cli.py can do `from ...repl_skin import success, error, warn`
-# while still routing through the standard ReplSkin class.
-
-_skin: ReplSkin | None = None
-
-
-def _get_skin() -> ReplSkin:
-    global _skin
-    if _skin is None:
-        # Import VERSION lazily to avoid circular imports
-        try:
-            from cli_anything.n8n.n8n_cli import VERSION
-        except ImportError:
-            VERSION = "0.0.0"
-        _skin = ReplSkin("n8n", version=VERSION)
-    return _skin
-
-
-def print_banner() -> None:
-    """Print the cli-anything branded banner."""
-    _get_skin().print_banner()
-
-
-def success(msg: str) -> None:
-    """Print a success message."""
-    _get_skin().success(msg)
-
-
-def error(msg: str) -> None:
-    """Print an error message."""
-    _get_skin().error(msg)
-
-
-def warn(msg: str) -> None:
-    """Print a warning message."""
-    _get_skin().warning(msg)
-
-
-# ── n8n-specific output helpers ───────────────────────────────────────
-# These handle --json flag and n8n API response formatting.
-# Not part of the standard ReplSkin because they depend on click and
-# n8n API response structure (data/nextCursor pagination).
-
-def output(data: Any, as_json: bool) -> None:
-    """Print data as JSON or human-readable."""
-    if as_json:
-        click.echo(json.dumps(data, indent=2, default=str))
-        return
-
-    if isinstance(data, dict):
-        if "data" in data and isinstance(data["data"], list):
-            _print_table(data["data"])
-            if "nextCursor" in data:
-                click.secho(f"\n  Next cursor: {data['nextCursor']}", fg="bright_black")
-        else:
-            _print_dict(data)
-    elif isinstance(data, list):
-        if data and isinstance(data[0], dict):
-            _print_table(data)
-        else:
-            click.echo(json.dumps(data, indent=2, default=str))
-    else:
-        click.echo(str(data))
-
-
-def _print_dict(d: dict[str, Any], indent: int = 0) -> None:
-    prefix = "  " * indent
-    for k, v in d.items():
-        if isinstance(v, dict):
-            click.secho(f"{prefix}{k}:", fg="cyan")
-            _print_dict(v, indent + 1)
-        elif isinstance(v, list) and v and isinstance(v[0], dict):
-            click.secho(f"{prefix}{k}:", fg="cyan")
-            _print_table(v)
-        else:
-            click.echo(f"{prefix}{click.style(str(k), fg='cyan')}: {v}")
-
-
-def _print_table(rows: list[dict[str, Any]]) -> None:
-    if not rows:
-        click.secho("  (empty)", fg="bright_black")
-        return
-
-    term_width = shutil.get_terminal_size().columns
-    keys = list(rows[0].keys())
-
-    # Filter out overly complex nested fields for table view
-    simple_keys = [k for k in keys if not isinstance(rows[0].get(k), (dict, list))]
-    if not simple_keys:
-        simple_keys = keys[:5]
-
-    col_widths = {k: len(str(k)) for k in simple_keys}
-    for row in rows:
-        for k in simple_keys:
-            val = str(row.get(k, ""))
-            col_widths[k] = min(max(col_widths[k], len(val)), 40)
-
-    # Truncate columns if they exceed terminal width
-    total = sum(col_widths.values()) + (len(simple_keys) - 1) * 3
-    if total > term_width:
-        max_col = max(10, term_width // len(simple_keys) - 3)
-        col_widths = {k: min(v, max_col) for k, v in col_widths.items()}
-
-    header = " | ".join(
-        click.style(k.ljust(col_widths[k])[:col_widths[k]], fg="cyan")
-        for k in simple_keys
-    )
-    click.echo(header)
-    click.echo("-+-".join("-" * col_widths[k] for k in simple_keys))
-
-    # Color rules for specific columns
-    color_rules = {
-        "status": {"success": "green", "error": "red", "running": "bright_yellow", "waiting": "cyan"},
-        "active": {"True": "green", "False": "bright_black"},
-    }
-
-    for row in rows:
-        vals = []
-        for k in simple_keys:
-            v = str(row.get(k, ""))
-            w = col_widths[k]
-            if len(v) > w and w > 3:
-                cell = v[: w - 1] + "\u2026"
-            else:
-                cell = v.ljust(w)[:w]
-            # Apply color if column has a rule
-            if k in color_rules and v in color_rules[k]:
-                cell = click.style(cell, fg=color_rules[k][v])
-            vals.append(cell)
-        click.echo(" | ".join(vals))
