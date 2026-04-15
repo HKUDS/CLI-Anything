@@ -415,7 +415,9 @@
       position: relative;
       overflow: hidden;
       isolation: isolate;
+      touch-action: pan-y pinch-zoom;
     }
+    .deck-viewport.dragging * { user-select: none; }
 
     .deck-track {
       display: flex;
@@ -423,6 +425,8 @@
       transition: transform 0.55s cubic-bezier(0.4, 0, 0.15, 1);
       will-change: transform;
     }
+
+    .deck-track.is-dragging { transition: none; }
 
     .deck-panel {
       position: relative;
@@ -617,24 +621,35 @@
 
     .sort-select {
       min-width: 168px;
-      padding: 0.72rem 2.4rem 0.72rem 0.95rem;
-      background: var(--surface) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%2371717a" d="M6 9L2 5h8z"/></svg>') no-repeat right 0.65rem center;
+      padding: 0.78rem 2.7rem 0.78rem 1rem;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        var(--surface) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path fill="%23a1a1aa" d="M7 10.2 2.8 6h8.4z"/></svg>') no-repeat right 0.85rem center;
       border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
+      border-radius: 999px;
       color: var(--text);
       font-size: 0.9rem;
       font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
       outline: none;
       cursor: pointer;
       appearance: none;
       -webkit-appearance: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s, transform 0.15s;
     }
 
-    .sort-select:focus, .sort-select:hover { border-color: var(--text-tertiary); }
+    .sort-select:focus, .sort-select:hover {
+      border-color: var(--text-tertiary);
+      background-color: var(--surface-raised);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
 
     [data-theme="light"] .sort-select {
-      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%2352525b" d="M6 9L2 5h8z"/></svg>');
+      background-image:
+        linear-gradient(180deg, rgba(255,255,255,0.5), rgba(255,255,255,0)),
+        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path fill="%2352525b" d="M7 10.2 2.8 6h8.4z"/></svg>');
     }
 
     .filter-row {
@@ -820,12 +835,17 @@
       align-items: center;
       justify-content: space-between;
       gap: 0.5rem;
+      margin-top: 0.85rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--border-subtle);
+      flex-wrap: wrap;
     }
 
     .card-links {
       display: flex;
       gap: 0.6rem;
       font-size: 0.78rem;
+      flex-wrap: wrap;
     }
 
     .card-links a {
@@ -843,6 +863,7 @@
       display: flex;
       align-items: center;
       gap: 0.3rem;
+      flex-wrap: wrap;
     }
 
     .card-contributor a {
@@ -896,16 +917,67 @@
       border-color: rgba(100, 116, 139, 0.14);
     }
 
+    .card-public-notes {
+      display: grid;
+      gap: 0.45rem;
+      margin-top: 0.2rem;
+      margin-bottom: 0.1rem;
+      padding: 0.7rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+    }
+
     .card-npx {
       font-size: 0.75rem;
       color: var(--text-tertiary);
-      margin-top: 0.35rem;
+      padding: 0.55rem 0.65rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: calc(var(--radius-sm) - 2px);
+      line-height: 1.55;
+    }
+
+    .card-npx--direct {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.38rem;
+      background: transparent;
+      border: 0;
+      border-left: 2px solid var(--border);
+      border-radius: 0;
+      padding: 0.05rem 0 0.05rem 0.7rem;
+    }
+
+    .card-npx--direct strong {
+      color: var(--text-secondary);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .card-npx--direct span {
+      color: var(--text-tertiary);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .card-npx--comment {
+      background: transparent;
+      border: 0;
+      border-left: 2px solid var(--border-subtle);
+      border-radius: 0;
+      padding: 0.05rem 0 0.05rem 0.7rem;
+      color: var(--text-secondary);
     }
 
     .card-npx code {
       font-family: 'JetBrains Mono', monospace;
       color: var(--text-secondary);
       font-size: 0.73rem;
+      display: inline-block;
+      margin-top: 0.25rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .public-panel-note {
@@ -1288,6 +1360,14 @@
     let harnessClis = [];
     let publicClis = [];
     let activeDeck = 'harness';
+    let wheelSwitchLockUntil = 0;
+
+    const deckGesture = {
+      pointerId: null,
+      startX: 0,
+      deltaX: 0,
+      dragging: false,
+    };
 
     // Per-deck state
     const deckState = {
@@ -1405,18 +1485,108 @@
       switchDeck(activeDeck === 'harness' ? 'public' : 'harness');
     }
 
-    function updateDeckPosition() {
+    function getDeckMetrics() {
       const stage = document.querySelector('.deck-stage');
       const viewport = document.querySelector('.deck-viewport');
       const track = document.getElementById('deck-track');
-      if (!stage || !viewport || !track) return;
+      if (!stage || !viewport || !track) return null;
 
       const peek = parseFloat(getComputedStyle(stage).getPropertyValue('--deck-peek')) || 0;
       const panelWidth = Math.max(viewport.clientWidth - peek, 0);
+      return {
+        viewport,
+        track,
+        panelWidth,
+        maxShift: Math.max(panelWidth - peek, 0),
+      };
+    }
+
+    function setDeckTransform(offset = 0) {
+      const metrics = getDeckMetrics();
+      if (!metrics) return;
+      const { viewport, track, panelWidth, maxShift } = metrics;
       viewport.style.setProperty('--deck-panel-width', `${panelWidth}px`);
-      track.style.transform = activeDeck === 'public'
-        ? `translateX(-${Math.max(panelWidth - peek, 0)}px)`
-        : 'translateX(0)';
+      const baseShift = activeDeck === 'public' ? -maxShift : 0;
+      const clampedShift = Math.min(0, Math.max(-maxShift, baseShift + offset));
+      track.style.transform = `translateX(${clampedShift}px)`;
+    }
+
+    function updateDeckPosition() {
+      setDeckTransform();
+    }
+
+    function finishDeckDrag() {
+      const viewport = document.querySelector('.deck-viewport');
+      const track = document.getElementById('deck-track');
+      if (viewport) viewport.classList.remove('dragging');
+      if (track) track.classList.remove('is-dragging');
+      deckGesture.pointerId = null;
+      deckGesture.startX = 0;
+      deckGesture.deltaX = 0;
+      deckGesture.dragging = false;
+    }
+
+    function initDeckGestures() {
+      const viewport = document.querySelector('.deck-viewport');
+      const track = document.getElementById('deck-track');
+      if (!viewport || !track) return;
+
+      const isInteractiveTarget = (target) => !!target.closest('a, button, input, select, textarea, label');
+
+      viewport.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (isInteractiveTarget(e.target)) return;
+        deckGesture.pointerId = e.pointerId;
+        deckGesture.startX = e.clientX;
+        deckGesture.deltaX = 0;
+        deckGesture.dragging = true;
+        viewport.classList.add('dragging');
+        track.classList.add('is-dragging');
+        if (viewport.setPointerCapture) viewport.setPointerCapture(e.pointerId);
+      });
+
+      viewport.addEventListener('pointermove', (e) => {
+        if (!deckGesture.dragging || e.pointerId !== deckGesture.pointerId) return;
+        deckGesture.deltaX = e.clientX - deckGesture.startX;
+        setDeckTransform(deckGesture.deltaX);
+      });
+
+      const endDrag = (e) => {
+        if (!deckGesture.dragging || e.pointerId !== deckGesture.pointerId) return;
+        const deltaX = deckGesture.deltaX;
+        finishDeckDrag();
+        if (activeDeck === 'harness' && deltaX < -60) {
+          switchDeck('public');
+          return;
+        }
+        if (activeDeck === 'public' && deltaX > 60) {
+          switchDeck('harness');
+          return;
+        }
+        updateDeckPosition();
+      };
+
+      viewport.addEventListener('pointerup', endDrag);
+      viewport.addEventListener('pointercancel', endDrag);
+      viewport.addEventListener('lostpointercapture', () => {
+        if (!deckGesture.dragging) return;
+        finishDeckDrag();
+        updateDeckPosition();
+      });
+
+      viewport.addEventListener('wheel', (e) => {
+        const now = Date.now();
+        if (now < wheelSwitchLockUntil) return;
+        if (Math.abs(e.deltaX) < 24 || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+        e.preventDefault();
+        if (e.deltaX > 0 && activeDeck !== 'public') {
+          switchDeck('public');
+          wheelSwitchLockUntil = now + 450;
+        } else if (e.deltaX < 0 && activeDeck !== 'harness') {
+          switchDeck('harness');
+          wheelSwitchLockUntil = now + 450;
+        }
+      }, { passive: false });
     }
 
     function renderDeck(deck) {
@@ -1530,10 +1700,13 @@
         : '';
       const directCmd = c.install_cmd || publicDirectCmd(c);
       const directCmdHtml = directCmd && !isBundled
-        ? `<div class="card-npx">Or run directly: <code>${esc(directCmd)}</code></div>`
+        ? `<div class="card-npx card-npx--direct"><strong>Or run directly:</strong><span>${esc(directCmd)}</span></div>`
         : '';
       const installNotesHtml = c.install_notes
-        ? `<div class="card-npx">${esc(c.install_notes)}</div>`
+        ? `<div class="card-npx card-npx--comment">${esc(c.install_notes)}</div>`
+        : '';
+      const publicNotesHtml = (directCmdHtml || installNotesHtml)
+        ? `<div class="card-public-notes">${directCmdHtml}${installNotesHtml}</div>`
         : '';
       const cliHubInstallHtml = isBundled
         ? `<div class="card-install card-install--note"><code>Bundled with the upstream app</code></div>`
@@ -1554,8 +1727,7 @@
           <div class="card-desc">${esc(c.description)}</div>
           ${requiresHtml}
           ${cliHubInstallHtml}
-          ${directCmdHtml}
-          ${installNotesHtml}
+          ${publicNotesHtml}
           <div class="card-footer">
             <div class="card-links">${sourceLink}</div>
             ${contributorHtml}
@@ -1597,6 +1769,7 @@
 
     window.addEventListener('resize', updateDeckPosition);
 
+    initDeckGestures();
     loadRegistries().then(updateDeckPosition);
 
     // ── Visitor classification: human vs AI agent ──

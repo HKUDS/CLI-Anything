@@ -1,0 +1,2559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI-Anything Hub Atelier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1016;
+      --bg-elevated: rgba(20, 25, 35, 0.9);
+      --panel: rgba(17, 22, 30, 0.78);
+      --panel-strong: rgba(24, 31, 43, 0.92);
+      --panel-soft: rgba(22, 28, 39, 0.62);
+      --border: rgba(173, 188, 214, 0.16);
+      --border-strong: rgba(219, 228, 245, 0.22);
+      --text: #f5f2ea;
+      --text-secondary: #b8c2d6;
+      --text-tertiary: #8190ab;
+      --ink: #08101c;
+      --accent: #5da8ff;
+      --accent-soft: rgba(93, 168, 255, 0.16);
+      --accent-glow: rgba(93, 168, 255, 0.24);
+      --amber: #f1b36b;
+      --amber-soft: rgba(241, 179, 107, 0.16);
+      --amber-glow: rgba(241, 179, 107, 0.24);
+      --green: #78d8aa;
+      --green-soft: rgba(120, 216, 170, 0.16);
+      --shadow-lg: 0 32px 80px rgba(0, 0, 0, 0.38);
+      --shadow-md: 0 18px 44px rgba(0, 0, 0, 0.25);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --page-width: 1240px;
+      --deck-peek: clamp(44px, 7vw, 90px);
+    }
+
+    [data-theme="light"] {
+      --bg: #f2ede4;
+      --bg-elevated: rgba(250, 247, 241, 0.86);
+      --panel: rgba(255, 252, 245, 0.84);
+      --panel-strong: rgba(255, 250, 241, 0.95);
+      --panel-soft: rgba(246, 240, 229, 0.7);
+      --border: rgba(55, 63, 78, 0.12);
+      --border-strong: rgba(39, 45, 56, 0.18);
+      --text: #141a24;
+      --text-secondary: #465166;
+      --text-tertiary: #69758a;
+      --ink: #f7f1e8;
+      --accent: #1c65b8;
+      --accent-soft: rgba(28, 101, 184, 0.12);
+      --accent-glow: rgba(28, 101, 184, 0.18);
+      --amber: #a96419;
+      --amber-soft: rgba(169, 100, 25, 0.12);
+      --amber-glow: rgba(169, 100, 25, 0.16);
+      --green: #157c59;
+      --green-soft: rgba(21, 124, 89, 0.12);
+      --shadow-lg: 0 30px 80px rgba(61, 52, 38, 0.12);
+      --shadow-md: 0 16px 36px rgba(61, 52, 38, 0.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: 'IBM Plex Sans', sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(93, 168, 255, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(241, 179, 107, 0.12), transparent 28%),
+        linear-gradient(180deg, #0d1016 0%, #0a0e15 40%, #0f131b 100%);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    [data-theme="light"] body {
+      background:
+        radial-gradient(circle at top left, rgba(28, 101, 184, 0.14), transparent 34%),
+        radial-gradient(circle at top right, rgba(169, 100, 25, 0.1), transparent 26%),
+        linear-gradient(180deg, #f2ede4 0%, #f6f2ea 42%, #ece5d8 100%);
+    }
+
+    body::before,
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -2;
+    }
+
+    body::before {
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: linear-gradient(180deg, rgba(255,255,255,0.7), transparent 85%);
+      opacity: 0.42;
+    }
+
+    [data-theme="light"] body::before {
+      background:
+        linear-gradient(rgba(28, 34, 46, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(28, 34, 46, 0.05) 1px, transparent 1px);
+      opacity: 0.45;
+    }
+
+    body::after {
+      background-image:
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,0.06) 0.7px, transparent 0.7px),
+        radial-gradient(circle at 80% 65%, rgba(255,255,255,0.05) 0.7px, transparent 0.7px);
+      background-size: 18px 18px, 22px 22px;
+      opacity: 0.18;
+      mix-blend-mode: soft-light;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .page-shell {
+      position: relative;
+      padding-bottom: 4rem;
+    }
+
+    .page-shell::before {
+      content: '';
+      position: absolute;
+      top: 7rem;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(1320px, calc(100vw - 32px));
+      height: 820px;
+      border-radius: 40px;
+      background:
+        radial-gradient(circle at 14% 18%, rgba(93, 168, 255, 0.18), transparent 26%),
+        radial-gradient(circle at 84% 30%, rgba(241, 179, 107, 0.16), transparent 24%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255,255,255,0));
+      filter: blur(6px);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .nav {
+      width: min(var(--page-width), calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 1.2rem 0 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      position: relative;
+      z-index: 2;
+      animation: slide-up 0.7s ease both;
+    }
+
+    .nav-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.9rem;
+      text-decoration: none;
+    }
+
+    .nav-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        linear-gradient(145deg, rgba(93, 168, 255, 0.3), rgba(241, 179, 107, 0.18)),
+        var(--panel-strong);
+      border: 1px solid var(--border-strong);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), var(--shadow-md);
+      color: var(--text);
+      font-family: 'Fraunces', serif;
+      font-size: 1.1rem;
+      letter-spacing: 0.02em;
+    }
+
+    .nav-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 0.08rem;
+    }
+
+    .nav-copy strong {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .nav-copy span {
+      color: var(--text-tertiary);
+      font-size: 0.78rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav-link,
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      min-height: 42px;
+      padding: 0.75rem 1rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text-secondary);
+      text-decoration: none;
+      backdrop-filter: blur(14px);
+      transition: transform 0.24s ease, border-color 0.24s ease, color 0.24s ease, background 0.24s ease, box-shadow 0.24s ease;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+
+    .nav-link:hover,
+    .theme-toggle:hover {
+      transform: translateY(-1px);
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: var(--panel-strong);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14);
+    }
+
+    .nav-link svg,
+    .theme-toggle svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .theme-toggle {
+      width: 42px;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .theme-toggle .icon-moon {
+      display: none;
+    }
+
+    [data-theme="light"] .theme-toggle .icon-moon {
+      display: block;
+    }
+
+    [data-theme="light"] .theme-toggle .icon-sun {
+      display: none;
+    }
+
+    .hero {
+      width: min(var(--page-width), calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 2rem 0 2.4rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+      gap: 1.4rem;
+      align-items: stretch;
+    }
+
+    .hero-main,
+    .hero-rail {
+      position: relative;
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-lg);
+      animation: slide-up 0.7s ease both;
+    }
+
+    .hero-main {
+      padding: 2rem;
+    }
+
+    .hero-main::before,
+    .hero-rail::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(140deg, rgba(93, 168, 255, 0.1), transparent 34%),
+        linear-gradient(320deg, rgba(241, 179, 107, 0.1), transparent 34%);
+      pointer-events: none;
+    }
+
+    .hero-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.8rem;
+      border-radius: 999px;
+      border: 1px solid rgba(93, 168, 255, 0.26);
+      background: rgba(93, 168, 255, 0.1);
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+
+    .hero-kicker::before {
+      content: '';
+      width: 0.52rem;
+      height: 0.52rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent), #b9dbff);
+      box-shadow: 0 0 0 5px rgba(93, 168, 255, 0.12);
+    }
+
+    .hero h1 {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(3rem, 5.8vw, 5.5rem);
+      line-height: 0.94;
+      letter-spacing: -0.06em;
+      max-width: 9ch;
+      margin-bottom: 1.1rem;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+
+    .hero h1 span {
+      color: #d8cbb0;
+    }
+
+    [data-theme="light"] .hero h1 span {
+      color: #5e5241;
+    }
+
+    .hero-lead {
+      max-width: 62ch;
+      font-size: 1.06rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-lead strong {
+      color: var(--text);
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.3rem;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.88rem 1.18rem;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease, background 0.24s ease, color 0.24s ease;
+    }
+
+    .btn-primary {
+      color: var(--ink);
+      background: linear-gradient(135deg, #e7f2ff, #f8d4a2);
+      box-shadow: 0 18px 34px rgba(31, 44, 64, 0.2);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 22px 42px rgba(31, 44, 64, 0.26);
+    }
+
+    .btn-secondary {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text-secondary);
+    }
+
+    .btn-secondary:hover {
+      transform: translateY(-2px);
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .btn-secondary svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .hero-notes {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.8rem;
+      margin-top: 1.2rem;
+    }
+
+    .hero-note {
+      padding: 1rem 1rem 0.95rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.025);
+    }
+
+    .hero-note strong {
+      display: block;
+      margin-bottom: 0.26rem;
+      font-size: 0.84rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .hero-note span {
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+    }
+
+    .hero-rail {
+      padding: 1.3rem;
+      display: grid;
+      gap: 1rem;
+      animation-delay: 0.08s;
+    }
+
+    .rail-panel {
+      position: relative;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      padding: 1.15rem;
+      overflow: hidden;
+    }
+
+    .rail-panel::before {
+      content: '';
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), transparent 72%);
+      opacity: 0.8;
+    }
+
+    .rail-panel--public::before {
+      background: linear-gradient(90deg, var(--amber), transparent 72%);
+    }
+
+    .rail-panel h3 {
+      font-size: 1rem;
+      margin-bottom: 0.28rem;
+    }
+
+    .rail-panel p {
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+      margin-bottom: 0.9rem;
+    }
+
+    .install-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 0.65rem;
+      align-items: center;
+      padding: 0.85rem 0.95rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.12);
+      margin-bottom: 0.65rem;
+    }
+
+    [data-theme="light"] .install-row {
+      background: rgba(255,255,255,0.52);
+    }
+
+    .chip-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 78px;
+      padding: 0.35rem 0.55rem;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .rail-panel--public .chip-label {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .install-row code {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .copy-btn,
+    .card-copy-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 0.52rem 0.9rem;
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .copy-btn:hover,
+    .card-copy-btn:hover {
+      transform: translateY(-1px);
+      border-color: var(--border-strong);
+      background: rgba(255,255,255,0.08);
+    }
+
+    .hero-prompt {
+      padding: 0.9rem 1rem;
+      border-radius: var(--radius-sm);
+      border: 1px dashed rgba(93, 168, 255, 0.28);
+      background: rgba(93, 168, 255, 0.08);
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .hero-prompt strong {
+      color: var(--text);
+    }
+
+    .hero-prompt em {
+      color: #bddcff;
+      font-style: normal;
+    }
+
+    [data-theme="light"] .hero-prompt em {
+      color: var(--accent);
+    }
+
+    .cmd-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem;
+    }
+
+    .cmd-item {
+      padding: 0.86rem 0.9rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      min-width: 0;
+    }
+
+    .cmd-name {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--green);
+      margin-bottom: 0.22rem;
+    }
+
+    .cmd-desc {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .stats {
+      width: min(var(--page-width), calc(100vw - 32px));
+      margin: 0 auto 1rem;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.9rem;
+      animation: slide-up 0.78s ease both;
+      animation-delay: 0.12s;
+    }
+
+    .stat {
+      padding: 1rem 1.05rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--panel);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .stat-num {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(1.9rem, 3vw, 2.6rem);
+      letter-spacing: -0.06em;
+      margin-bottom: 0.15rem;
+    }
+
+    .stat-label {
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.72rem;
+    }
+
+    .deck-nav {
+      width: min(var(--page-width), calc(100vw - 32px));
+      margin: 0 auto 1rem;
+      padding: 0.8rem;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      background: var(--panel);
+      backdrop-filter: blur(20px);
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      box-shadow: var(--shadow-md);
+      animation: slide-up 0.84s ease both;
+      animation-delay: 0.16s;
+    }
+
+    .deck-tab {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      padding: 1rem 1.1rem;
+      border-radius: 20px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      text-align: left;
+      transition: transform 0.24s ease, border-color 0.24s ease, background 0.24s ease, color 0.24s ease, box-shadow 0.24s ease;
+    }
+
+    .deck-tab:hover {
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .deck-tab.active {
+      color: var(--text);
+      border-color: rgba(93, 168, 255, 0.22);
+      background:
+        linear-gradient(135deg, rgba(93, 168, 255, 0.14), rgba(255,255,255,0.04)),
+        rgba(255,255,255,0.02);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+
+    .deck-tab.deck-tab--public.active {
+      border-color: rgba(241, 179, 107, 0.22);
+      background:
+        linear-gradient(135deg, rgba(241, 179, 107, 0.14), rgba(255,255,255,0.04)),
+        rgba(255,255,255,0.02);
+    }
+
+    .deck-tab-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      margin-bottom: 0.24rem;
+    }
+
+    .deck-tab-title {
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      font-size: 1rem;
+    }
+
+    .deck-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.1rem;
+      padding: 0.2rem 0.48rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+    }
+
+    .deck-tab-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.86rem;
+      line-height: 1.45;
+      display: block;
+    }
+
+    .deck-separator {
+      width: 1px;
+      align-self: stretch;
+      background: linear-gradient(180deg, transparent, var(--border), transparent);
+    }
+
+    .deck-arrow-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 1rem 1.05rem;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: transform 0.24s ease, border-color 0.24s ease, background 0.24s ease, color 0.24s ease;
+    }
+
+    .deck-arrow-btn:hover {
+      transform: translateY(-1px);
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: rgba(255,255,255,0.08);
+    }
+
+    .deck-arrow-btn svg {
+      width: 16px;
+      height: 16px;
+      transition: transform 0.24s ease;
+    }
+
+    .deck-arrow-btn:hover svg {
+      transform: translateX(3px);
+    }
+
+    .deck-arrow-btn--back:hover svg {
+      transform: translateX(-3px);
+    }
+
+    .deck-stage {
+      width: min(var(--page-width), calc(100vw - 32px));
+      margin: 0 auto;
+      --deck-peek: clamp(44px, 7vw, 90px);
+      animation: slide-up 0.9s ease both;
+      animation-delay: 0.2s;
+      position: relative;
+    }
+
+    .deck-viewport {
+      --deck-panel-width: calc(100% - var(--deck-peek));
+      width: calc(100% + var(--deck-peek));
+      margin-right: calc(var(--deck-peek) * -1);
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .deck-track {
+      display: flex;
+      width: max-content;
+      transition: transform 0.48s cubic-bezier(0.2, 0.9, 0.2, 1);
+      will-change: transform;
+    }
+
+    .deck-panel {
+      width: var(--deck-panel-width);
+      min-width: var(--deck-panel-width);
+      flex-shrink: 0;
+      border-radius: calc(var(--radius-xl) + 4px);
+      border: 1px solid var(--border);
+      background: var(--panel);
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(22px);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .deck-panel::before {
+      content: attr(data-peek-label);
+      position: absolute;
+      top: 1.3rem;
+      right: 1.4rem;
+      color: rgba(255,255,255,0.06);
+      font-size: clamp(2rem, 4vw, 4rem);
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      pointer-events: none;
+    }
+
+    [data-theme="light"] .deck-panel::before {
+      color: rgba(20, 26, 36, 0.06);
+    }
+
+    .deck-panel::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.28s ease;
+      z-index: 3;
+    }
+
+    .deck-panel--public {
+      box-shadow:
+        inset 1px 0 0 rgba(241, 179, 107, 0.18),
+        var(--shadow-lg);
+    }
+
+    .deck-track[data-active="harness"] .deck-panel--public::after {
+      background: linear-gradient(90deg, rgba(10, 14, 20, 0.56) 0%, rgba(10, 14, 20, 0.28) 48%, rgba(10, 14, 20, 0.05) 100%);
+      opacity: 1;
+    }
+
+    .deck-track[data-active="public"] .deck-panel--harness::after {
+      background: linear-gradient(270deg, rgba(10, 14, 20, 0.56) 0%, rgba(10, 14, 20, 0.28) 48%, rgba(10, 14, 20, 0.05) 100%);
+      opacity: 1;
+    }
+
+    [data-theme="light"] .deck-track[data-active="harness"] .deck-panel--public::after {
+      background: linear-gradient(90deg, rgba(248, 243, 234, 0.72) 0%, rgba(248, 243, 234, 0.36) 48%, rgba(248, 243, 234, 0.08) 100%);
+    }
+
+    [data-theme="light"] .deck-track[data-active="public"] .deck-panel--harness::after {
+      background: linear-gradient(270deg, rgba(248, 243, 234, 0.72) 0%, rgba(248, 243, 234, 0.36) 48%, rgba(248, 243, 234, 0.08) 100%);
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 16px;
+      z-index: 6;
+      margin: 1.15rem;
+      padding: 1rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(14, 18, 26, 0.94), rgba(20, 26, 36, 0.84));
+      backdrop-filter: blur(22px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+    }
+
+    [data-theme="light"] .toolbar {
+      background: linear-gradient(180deg, rgba(255, 251, 244, 0.96), rgba(247, 240, 231, 0.92));
+    }
+
+    .toolbar-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 0.85rem;
+      align-items: center;
+    }
+
+    .search-shell,
+    .sort-shell,
+    .toolbar-status {
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      min-height: 64px;
+    }
+
+    .search-shell {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.95rem 1rem;
+    }
+
+    .search-shell svg {
+      width: 18px;
+      height: 18px;
+      color: var(--text-tertiary);
+      flex-shrink: 0;
+    }
+
+    .search-meta,
+    .sort-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.12rem;
+      min-width: 0;
+    }
+
+    .control-kicker {
+      color: var(--text-tertiary);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .search {
+      width: 100%;
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      outline: none;
+      font-size: 1rem;
+      margin-top: 0.12rem;
+    }
+
+    .search::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .sort-shell {
+      position: relative;
+      min-width: 240px;
+      padding: 0.7rem;
+    }
+
+    .sort-trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      margin-top: 0.2rem;
+      padding: 0.3rem 0.05rem 0.05rem;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .sort-current {
+      font-size: 0.98rem;
+      font-weight: 600;
+    }
+
+    .sort-chevron {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      transition: transform 0.24s ease, background 0.24s ease;
+    }
+
+    .sort-shell.open .sort-chevron {
+      transform: rotate(180deg);
+      background: rgba(255,255,255,0.08);
+    }
+
+    .sort-menu {
+      position: absolute;
+      top: calc(100% + 0.5rem);
+      right: 0.7rem;
+      width: min(300px, calc(100vw - 48px));
+      padding: 0.5rem;
+      border-radius: 18px;
+      border: 1px solid var(--border-strong);
+      background: rgba(11, 16, 24, 0.98);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+      z-index: 20;
+      transform-origin: top right;
+      animation: menu-in 0.16s ease;
+    }
+
+    [data-theme="light"] .sort-menu {
+      background: rgba(255, 251, 244, 0.98);
+    }
+
+    .sort-option {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.6rem;
+      align-items: center;
+      text-align: left;
+      padding: 0.8rem 0.85rem;
+      border: 0;
+      border-radius: 14px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    }
+
+    .sort-option:hover {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      transform: translateX(2px);
+    }
+
+    .sort-option strong {
+      display: block;
+      color: inherit;
+      font-size: 0.95rem;
+      margin-bottom: 0.08rem;
+    }
+
+    .sort-option span {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--text-tertiary);
+      line-height: 1.4;
+    }
+
+    .sort-option-mark {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid transparent;
+      color: transparent;
+      flex-shrink: 0;
+    }
+
+    .sort-option[aria-selected="true"] {
+      background: rgba(93, 168, 255, 0.12);
+      color: var(--text);
+    }
+
+    .sort-option[aria-selected="true"] .sort-option-mark {
+      color: var(--accent);
+      border-color: rgba(93, 168, 255, 0.24);
+      background: rgba(93, 168, 255, 0.08);
+    }
+
+    .toolbar-status {
+      min-width: 210px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0.9rem 1rem;
+      gap: 0.1rem;
+    }
+
+    .toolbar-status strong {
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+    }
+
+    .toolbar-status span {
+      color: var(--text-tertiary);
+      font-size: 0.83rem;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      padding-top: 0.9rem;
+    }
+
+    .filter-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text-secondary);
+      border-radius: 999px;
+      padding: 0.56rem 0.9rem;
+      cursor: pointer;
+      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+    }
+
+    .filter-btn:hover {
+      transform: translateY(-1px);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .filter-btn em {
+      font-style: normal;
+      color: var(--text-tertiary);
+      font-size: 0.76rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+    }
+
+    .filter-btn.active {
+      background: linear-gradient(135deg, rgba(93, 168, 255, 0.16), rgba(255,255,255,0.05));
+      border-color: rgba(93, 168, 255, 0.26);
+      color: var(--text);
+    }
+
+    .filter-btn.active em {
+      color: var(--accent);
+      background: rgba(93, 168, 255, 0.12);
+    }
+
+    .public-panel-note {
+      margin: 0 1.15rem 0.2rem;
+      padding: 0.95rem 1.1rem;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(241, 179, 107, 0.2);
+      background: linear-gradient(90deg, rgba(241, 179, 107, 0.14), rgba(255,255,255,0.03));
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .public-panel-note svg {
+      width: 18px;
+      height: 18px;
+      color: var(--amber);
+      flex-shrink: 0;
+    }
+
+    .grid {
+      padding: 0 1.15rem 1.3rem;
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .deck-panel--harness .grid,
+    .deck-panel--harness .toolbar {
+      margin-right: calc(var(--deck-peek) * 0.58);
+    }
+
+    .card {
+      position: relative;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.95rem;
+      padding: 1.1rem;
+      border-radius: 22px;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)),
+        rgba(10, 14, 20, 0.3);
+      overflow: hidden;
+      transition: transform 0.26s ease, border-color 0.26s ease, box-shadow 0.26s ease, background 0.26s ease;
+      animation: card-in 0.42s ease both;
+    }
+
+    [data-theme="light"] .card {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0.34)),
+        rgba(252, 248, 240, 0.76);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), transparent 68%);
+      opacity: 0.9;
+    }
+
+    .card--public::before {
+      background: linear-gradient(90deg, var(--amber), transparent 68%);
+    }
+
+    .card:hover {
+      transform: translateY(-6px);
+      border-color: var(--border-strong);
+      box-shadow: 0 28px 56px rgba(0, 0, 0, 0.2);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)),
+        rgba(10, 14, 20, 0.34);
+    }
+
+    .card-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      min-width: 0;
+    }
+
+    .card-family {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      color: var(--text-tertiary);
+      font-size: 0.74rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .card-family::before {
+      content: '';
+      width: 0.44rem;
+      height: 0.44rem;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(93, 168, 255, 0.12);
+    }
+
+    .card--public .card-family::before {
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(241, 179, 107, 0.12);
+    }
+
+    .card-title {
+      font-size: 1.12rem;
+      font-weight: 700;
+      line-height: 1.24;
+      letter-spacing: -0.03em;
+    }
+
+    .card-title a {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .card-title a:hover {
+      color: var(--accent);
+    }
+
+    .card-title a svg {
+      width: 12px;
+      height: 12px;
+      margin-left: 4px;
+      vertical-align: middle;
+      opacity: 0.45;
+    }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+
+    .card-version,
+    .category-tag,
+    .public-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0.22rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .card-version {
+      background: var(--green-soft);
+      color: var(--green);
+      border-color: rgba(120, 216, 170, 0.2);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .category-tag {
+      background: rgba(255,255,255,0.04);
+      color: var(--text-secondary);
+    }
+
+    .public-badge {
+      border-color: rgba(241, 179, 107, 0.22);
+      background: var(--amber-soft);
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .card-desc {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .card-submeta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .card-date,
+    .card-requires,
+    .card-npx {
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 0.38rem;
+      color: var(--text-tertiary);
+      font-size: 0.82rem;
+      line-height: 1.5;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .card-requires strong {
+      color: var(--text-secondary);
+    }
+
+    .card-npx code,
+    .card-requires code {
+      display: inline-block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: normal;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.79rem;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.16rem 0.42rem;
+    }
+
+    .card-command-block {
+      padding: 0.9rem;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(93, 168, 255, 0.07), rgba(255,255,255,0.02)),
+        rgba(0,0,0,0.14);
+    }
+
+    .card--public .card-command-block {
+      background:
+        linear-gradient(180deg, rgba(241, 179, 107, 0.08), rgba(255,255,255,0.02)),
+        rgba(0,0,0,0.14);
+    }
+
+    .card-command-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      margin-bottom: 0.55rem;
+      color: var(--text-tertiary);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .card-command {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.6;
+    }
+
+    .card-command-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 0.7rem;
+    }
+
+    .card-install-note {
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      padding: 0.88rem 0.9rem;
+      border-radius: 18px;
+      border: 1px dashed rgba(241, 179, 107, 0.2);
+      background: rgba(241, 179, 107, 0.08);
+    }
+
+    .card-footer {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .card-links,
+    .card-contributor {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .card-links a,
+    .card-contributor a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.38rem 0.62rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.8rem;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .card-links a:hover,
+    .card-contributor a:hover {
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: rgba(255,255,255,0.08);
+    }
+
+    .community-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.36rem 0.58rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      color: var(--text-tertiary);
+      font-size: 0.76rem;
+      border: 1px solid var(--border);
+    }
+
+    .empty {
+      grid-column: 1 / -1;
+      padding: 2rem;
+      border-radius: 22px;
+      border: 1px dashed var(--border-strong);
+      text-align: center;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .footer {
+      width: min(var(--page-width), calc(100vw - 32px));
+      margin: 1.3rem auto 0;
+      padding: 1rem;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-md);
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr);
+      gap: 0.9rem;
+    }
+
+    .footer-band,
+    .footer-stats {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      padding: 1rem 1.05rem;
+    }
+
+    .footer-band {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .footer-label {
+      color: var(--text-tertiary);
+      font-size: 0.74rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .footer-copy {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .footer-copy a,
+    .footer-brand a,
+    .footer-analytics-link {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .footer-copy a:hover,
+    .footer-brand a:hover,
+    .footer-analytics-link:hover {
+      text-decoration: underline;
+    }
+
+    .footer-brand {
+      color: var(--text-tertiary);
+      font-size: 0.86rem;
+    }
+
+    .footer-stats {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.55rem;
+    }
+
+    .footer-analytics-link {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .footer-analytics-link svg {
+      width: 15px;
+      height: 15px;
+      color: var(--text-tertiary);
+    }
+
+    .stat-dot {
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 999px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .dot-total {
+      background: var(--text);
+    }
+
+    .dot-human {
+      background: var(--green);
+    }
+
+    .dot-agent {
+      background: var(--amber);
+    }
+
+    .analytics-sep {
+      color: var(--text-tertiary);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @keyframes slide-up {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes card-in {
+      from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.985);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes menu-in {
+      from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @media (max-width: 1120px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar-top {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .sort-shell,
+      .toolbar-status {
+        min-width: 0;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .footer {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .nav {
+        padding-top: 1rem;
+      }
+
+      .nav-links {
+        gap: 0.45rem;
+      }
+
+      .hero-main {
+        padding: 1.35rem;
+      }
+
+      .hero-rail {
+        padding: 1rem;
+      }
+
+      .hero-notes {
+        grid-template-columns: 1fr;
+      }
+
+      .deck-nav {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .deck-separator {
+        width: 100%;
+        height: 1px;
+      }
+
+      .deck-arrow-btn {
+        justify-content: center;
+      }
+
+      .deck-panel--harness .grid,
+      .deck-panel--harness .toolbar {
+        margin-right: calc(var(--deck-peek) * 0.42);
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .nav {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .nav-brand,
+      .nav-links {
+        justify-content: center;
+      }
+
+      .hero {
+        padding-top: 1.1rem;
+      }
+
+      .hero-main,
+      .hero-rail,
+      .toolbar,
+      .footer,
+      .stat {
+        border-radius: 20px;
+      }
+
+      .hero h1 {
+        max-width: none;
+      }
+
+      .hero-actions,
+      .cmd-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .btn-primary,
+      .btn-secondary,
+      .nav-link,
+      .deck-arrow-btn {
+        justify-content: center;
+      }
+
+      .install-row {
+        grid-template-columns: 1fr;
+      }
+
+      .chip-label {
+        min-width: 0;
+        width: fit-content;
+      }
+
+      .stats {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .toolbar,
+      .public-panel-note {
+        margin-left: 0.9rem;
+        margin-right: 0.9rem;
+      }
+
+      .deck-panel--harness .grid,
+      .deck-panel--harness .toolbar {
+        margin-right: 0.9rem;
+      }
+
+      .grid {
+        padding-left: 0.9rem;
+        padding-right: 0.9rem;
+      }
+    }
+  </style>
+  <!-- Umami Analytics — hkuds.github.io -->
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="07082d05-efd3-4f85-a7a1-b426b0e8bfaa"></script>
+  <!-- Umami Analytics — clianything.cc -->
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="a076c661-bed1-405c-a522-813794e688b4"></script>
+</head>
+<body>
+  <noscript>
+    <img src="https://cloud.umami.is/api/send?type=event&amp;payload=%7B%22website%22%3A%2207082d05-efd3-4f85-a7a1-b426b0e8bfaa%22%2C%22name%22%3A%22noscript-visit%22%7D" style="position:absolute;left:-9999px" alt="" width="1" height="1">
+  </noscript>
+
+  <div class="page-shell">
+    <nav class="nav">
+      <a class="nav-brand" href="#">
+        <span class="nav-mark">C</span>
+        <span class="nav-copy">
+          <strong>CLI-Anything Hub</strong>
+          <span>Registry Atelier</span>
+        </span>
+      </a>
+      <div class="nav-links">
+        <a class="nav-link" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">
+          SKILL.md
+        </a>
+        <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
+          <svg viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
+          GitHub
+        </a>
+        <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contribute</a>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div class="hero-main">
+        <div class="hero-kicker">Agent-native CLI Registry</div>
+        <h1><em>CLI</em> tools for <span>software, APIs, and autonomous agents.</span></h1>
+        <p class="hero-lead"><strong>Any software. Any codebase. Any Web API.</strong> Install an orchestration hub that can discover, explain, install, update, and remove CLIs across first-party harnesses and public ecosystems.</p>
+        <div class="hero-actions">
+          <a class="btn-primary" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">Get Agent SKILL</a>
+          <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
+            <svg viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
+            Star on GitHub
+          </a>
+          <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md" target="_blank">PR Template</a>
+        </div>
+        <div class="hero-prompt">
+          <strong>Prompt for your agent:</strong>
+          <em>"Find the right CLI in CLI-Hub, install it, and finish the task end-to-end."</em>
+        </div>
+        <div class="hero-notes">
+          <div class="hero-note">
+            <strong>One Surface</strong>
+            <span>Harness CLIs and public CLIs live in one discovery layer, with source-aware install flows.</span>
+          </div>
+          <div class="hero-note">
+            <strong>Agent Ready</strong>
+            <span>Give the registry to an AI agent and let it browse, search, install, and invoke the right tooling.</span>
+          </div>
+          <div class="hero-note">
+            <strong>Contributor Friendly</strong>
+            <span>Add a new software target, refine a public entry, or ship an agent harness without redesigning the hub.</span>
+          </div>
+        </div>
+      </div>
+
+      <aside class="hero-rail">
+        <section class="rail-panel">
+          <h3>Empower your agent</h3>
+          <p>Install the meta-skill once, then let the agent choose the right CLI from the registry.</p>
+          <div class="install-row">
+            <span class="chip-label">OpenClaw</span>
+            <code>openclaw skills install cli-anything-hub</code>
+            <button class="copy-btn" onclick="copyCmd(this, 'openclaw skills install cli-anything-hub')">Copy</button>
+          </div>
+          <div class="install-row">
+            <span class="chip-label">Nanobot</span>
+            <code>nanobot skills install cli-anything-hub</code>
+            <button class="copy-btn" onclick="copyCmd(this, 'nanobot skills install cli-anything-hub')">Copy</button>
+          </div>
+        </section>
+        <section class="rail-panel rail-panel--public">
+          <h3>Work directly from your shell</h3>
+          <p>Install the hub locally and manage both harness CLIs and public CLIs with one command surface.</p>
+          <div class="install-row">
+            <span class="chip-label">PyPI</span>
+            <code>pip install cli-anything-hub</code>
+            <button class="copy-btn" onclick="copyCmd(this, 'pip install cli-anything-hub')">Copy</button>
+          </div>
+          <div class="cmd-grid">
+            <div class="cmd-item"><span class="cmd-name">cli-hub list</span><span class="cmd-desc">Browse both registries</span></div>
+            <div class="cmd-item"><span class="cmd-name">cli-hub search</span><span class="cmd-desc">Find by keyword</span></div>
+            <div class="cmd-item"><span class="cmd-name">cli-hub install</span><span class="cmd-desc">Install from the right source</span></div>
+            <div class="cmd-item"><span class="cmd-name">cli-hub info</span><span class="cmd-desc">Inspect commands and metadata</span></div>
+            <div class="cmd-item"><span class="cmd-name">cli-hub update</span><span class="cmd-desc">Refresh installed tools</span></div>
+            <div class="cmd-item"><span class="cmd-name">cli-hub uninstall</span><span class="cmd-desc">Remove cleanly</span></div>
+          </div>
+        </section>
+      </aside>
+    </section>
+
+    <section class="stats">
+      <div class="stat">
+        <div class="stat-num" id="cli-count">&mdash;</div>
+        <div class="stat-label">Combined CLIs</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="category-count">&mdash;</div>
+        <div class="stat-label">Categories</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="deck-count-harness">&mdash;</div>
+        <div class="stat-label">Harness Catalog</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="deck-count-public">&mdash;</div>
+        <div class="stat-label">Public Catalog</div>
+      </div>
+    </section>
+
+    <div class="deck-nav">
+      <button class="deck-tab active" data-deck="harness" onclick="switchDeck('harness')">
+        <span class="deck-tab-top">
+          <span class="deck-tab-title">CLI-Anything CLIs</span>
+          <span class="deck-count" id="deck-count-pill-harness">&mdash;</span>
+        </span>
+        <span class="deck-tab-subtitle">Agent harnesses for apps, APIs, and software ecosystems you can operate end-to-end.</span>
+      </button>
+      <button class="deck-tab deck-tab--public" data-deck="public" onclick="switchDeck('public')">
+        <span class="deck-tab-top">
+          <span class="deck-tab-title">Public CLIs</span>
+          <span class="deck-count" id="deck-count-pill-public">&mdash;</span>
+        </span>
+        <span class="deck-tab-subtitle">Official and third-party CLIs from npm, brew, bundled installers, and other public channels.</span>
+      </button>
+      <span class="deck-separator"></span>
+      <button class="deck-arrow-btn" id="deck-toggle" onclick="toggleDeck()">
+        <span>Jump to Public CLIs</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+
+    <div class="deck-stage">
+      <div class="deck-viewport">
+        <div class="deck-track" id="deck-track" data-active="harness">
+          <section class="deck-panel deck-panel--harness" data-peek-label="Harness">
+            <div class="toolbar">
+              <div class="toolbar-top">
+                <label class="search-shell" for="search-harness">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span class="search-meta">
+                    <span class="control-kicker">Search harness CLIs</span>
+                    <input class="search" type="text" placeholder="Search by software, category, description..." id="search-harness">
+                  </span>
+                </label>
+
+                <div class="sort-shell" data-deck="harness">
+                  <div class="sort-meta">
+                    <span class="control-kicker">Sort mode</span>
+                  </div>
+                  <button class="sort-trigger" id="sort-trigger-harness" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="sort-current" id="sort-current-harness">Last updated</span>
+                    <span class="sort-chevron">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </span>
+                  </button>
+                  <div class="sort-menu" id="sort-menu-harness" role="listbox" hidden>
+                    <button class="sort-option" type="button" data-deck="harness" data-value="updated" role="option" aria-selected="true">
+                      <span><strong>Last updated</strong><span>Put the freshest harness additions first.</span></span>
+                      <span class="sort-option-mark">✓</span>
+                    </button>
+                    <button class="sort-option" type="button" data-deck="harness" data-value="name" role="option" aria-selected="false">
+                      <span><strong>Name</strong><span>Alphabetical list for quick scanning.</span></span>
+                      <span class="sort-option-mark">✓</span>
+                    </button>
+                    <button class="sort-option" type="button" data-deck="harness" data-value="category" role="option" aria-selected="false">
+                      <span><strong>Category</strong><span>Group by software domain first.</span></span>
+                      <span class="sort-option-mark">✓</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="toolbar-status">
+                  <strong id="result-count-harness">&mdash;</strong>
+                  <span>Visible after filters and search</span>
+                </div>
+              </div>
+              <div class="filter-row" id="filters-harness"></div>
+            </div>
+            <div class="grid" id="grid-harness"></div>
+          </section>
+
+          <section class="deck-panel deck-panel--public" data-peek-label="Public">
+            <div class="toolbar">
+              <div class="toolbar-top">
+                <label class="search-shell" for="search-public">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span class="search-meta">
+                    <span class="control-kicker">Search public CLIs</span>
+                    <input class="search" type="text" placeholder="Search by package, source, or description..." id="search-public">
+                  </span>
+                </label>
+
+                <div class="sort-shell" data-deck="public">
+                  <div class="sort-meta">
+                    <span class="control-kicker">Sort mode</span>
+                  </div>
+                  <button class="sort-trigger" id="sort-trigger-public" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="sort-current" id="sort-current-public">Name</span>
+                    <span class="sort-chevron">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </span>
+                  </button>
+                  <div class="sort-menu" id="sort-menu-public" role="listbox" hidden>
+                    <button class="sort-option" type="button" data-deck="public" data-value="name" role="option" aria-selected="true">
+                      <span><strong>Name</strong><span>Alphabetical list for known public tools.</span></span>
+                      <span class="sort-option-mark">✓</span>
+                    </button>
+                    <button class="sort-option" type="button" data-deck="public" data-value="category" role="option" aria-selected="false">
+                      <span><strong>Category</strong><span>Group by domain before package source.</span></span>
+                      <span class="sort-option-mark">✓</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="toolbar-status">
+                  <strong id="result-count-public">&mdash;</strong>
+                  <span>Visible after filters and search</span>
+                </div>
+              </div>
+              <div class="filter-row" id="filters-public"></div>
+            </div>
+
+            <div class="public-panel-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>Public CLIs remain the property of their software owners and maintainers. CLI-Hub only helps you discover and manage them from the correct installation source.</span>
+            </div>
+
+            <div class="grid" id="grid-public"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="footer-band">
+        <div class="footer-label">Contribute</div>
+        <div class="footer-copy">Want to add or update a CLI? Read the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contributing Guide</a>, use the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md" target="_blank">PR Template</a>, and bring a new software surface into the hub.</div>
+        <div class="footer-brand">Powered by <a href="https://github.com/HKUDS/CLI-Anything" target="_blank">CLI-Anything</a></div>
+      </div>
+      <div class="footer-stats">
+        <div class="footer-label">Traffic Snapshot</div>
+        <a class="footer-analytics-link" href="https://cloud.umami.is/share/mnilRgKH0oo7SJTs" target="_blank">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="stat-dot dot-total"></span>
+          <span id="stat-total">&mdash;</span> visits
+          <span class="analytics-sep">&middot;</span>
+          <span class="stat-dot dot-human"></span>
+          <span id="stat-human">&mdash;</span> human
+          <span class="analytics-sep">&middot;</span>
+          <span class="stat-dot dot-agent"></span>
+          <span id="stat-agent">&mdash;</span> AI agent
+        </a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    function getPreferredTheme() {
+      const stored = localStorage.getItem('theme');
+      if (stored) return stored;
+      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem('theme', next);
+    }
+
+    applyTheme(getPreferredTheme());
+
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+      if (!localStorage.getItem('theme')) {
+        applyTheme(e.matches ? 'light' : 'dark');
+      }
+    });
+
+    const REPO = 'https://github.com/HKUDS/CLI-Anything';
+    const REGISTRY_URLS = [
+      '../../registry.json',
+      'https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/registry.json'
+    ];
+    const PUBLIC_REGISTRY_URLS = [
+      '../../public_registry.json',
+      'https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/public_registry.json'
+    ];
+    const DATES_URLS = [
+      'https://hkuds.github.io/CLI-Anything/registry-dates.json',
+      '../../registry-dates.json'
+    ];
+    const EXTERNAL_LINK_SVG = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5H4.56l6.72 6.72a.75.75 0 1 1-1.06 1.06L3.5 4.56v2.69a.75.75 0 0 1-1.5 0v-3.5A1.75 1.75 0 0 1 3.75 2Zm7.5 0h1A1.75 1.75 0 0 1 14 3.75v8.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-1a.75.75 0 0 1 1.5 0v1c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25h-1a.75.75 0 0 1 0-1.5Z"/></svg>';
+    const SORT_LABELS = {
+      updated: 'Last updated',
+      name: 'Name',
+      category: 'Category'
+    };
+
+    let harnessClis = [];
+    let publicClis = [];
+    let activeDeck = 'harness';
+
+    const deckState = {
+      harness: { filter: 'all', sort: 'updated', query: '' },
+      public: { filter: 'all', sort: 'name', query: '' },
+    };
+
+    async function fetchJson(urls) {
+      for (const url of urls) {
+        try {
+          const resp = await fetch(url);
+          if (resp.ok) return await resp.json();
+        } catch (_) {
+          continue;
+        }
+      }
+      return null;
+    }
+
+    async function loadRegistries() {
+      try {
+        const [harnessData, publicData, dates] = await Promise.all([
+          fetchJson(REGISTRY_URLS),
+          fetchJson(PUBLIC_REGISTRY_URLS),
+          fetchJson(DATES_URLS),
+        ]);
+
+        if (!harnessData) throw new Error('Registry load failed');
+
+        harnessClis = harnessData.clis;
+        if (dates) harnessClis.forEach((c) => { c.last_modified = dates[c.name]; });
+
+        if (publicData && publicData.clis) {
+          publicClis = publicData.clis;
+        }
+
+        const totalClis = harnessClis.length + publicClis.length;
+        const allCategories = [...new Set([...harnessClis, ...publicClis].map((c) => c.category))];
+
+        document.getElementById('cli-count').textContent = totalClis;
+        document.getElementById('category-count').textContent = allCategories.length;
+        document.getElementById('deck-count-harness').textContent = harnessClis.length;
+        document.getElementById('deck-count-public').textContent = publicClis.length;
+        document.getElementById('deck-count-pill-harness').textContent = harnessClis.length;
+        document.getElementById('deck-count-pill-public').textContent = publicClis.length;
+
+        buildFilters('harness', harnessClis);
+        buildFilters('public', publicClis);
+
+        updateSortUI('harness');
+        updateSortUI('public');
+        renderDeck('harness');
+        renderDeck('public');
+      } catch (_) {
+        document.getElementById('grid-harness').innerHTML =
+          '<div class="empty">Failed to load registry. <a href="' + REPO + '/blob/main/registry.json" style="color:var(--accent)">View source</a></div>';
+      }
+    }
+
+    const CATEGORY_LABELS = { ai: 'AI', '3d': '3D' };
+    function catLabel(cat) {
+      return CATEGORY_LABELS[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
+    }
+
+    function buildFilters(deck, clis) {
+      const container = document.getElementById('filters-' + deck);
+      const counts = clis.reduce((acc, cli) => {
+        acc[cli.category] = (acc[cli.category] || 0) + 1;
+        return acc;
+      }, {});
+      const categories = Object.keys(counts).sort();
+
+      container.innerHTML = '';
+      const allBtn = document.createElement('button');
+      allBtn.className = 'filter-btn active';
+      allBtn.dataset.cat = 'all';
+      allBtn.innerHTML = '<span>All</span><em>' + clis.length + '</em>';
+      allBtn.onclick = () => setFilter(deck, 'all');
+      container.appendChild(allBtn);
+
+      categories.forEach((cat) => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-btn';
+        btn.dataset.cat = cat;
+        btn.innerHTML = '<span>' + esc(catLabel(cat)) + '</span><em>' + counts[cat] + '</em>';
+        btn.onclick = () => setFilter(deck, cat);
+        container.appendChild(btn);
+      });
+    }
+
+    function setFilter(deck, cat) {
+      deckState[deck].filter = cat;
+      document.querySelectorAll('#filters-' + deck + ' .filter-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.cat === cat);
+      });
+      renderDeck(deck);
+    }
+
+    function updateSortUI(deck) {
+      document.getElementById('sort-current-' + deck).textContent = SORT_LABELS[deckState[deck].sort] || deckState[deck].sort;
+      document.querySelectorAll('.sort-option[data-deck="' + deck + '"]').forEach((option) => {
+        option.setAttribute('aria-selected', String(option.dataset.value === deckState[deck].sort));
+      });
+    }
+
+    function closeSortMenus(exceptDeck) {
+      document.querySelectorAll('.sort-shell').forEach((shell) => {
+        if (shell.dataset.deck === exceptDeck) return;
+        shell.classList.remove('open');
+        const deck = shell.dataset.deck;
+        document.getElementById('sort-trigger-' + deck).setAttribute('aria-expanded', 'false');
+        document.getElementById('sort-menu-' + deck).hidden = true;
+      });
+    }
+
+    function toggleSortMenu(deck) {
+      const shell = document.querySelector('.sort-shell[data-deck="' + deck + '"]');
+      const trigger = document.getElementById('sort-trigger-' + deck);
+      const menu = document.getElementById('sort-menu-' + deck);
+      const willOpen = menu.hidden;
+      closeSortMenus(deck);
+      shell.classList.toggle('open', willOpen);
+      trigger.setAttribute('aria-expanded', String(willOpen));
+      menu.hidden = !willOpen;
+    }
+
+    function setSort(deck, value) {
+      deckState[deck].sort = value;
+      updateSortUI(deck);
+      closeSortMenus();
+      renderDeck(deck);
+    }
+
+    function initSortMenus() {
+      ['harness', 'public'].forEach((deck) => {
+        document.getElementById('sort-trigger-' + deck).addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleSortMenu(deck);
+        });
+      });
+
+      document.querySelectorAll('.sort-option').forEach((option) => {
+        option.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setSort(option.dataset.deck, option.dataset.value);
+        });
+      });
+
+      document.addEventListener('click', () => closeSortMenus());
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeSortMenus();
+      });
+    }
+
+    function switchDeck(deck) {
+      activeDeck = deck;
+      const track = document.getElementById('deck-track');
+      track.dataset.active = deck;
+      updateDeckPosition();
+      document.querySelectorAll('.deck-tab').forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.deck === deck);
+      });
+
+      const toggle = document.getElementById('deck-toggle');
+      if (deck === 'harness') {
+        toggle.querySelector('span').textContent = 'Jump to Public CLIs';
+        toggle.querySelector('svg').innerHTML = '<polyline points="9 18 15 12 9 6"/>';
+        toggle.classList.remove('deck-arrow-btn--back');
+      } else {
+        toggle.querySelector('span').textContent = 'Jump to CLI-Anything CLIs';
+        toggle.querySelector('svg').innerHTML = '<polyline points="15 18 9 12 15 6"/>';
+        toggle.classList.add('deck-arrow-btn--back');
+      }
+    }
+
+    function toggleDeck() {
+      switchDeck(activeDeck === 'harness' ? 'public' : 'harness');
+    }
+
+    function updateDeckPosition() {
+      const stage = document.querySelector('.deck-stage');
+      const viewport = document.querySelector('.deck-viewport');
+      const track = document.getElementById('deck-track');
+      if (!stage || !viewport || !track) return;
+
+      const peek = parseFloat(getComputedStyle(stage).getPropertyValue('--deck-peek')) || 0;
+      const panelWidth = Math.max(viewport.clientWidth - peek, 0);
+      viewport.style.setProperty('--deck-panel-width', panelWidth + 'px');
+      track.style.transform = activeDeck === 'public'
+        ? 'translateX(-' + Math.max(panelWidth - peek, 0) + 'px)'
+        : 'translateX(0)';
+    }
+
+    function updateResultCount(deck, visible, total) {
+      const label = visible + ' shown';
+      const suffix = visible === total ? 'Full catalog view' : 'Filtered from ' + total;
+      document.getElementById('result-count-' + deck).textContent = label;
+      document.getElementById('result-count-' + deck).nextElementSibling.textContent = suffix;
+    }
+
+    function renderDeck(deck) {
+      const clis = deck === 'harness' ? harnessClis : publicClis;
+      const state = deckState[deck];
+      const query = state.query.toLowerCase();
+
+      const filtered = clis.filter((c) => {
+        const matchFilter = state.filter === 'all' || c.category === state.filter;
+        const matchSearch = !query ||
+          c.display_name.toLowerCase().includes(query) ||
+          c.description.toLowerCase().includes(query) ||
+          c.name.toLowerCase().includes(query);
+        return matchFilter && matchSearch;
+      });
+
+      filtered.sort((a, b) => {
+        if (state.sort === 'updated') return (b.last_modified || '').localeCompare(a.last_modified || '');
+        if (state.sort === 'name') return a.display_name.localeCompare(b.display_name);
+        if (state.sort === 'category') return a.category.localeCompare(b.category) || a.display_name.localeCompare(b.display_name);
+        return 0;
+      });
+
+      updateResultCount(deck, filtered.length, clis.length);
+
+      const grid = document.getElementById('grid-' + deck);
+      if (!filtered.length) {
+        grid.innerHTML = '<div class="empty">No CLIs match your current search and filter settings.</div>';
+        return;
+      }
+
+      grid.innerHTML = (deck === 'harness' ? filtered.map(renderHarnessCard) : filtered.map(renderPublicCard)).join('');
+    }
+
+    function renderHarnessCard(c) {
+      const requiresHtml = c.requires
+        ? '<div class="card-requires"><strong>Requires</strong> ' + esc(c.requires) + '</div>'
+        : '';
+      const skillLink = c.skill_md
+        ? '<a href="' + (c.skill_md.startsWith('http') ? c.skill_md : (REPO + '/blob/main/' + c.skill_md)) + '" target="_blank">Skill</a>'
+        : '';
+      const sourceLink = c.source_url
+        ? '<a href="' + esc(c.source_url) + '" target="_blank">Source</a>'
+        : '<a href="' + REPO + '/tree/main/' + c.name + '/agent-harness" target="_blank">Source</a>';
+      const titleHtml = c.homepage
+        ? '<a href="' + esc(c.homepage) + '" target="_blank">' + esc(c.display_name) + EXTERNAL_LINK_SVG + '</a>'
+        : esc(c.display_name);
+      const contributors = c.contributors || (c.contributor ? [{ name: c.contributor, url: c.contributor_url }] : []);
+      const isTeam = contributors.length === 1 && contributors[0].name === 'CLI-Anything-Team';
+      const contributorHtml = contributors.length
+        ? '<div class="card-contributor">' +
+          contributors.map((ct) => '<a href="' + esc(ct.url) + '" target="_blank">' + esc(ct.name) + '</a>').join('') +
+          (isTeam ? '' : '<span class="community-badge">Community</span>') +
+          '</div>'
+        : '';
+      const dateHtml = c.last_modified ? '<div class="card-date">Updated ' + esc(c.last_modified) + '</div>' : '';
+      const linksHtml = sourceLink + (skillLink ? skillLink : '');
+
+      return `
+        <article class="card card--harness">
+          <div class="card-topline">
+            <span class="card-family">Harness CLI</span>
+            <div class="card-meta">
+              <span class="category-tag">${catLabel(c.category)}</span>
+              <span class="card-version">${esc(c.version)}</span>
+            </div>
+          </div>
+          <div class="card-title">${titleHtml}</div>
+          <div class="card-desc">${esc(c.description)}</div>
+          <div class="card-submeta">
+            ${dateHtml}
+            ${requiresHtml}
+          </div>
+          <div class="card-command-block">
+            <div class="card-command-label">
+              <span>Install via CLI-Hub</span>
+              <span>PyPI</span>
+            </div>
+            <div class="card-command">pip install cli-anything-hub\ncli-hub install ${esc(c.name)}</div>
+            <div class="card-command-actions">
+              <button class="card-copy-btn" onclick="copyCmd(this, 'pip install cli-anything-hub && cli-hub install ${esc(c.name)}')">Copy</button>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="card-links">${linksHtml}</div>
+            ${contributorHtml}
+          </div>
+        </article>`;
+    }
+
+    function formatPublicManager(c) {
+      const manager = (c.package_manager || c.install_strategy || 'public').toLowerCase();
+      const labelMap = { npm: 'npm', brew: 'brew', bundled: 'bundled' };
+      const label = labelMap[manager] || manager;
+      return '<span class="public-badge public-badge--' + esc(manager) + '">' + esc(label) + '</span>';
+    }
+
+    function publicDirectCmd(c) {
+      return c.direct_cmd || c.entry_point || c.npx_cmd || '';
+    }
+
+    function renderPublicCard(c) {
+      const isBundled = (c.install_strategy || c.package_manager) === 'bundled';
+      const requiresHtml = c.requires
+        ? '<div class="card-requires"><strong>Requires</strong> ' + esc(c.requires) + '</div>'
+        : '';
+      const titleHtml = c.homepage
+        ? '<a href="' + esc(c.homepage) + '" target="_blank">' + esc(c.display_name) + EXTERNAL_LINK_SVG + '</a>'
+        : esc(c.display_name);
+      const sourceLink = c.source_url ? '<a href="' + esc(c.source_url) + '" target="_blank">Source</a>' : '';
+      const contributors = c.contributors || [];
+      const contributorHtml = contributors.length
+        ? '<div class="card-contributor">' +
+          contributors.map((ct) => '<a href="' + esc(ct.url) + '" target="_blank">' + esc(ct.name) + '</a>').join('') +
+          '</div>'
+        : '';
+      const directCmd = c.install_cmd || publicDirectCmd(c);
+      const directCmdHtml = directCmd && !isBundled
+        ? '<div class="card-npx">Direct command: <code>' + esc(directCmd) + '</code></div>'
+        : '';
+      const installNotesHtml = c.install_notes ? '<div class="card-npx">' + esc(c.install_notes) + '</div>' : '';
+      const installBlock = isBundled
+        ? '<div class="card-install-note">Bundled with the upstream application. Install or update the parent app and enable its CLI integration.</div>'
+        : '<div class="card-command-block">' +
+            '<div class="card-command-label"><span>Install via CLI-Hub</span><span>Source aware</span></div>' +
+            '<div class="card-command">pip install cli-anything-hub\ncli-hub install ' + esc(c.name) + '</div>' +
+            '<div class="card-command-actions"><button class="card-copy-btn" onclick="copyCmd(this, \'pip install cli-anything-hub && cli-hub install ' + esc(c.name) + '\')">Copy</button></div>' +
+          '</div>';
+
+      return `
+        <article class="card card--public">
+          <div class="card-topline">
+            <span class="card-family">Public CLI</span>
+            <div class="card-meta">
+              ${formatPublicManager(c)}
+              <span class="category-tag">${catLabel(c.category)}</span>
+            </div>
+          </div>
+          <div class="card-title">${titleHtml}</div>
+          <div class="card-desc">${esc(c.description)}</div>
+          <div class="card-submeta">
+            ${requiresHtml}
+            ${directCmdHtml}
+            ${installNotesHtml}
+          </div>
+          ${installBlock}
+          <div class="card-footer">
+            <div class="card-links">${sourceLink}</div>
+            ${contributorHtml}
+          </div>
+        </article>`;
+    }
+
+    function copyCmd(btn, cmd) {
+      navigator.clipboard.writeText(cmd).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(() => {
+          btn.textContent = original === 'Copied' ? 'Copy' : original;
+        }, 1400);
+      });
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    document.getElementById('search-harness').addEventListener('input', (e) => {
+      deckState.harness.query = e.target.value;
+      renderDeck('harness');
+    });
+
+    document.getElementById('search-public').addEventListener('input', (e) => {
+      deckState.public.query = e.target.value;
+      renderDeck('public');
+    });
+
+    window.addEventListener('resize', updateDeckPosition);
+
+    initSortMenus();
+    loadRegistries().then(updateDeckPosition);
+
+    (function() {
+      const AI_UA_PATTERNS = [
+        /claude/i, /anthropic/i, /openai/i, /gpt/i, /chatgpt/i,
+        /bingbot/i, /googlebot/i, /baiduspider/i, /yandexbot/i,
+        /slurp/i, /duckduckbot/i, /facebookexternalhit/i,
+        /twitterbot/i, /linkedinbot/i, /whatsapp/i, /telegrambot/i,
+        /applebot/i, /semrushbot/i, /ahrefsbot/i, /dotbot/i,
+        /petalbot/i, /mj12bot/i, /bytespider/i,
+        /headless/i, /phantom/i, /selenium/i, /puppeteer/i, /playwright/i,
+        /crawl/i, /spider/i, /bot\\b/i, /scraper/i,
+        /python-requests/i, /axios/i, /node-fetch/i, /go-http/i, /curl/i, /wget/i,
+        /ccbot/i, /gptbot/i, /perplexity/i, /cohere/i,
+      ];
+
+      const ua = navigator.userAgent || '';
+      const isKnownAgent = AI_UA_PATTERNS.some((p) => p.test(ua));
+      const isWebdriver = navigator.webdriver === true;
+      let humanConfirmed = false;
+
+      const UMAMI_SEND = 'https://cloud.umami.is/api/send';
+      const DUAL_WEBSITE_IDS = [
+        '07082d05-efd3-4f85-a7a1-b426b0e8bfaa',
+        'a076c661-bed1-405c-a522-813794e688b4',
+      ];
+
+      function trackBoth(eventName, eventData) {
+        DUAL_WEBSITE_IDS.forEach((wid) => {
+          const payload = {
+            type: 'event',
+            payload: {
+              website: wid,
+              hostname: location.hostname,
+              url: location.pathname,
+              name: eventName,
+              data: eventData || {},
+            },
+          };
+          fetch(UMAMI_SEND, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true,
+          }).catch(() => {});
+        });
+      }
+
+      if (isKnownAgent || isWebdriver) {
+        trackBoth('visit-agent', { ua: ua.slice(0, 200) });
+      }
+
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          if (isKnownAgent || isWebdriver) {
+            trackBoth('visit-agent', { ua: ua.slice(0, 200) });
+          }
+        }, 500);
+      });
+
+      function onHumanInteraction() {
+        if (humanConfirmed) return;
+        humanConfirmed = true;
+        trackBoth('visit-human');
+        ['mousemove', 'touchstart', 'scroll', 'keydown', 'click'].forEach((evt) => {
+          document.removeEventListener(evt, onHumanInteraction);
+        });
+      }
+
+      ['mousemove', 'touchstart', 'scroll', 'keydown', 'click'].forEach((evt) => {
+        document.addEventListener(evt, onHumanInteraction, { once: false, passive: true });
+      });
+
+      const UMAMI_API = 'https://api.umami.is/v1';
+      const UMAMI_KEY = 'api_idAebMhzn6z0hsUQT7BSxRuCK2GUZvRY';
+      const WEBSITE_IDS = [
+        '07082d05-efd3-4f85-a7a1-b426b0e8bfaa',
+        'a076c661-bed1-405c-a522-813794e688b4',
+      ];
+      const headers = { Accept: 'application/json', 'x-umami-api-key': UMAMI_KEY };
+
+      async function loadVisitorStats() {
+        try {
+          const now = Date.now();
+          let totalVisits = 0;
+          let humanCount = 0;
+          const fetches = WEBSITE_IDS.flatMap((id) => [
+            fetch(UMAMI_API + '/websites/' + id + '/stats?startAt=0&endAt=' + now, { headers }),
+            fetch(UMAMI_API + '/websites/' + id + '/events/series?startAt=0&endAt=' + now + '&unit=year&timezone=UTC', { headers })
+          ]);
+          const [statsResp1, eventsResp1, statsResp2, eventsResp2] = await Promise.all(fetches);
+
+          for (const resp of [statsResp1, statsResp2]) {
+            if (resp.ok) {
+              const stats = await resp.json();
+              totalVisits += stats.visits ?? 0;
+            }
+          }
+
+          for (const resp of [eventsResp1, eventsResp2]) {
+            if (resp.ok) {
+              const events = await resp.json();
+              events.forEach((e) => {
+                if (e.x === 'visit-human') humanCount += e.y || 0;
+              });
+            }
+          }
+
+          document.getElementById('stat-total').textContent = totalVisits.toLocaleString();
+          document.getElementById('stat-human').textContent = humanCount.toLocaleString();
+          document.getElementById('stat-agent').textContent = Math.max(0, totalVisits - humanCount).toLocaleString();
+        } catch (_) {
+          // Leave fallback dashes.
+        }
+      }
+
+      loadVisitorStats();
+    })();
+  </script>
+</body>
+</html>
