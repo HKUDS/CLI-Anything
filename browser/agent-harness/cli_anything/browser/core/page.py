@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 from cli_anything.browser.utils import domshell_backend as backend
 from cli_anything.browser.utils.security import validate_url
+from cli_anything.browser.utils.tool_result import tool_result_has_error
 
 
 def open_page(session: "Session", url: str) -> dict:
@@ -41,10 +42,11 @@ def open_page(session: "Session", url: str) -> dict:
     if not is_valid:
         raise ValueError(error_msg)
 
-    use_daemon = session.daemon_mode
+    use_daemon = session.daemon_mode or backend.daemon_started()
     result = backend.open_url(url, use_daemon=use_daemon)
-    session.set_url(url)
-    session.set_working_dir("/")  # Reset to root on new page
+    if not tool_result_has_error(result):
+        session.set_url(url)
+        session.set_working_dir("/")  # Reset to root on new page
     return result
 
 
@@ -61,7 +63,7 @@ def reload_page(session: "Session") -> dict:
         >>> reload_page(session)
         {"status": "reloaded", "url": "https://example.com"}
     """
-    use_daemon = session.daemon_mode
+    use_daemon = session.daemon_mode or backend.daemon_started()
     result = backend.reload(use_daemon=use_daemon)
     return result
 
@@ -79,7 +81,7 @@ def go_back(session: "Session") -> dict:
         >>> go_back(session)
         {"url": "https://previous.com", "status": "navigated"}
     """
-    use_daemon = session.daemon_mode
+    use_daemon = session.daemon_mode or backend.daemon_started()
     result = backend.back(use_daemon=use_daemon)
 
     # Update session state if backend returned a URL
@@ -102,7 +104,7 @@ def go_forward(session: "Session") -> dict:
         >>> go_forward(session)
         {"url": "https://next.com", "status": "navigated"}
     """
-    use_daemon = session.daemon_mode
+    use_daemon = session.daemon_mode or backend.daemon_started()
     result = backend.forward(use_daemon=use_daemon)
 
     # Update session state if backend returned a URL

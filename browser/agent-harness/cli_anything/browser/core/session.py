@@ -7,8 +7,10 @@ Maintains page state across CLI commands:
 - Daemon mode status
 """
 
-from typing import Optional
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
 
 
 @dataclass
@@ -28,6 +30,53 @@ class Session:
     history: list[str] = field(default_factory=list)
     forward_stack: list[str] = field(default_factory=list)
     daemon_mode: bool = False
+    persist_state: bool = False
+    state_path: Optional[str] = None
+
+    @classmethod
+    def load_persisted(cls, state_path: Optional[str] = None) -> "Session":
+        """Load a persisted session snapshot if present.
+
+        The returned session is marked persistent so future mutations are written
+        back to disk. If no active daemon snapshot exists, returns a fresh session.
+        """
+        session = cls(persist_state=True, state_path=state_path)
+        try:
+            path = session._resolve_state_path()
+            if not path.exists():
+                return session
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return session
+
+        session.current_url = data.get("current_url", "")
+        session.working_dir = data.get("working_dir", "/")
+        session.history = list(data.get("history", []))
+        session.forward_stack = list(data.get("forward_stack", []))
+        session.daemon_mode = bool(data.get("daemon_mode", False))
+        return session
+
+    def _resolve_state_path(self) -> Path:
+        if self.state_path:
+            return Path(self.state_path)
+        return Path.home() / ".cli-anything-browser" / "session.json"
+
+    def save_state(self) -> None:
+        """Persist the current session snapshot when enabled."""
+        if not self.persist_state:
+            return
+        path = self._resolve_state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "current_url": self.current_url,
+            "working_dir": self.working_dir,
+            "history": self.history,
+            "forward_stack": self.forward_stack,
+            "daemon_mode": self.daemon_mode,
+        }
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp_path.replace(path)
 
     def set_url(self, url: str, record_history: bool = True) -> None:
         """Set the current URL and update history.
@@ -40,6 +89,7 @@ class Session:
             self.history.append(self.current_url)
             self.forward_stack.clear()  # Clear forward stack on new navigation
         self.current_url = url
+        self.save_state()
 
     def go_back(self) -> Optional[str]:
         """Navigate back in history.
@@ -52,6 +102,7 @@ class Session:
         previous = self.history.pop()
         self.forward_stack.append(self.current_url)
         self.current_url = previous
+        self.save_state()
         return previous
 
     def go_forward(self) -> Optional[str]:
@@ -65,6 +116,7 @@ class Session:
         next_url = self.forward_stack.pop()
         self.history.append(self.current_url)
         self.current_url = next_url
+        self.save_state()
         return next_url
 
     def set_working_dir(self, path: str) -> None:
@@ -74,14 +126,17 @@ class Session:
             path: New path (e.g., "/main/div[0]")
         """
         self.working_dir = path
+        self.save_state()
 
     def enable_daemon(self) -> None:
         """Enable daemon mode for persistent MCP connection."""
         self.daemon_mode = True
+        self.save_state()
 
     def disable_daemon(self) -> None:
         """Disable daemon mode."""
         self.daemon_mode = False
+        self.save_state()
 
     def status(self) -> dict:
         """Get session status as a dict.
