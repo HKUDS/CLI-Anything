@@ -1,0 +1,51 @@
+name: PR CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '*/agent-harness/**'
+      - 'browser/**'
+      - 'cli-anything-plugin/repl_skin.py'
+      - 'README.md'
+      - '.github/workflows/pr-ci.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Compile repl_skin.py files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import py_compile
+
+          root = Path('.')
+          paths = sorted(root.glob('**/agent-harness/cli_anything/**/utils/repl_skin.py'))
+          paths.append(root / 'cli-anything-plugin' / 'repl_skin.py')
+          seen = []
+          for path in paths:
+              if path.exists() and path not in seen:
+                  seen.append(path)
+          for path in seen:
+              py_compile.compile(str(path), doraise=True)
+          print(f'compiled {len(seen)} repl_skin files')
+          PY
+
+      - name: Run browser unit tests
+        working-directory: browser/agent-harness
+        run: python -m pytest -q cli_anything/browser/tests/test_core.py
