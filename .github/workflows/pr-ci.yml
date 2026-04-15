@@ -1,15 +1,7 @@
 name: PR CI
 
 on:
-  push:
-    branches:
-      - fix/browser-repl-and-template-sync
-    paths:
-      - '*/agent-harness/**'
-      - 'browser/**'
-      - 'cli-anything-plugin/repl_skin.py'
-      - 'README.md'
-      - '.github/workflows/pr-ci.yml'
+  workflow_dispatch:
   pull_request:
     branches:
       - main
