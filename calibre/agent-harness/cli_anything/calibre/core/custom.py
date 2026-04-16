@@ -63,15 +63,23 @@ def add_custom_column(
     }
 
 
-def remove_custom_column(library_path: str, label: str, confirm: bool = True) -> dict:
+def remove_custom_column(
+    library_path: str,
+    label: str,
+    force: bool = True,
+    confirm: bool | None = None,
+) -> dict:
     """Remove a custom column from the library."""
     find_calibredb()
+
+    if confirm is not None:
+        force = confirm
 
     if not label.startswith("#"):
         label = f"#{label}"
 
     cmd = ["remove_custom_column", label]
-    if confirm:
+    if force:
         cmd.append("--force")
 
     result = run_calibredb(cmd, library_path=library_path)
