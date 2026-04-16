@@ -94,6 +94,7 @@
 !/openscreen/
 !/n8n/
 !/obsidian/
+!/calibre/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -174,6 +175,8 @@
 /n8n/.*
 /obsidian/*
 /obsidian/.*
+/calibre/*
+/calibre/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -219,6 +222,7 @@
 !/exa/agent-harness/
 !/n8n/agent-harness/
 !/obsidian/agent-harness/
+!/calibre/agent-harness/
 !/safari/
 !/safari/agent-harness/
 
