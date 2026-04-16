@@ -1,0 +1,238 @@
+{
+  "tokens": "../tokens/default.json",
+  "pages": [
+    {
+      "name": "数据看板",
+      "artboards": [
+        {
+          "name": "PC - Dashboard",
+          "width": 1440,
+          "height": 900,
+          "backgroundColor": "#F1F5F9",
+          "layout": {
+            "type": "vertical-stack",
+            "paddingTop": 32,
+            "paddingHorizontal": 48,
+            "gap": 24
+          },
+          "layers": [
+            {
+              "type": "text",
+              "name": "pageTitle",
+              "value": "数据概览",
+              "style": "$heading1"
+            },
+            {
+              "type": "text",
+              "name": "pageSubtitle",
+              "value": "2026年3月 · 实时数据",
+              "style": "$bodySecondary"
+            },
+            {
+              "type": "group",
+              "name": "statsRow",
+              "width": "fill",
+              "layout": {
+                "type": "horizontal-stack",
+                "gap": 24
+              },
+              "children": [
+                {
+                  "type": "group",
+                  "name": "statCard1",
+                  "width": 320,
+                  "height": 120,
+                  "style": "$card",
+                  "layout": {
+                    "type": "vertical-stack",
+                    "paddingTop": 20,
+                    "paddingHorizontal": 24,
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "name": "stat1Label",
+                      "value": "日活跃用户",
+                      "style": "$caption"
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat1Value",
+                      "value": "128,432",
+                      "style": {
+                        "fontSize": 32,
+                        "fontWeight": "bold",
+                        "color": "$text"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat1Change",
+                      "value": "+12.5% vs 昨日",
+                      "style": {
+                        "fontSize": 13,
+                        "color": "$success"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "name": "statCard2",
+                  "width": 320,
+                  "height": 120,
+                  "style": "$card",
+                  "layout": {
+                    "type": "vertical-stack",
+                    "paddingTop": 20,
+                    "paddingHorizontal": 24,
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "name": "stat2Label",
+                      "value": "营收",
+                      "style": "$caption"
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat2Value",
+                      "value": "¥ 2,847,320",
+                      "style": {
+                        "fontSize": 32,
+                        "fontWeight": "bold",
+                        "color": "$text"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat2Change",
+                      "value": "+8.2% vs 昨日",
+                      "style": {
+                        "fontSize": 13,
+                        "color": "$success"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "name": "statCard3",
+                  "width": 320,
+                  "height": 120,
+                  "style": "$card",
+                  "layout": {
+                    "type": "vertical-stack",
+                    "paddingTop": 20,
+                    "paddingHorizontal": 24,
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "name": "stat3Label",
+                      "value": "转化率",
+                      "style": "$caption"
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat3Value",
+                      "value": "3.24%",
+                      "style": {
+                        "fontSize": 32,
+                        "fontWeight": "bold",
+                        "color": "$text"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat3Change",
+                      "value": "-0.8% vs 昨日",
+                      "style": {
+                        "fontSize": 13,
+                        "color": "$error"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "name": "statCard4",
+                  "width": 320,
+                  "height": 120,
+                  "style": "$card",
+                  "layout": {
+                    "type": "vertical-stack",
+                    "paddingTop": 20,
+                    "paddingHorizontal": 24,
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "name": "stat4Label",
+                      "value": "新增注册",
+                      "style": "$caption"
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat4Value",
+                      "value": "5,218",
+                      "style": {
+                        "fontSize": 32,
+                        "fontWeight": "bold",
+                        "color": "$text"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "name": "stat4Change",
+                      "value": "+22.1% vs 昨日",
+                      "style": {
+                        "fontSize": 13,
+                        "color": "$success"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "group",
+              "name": "chartSection",
+              "width": "fill",
+              "height": 400,
+              "style": "$card",
+              "layout": {
+                "type": "vertical-stack",
+                "paddingTop": 24,
+                "paddingHorizontal": 24,
+                "gap": 16
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "name": "chartTitle",
+                  "value": "近7日趋势",
+                  "style": "$heading3"
+                },
+                {
+                  "type": "rectangle",
+                  "name": "chartPlaceholder",
+                  "width": "fill",
+                  "height": 300,
+                  "style": {
+                    "backgroundColor": "$surface",
+                    "cornerRadius": "$sm"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

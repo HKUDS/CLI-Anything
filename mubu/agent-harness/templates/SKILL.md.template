@@ -1,0 +1,106 @@
+---
+name: >-
+  {{ skill_name }}
+description: >-
+  {{ skill_description }}
+---
+
+# {{ skill_name }}
+
+{{ skill_intro }}
+
+## Installation
+
+This CLI is packaged from the canonical `agent-harness` source tree:
+
+```bash
+pip install -e .
+```
+
+**Prerequisites:**
+- Python 3.10+
+- An active Mubu desktop session on this machine
+- Local Mubu profile data available to the CLI
+- Set `MUBU_DAILY_FOLDER` if you want no-argument daily helpers
+
+## Entry Points
+
+```bash
+cli-anything-{{ software_name }}
+python -m cli_anything.{{ software_name }}
+```
+
+When invoked without a subcommand, the CLI enters an interactive REPL session.
+
+## Command Groups
+
+{% for group in command_groups %}
+### {{ group.name }}
+
+{{ group.description }}
+
+| Command | Description |
+|---------|-------------|
+{% for cmd in group.commands %}
+| `{{ cmd.name }}` | {{ cmd.description }} |
+{% endfor %}
+
+{% endfor %}
+## Recommended Agent Workflow
+
+```text
+discover daily-current '<daily-folder-ref>' --json
+        ->
+inspect daily-nodes '<daily-folder-ref>' --query '<anchor>' --json
+        ->
+session use-doc '<doc_path>'
+        ->
+mutate update-text / create-child / delete-node --json
+        ->
+--execute only after payload inspection
+```
+
+## Safety Rules
+
+1. Prefer grouped commands for agent use; flat legacy commands remain for compatibility.
+2. Use `--json` whenever an agent will parse the output.
+3. Prefer `discover` or `inspect` commands before any `mutate` command.
+4. Live mutations are dry-run by default and only execute with `--execute`.
+5. Prefer `--node-id` and `--parent-node-id` over text matching.
+6. `delete-node` removes the full targeted subtree.
+7. Even same-text updates can still advance document version history.
+8. Pass a daily-folder reference explicitly or set `MUBU_DAILY_FOLDER` before using no-arg daily helpers.
+
+## Examples
+
+{% for example in examples %}
+### {{ example.title }}
+
+{{ example.description }}
+
+```bash
+{{ example.code }}
+```
+
+{% endfor %}
+## Session State
+
+The CLI maintains lightweight session state in JSON:
+
+- `current_doc`
+- `current_node`
+- local command history
+
+Use the `session` command group to inspect or update this state.
+
+## For AI Agents
+
+1. Start with `discover` or `inspect`, not `mutate`.
+2. Use `session status --json` to recover persisted context.
+3. Use grouped commands in generated prompts and automation.
+4. Verify postconditions after any live mutation.
+5. Read the package `TEST.md` and `README.md` when stricter operational detail is needed.
+
+## Version
+
+{{ version }}

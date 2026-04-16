@@ -1,0 +1,1 @@
+# Kdenlive CLI - Core modules

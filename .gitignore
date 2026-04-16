@@ -1,0 +1,184 @@
+# ============================================================
+# Only track:
+#   - cli-anything-plugin/**
+#   - codex-skill/**
+#   - */agent-harness/**  (under each software dir)
+#   - .gitignore
+# Everything else is ignored.
+# ============================================================
+
+# Step 1: Ignore everything at the root
+/*
+
+# Step 2: Allow .gitignore, README, assets, and marketplace
+!.gitignore
+!/README.md
+!/CONTRIBUTING.md
+!/SECURITY.md
+!/assets/
+!/.claude-plugin/
+!/.github/
+/.github/*
+!/.github/workflows/
+!/.github/scripts/
+!/.github/PULL_REQUEST_TEMPLATE.md
+
+# Step 3: Allow cli-anything-plugin, codex-skill, and skill_generation tests
+!/cli-anything-plugin/
+!/codex-skill/
+!/skill_generation/
+!/openclaw-skill/
+!/cli-hub-meta-skill/
+
+# Ignore cli-hub-skill (auto-generated, not tracked)
+/cli-hub-skill/
+
+# Step 4: Allow each software dir (top level only)
+!/gimp/
+!/blender/
+!/inkscape/
+!/audacity/
+!/libreoffice/
+!/zotero/
+!/mubu/
+!/obs-studio/
+!/kdenlive/
+!/shotcut/
+!/anygen/
+!/zoom/
+!/sketch/
+!/drawio/
+!/mermaid/
+!/comfyui/
+!/adguardhome/
+!/novita/
+!/ollama/
+!/browser/
+!/musescore/
+!/krita/
+!/freecad/
+!/iterm2/
+!/rms/
+!/renderdoc/
+!/cloudcompare/
+!/calibre
+
+# Step 5: Inside each software dir, ignore everything (including dotfiles)
+/gimp/*
+/gimp/.*
+/blender/*
+/blender/.*
+/inkscape/*
+/inkscape/.*
+/audacity/*
+/audacity/.*
+/libreoffice/*
+/libreoffice/.*
+/zotero/*
+/zotero/.*
+/mubu/*
+/mubu/.*
+/obs-studio/*
+/obs-studio/.*
+/kdenlive/*
+/kdenlive/.*
+/shotcut/*
+/shotcut/.*
+/anygen/*
+/anygen/.*
+/zoom/*
+/zoom/.*
+/sketch/*
+/sketch/.*
+/drawio/*
+/drawio/.*
+/mermaid/*
+/mermaid/.*
+/comfyui/*
+/comfyui/.*
+/adguardhome/*
+/adguardhome/.*
+/ollama/*
+/ollama/.*
+/browser/*
+/browser/.*
+/musescore/*
+/musescore/.*
+/krita/*
+/krita/.*
+/freecad/*
+/freecad/.*
+/iterm2/*
+/iterm2/.*
+/rms/*
+/rms/.*
+/renderdoc/*
+/renderdoc/.*
+/cloudcompare/*
+/cloudcompare/.*
+
+# Step 6: ...except agent-harness/
+!/gimp/agent-harness/
+!/blender/agent-harness/
+!/inkscape/agent-harness/
+!/audacity/agent-harness/
+!/libreoffice/agent-harness/
+!/zotero/agent-harness/
+!/mubu/agent-harness/
+!/obs-studio/agent-harness/
+!/kdenlive/agent-harness/
+!/shotcut/agent-harness/
+!/anygen/agent-harness/
+!/zoom/agent-harness/
+!/sketch/agent-harness/
+!/drawio/agent-harness/
+!/mermaid/agent-harness/
+!/comfyui/agent-harness/
+!/adguardhome/agent-harness/
+!/novita/agent-harness/
+!/ollama/agent-harness/
+!/browser/agent-harness/
+!/musescore/agent-harness/
+!/krita/agent-harness/
+!/freecad/agent-harness/
+!/iterm2/agent-harness/
+!/rms/agent-harness/
+!/renderdoc/agent-harness/
+!/cloudcompare/agent-harness/
+
+# Step 7: Ignore build artifacts within allowed dirs
+**/__pycache__/
+**/*.egg-info/
+**/*.pyc
+**/dist/
+**/build/
+**/.pytest_cache/
+**/*.egg
+**/*.mp4
+**/*.wav
+**/*.blend
+**/*.xcf
+**/*.mlt
+**/*.drawio
+
+# Step 8: But allow assets images
+!/assets/*.png
+!/assets/*.jpg
+
+assets/gen_typing_gif.py
+!README_CN.md
+!opencode-commands/
+!/qoder-plugin/
+
+# Step 10: Allow CLI Hub registry and frontend
+!/registry.json
+!/docs/
+/docs/*
+!/docs/hub/
+/docs/hub/registry-dates.json
+!/notebooklm/
+/notebooklm/*
+/notebooklm/.*
+!/notebooklm/agent-harness/
+!/intelwatch/agent-harness/
+!/intelwatch/

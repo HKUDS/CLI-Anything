@@ -1,0 +1,1 @@
+"""LibreOffice CLI - Tests package."""

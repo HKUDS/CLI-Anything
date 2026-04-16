@@ -1,0 +1,4 @@
+interface:
+  display_name: "CLI-Anything"
+  short_description: "Build or refine CLI-Anything harnesses from Codex."
+  default_prompt: "Use CLI-Anything to build, refine, test, or validate a harness for the user's target software or source repository."

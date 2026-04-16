@@ -1,0 +1,1 @@
+"""Shotcut CLI package."""

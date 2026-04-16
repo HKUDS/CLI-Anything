@@ -1,0 +1,2 @@
+"""Mermaid CLI harness package."""
+

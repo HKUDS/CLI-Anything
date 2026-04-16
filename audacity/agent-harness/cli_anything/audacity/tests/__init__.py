@@ -1,0 +1,1 @@
+"""Audacity CLI - Test suite."""

@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI-Anything Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #09090b;
+      --surface: #18181b;
+      --surface-raised: #1e1e22;
+      --border: #27272a;
+      --border-subtle: #1f1f23;
+      --text: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-tertiary: #71717a;
+      --accent: #3b82f6;
+      --accent-muted: #2563eb;
+      --green: #22c55e;
+      --green-muted: rgba(34, 197, 94, 0.12);
+      --purple: #a78bfa;
+      --purple-muted: rgba(167, 139, 250, 0.12);
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+
+    /* ── Light theme ── */
+    [data-theme="light"] {
+      --bg: #ffffff;
+      --surface: #f4f4f5;
+      --surface-raised: #e4e4e7;
+      --border: #d4d4d8;
+      --border-subtle: #e4e4e7;
+      --text: #09090b;
+      --text-secondary: #52525b;
+      --text-tertiary: #71717a;
+      --accent: #2563eb;
+      --accent-muted: #1d4ed8;
+      --green: #16a34a;
+      --green-muted: rgba(22, 163, 74, 0.1);
+      --purple: #7c3aed;
+      --purple-muted: rgba(124, 58, 237, 0.1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Nav bar ── */
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .nav-brand {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-brand span { color: var(--text-tertiary); }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .nav-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.4rem 0.7rem;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .nav-link:hover {
+      color: var(--text);
+      background: var(--surface);
+    }
+
+    .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+    /* ── Theme toggle ── */
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .theme-toggle:hover {
+      color: var(--text);
+      border-color: var(--text-tertiary);
+      background: var(--surface);
+    }
+
+    .theme-toggle svg { width: 16px; height: 16px; }
+    .theme-toggle .icon-moon { display: none; }
+    .theme-toggle .icon-sun { display: block; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: block; }
+    [data-theme="light"] .theme-toggle .icon-sun { display: none; }
+
+    /* ── Hero ── */
+    .hero {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 3.5rem 1.5rem 2.5rem;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 0.6rem;
+    }
+
+    .hero-accent { color: var(--accent); }
+    .hero-dim { color: var(--text-tertiary); }
+
+    .hero-tagline {
+      font-size: 1.15rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      max-width: 700px;
+      margin: 0 auto 1.5rem;
+    }
+
+    .hero-tagline strong { color: var(--text); font-weight: 600; }
+
+    /* ── Empower card ── */
+    .empower-card {
+      max-width: 560px;
+      margin: 0 auto 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 1.75rem;
+      text-align: left;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .empower-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+    }
+
+    .empower-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.85rem;
+      color: var(--text);
+    }
+
+    .empower-card h3 span { color: var(--accent); }
+
+    .install-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .install-row:hover { border-color: var(--text-tertiary); }
+
+    .install-row code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .empower-prompt {
+      margin-top: 0.85rem;
+      padding: 0.6rem 0.85rem;
+      background: rgba(59, 130, 246, 0.05);
+      border: 1px dashed rgba(59, 130, 246, 0.2);
+      border-radius: var(--radius);
+      font-size: 0.82rem;
+      color: var(--text-tertiary);
+      line-height: 1.5;
+    }
+
+    .empower-prompt strong { color: var(--text-secondary); font-weight: 600; }
+    .empower-prompt em { color: var(--accent); font-style: italic; }
+
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1.1rem;
+      background: var(--text);
+      color: var(--bg);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      transition: opacity 0.15s;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover { opacity: 0.85; }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1.1rem;
+      background: transparent;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      transition: border-color 0.15s, color 0.15s;
+      cursor: pointer;
+    }
+
+    .btn-secondary:hover { border-color: var(--text-tertiary); color: var(--text); }
+    .btn-secondary svg { width: 15px; height: 15px; }
+
+    .hero-hint {
+      font-size: 0.78rem;
+      color: var(--text-tertiary);
+      font-style: italic;
+      margin-bottom: 0.75rem;
+    }
+
+    .hero-hint a {
+      color: var(--text-tertiary);
+      text-decoration: underline;
+      text-decoration-style: dotted;
+    }
+
+    .hero-hint a:hover { color: var(--text-secondary); }
+
+    .hero-cta {
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      line-height: 1.65;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .hero-cta em { color: var(--accent); font-style: normal; font-weight: 600; }
+    .hero-cta a { color: var(--accent); text-decoration: none; font-weight: 500; }
+    .hero-cta a:hover { text-decoration: underline; }
+
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      margin-top: 1.75rem;
+    }
+
+    .stat-num {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .chip-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-tertiary);
+      background: var(--surface-raised);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      padding: 0.2rem 0.45rem;
+      font-size: 0.7rem;
+      font-family: 'Inter', sans-serif;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover { color: var(--text); border-color: var(--text-tertiary); }
+
+    /* ── Divider ── */
+    .section-divider {
+      max-width: 1120px;
+      margin: 0 auto;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* ── Controls ── */
+    .controls {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 0;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .search {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.55rem 0.85rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search::placeholder { color: var(--text-tertiary); }
+    .search:focus { border-color: var(--text-tertiary); }
+
+    .sort-select {
+      padding: 0.55rem 2.2rem 0.55rem 0.85rem;
+      background: var(--surface) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%2371717a" d="M6 9L2 5h8z"/></svg>') no-repeat right 0.65rem center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      transition: border-color 0.15s;
+    }
+
+    .sort-select:focus, .sort-select:hover { border-color: var(--text-tertiary); }
+
+    [data-theme="light"] .sort-select {
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%2352525b" d="M6 9L2 5h8z"/></svg>');
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0.75rem 1.5rem 0;
+    }
+
+    .filter-btn {
+      padding: 0.3rem 0.7rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-tertiary);
+      font-size: 0.78rem;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .filter-btn:hover { border-color: var(--text-tertiary); color: var(--text-secondary); }
+    .filter-btn.active {
+      background: var(--text);
+      color: var(--bg);
+      border-color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ── Grid ── */
+    .grid {
+      max-width: 1120px;
+      margin: 1.25rem auto 4rem;
+      padding: 0 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      transition: border-color 0.15s;
+    }
+
+    .card:hover { border-color: var(--text-tertiary); }
+
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+      gap: 0.5rem;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    .card-title a {
+      color: var(--text);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .card-title a:hover { color: var(--accent); }
+
+    .card-title a svg {
+      width: 11px;
+      height: 11px;
+      margin-left: 3px;
+      vertical-align: middle;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .card-title a:hover svg { opacity: 0.5; }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+
+    .card-version {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--green);
+      background: var(--green-muted);
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+    }
+
+    .category-tag {
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      background: var(--surface-raised);
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+
+    .card-desc {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      margin-bottom: 0.85rem;
+      line-height: 1.55;
+    }
+
+    .card-requires {
+      font-size: 0.78rem;
+      color: var(--text-tertiary);
+      margin-bottom: 0.75rem;
+    }
+
+    .card-requires strong {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .card-install {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.65rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-install code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+
+    .card-copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      padding: 0.2rem 0.45rem;
+      font-size: 0.7rem;
+      font-family: 'Inter', sans-serif;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .card-copy-btn:hover { color: var(--text); border-color: var(--text-tertiary); }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .card-links {
+      display: flex;
+      gap: 0.6rem;
+      font-size: 0.78rem;
+    }
+
+    .card-links a {
+      color: var(--text-tertiary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .card-links a:hover { color: var(--text-secondary); }
+
+    .card-contributor {
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .card-contributor a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .card-contributor a:hover { color: var(--text); }
+
+    .community-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--purple);
+      background: var(--purple-muted);
+      padding: 0.08rem 0.35rem;
+      border-radius: 999px;
+    }
+
+    .card-date {
+      font-size: 0.72rem;
+      color: var(--text-tertiary);
+      margin-bottom: 0.75rem;
+    }
+
+    .empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-tertiary);
+      font-size: 0.9rem;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .footer-left {
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+    }
+
+    .footer-left a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer-left a:hover { color: var(--text); }
+
+    .footer-right {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.8rem;
+    }
+
+    .footer-right a {
+      color: var(--text-tertiary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .footer-right a:hover { color: var(--text-secondary); }
+
+    .footer-stats {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border-subtle);
+      margin-top: 0.5rem;
+    }
+
+    .footer-analytics-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--text-tertiary);
+      text-decoration: none;
+      padding: 0.35rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .footer-analytics-link:hover {
+      border-color: var(--text-tertiary);
+      color: var(--text-secondary);
+    }
+
+    .footer-analytics-link svg { opacity: 0.6; flex-shrink: 0; }
+
+    .analytics-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.7rem;
+      color: var(--text-tertiary);
+      margin-left: 0.15rem;
+    }
+
+    .analytics-sep { opacity: 0.4; }
+
+    .stat-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: inline-block;
+    }
+
+    .dot-total { background: var(--text-tertiary); }
+    .dot-human { background: var(--green); }
+    .dot-agent { background: var(--accent); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .hero { padding: 2rem 1.25rem 1.5rem; }
+      .hero h1 { font-size: 2rem; }
+      .grid { grid-template-columns: 1fr; padding: 0 1.25rem; }
+      .controls { padding: 1.5rem 1.25rem 0; }
+      .filter-row { padding: 0.75rem 1.25rem 0; }
+      .nav { padding: 0.75rem 1.25rem; }
+      .footer { padding: 1.5rem 1.25rem; flex-direction: column; align-items: flex-start; }
+      .empower-card { margin: 0 auto 1.25rem; padding: 1.25rem; }
+    }
+
+    @media (max-width: 400px) {
+      .nav-links { gap: 0; }
+      .nav-link { padding: 0.4rem 0.4rem; font-size: 0.75rem; }
+    }
+  </style>
+  <!-- Umami Analytics — replace data-website-id with your actual ID -->
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="07082d05-efd3-4f85-a7a1-b426b0e8bfaa"></script>
+</head>
+<body>
+  <!-- noscript pixel: catches non-JS visitors (AI crawlers) -->
+  <noscript>
+    <img src="https://cloud.umami.is/api/send?type=event&payload=%7B%22website%22%3A%2207082d05-efd3-4f85-a7a1-b426b0e8bfaa%22%2C%22name%22%3A%22noscript-visit%22%7D" style="position:absolute;left:-9999px" alt="" width="1" height="1">
+  </noscript>
+  <!-- Nav -->
+  <nav class="nav">
+    <a class="nav-brand" href="#">CLI-Hub</a>
+    <div class="nav-links">
+      <a class="nav-link" href="./SKILL.txt" target="_blank">
+        SKILL
+      </a>
+      <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
+        <svg viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
+        GitHub
+      </a>
+      <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">
+        Contribute
+      </a>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1><span class="hero-accent">CLI-</span><span class="hero-dim">Anything</span> <span class="hero-accent">Hub</span></h1>
+    <p class="hero-tagline"><strong>Any software. Any codebase. Any Web API.</strong> Generate an agent-native CLI and let AI agents operate it &mdash; install with a single pip command.</p>
+
+    <div class="empower-card">
+      <h3>Empower your agents &mdash; <span>install in one command</span></h3>
+      <div class="install-row">
+        <span class="chip-label">OpenClaw</span>
+        <code>openclaw skills install cli-anything-hub</code>
+        <button class="copy-btn" onclick="copyCmd(this, 'openclaw skills install cli-anything-hub')">Copy</button>
+      </div>
+      <div class="install-row">
+        <span class="chip-label">nanobot</span>
+        <code>nanobot skills install cli-anything-hub</code>
+        <button class="copy-btn" onclick="copyCmd(this, 'nanobot skills install cli-anything-hub')">Copy</button>
+      </div>
+      <div class="empower-prompt">
+        <strong>Then prompt:</strong> <em>"Find appropriate CLI software in CLI-Hub and complete the task: ..."</em>
+      </div>
+    </div>
+
+    <div class="hero-actions">
+      <a class="btn-primary" href="./SKILL.txt" target="_blank">Agent SKILL (SKILL.txt)</a>
+      <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
+        <svg viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
+        Star on GitHub
+      </a>
+      <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">
+        Contributing Guide
+      </a>
+      <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md" target="_blank">
+        PR Template
+      </a>
+    </div>
+
+    <p class="hero-hint">Feed <a href="./SKILL.txt" target="_blank">SKILL.txt</a> to your AI agent for autonomous CLI discovery &amp; installation</p>
+
+    <p class="hero-cta">We welcome contributions for <em>any</em> application &mdash; desktop apps, dev tools, cloud services, SaaS APIs, creative suites, and beyond. If it has a GUI or an API, it deserves an agent-native CLI. Read the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contributing Guide</a>, use the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md" target="_blank">PR Template</a>, and bring it to the hub!</p>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num" id="cli-count">&mdash;</div>
+        <div class="stat-label">CLIs Available</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="category-count">&mdash;</div>
+        <div class="stat-label">Categories</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <input class="search" type="text" placeholder="Search CLIs..." id="search">
+    <select class="sort-select" id="sort">
+      <option value="updated">Last updated</option>
+      <option value="name">Name</option>
+      <option value="category">Category</option>
+    </select>
+  </div>
+  <div class="filter-row" id="filters"></div>
+
+  <!-- Grid -->
+  <div class="grid" id="grid"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-left">
+      Want to add or update a CLI? Read the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contributing Guide</a> and use the <a href="https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md" target="_blank">PR Template</a>
+    </div>
+    <div class="footer-right">
+      Powered by <a href="https://github.com/HKUDS/CLI-Anything" target="_blank">CLI-Anything</a>
+    </div>
+    <div class="footer-stats">
+      <a class="footer-analytics-link" href="https://cloud.umami.is/share/mnilRgKH0oo7SJTs" target="_blank">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="stat-dot dot-total"></span>
+        <span id="stat-total">&mdash;</span> visits
+        <span class="analytics-sep">&middot;</span>
+        <span class="stat-dot dot-human"></span>
+        <span id="stat-human">&mdash;</span> human
+        <span class="analytics-sep">&middot;</span>
+        <span class="stat-dot dot-agent"></span>
+        <span id="stat-agent">&mdash;</span> AI agent
+      </a>
+    </div>
+  </footer>
+
+  <script>
+    // ── Theme: system preference + localStorage override ──
+    function getPreferredTheme() {
+      const stored = localStorage.getItem('theme');
+      if (stored) return stored;
+      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem('theme', next);
+    }
+
+    // Apply immediately to avoid flash
+    applyTheme(getPreferredTheme());
+
+    // Listen for system preference changes (if no manual override)
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+      if (!localStorage.getItem('theme')) {
+        applyTheme(e.matches ? 'light' : 'dark');
+      }
+    });
+
+    const REPO = 'https://github.com/HKUDS/CLI-Anything';
+    const REGISTRY_URLS = [
+      '../../registry.json',
+      'https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/registry.json'
+    ];
+    const DATES_URLS = [
+      'https://hkuds.github.io/CLI-Anything/registry-dates.json',
+      '../../registry-dates.json'
+    ];
+    const EXTERNAL_LINK_SVG = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5H4.56l6.72 6.72a.75.75 0 1 1-1.06 1.06L3.5 4.56v2.69a.75.75 0 0 1-1.5 0v-3.5A1.75 1.75 0 0 1 3.75 2Zm7.5 0h1A1.75 1.75 0 0 1 14 3.75v8.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-1a.75.75 0 0 1 1.5 0v1c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25h-1a.75.75 0 0 1 0-1.5Z"/></svg>';
+
+    let clis = [];
+    let activeFilter = 'all';
+    let sortBy = 'updated';
+
+    async function loadRegistry() {
+      try {
+        let resp;
+        for (const url of REGISTRY_URLS) {
+          try {
+            resp = await fetch(url);
+            if (resp.ok) break;
+          } catch (_) { continue; }
+        }
+        if (!resp || !resp.ok) throw new Error('Registry load failed');
+        const data = await resp.json();
+        clis = data.clis;
+
+        for (const url of DATES_URLS) {
+          try {
+            const datesResp = await fetch(url);
+            if (datesResp.ok) {
+              const dates = await datesResp.json();
+              clis.forEach(c => c.last_modified = dates[c.name]);
+              break;
+            }
+          } catch (_) { continue; }
+        }
+
+        document.getElementById('cli-count').textContent = clis.length;
+        const categories = [...new Set(clis.map(c => c.category))];
+        document.getElementById('category-count').textContent = categories.length;
+        buildFilters(categories);
+        render();
+      } catch (e) {
+        document.getElementById('grid').innerHTML =
+          '<div class="empty">Failed to load registry. <a href="' + REPO + '/blob/main/registry.json" style="color:var(--accent)">View source</a></div>';
+      }
+    }
+
+    const CATEGORY_LABELS = { 'ai': 'AI', '3d': '3D' };
+    function catLabel(cat) {
+      return CATEGORY_LABELS[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
+    }
+
+    function buildFilters(categories) {
+      const container = document.getElementById('filters');
+      const allBtn = document.createElement('button');
+      allBtn.className = 'filter-btn active';
+      allBtn.textContent = 'All';
+      allBtn.dataset.cat = 'all';
+      allBtn.onclick = () => setFilter('all');
+      container.appendChild(allBtn);
+
+      categories.sort().forEach(cat => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-btn';
+        btn.textContent = catLabel(cat);
+        btn.dataset.cat = cat;
+        btn.onclick = () => setFilter(cat);
+        container.appendChild(btn);
+      });
+    }
+
+    function setFilter(cat) {
+      activeFilter = cat;
+      document.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.cat === cat);
+      });
+      render();
+    }
+
+    function render() {
+      const query = document.getElementById('search').value.toLowerCase();
+      const filtered = clis.filter(c => {
+        const matchFilter = activeFilter === 'all' || c.category === activeFilter;
+        const matchSearch = !query ||
+          c.display_name.toLowerCase().includes(query) ||
+          c.description.toLowerCase().includes(query) ||
+          c.name.toLowerCase().includes(query);
+        return matchFilter && matchSearch;
+      });
+
+      filtered.sort((a, b) => {
+        if (sortBy === 'updated') return (b.last_modified || '').localeCompare(a.last_modified || '');
+        if (sortBy === 'name') return a.display_name.localeCompare(b.display_name);
+        if (sortBy === 'category') return a.category.localeCompare(b.category) || a.display_name.localeCompare(b.display_name);
+        return 0;
+      });
+
+      const grid = document.getElementById('grid');
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty">No CLIs match your search.</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(c => {
+        const requiresHtml = c.requires
+          ? `<div class="card-requires"><strong>Requires</strong> ${esc(c.requires)}</div>`
+          : '';
+        const skillLink = c.skill_md
+          ? `<a href="${REPO}/blob/main/${c.skill_md}" target="_blank">Skill</a>`
+          : '';
+        const sourceLink = `<a href="${REPO}/tree/main/${c.name}/agent-harness" target="_blank">Source</a>`;
+        const titleHtml = c.homepage
+          ? `<a href="${esc(c.homepage)}" target="_blank">${esc(c.display_name)}${EXTERNAL_LINK_SVG}</a>`
+          : esc(c.display_name);
+        const isTeam = c.contributor === 'CLI-Anything-Team';
+        const contributorHtml = c.contributor
+          ? `<div class="card-contributor">
+              <a href="${esc(c.contributor_url)}" target="_blank">${esc(c.contributor)}</a>${isTeam ? '' : '<span class="community-badge">Community</span>'}
+            </div>`
+          : '';
+        const dateHtml = c.last_modified
+          ? `<div class="card-date">Updated ${esc(c.last_modified)}</div>`
+          : '';
+
+        return `
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title">${titleHtml}</span>
+              <div class="card-meta">
+                <span class="category-tag">${catLabel(c.category)}</span>
+                <span class="card-version">${esc(c.version)}</span>
+              </div>
+            </div>
+            <div class="card-desc">${esc(c.description)}</div>
+            ${dateHtml}
+            ${requiresHtml}
+            <div class="card-install">
+              <code>${esc(c.install_cmd)}</code>
+              <button class="card-copy-btn" onclick="copyCmd(this, '${esc(c.install_cmd)}')">Copy</button>
+            </div>
+            <div class="card-footer">
+              <div class="card-links">${sourceLink}${skillLink ? ' &middot; ' + skillLink : ''}</div>
+              ${contributorHtml}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function copyCmd(btn, cmd) {
+      navigator.clipboard.writeText(cmd).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+      });
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('sort').addEventListener('change', (e) => {
+      sortBy = e.target.value;
+      render();
+    });
+    loadRegistry();
+
+    // ── Visitor classification: human vs AI agent ──
+    (function() {
+      const AI_UA_PATTERNS = [
+        /claude/i, /anthropic/i, /openai/i, /gpt/i, /chatgpt/i,
+        /bingbot/i, /googlebot/i, /baiduspider/i, /yandexbot/i,
+        /slurp/i, /duckduckbot/i, /facebookexternalhit/i,
+        /twitterbot/i, /linkedinbot/i, /whatsapp/i, /telegrambot/i,
+        /applebot/i, /semrushbot/i, /ahrefsbot/i, /dotbot/i,
+        /petalbot/i, /mj12bot/i, /bytespider/i,
+        /headless/i, /phantom/i, /selenium/i, /puppeteer/i, /playwright/i,
+        /crawl/i, /spider/i, /bot\b/i, /scraper/i,
+        /python-requests/i, /axios/i, /node-fetch/i, /go-http/i, /curl/i, /wget/i,
+        /ccbot/i, /gptbot/i, /perplexity/i, /cohere/i,
+      ];
+
+      const ua = navigator.userAgent || '';
+      const isKnownAgent = AI_UA_PATTERNS.some(p => p.test(ua));
+      const isWebdriver = navigator.webdriver === true;
+      let humanConfirmed = false;
+
+      // Tag the visit type via Umami custom events
+      if (typeof umami !== 'undefined') {
+        if (isKnownAgent || isWebdriver) {
+          umami.track('visit-agent', { ua: ua.slice(0, 200) });
+        }
+      }
+
+      // Wait for Umami to load, then tag
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          if (typeof umami !== 'undefined' && (isKnownAgent || isWebdriver)) {
+            umami.track('visit-agent', { ua: ua.slice(0, 200) });
+          }
+        }, 500);
+      });
+
+      // Real human interaction detection
+      function onHumanInteraction() {
+        if (humanConfirmed) return;
+        humanConfirmed = true;
+        if (typeof umami !== 'undefined') {
+          umami.track('visit-human');
+        }
+        // Clean up listeners
+        ['mousemove', 'touchstart', 'scroll', 'keydown', 'click'].forEach(evt => {
+          document.removeEventListener(evt, onHumanInteraction);
+        });
+      }
+
+      ['mousemove', 'touchstart', 'scroll', 'keydown', 'click'].forEach(evt => {
+        document.addEventListener(evt, onHumanInteraction, { once: false, passive: true });
+      });
+
+      // ── Fetch all-time stats from Umami Cloud API ──
+      const UMAMI_API = 'https://api.umami.is/v1';
+      const UMAMI_KEY = 'api_idAebMhzn6z0hsUQT7BSxRuCK2GUZvRY';
+      const WEBSITE_ID = '07082d05-efd3-4f85-a7a1-b426b0e8bfaa';
+      const headers = { 'Accept': 'application/json', 'x-umami-api-key': UMAMI_KEY };
+
+      async function loadVisitorStats() {
+        try {
+          const now = Date.now();
+          // All-time: startAt=0
+          const [statsResp, eventsResp] = await Promise.all([
+            fetch(`${UMAMI_API}/websites/${WEBSITE_ID}/stats?startAt=0&endAt=${now}`, { headers }),
+            fetch(`${UMAMI_API}/websites/${WEBSITE_ID}/events/series?startAt=0&endAt=${now}&unit=year&timezone=UTC`, { headers })
+          ]);
+
+          if (statsResp.ok) {
+            const stats = await statsResp.json();
+            document.getElementById('stat-total').textContent = (stats.visits ?? 0).toLocaleString();
+          }
+
+          if (eventsResp.ok) {
+            const events = await eventsResp.json();
+            let humanCount = 0, agentCount = 0;
+            events.forEach(e => {
+              if (e.x === 'visit-human') humanCount += e.y || 0;
+              if (e.x === 'visit-agent') agentCount += e.y || 0;
+            });
+            document.getElementById('stat-human').textContent = humanCount.toLocaleString();
+            document.getElementById('stat-agent').textContent = agentCount.toLocaleString();
+          }
+        } catch (_) {
+          // Stats not available — leave dashes
+        }
+      }
+
+      loadVisitorStats();
+    })();
+  </script>
+</body>
+</html>

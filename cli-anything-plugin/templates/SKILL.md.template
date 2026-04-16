@@ -1,0 +1,123 @@
+---
+name: >-
+  {{ skill_name }}
+description: >-
+  {{ skill_description }}
+---
+
+# {{ skill_name }}
+
+{{ skill_intro }}
+
+## Installation
+
+This CLI is installed as part of the cli-anything-{{ software_name }} package:
+
+```bash
+pip install cli-anything-{{ software_name }}
+```
+
+**Prerequisites:**
+- Python 3.10+
+- {{ software_name }} must be installed on your system
+{% if system_package %}
+- Install {{ software_name }}: `{{ system_package }}`
+{% endif %}
+
+## Usage
+
+### Basic Commands
+
+```bash
+# Show help
+cli-anything-{{ software_name }} --help
+
+# Start interactive REPL mode
+cli-anything-{{ software_name }}
+
+# Create a new project
+cli-anything-{{ software_name }} project new -o project.json
+
+# Run with JSON output (for agent consumption)
+cli-anything-{{ software_name }} --json project info -p project.json
+```
+
+### REPL Mode
+
+When invoked without a subcommand, the CLI enters an interactive REPL session:
+
+```bash
+cli-anything-{{ software_name }}
+# Enter commands interactively with tab-completion and history
+```
+
+{% if command_groups %}
+## Command Groups
+
+{% for group in command_groups %}
+### {{ group.name }}
+
+{{ group.description }}
+
+| Command | Description |
+|---------|-------------|
+{% for cmd in group.commands %}
+| `{{ cmd.name }}` | {{ cmd.description }} |
+{% endfor %}
+
+{% endfor %}
+{% endif %}
+## Examples
+
+{% for example in examples %}
+### {{ example.title }}
+
+{{ example.description }}
+
+```bash
+{{ example.code }}
+```
+
+{% endfor %}
+## State Management
+
+The CLI maintains session state with:
+
+- **Undo/Redo**: Up to 50 levels of history
+- **Project persistence**: Save/load project state as JSON
+- **Session tracking**: Track modifications and changes
+
+## Output Formats
+
+All commands support dual output modes:
+
+- **Human-readable** (default): Tables, colors, formatted text
+- **Machine-readable** (`--json` flag): Structured JSON for agent consumption
+
+```bash
+# Human output
+cli-anything-{{ software_name }} project info -p project.json
+
+# JSON output for agents
+cli-anything-{{ software_name }} --json project info -p project.json
+```
+
+## For AI Agents
+
+When using this CLI programmatically:
+
+1. **Always use `--json` flag** for parseable output
+2. **Check return codes** - 0 for success, non-zero for errors
+3. **Parse stderr** for error messages on failure
+4. **Use absolute paths** for all file operations
+5. **Verify outputs exist** after export operations
+
+## More Information
+
+- Full documentation: See README.md in the package
+- Test coverage: See TEST.md in the package
+- Methodology: See HARNESS.md in the cli-anything-plugin
+
+## Version
+
+{{ version }}

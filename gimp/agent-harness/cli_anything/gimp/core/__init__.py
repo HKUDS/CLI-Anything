@@ -1,0 +1,1 @@
+"""GIMP CLI - Core modules."""

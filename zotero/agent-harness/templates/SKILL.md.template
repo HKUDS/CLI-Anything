@@ -1,0 +1,61 @@
+---
+name: >-
+  {{ skill_name }}
+description: >-
+  {{ skill_description }}
+---
+
+# {{ skill_name }}
+
+{{ skill_intro }}
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+## Entry Points
+
+```bash
+cli-anything-{{ software_name }}
+python -m cli_anything.{{ software_name }}
+```
+
+{% if important_constraints %}
+## Important Constraints
+
+{% for constraint in important_constraints %}
+- {{ constraint }}
+{% endfor %}
+
+{% endif %}
+## Command Groups
+
+{% for group in command_groups %}
+### {{ group.name }}
+
+{{ group.description }}
+
+| Command | Description |
+|---------|-------------|
+{% for cmd in group.commands -%}
+| `{{ cmd.name }}` | {{ cmd.description }} |
+{% endfor %}
+
+{% endfor %}
+## Examples
+
+{% for example in examples %}
+### {{ example.title }}
+
+{{ example.description }}
+
+```bash
+{{ example.code }}
+```
+
+{% endfor %}
+## Version
+
+{{ version }}

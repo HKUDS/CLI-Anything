@@ -1,0 +1,1 @@
+"""GIMP CLI - Utility modules."""

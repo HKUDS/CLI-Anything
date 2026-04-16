@@ -1,0 +1,20 @@
+{
+  "name": "cli-anything",
+  "owner": {
+    "name": "cli-anything contributors"
+  },
+  "metadata": {
+    "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology."
+  },
+  "plugins": [
+    {
+      "name": "cli-anything",
+      "source": "./cli-anything-plugin",
+      "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology.",
+      "author": {
+        "name": "cli-anything contributors"
+      },
+      "category": "development"
+    }
+  ]
+}
