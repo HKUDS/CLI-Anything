@@ -111,7 +111,6 @@ def generate_catalog(
         )
 
     size = Path(output_path).stat().st_size
-    print(f"\n  Catalog: {output_path} ({size:,} bytes)")
 
     return {
         "output_path": output_path,
