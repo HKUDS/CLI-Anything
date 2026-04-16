@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/HKUDS/CLI-Anything/discussions
+    about: Please ask questions and discuss ideas here instead of opening an issue.
+  - name: CLI Generation Help
+    url: https://github.com/HKUDS/CLI-Anything/discussions/categories/q-a
+    about: Need help generating a CLI for a new software? Ask in Discussions first.

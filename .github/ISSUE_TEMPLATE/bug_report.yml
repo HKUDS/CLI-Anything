@@ -1,0 +1,88 @@
+name: Bug Report
+description: Report a bug in CLI-Anything
+title: "[Bug]: "
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the information below to help us reproduce and fix it.
+
+  - type: input
+    id: software
+    attributes:
+      label: Affected Software/Harness
+      description: Which CLI harness is affected? (e.g., gimp, blender, inkscape, or "plugin" for the framework)
+      placeholder: e.g., gimp
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / Commit
+      description: The version or commit hash you are using.
+      placeholder: e.g., v1.0.0 or commit abc1234
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      placeholder: e.g., 3.10.12
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide clear steps to reproduce the bug.
+      placeholder: |
+        1. Install the harness with `pip install -e .`
+        2. Run `cli-anything-gimp project create test.xcf`
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include error messages or tracebacks if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Tracebacks
+      description: Paste any relevant output here. This will be auto-formatted as code.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or information that might help.
