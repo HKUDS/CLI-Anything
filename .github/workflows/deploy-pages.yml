@@ -8,7 +8,9 @@ on:
       - '*/agent-harness/**'
       - 'registry.json'
       - 'public_registry.json'
+      - 'matrix_registry.json'
       - 'cli-hub/**'
+      - 'cli-hub-matrix/**'
       - 'docs/hub/**'
       - '.github/workflows/deploy-pages.yml'
       - '.github/scripts/update_registry_dates.py'
@@ -60,6 +62,9 @@ jobs:
 
       - name: Copy registry.json to hub for cli-hub access
         run: cp registry.json docs/hub/registry.json
+
+      - name: Copy matrix_registry.json to hub for cli-hub access
+        run: cp matrix_registry.json docs/hub/matrix_registry.json
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1

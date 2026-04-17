@@ -2,12 +2,15 @@
 
 import os
 import shutil
+import json as json_mod
 
 import click
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_all_clis, get_cli, search_clis, list_categories
-from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli
+from cli_hub.matrix import fetch_all_matrices, get_matrix, search_matrices
+from cli_hub.matrix_skill import get_rendered_matrix_skill_path
+from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli, install_matrix
 from cli_hub.analytics import track_install, track_uninstall, track_visit, track_first_run, _detect_is_agent
 
 
@@ -15,7 +18,7 @@ from cli_hub.analytics import track_install, track_uninstall, track_visit, track
 @click.option("--version", is_flag=True, help="Show version.")
 @click.pass_context
 def main(ctx, version):
-    """cli-hub — Download and manage CLI-Anything harnesses and public CLIs."""
+    """cli-hub — Download and manage CLI-Anything CLIs and curated matrices."""
     track_first_run()
     track_visit(is_agent=_detect_is_agent())
     if version:
@@ -106,7 +109,6 @@ def list_clis(category, source, as_json):
     installed = get_installed()
 
     if as_json:
-        import json as json_mod
         click.echo(json_mod.dumps(clis, indent=2))
         return
 
@@ -146,7 +148,6 @@ def search(query, as_json):
     results = search_clis(query)
 
     if as_json:
-        import json as json_mod
         click.echo(json_mod.dumps(results, indent=2))
         return
 
@@ -194,6 +195,8 @@ def info(name):
     click.echo(f"  Version:     {cli['version']}")
     click.echo(f"  Requires:    {cli.get('requires') or 'nothing'}")
     click.echo(f"  Entry point: {cli['entry_point']}")
+    if cli.get("skill_md"):
+        click.echo(f"  Skill:       {cli['skill_md']}")
     click.echo(f"  Homepage:    {cli.get('homepage', 'N/A')}")
     contributors = cli.get("contributors", [])
     if contributors:
@@ -225,6 +228,151 @@ def launch(name, args):
         raise SystemExit(1)
 
     os.execvp(entry, [entry] + list(args))
+
+
+@main.group(name="matrix", invoke_without_command=True)
+@click.pass_context
+def matrix(ctx):
+    """Browse and install curated multi-CLI workflow matrices."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@matrix.command("list")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+def list_matrices(as_json):
+    """List all available matrices."""
+    try:
+        matrices = fetch_all_matrices()
+    except Exception as e:
+        click.secho(f"Failed to fetch matrix registry: {e}", fg="red", err=True)
+        raise SystemExit(1)
+
+    installed = get_installed()
+
+    if as_json:
+        click.echo(json_mod.dumps(matrices, indent=2))
+        return
+
+    if not matrices:
+        click.echo("No matrices found.")
+        return
+
+    click.secho("\n  MATRICES", fg="blue", bold=True)
+    for matrix_item in sorted(matrices, key=lambda s: s["name"]):
+        installed_count = sum(1 for cli_name in matrix_item.get("clis", []) if cli_name in installed)
+        total = len(matrix_item.get("clis", []))
+        marker = click.style(" ●", fg="green") if total and installed_count == total else "  "
+        name = click.style(f"{matrix_item['name']:20s}", bold=True)
+        matrix_label = click.style(f"[{matrix_item.get('matrix_id', 'matrix')}]", fg="cyan")
+        click.echo(f"  {marker} {name} {matrix_label} {matrix_item['description'][:65]}")
+        click.echo(f"     Includes: {installed_count}/{total} CLIs installed")
+
+    click.echo(f"\n  {len(matrices)} matrices available")
+
+
+@matrix.command("search")
+@click.argument("query")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+def matrix_search(query, as_json):
+    """Search matrices by name, description, or category."""
+    results = search_matrices(query)
+
+    if as_json:
+        click.echo(json_mod.dumps(results, indent=2))
+        return
+
+    if not results:
+        click.echo(f"No matrices matching '{query}'.")
+        return
+
+    installed = get_installed()
+    for matrix_item in results:
+        cli_names = matrix_item.get("clis", [])
+        installed_count = sum(1 for c in cli_names if c in installed)
+        total = len(cli_names)
+        name_str = click.style(matrix_item["name"], bold=True)
+        matrix_label = click.style(f"[{matrix_item.get('matrix_id', 'matrix')}]", fg="cyan")
+        click.echo(f"  {name_str} {matrix_label} — {matrix_item['description'][:65]}")
+        click.echo(f"    CLIs: {installed_count}/{total} installed")
+        click.echo(f"    Install: cli-hub matrix install {matrix_item['name']}")
+
+
+@matrix.command("info")
+@click.argument("name")
+def matrix_info(name):
+    """Show details for a specific matrix."""
+    matrix_item = get_matrix(name)
+    if not matrix_item:
+        click.secho(f"Matrix '{name}' not found.", fg="red", err=True)
+        raise SystemExit(1)
+
+    installed = get_installed()
+    cli_names = matrix_item.get("clis", [])
+    installed_count = sum(1 for cli_name in cli_names if cli_name in installed)
+
+    click.secho(f"\n  {matrix_item['display_name']}", bold=True)
+    click.echo(f"  {matrix_item['description']}")
+    click.echo(f"  Matrix:      {matrix_item.get('matrix', 'N/A')} {matrix_item.get('matrix_id', '')}".rstrip())
+    click.echo(f"  Category:    {matrix_item.get('category', 'N/A')}")
+    click.echo(f"  CLIs:        {len(cli_names)}")
+    click.echo(f"  Installed:   {installed_count}/{len(cli_names)}")
+    if matrix_item.get("skill_md"):
+        click.echo(f"  Skill:       {matrix_item['skill_md']}")
+    rendered_skill_path = get_rendered_matrix_skill_path(matrix_item["name"])
+    if rendered_skill_path.exists():
+        click.echo(f"  Local skill: {rendered_skill_path}")
+    if matrix_item.get("homepage"):
+        click.echo(f"  Homepage:    {matrix_item['homepage']}")
+
+    click.echo("\n  Members:")
+    for cli_name in cli_names:
+        status = click.style("installed", fg="green") if cli_name in installed else "not installed"
+        click.echo(f"    - {cli_name} ({status})")
+
+    stages = matrix_item.get("stages", [])
+    if stages:
+        click.echo("\n  Stage Coverage:")
+        for stage in stages:
+            members = ", ".join(stage.get("clis", []))
+            goal = stage.get("goal", "")
+            goal_suffix = f" -- {goal}" if goal else ""
+            click.echo(f"    - {stage['name']}: {members}{goal_suffix}")
+
+    click.echo(f"\n  Install: cli-hub matrix install {matrix_item['name']}")
+    click.echo()
+
+
+@matrix.command("install")
+@click.argument("name")
+def matrix_install(name):
+    """Install every CLI in a matrix."""
+    click.echo(f"Installing matrix {name}...")
+    success, payload = install_matrix(name)
+    if payload.get("error"):
+        click.secho(f"✗ {payload['error']}", fg="red", err=True)
+        raise SystemExit(1)
+
+    matrix_item = payload["matrix"]
+    for result in payload["results"]:
+        status = result["status"]
+        prefix = "✓" if status in {"installed", "skipped"} else "✗"
+        color = "green" if status in {"installed", "skipped"} else "red"
+        click.secho(f"  {prefix} {result['name']}: {result['message']}", fg=color, err=status == "failed")
+
+    summary = payload["summary"]
+    click.echo(
+        f"\n  Summary: {summary['installed']} installed, "
+        f"{summary['skipped']} skipped, {summary['failed']} failed"
+    )
+    if matrix_item.get("skill_md"):
+        click.echo(f"  Matrix skill: {matrix_item['skill_md']}")
+    if payload.get("rendered_skill_path"):
+        click.echo(f"  Local matrix skill: {payload['rendered_skill_path']}")
+    click.echo(f"  Inspect:      cli-hub matrix info {matrix_item['name']}")
+
+    if not success:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

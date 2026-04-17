@@ -1,4 +1,4 @@
-"""Install, uninstall, and manage CLIs — dispatches to pip or npm based on source."""
+"""Install, uninstall, and manage CLIs and matrices."""
 
 import json
 import shlex
@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 from cli_hub.registry import get_cli
+from cli_hub.matrix import get_matrix
+from cli_hub.matrix_skill import render_matrix_skill_file
 
 INSTALLED_FILE = Path.home() / ".cli-hub" / "installed.json"
 
@@ -371,3 +373,66 @@ def update_cli(name):
 def get_installed():
     """Return dict of installed CLIs."""
     return _load_installed()
+
+
+def install_matrix(name):
+    """Install every CLI in a named matrix.
+
+    Returns ``(success, payload)`` where payload contains the matrix metadata,
+    per-CLI results, and an aggregate summary. Success is false when any member
+    install fails or the matrix cannot be found.
+    """
+    matrix_item = get_matrix(name)
+    if matrix_item is None:
+        return False, {"error": f"Matrix '{name}' not found. Use 'cli-hub matrix list' to see available matrices."}
+
+    installed = set(get_installed())
+    results = []
+
+    for cli_name in matrix_item.get("clis", []):
+        cli = get_cli(cli_name)
+        display_name = cli["display_name"] if cli else cli_name
+
+        if cli_name in installed:
+            results.append({
+                "name": cli_name,
+                "display_name": display_name,
+                "status": "skipped",
+                "message": "Already installed",
+            })
+            continue
+
+        if cli is None:
+            results.append({
+                "name": cli_name,
+                "display_name": display_name,
+                "status": "failed",
+                "message": "CLI not found in registry",
+            })
+            continue
+
+        success, msg = install_cli(cli_name)
+        results.append({
+            "name": cli_name,
+            "display_name": display_name,
+            "status": "installed" if success else "failed",
+            "message": msg,
+        })
+        if success:
+            installed.add(cli_name)
+
+    summary = {
+        "total": len(results),
+        "installed": sum(1 for result in results if result["status"] == "installed"),
+        "skipped": sum(1 for result in results if result["status"] == "skipped"),
+        "failed": sum(1 for result in results if result["status"] == "failed"),
+    }
+    installed_state = get_installed()
+    rendered_skill_path = render_matrix_skill_file(matrix_item, installed=installed_state)
+    payload = {
+        "matrix": matrix_item,
+        "results": results,
+        "summary": summary,
+        "rendered_skill_path": str(rendered_skill_path),
+    }
+    return summary["failed"] == 0, payload
