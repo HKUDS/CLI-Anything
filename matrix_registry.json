@@ -1,0 +1,136 @@
+{
+  "meta": {
+    "repo": "https://github.com/HKUDS/CLI-Anything",
+    "description": "Curated CLI Matrix registry for CLI-Hub multi-CLI workflows",
+    "updated": "2026-04-17"
+  },
+  "matrices": [
+    {
+      "name": "video-creation",
+      "display_name": "Video Creation & Editing",
+      "version": "2",
+      "description": "Curated end-to-end video production matrix spanning generation, capture, voice/music, editing, captioning, and thumbnailing for an agent-driven workflow.",
+      "category": "video",
+      "matrix": "cli-matrix",
+      "matrix_id": "V1",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix.md",
+      "skill_md": "cli-hub-matrix/video-creation/SKILL.md",
+      "clis": [
+        "generate-veo-video",
+        "jimeng",
+        "openscreen",
+        "audacity",
+        "minimax-cli",
+        "elevenlabs",
+        "suno",
+        "kdenlive",
+        "shotcut",
+        "videocaptioner",
+        "gimp"
+      ],
+      "stages": [
+        {
+          "name": "AI video gen",
+          "goal": "Generate video clips from text prompts or reference images",
+          "clis": [
+            "generate-veo-video",
+            "jimeng"
+          ],
+          "alternatives": {
+            "python": ["replicate (Runway, Kling)", "diffusers"],
+            "api": ["Runway API", "Kling API", "Pika API"]
+          },
+          "skill_search_hints": ["video generation", "text-to-video", "AI video"]
+        },
+        {
+          "name": "Screen/cam capture",
+          "goal": "Record screen activity, webcam, or application windows to video files",
+          "clis": [
+            "openscreen"
+          ],
+          "alternatives": {
+            "python": ["pyautogui + cv2", "mss"],
+            "native": ["ffmpeg -f x11grab (Linux)", "screencapture (macOS)"]
+          },
+          "skill_search_hints": ["screen recording", "capture", "screencast"]
+        },
+        {
+          "name": "Audio capture/edit",
+          "goal": "Record, clean, trim, normalize, and process audio tracks",
+          "clis": [
+            "audacity"
+          ],
+          "alternatives": {
+            "python": ["pydub", "soundfile", "librosa", "noisereduce"],
+            "native": ["sox", "ffmpeg"]
+          },
+          "skill_search_hints": ["audio editing", "noise reduction", "audio processing"]
+        },
+        {
+          "name": "Voice/TTS",
+          "goal": "Generate speech audio from text for narration or voiceover",
+          "clis": [
+            "minimax-cli",
+            "elevenlabs"
+          ],
+          "alternatives": {
+            "python": ["TTS (coqui-ai)", "pyttsx3", "edge-tts"],
+            "api": ["Google Cloud TTS", "Amazon Polly", "Azure Speech"]
+          },
+          "skill_search_hints": ["text-to-speech", "TTS", "voice synthesis", "narration"]
+        },
+        {
+          "name": "Music/BGM gen",
+          "goal": "Generate background music or sound effects from prompts",
+          "clis": [
+            "minimax-cli",
+            "suno"
+          ],
+          "alternatives": {
+            "python": ["audiocraft (Meta MusicGen)", "stable-audio-tools"],
+            "api": ["Suno API", "Udio API"]
+          },
+          "skill_search_hints": ["music generation", "background music", "audio synthesis"]
+        },
+        {
+          "name": "NLE editing",
+          "goal": "Assemble video/audio clips on a timeline, add transitions, and export the final cut",
+          "clis": [
+            "kdenlive",
+            "shotcut"
+          ],
+          "alternatives": {
+            "python": ["moviepy", "ffmpeg-python"],
+            "native": ["ffmpeg concat/filter_complex"]
+          },
+          "skill_search_hints": ["video editing", "timeline", "NLE", "video assembly"]
+        },
+        {
+          "name": "Captions/subs",
+          "goal": "Transcribe speech, generate subtitles (SRT/ASS), optionally translate, and burn into video",
+          "clis": [
+            "videocaptioner"
+          ],
+          "alternatives": {
+            "python": ["whisper (openai-whisper)", "pysrt", "stable-ts"],
+            "api": ["Google Speech-to-Text", "AssemblyAI", "Deepgram"],
+            "native": ["ffmpeg -vf subtitles=subs.srt"]
+          },
+          "skill_search_hints": ["subtitle", "transcribe", "caption", "speech-to-text"]
+        },
+        {
+          "name": "Thumbnail",
+          "goal": "Create a thumbnail image or social card for the video",
+          "clis": [
+            "gimp"
+          ],
+          "alternatives": {
+            "python": ["Pillow", "cairosvg", "html2image"],
+            "native": ["ffmpeg -ss 00:01:00 -frames:v 1 thumb.png", "ImageMagick convert"]
+          },
+          "skill_search_hints": ["image editing", "thumbnail", "graphic design"]
+        }
+      ]
+    }
+  ]
+}

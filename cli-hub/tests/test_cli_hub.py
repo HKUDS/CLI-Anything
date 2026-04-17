@@ -12,8 +12,11 @@ import requests
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_registry, fetch_all_clis, get_cli, search_clis, list_categories
+from cli_hub.matrix import fetch_matrix_registry, fetch_all_matrices, get_matrix, search_matrices
+from cli_hub.matrix_skill import resolve_local_skill_path, render_matrix_skill_file, _render_stage_tooling, _render_discovery_section
 from cli_hub.installer import (
     install_cli,
+    install_matrix,
     uninstall_cli,
     get_installed,
     _load_installed,
@@ -40,7 +43,7 @@ SAMPLE_REGISTRY = {
             "homepage": "https://gimp.org",
             "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=gimp/agent-harness",
             "entry_point": "cli-anything-gimp",
-            "skill_md": "skills/cli-anything-gimp/SKILL.md",
+            "skill_md": "gimp/agent-harness/cli_anything/gimp/skills/SKILL.md",
             "category": "image",
             "contributor": "test-user",
             "contributor_url": "https://github.com/test-user",
@@ -73,6 +76,39 @@ SAMPLE_REGISTRY = {
             "contributor": "test-user",
             "contributor_url": "https://github.com/test-user",
         },
+    ],
+}
+
+SAMPLE_MATRIX_REGISTRY = {
+    "meta": {"repo": "https://github.com/HKUDS/CLI-Anything", "description": "test matrices"},
+    "matrices": [
+        {
+            "name": "video-creation",
+            "display_name": "Video Creation & Editing",
+            "description": "Curated video workflow matrix",
+            "category": "video",
+            "matrix": "cli-matrix",
+            "matrix_id": "V1",
+            "skill_md": "cli-hub-matrix/video-creation/SKILL.md",
+            "clis": ["gimp", "blender", "audacity"],
+            "stages": [
+                {
+                    "name": "Thumbnail",
+                    "clis": ["gimp"],
+                    "goal": "Create a thumbnail image",
+                    "alternatives": {"python": ["Pillow"], "native": ["ImageMagick convert"]},
+                    "skill_search_hints": ["thumbnail", "image editing"],
+                },
+                {"name": "3D", "clis": ["blender"]},
+                {
+                    "name": "Audio",
+                    "clis": ["audacity"],
+                    "goal": "Edit and process audio",
+                    "alternatives": {"python": ["pydub"], "native": ["sox"]},
+                    "skill_search_hints": ["audio editing"],
+                },
+            ],
+        }
     ],
 }
 
@@ -151,6 +187,138 @@ class TestRegistry:
     def test_list_categories(self, mock_fetch):
         cats = list_categories()
         assert cats == ["3d", "audio", "image"]
+
+
+class TestMatrixRegistry:
+    """Tests for matrix.py — fetch, cache, search, and lookup."""
+
+    @patch("cli_hub.matrix.requests.get")
+    @patch("cli_hub.matrix.MATRIX_CACHE_FILE", Path(tempfile.mktemp()))
+    def test_fetch_matrix_registry_from_remote(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = SAMPLE_MATRIX_REGISTRY
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        result = fetch_matrix_registry(force_refresh=True)
+        assert result["matrices"][0]["name"] == "video-creation"
+        mock_get.assert_called_once()
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_get_matrix_found(self, mock_fetch):
+        matrix_item = get_matrix("video-creation")
+        assert matrix_item is not None
+        assert matrix_item["display_name"] == "Video Creation & Editing"
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_search_matrices_matches_description(self, mock_fetch):
+        results = search_matrices("video")
+        assert len(results) == 1
+        assert results[0]["name"] == "video-creation"
+
+
+class TestMatrixSkill:
+    """Tests for matrix_skill.py — local skill resolution and rendering."""
+
+    @patch("cli_hub.matrix_skill.metadata.distribution")
+    def test_resolve_local_skill_path_from_distribution(self, mock_distribution, tmp_path):
+        class FakeDist:
+            files = [Path("cli_anything/audacity/skills/SKILL.md")]
+
+            def locate_file(self, file):
+                return tmp_path / file
+
+        mock_distribution.return_value = FakeDist()
+        cli = {"name": "audacity", "_source": "harness"}
+        resolved = resolve_local_skill_path(cli)
+        assert resolved == str((tmp_path / "cli_anything/audacity/skills/SKILL.md").resolve())
+
+    @patch("cli_hub.matrix_skill.MATRIX_SKILL_DIR", Path(tempfile.mkdtemp()))
+    @patch("cli_hub.matrix_skill.resolve_local_skill_path")
+    @patch("cli_hub.matrix_skill.get_cli")
+    def test_render_matrix_skill_file_injects_paths(self, mock_get_cli, mock_resolve, tmp_dir=None):
+        mock_get_cli.side_effect = lambda name: next((c for c in SAMPLE_REGISTRY["clis"] if c["name"] == name), None)
+        mock_resolve.side_effect = lambda cli: f"/tmp/{cli['name']}/skills/SKILL.md" if cli["name"] != "blender" else None
+
+        rendered = render_matrix_skill_file(SAMPLE_MATRIX_REGISTRY["matrices"][0], installed={"gimp": {}, "audacity": {}})
+        content = Path(rendered).read_text()
+        assert "## Installed CLI Skills" in content
+        assert "/tmp/gimp/skills/SKILL.md" in content
+        assert "gimp/agent-harness/cli_anything/gimp/skills/SKILL.md" in content
+        assert "not installed" in content
+
+
+class TestMultiApproachRendering:
+    """Tests for multi-approach stage rendering in matrix_skill.py."""
+
+    def test_render_stage_tooling_includes_goals(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={"gimp": {}})
+        assert "## Stage Tooling Overview" in result
+        assert "Create a thumbnail image" in result
+        assert "Edit and process audio" in result
+
+    def test_render_stage_tooling_includes_alternatives(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={})
+        assert "Pillow" in result
+        assert "pydub" in result
+        assert "sox" in result
+        assert "ImageMagick convert" in result
+
+    def test_render_stage_tooling_shows_install_status(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={"gimp": {}})
+        assert "`gimp` (installed)" in result
+        assert "`audacity` (not installed)" in result
+
+    def test_render_stage_tooling_includes_skill_search_hints(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={})
+        assert 'npx skills search "thumbnail"' in result
+        assert 'npx skills search "audio editing"' in result
+
+    def test_render_stage_tooling_backward_compat_no_goal(self):
+        """Stages without 'goal' field are skipped gracefully."""
+        matrix_no_goals = {
+            "name": "test",
+            "stages": [
+                {"name": "Stage1", "clis": ["foo"]},
+            ],
+        }
+        result = _render_stage_tooling(matrix_no_goals, installed={})
+        assert result == ""
+
+    def test_render_discovery_section(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_discovery_section(matrix_item)
+        assert "## Skill Discovery Commands" in result
+        assert 'npx skills search "thumbnail"' in result
+        assert 'npx skills search "audio editing"' in result
+        assert "cli-hub search thumbnail" in result
+        assert "cli-hub search audio" in result
+
+    def test_render_discovery_section_empty_when_no_hints(self):
+        matrix_no_hints = {
+            "name": "test",
+            "stages": [{"name": "S1", "clis": ["foo"]}],
+        }
+        result = _render_discovery_section(matrix_no_hints)
+        assert result == ""
+
+    @patch("cli_hub.matrix_skill.MATRIX_SKILL_DIR", Path(tempfile.mkdtemp()))
+    @patch("cli_hub.matrix_skill.resolve_local_skill_path")
+    @patch("cli_hub.matrix_skill.get_cli")
+    def test_render_matrix_skill_file_includes_stage_tooling(self, mock_get_cli, mock_resolve):
+        mock_get_cli.side_effect = lambda name: next((c for c in SAMPLE_REGISTRY["clis"] if c["name"] == name), None)
+        mock_resolve.return_value = None
+
+        rendered = render_matrix_skill_file(SAMPLE_MATRIX_REGISTRY["matrices"][0], installed={"gimp": {}})
+        content = Path(rendered).read_text()
+        assert "## Stage Tooling Overview" in content
+        assert "## Skill Discovery Commands" in content
+        assert "Create a thumbnail image" in content
+
 
 # ─── Installer tests ──────────────────────────────────────────────────
 
@@ -484,6 +652,27 @@ class TestScriptStrategy:
             assert data["jimeng"]["strategy"] == "command"
             assert data["jimeng"]["package_manager"] == "script"
 
+    @patch("cli_hub.installer.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
+    @patch("cli_hub.installer.get_cli", side_effect=lambda name: next((c for c in SAMPLE_REGISTRY["clis"] if c["name"] == name), None))
+    @patch("cli_hub.installer.install_cli", side_effect=[(True, "Installed Blender"), (False, "Install failed")])
+    @patch("cli_hub.installer.get_installed", return_value={"gimp": {"version": "1.0.0"}})
+    @patch("cli_hub.installer.render_matrix_skill_file", return_value=Path("/tmp/video-creation.SKILL.md"))
+    def test_install_matrix_reports_installed_skipped_and_failed(self, mock_render, mock_installed, mock_install_cli, mock_get_cli, mock_get_matrix):
+        success, payload = install_matrix("video-creation")
+        assert not success
+        assert payload["summary"] == {"total": 3, "installed": 1, "skipped": 1, "failed": 1}
+        assert payload["results"][0]["status"] == "skipped"
+        assert payload["results"][1]["status"] == "installed"
+        assert payload["results"][2]["status"] == "failed"
+        assert payload["rendered_skill_path"] == "/tmp/video-creation.SKILL.md"
+
+    @patch("cli_hub.installer.get_matrix", return_value=None)
+    def test_install_matrix_not_found(self, mock_get_matrix):
+        success, payload = install_matrix("missing-matrix")
+        assert not success
+        assert "not found" in payload["error"]
+
+
 # ─── Analytics tests ──────────────────────────────────────────────────
 
 
@@ -763,6 +952,87 @@ class TestCLI:
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
     @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}})
+    def test_matrix_list_command(self, mock_installed, mock_fetch_matrices, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "list"])
+        assert "video-creation" in result.output
+        assert "1/3" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.search_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}})
+    def test_matrix_search_command(self, mock_installed, mock_search, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "search", "video"])
+        assert "video-creation" in result.output
+        assert "1/3" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.search_matrices", return_value=[])
+    def test_matrix_search_no_results(self, mock_search, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "search", "nonexistent"])
+        assert "No matrices matching" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}})
+    @patch("cli_hub.cli.get_rendered_matrix_skill_path", return_value=Path("/tmp/video-creation.SKILL.md"))
+    @patch("pathlib.Path.exists", return_value=True)
+    def test_matrix_info_command(self, mock_exists, mock_rendered, mock_installed, mock_get_matrix, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "info", "video-creation"])
+        assert "Video Creation & Editing" in result.output
+        assert "cli-hub matrix install video-creation" in result.output
+        assert "cli-hub-matrix/video-creation/SKILL.md" in result.output
+        assert "Local skill: /tmp/video-creation.SKILL.md" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.install_matrix", return_value=(False, {
+        "matrix": SAMPLE_MATRIX_REGISTRY["matrices"][0],
+        "results": [
+            {"name": "gimp", "status": "skipped", "message": "Already installed"},
+            {"name": "blender", "status": "installed", "message": "Installed Blender"},
+            {"name": "audacity", "status": "failed", "message": "Install failed"},
+        ],
+        "summary": {"installed": 1, "skipped": 1, "failed": 1},
+        "rendered_skill_path": "/tmp/video-creation.SKILL.md",
+    }))
+    def test_matrix_install_command_partial_failure(self, mock_install_matrix, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "install", "video-creation"])
+        assert result.exit_code == 1
+        assert "Summary: 1 installed, 1 skipped, 1 failed" in result.output
+        assert "Matrix skill: cli-hub-matrix/video-creation/SKILL.md" in result.output
+        assert "Local matrix skill: /tmp/video-creation.SKILL.md" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.install_matrix", return_value=(False, {"error": "Matrix 'missing' not found."}))
+    def test_matrix_install_command_not_found(self, mock_install_matrix, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "install", "missing"])
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
     @patch("cli_hub.cli.list_categories", return_value=["3d", "audio", "image"])
     @patch("cli_hub.cli.get_installed", return_value={})
@@ -807,6 +1077,7 @@ class TestCLI:
         assert "GIMP" in result.output
         assert "image" in result.output
         assert "Install: cli-hub install gimp" in result.output
+        assert "Skill:" in result.output
         assert result.exit_code == 0
 
     @patch("cli_hub.cli.track_first_run")

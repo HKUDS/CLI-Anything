@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate cli-hub-skill/SKILL.md from registry.json and public_registry.json."""
+"""Generate cli-hub-skill/SKILL.md from registry.json, public_registry.json, and matrix_registry.json."""
 import json
 from pathlib import Path
 from collections import defaultdict
@@ -8,6 +8,7 @@ def main():
     repo_root = Path(__file__).parent.parent.parent
     registry_path = repo_root / 'registry.json'
     public_registry_path = repo_root / 'public_registry.json'
+    matrix_registry_path = repo_root / 'matrix_registry.json'
     output_path = repo_root / 'cli-hub-skill' / 'SKILL.md'
 
     with open(registry_path) as f:
@@ -18,6 +19,12 @@ def main():
         with open(public_registry_path) as f:
             public_data = json.load(f)
         public_clis = public_data.get('clis', [])
+
+    matrices = []
+    if matrix_registry_path.exists():
+        with open(matrix_registry_path) as f:
+            matrix_data = json.load(f)
+        matrices = matrix_data.get('matrices', [])
 
     total_count = len(data['clis']) + len(public_clis)
 
@@ -65,6 +72,21 @@ def main():
         "cli-hub launch <name> [args...]",
         "```",
         "",
+        "## CLI Matrices",
+        "",
+        f"`cli-hub` also ships {len(matrices)} curated cross-tool matrices: install one name to pull in a whole workflow kit and read its dedicated SKILL.md.",
+        "",
+        "```bash",
+        "# Browse curated matrices",
+        "cli-hub matrix list",
+        "",
+        "# Inspect one matrix",
+        "cli-hub matrix info video-creation",
+        "",
+        "# Install the whole matrix",
+        "cli-hub matrix install video-creation",
+        "```",
+        "",
         "## CLI-Anything Harness CLIs",
         "",
         f"Stateful, agent-native wrappers for {len(data['clis'])} GUI applications. All support `--json` output, REPL mode, and undo/redo.",
@@ -97,15 +119,36 @@ def main():
         clis = public_by_category[category]
         lines.append(f"### {category.title()}")
         lines.append("")
-        lines.append("| Name | Description | Entry Point | Install |")
-        lines.append("|------|-------------|-------------|---------|")
+        lines.append("| Name | Description | Entry Point | Install | Skill |")
+        lines.append("|------|-------------|-------------|---------|-------|")
 
         for cli in sorted(clis, key=lambda x: x['name']):
             name = cli['display_name']
             desc = cli['description']
             entry = f"`{cli['entry_point']}`"
             install = f"`cli-hub install {cli['name']}`"
-            lines.append(f"| **{name}** | {desc} | {entry} | {install} |")
+            skill = cli.get('skill_md') or '—'
+            skill_cell = f"`{skill}`" if not str(skill).startswith("http") else skill
+            lines.append(f"| **{name}** | {desc} | {entry} | {install} | {skill_cell} |")
+
+        lines.append("")
+
+    if matrices:
+        lines.extend([
+            "## Curated Matrices",
+            "",
+            "Each matrix is a curated multi-CLI workflow pulled from the CLI Matrix. Installing a matrix installs all member CLIs and points you at a matrix-specific SKILL.md.",
+            "",
+            "| Matrix | Description | CLIs | Install | Skill |",
+            "|--------|-------------|------|---------|-------|",
+        ])
+
+        for matrix in sorted(matrices, key=lambda x: x['name']):
+            skill = matrix.get('skill_md') or '—'
+            install = f"`cli-hub matrix install {matrix['name']}`"
+            lines.append(
+                f"| **{matrix['display_name']}** | {matrix['description']} | {len(matrix.get('clis', []))} | {install} | `{skill}` |"
+            )
 
         lines.append("")
 
@@ -119,6 +162,7 @@ def main():
         "- **uv CLIs**: installed via `uv tool install`",
         "- **brew/script CLIs**: installed via the tool's native installer",
         "- **bundled CLIs**: detected from PATH (pre-installed with the host app)",
+        "- **Matrices**: install a curated set of harness and public CLIs in one command",
         "",
         "## Harness CLI Usage Pattern",
         "",
@@ -152,7 +196,10 @@ def main():
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text('\n'.join(lines) + '\n')
-    print(f"Generated meta-skill with {len(data['clis'])} harness CLIs + {len(public_clis)} public CLIs ({total_count} total) at {output_path}")
+    print(
+        f"Generated meta-skill with {len(data['clis'])} harness CLIs + "
+        f"{len(public_clis)} public CLIs + {len(matrices)} matrices at {output_path}"
+    )
 
 if __name__ == '__main__':
     main()
