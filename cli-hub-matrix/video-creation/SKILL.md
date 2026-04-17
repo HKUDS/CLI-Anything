@@ -92,6 +92,7 @@ cli-hub matrix info video-creation
 |----------|---------|
 | CLI tools | `cli-anything-gimp` |
 | Python libs | `Pillow`, `cairosvg`, `html2image` |
+| Cloud APIs | Google Nano Banana, OpenAI GPT-Image-1, Ideogram API, Stability AI image generation |
 | Native cmds | `ffmpeg -ss 00:01:00 -frames:v 1 thumb.png`, ImageMagick `convert` |
 
 ## Discovering Additional Tools

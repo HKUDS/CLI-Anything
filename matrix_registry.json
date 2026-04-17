@@ -126,6 +126,7 @@
           ],
           "alternatives": {
             "python": ["Pillow", "cairosvg", "html2image"],
+            "api": ["Google Nano Banana", "OpenAI GPT-Image-1", "Ideogram API", "Stability AI image generation"],
             "native": ["ffmpeg -ss 00:01:00 -frames:v 1 thumb.png", "ImageMagick convert"]
           },
           "skill_search_hints": ["image editing", "thumbnail", "graphic design"]
