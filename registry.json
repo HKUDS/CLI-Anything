@@ -896,6 +896,25 @@
           "url": "https://github.com/achiya-automation"
         }
       ]
+    },
+    {
+      "name": "openclaw-macro",
+      "display_name": "OpenClaw Macro System",
+      "version": "1.0.0",
+      "description": "Layered CLI that converts GUI workflows into parameterized, agent-callable macros — with backend routing across native APIs, file transforms, accessibility controls, and compiled GUI replay",
+      "requires": null,
+      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openclaw-skill/agent-harness",
+      "entry_point": "cli-anything-openclaw",
+      "skill_md": "openclaw-skill/agent-harness/cli_anything/openclaw/skills/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "haorui-harry",
+          "url": "https://github.com/haorui-harry"
+        }
+      ]
     }
   ]
 }
