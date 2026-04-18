@@ -6,11 +6,44 @@ Usage:
     python -m pytest cli_anything/browser/tests/test_core.py -v
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page, fs
+from cli_anything.browser.utils.repl_skin import ReplSkin
+
+
+@pytest.fixture(autouse=True)
+def force_non_daemon(monkeypatch):
+    """Keep unit tests isolated from any real daemon running on the machine."""
+    monkeypatch.setattr(fs.backend, "daemon_started", lambda: False)
+
+
+class TestReplSkin:
+    """Test compact REPL prompt/help formatting."""
+
+    def test_prompt_is_plain_text(self):
+        skin = ReplSkin("browser", version="1.0.0")
+        assert skin.prompt(context="https://example.com /") == "browser [https://example.com /] > "
+
+    def test_help_is_compact(self, capsys):
+        skin = ReplSkin("browser", version="1.0.0")
+        skin.help({"page": "open|reload", "fs": "ls|cd|cat|grep|pwd"})
+        out = capsys.readouterr().out
+        assert out == "Commands:\n  page  open|reload\n  fs    ls|cd|cat|grep|pwd\n\n"
+
+    def test_banner_and_goodbye_are_compact(self, capsys):
+        skin = ReplSkin("browser", version="1.0.0")
+        skin.print_banner()
+        skin.print_goodbye()
+        out = capsys.readouterr().out
+        assert "Browser v1.0.0" in out
+        assert "Type help for commands, quit to exit" in out
+        assert "Goodbye!" in out
+        assert "╭" not in out
+        assert "◆" not in out
 
 
 # ── Session Tests ────────────────────────────────────────────────
@@ -120,6 +153,22 @@ class TestSession:
         assert status["forward_stack_length"] == 0
         assert not status["daemon_mode"]
 
+    def test_persisted_session_round_trip(self, tmp_path):
+        """Persistent sessions can round-trip to disk."""
+        state_file = tmp_path / "session.json"
+        sess = Session(persist_state=True, state_path=str(state_file))
+        sess.enable_daemon()
+        sess.set_url("https://example.com")
+        sess.set_working_dir("/main")
+        sess.set_url("https://example.org")
+
+        loaded = Session.load_persisted(str(state_file))
+        assert loaded.daemon_mode is True
+        assert loaded.current_url == "https://example.org"
+        assert loaded.working_dir == "/main"
+        assert loaded.history == ["https://example.com"]
+        assert loaded.forward_stack == []
+
 
 # ── Page Module Tests ────────────────────────────────────────────
 
@@ -197,6 +246,202 @@ class TestPageModule:
         assert result["url"] == "https://example.com"
         assert result["working_dir"] == "/main"
 
+    def test_open_page_rejects_error_payload(self):
+        """Open page should not mutate session on backend error payloads."""
+        sess = Session()
+        sess.set_url("https://first.com")
+        sess.set_working_dir("/main")
+
+        with patch("cli_anything.browser.core.page.backend.open_url") as mock_open:
+            mock_open.return_value = {
+                "content": [{"type": "text", "text": "Could not open"}],
+                "isError": False,
+            }
+
+            result = page.open_page(sess, "https://second.com")
+
+            assert sess.current_url == "https://first.com"
+            assert sess.working_dir == "/main"
+            assert result["isError"] is False
+            mock_open.assert_called_once_with("https://second.com", use_daemon=False)
+
+    def test_act_click_rejects_error_payload(self):
+        """CLI click should not claim success on backend error payloads."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        with patch("cli_anything.browser.browser_cli.backend.click") as mock_click:
+            mock_click.return_value = {
+                "content": [{"type": "text", "text": "click: /main/does-not-exist: No such element"}],
+                "isError": False,
+            }
+            result = runner.invoke(cli, ["act", "click", "/main/does-not-exist"])
+            assert result.exit_code == 0
+            assert "Clicked:" not in result.output
+            assert "No such element" in result.output
+
+    def test_act_type_rejects_error_payload(self):
+        """CLI type should not claim success on backend error payloads."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        with patch("cli_anything.browser.browser_cli.backend.type_text") as mock_type:
+            mock_type.return_value = {
+                "content": [{"type": "text", "text": "type failed: input not found"}],
+                "isError": False,
+            }
+            result = runner.invoke(cli, ["act", "type", "/main/does-not-exist", "hello"])
+            assert result.exit_code == 0
+            assert "Typed into:" not in result.output
+            assert "input not found" in result.output
+
+    def test_type_text_preflight_blocks_invalid_path(self):
+        """type_text should return fast on invalid paths instead of hanging."""
+        from cli_anything.browser.utils import domshell_backend as backend
+
+        with patch("cli_anything.browser.utils.domshell_backend.cat") as mock_cat, \
+             patch("cli_anything.browser.utils.domshell_backend.asyncio.run") as mock_run:
+            mock_cat.return_value = {
+                "content": [{"type": "text", "text": "cat: /main/does-not-exist: No such file or directory"}],
+                "isError": False,
+            }
+            mock_run.side_effect = AssertionError("asyncio.run should not be called for invalid paths")
+            result = backend.type_text("/main/does-not-exist", "hello", use_daemon=True)
+            assert isinstance(result, dict)
+            assert "No such file or directory" in result["content"][0]["text"]
+
+    def test_page_reload_rejects_error_payload(self):
+        """Reload should not claim success on backend error payloads."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        with patch("cli_anything.browser.browser_cli.page_mod.reload_page") as mock_reload:
+            mock_reload.return_value = {
+                "content": [{"type": "text", "text": "reload failed: could not refresh"}],
+                "isError": False,
+            }
+            result = runner.invoke(cli, ["page", "reload"])
+            assert result.exit_code == 0
+            assert "Page reloaded" not in result.output
+            assert "reload failed" in result.output
+            assert "content:" not in result.output
+            assert "isError" not in result.output
+
+    def test_page_back_rejects_error_payload(self):
+        """Back should not claim success on backend error payloads."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        with patch("cli_anything.browser.browser_cli.page_mod.go_back") as mock_back:
+            mock_back.return_value = {
+                "content": [{"type": "text", "text": "back failed: No history"}],
+                "isError": False,
+            }
+            result = runner.invoke(cli, ["page", "back"])
+            assert result.exit_code == 0
+            assert "Navigated back" not in result.output
+            assert "No history" in result.output
+            assert "content:" not in result.output
+            assert "isError" not in result.output
+
+    def test_fs_ls_rejects_error_payload(self):
+        """ls should not claim success when backend returns an error payload."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        with patch("cli_anything.browser.browser_cli.fs_mod.list_elements") as mock_ls:
+            mock_ls.return_value = {
+                "content": [{"type": "text", "text": "ls failed: No such directory"}],
+                "isError": False,
+            }
+            result = runner.invoke(cli, ["fs", "ls", "/main"])
+            assert result.exit_code == 0
+            assert "No elements at" not in result.output
+            assert "No such directory" in result.output
+            assert "content:" not in result.output
+            assert "isError" not in result.output
+
+    def test_fs_cat_rejects_error_payload(self):
+        """cat should show the backend error text instead of a fake success payload."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        with patch("cli_anything.browser.browser_cli.fs_mod.read_element") as mock_cat:
+            mock_cat.return_value = {
+                "content": [{"type": "text", "text": "cat: /main/does-not-exist: No such file or directory"}],
+                "isError": False,
+            }
+            result = runner.invoke(cli, ["fs", "cat", "/main/does-not-exist"])
+            assert result.exit_code == 0
+            assert "No such file or directory" in result.output
+            assert "content:" not in result.output
+            assert "isError" not in result.output
+
+    def test_page_info_is_concise(self):
+        """page info should render a concise summary instead of raw payload."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["page", "info"])
+        assert result.exit_code == 0
+        assert "URL:" in result.output
+        assert "Working dir:" in result.output
+        assert "current_url" not in result.output
+        assert "working_dir" not in result.output
+        assert "content:" not in result.output
+
+    def test_session_status_is_concise(self):
+        """session status should render a concise summary instead of raw payload."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["session", "status"])
+        assert result.exit_code == 0
+        assert "URL:" in result.output
+        assert "Working dir:" in result.output
+        assert "History:" in result.output
+        assert "Forward:" in result.output
+        assert "Daemon:" in result.output
+        assert "current_url" not in result.output
+        assert "forward_stack_length" not in result.output
+
+    def test_session_daemon_start_is_concise(self):
+        """daemon start should not print the payload dict in normal mode."""
+        from cli_anything.browser.browser_cli import cli
+        from click.testing import CliRunner
+
+        runner = CliRunner()
+        with patch("cli_anything.browser.browser_cli.backend.start_daemon"):
+            result = runner.invoke(cli, ["session", "daemon-start"])
+            assert result.exit_code == 0
+            assert "Daemon mode started" in result.output
+            assert "daemon:" not in result.output
+
+    def test_change_directory_rejects_text_error_payload(self):
+        """cd should not update working_dir when backend returns an error text payload."""
+        sess = Session()
+        sess.set_working_dir("/")
+
+        with patch("cli_anything.browser.core.fs.backend.cd") as mock_cd:
+            mock_cd.return_value = {
+                "content": [{"type": "text", "text": "cd: main: No such directory"}],
+                "isError": False,
+            }
+
+            result = fs.change_directory(sess, "/main")
+
+            assert sess.working_dir == "/"
+            assert result["isError"] is False
+            mock_cd.assert_called_once_with("/main", use_daemon=False)
+
 
 # ── Filesystem Module Tests ───────────────────────────────────────
 
@@ -208,7 +453,9 @@ class TestFsModule:
         sess = Session()
         sess.set_working_dir("/main")
 
-        with patch("cli_anything.browser.core.fs.backend.ls") as mock_ls:
+        with patch("cli_anything.browser.core.fs.backend.cd") as mock_cd, \
+             patch("cli_anything.browser.core.fs.backend.ls") as mock_ls:
+            mock_cd.return_value = {"path": "/main", "status": "changed"}
             mock_ls.return_value = {
                 "path": "/main",
                 "entries": [{"name": "button", "role": "button", "path": "/main/button[0]"}]
@@ -216,6 +463,7 @@ class TestFsModule:
 
             result = fs.list_elements(sess)
 
+            mock_cd.assert_any_call("/main", use_daemon=False)
             mock_ls.assert_called_once_with("/main", use_daemon=False)
 
     def test_list_elements_with_path(self):
@@ -223,11 +471,14 @@ class TestFsModule:
         sess = Session()
         sess.set_working_dir("/main")
 
-        with patch("cli_anything.browser.core.fs.backend.ls") as mock_ls:
+        with patch("cli_anything.browser.core.fs.backend.cd") as mock_cd, \
+             patch("cli_anything.browser.core.fs.backend.ls") as mock_ls:
+            mock_cd.return_value = {"path": "/div", "status": "changed"}
             mock_ls.return_value = {"path": "/div", "entries": []}
 
             result = fs.list_elements(sess, "/div")
 
+            mock_cd.assert_any_call("/div", use_daemon=False)
             mock_ls.assert_called_once_with("/div", use_daemon=False)
 
     def test_list_elements_empty_path_uses_working_dir(self):
@@ -235,11 +486,14 @@ class TestFsModule:
         sess = Session()
         sess.set_working_dir("/main")
 
-        with patch("cli_anything.browser.core.fs.backend.ls") as mock_ls:
+        with patch("cli_anything.browser.core.fs.backend.cd") as mock_cd, \
+             patch("cli_anything.browser.core.fs.backend.ls") as mock_ls:
+            mock_cd.return_value = {"path": "/main", "status": "changed"}
             mock_ls.return_value = {"path": "/main", "entries": []}
 
             result = fs.list_elements(sess, "")
 
+            mock_cd.assert_any_call("/main", use_daemon=False)
             mock_ls.assert_called_once_with("/main", use_daemon=False)
 
     def test_change_directory_absolute_path(self):

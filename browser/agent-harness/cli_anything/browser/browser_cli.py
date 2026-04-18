@@ -25,6 +25,7 @@ from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page as page_mod
 from cli_anything.browser.core import fs as fs_mod
 from cli_anything.browser.utils import domshell_backend as backend
+from cli_anything.browser.utils.tool_result import tool_result_body_text, tool_result_error_text, tool_result_has_error
 
 # Global state
 _session: Optional[Session] = None
@@ -36,22 +37,32 @@ _availability_cached: Optional[tuple[bool, str]] = None  # Cache for REPL mode
 def get_session() -> Session:
     global _session
     if _session is None:
-        _session = Session()
+        if backend.daemon_started():
+            _session = Session.load_persisted()
+        else:
+            _session = Session()
     return _session
 
 
-def output(data, message: str = ""):
+def output(data, message: str = "", body: Optional[str] = None):
     if _json_output:
         click.echo(json.dumps(data, indent=2, default=str))
+        return
+
+    if message:
+        click.echo(message)
+
+    if body is not None:
+        if body:
+            click.echo(body)
+        return
+
+    if isinstance(data, dict):
+        _print_dict(data)
+    elif isinstance(data, list):
+        _print_list(data)
     else:
-        if message:
-            click.echo(message)
-        if isinstance(data, dict):
-            _print_dict(data)
-        elif isinstance(data, list):
-            _print_list(data)
-        else:
-            click.echo(str(data))
+        click.echo(str(data))
 
 
 def _print_dict(d: dict, indent: int = 0):
@@ -75,6 +86,21 @@ def _print_list(items: list, indent: int = 0):
             _print_dict(item, indent + 1)
         else:
             click.echo(f"{prefix}- {item}")
+
+
+def _format_page_info(sess: Session) -> str:
+    url = sess.current_url or "(no page loaded)"
+    return f"URL: {url}\nWorking dir: {sess.working_dir}"
+
+
+def _format_session_status(status: dict) -> str:
+    return (
+        f"URL: {status.get('current_url', '(no page loaded)')}\n"
+        f"Working dir: {status.get('working_dir', '/')}\n"
+        f"History: {status.get('history_length', 0)}\n"
+        f"Forward: {status.get('forward_stack_length', 0)}\n"
+        f"Daemon: {'on' if status.get('daemon_mode') else 'off'}"
+    )
 
 
 def handle_error(func):
@@ -136,6 +162,7 @@ def cli(ctx, use_json, use_daemon):
     if use_daemon:
         try:
             backend.start_daemon()
+            _session.persist_state = True
             _session.enable_daemon()
             if not _json_output:
                 click.echo("Daemon mode: persistent MCP connection active")
@@ -164,7 +191,10 @@ def page_open(url):
     """Open a URL in Chrome."""
     sess = get_session()
     result = page_mod.open_page(sess, url)
-    output(result, f"Opened: {url}")
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "open failed"), body="")
+    else:
+        output(result, f"Opened: {url}", body="")
 
 
 @page.command("reload")
@@ -173,7 +203,10 @@ def page_reload():
     """Reload the current page."""
     sess = get_session()
     result = page_mod.reload_page(sess)
-    output(result, "Page reloaded")
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "reload failed"), body="")
+    else:
+        output(result, "Page reloaded", body="")
 
 
 @page.command("back")
@@ -182,10 +215,10 @@ def page_back():
     """Navigate back in history."""
     sess = get_session()
     result = page_mod.go_back(sess)
-    if "error" in result:
-        output(result, result["error"])
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "back failed"), body="")
     else:
-        output(result, "Navigated back")
+        output(result, "Navigated back", body="")
 
 
 @page.command("forward")
@@ -194,10 +227,10 @@ def page_forward():
     """Navigate forward in history."""
     sess = get_session()
     result = page_mod.go_forward(sess)
-    if "error" in result:
-        output(result, result["error"])
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "forward failed"), body="")
     else:
-        output(result, "Navigated forward")
+        output(result, "Navigated forward", body="")
 
 
 @page.command("info")
@@ -206,7 +239,7 @@ def page_info():
     """Show current page information."""
     sess = get_session()
     result = page_mod.get_page_info(sess)
-    output(result)
+    output(result, body=_format_page_info(sess))
 
 
 # ── Filesystem Commands ──────────────────────────────────────────
@@ -223,7 +256,9 @@ def fs_ls(path):
     """List elements at a path in the accessibility tree."""
     sess = get_session()
     result = fs_mod.list_elements(sess, path)
-    if _json_output:
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "ls failed"), body="")
+    elif _json_output:
         output(result)
     else:
         entries = result.get("entries", [])
@@ -246,10 +281,10 @@ def fs_cd(path):
     """Change directory in the accessibility tree."""
     sess = get_session()
     result = fs_mod.change_directory(sess, path)
-    if "error" in result:
-        output(result, result["error"])
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "cd failed"), body="")
     else:
-        output(result, f"Changed to: {sess.working_dir}")
+        output(result, f"Changed to: {sess.working_dir}", body="")
 
 
 @fs.command("cat")
@@ -259,7 +294,10 @@ def fs_cat(path):
     """Read element content from the accessibility tree."""
     sess = get_session()
     result = fs_mod.read_element(sess, path)
-    output(result)
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "cat failed"), body="")
+    else:
+        output(result, body=tool_result_body_text(result, "(empty)"))
 
 
 @fs.command("grep")
@@ -270,7 +308,9 @@ def fs_grep(pattern, path):
     """Search for pattern in the accessibility tree."""
     sess = get_session()
     result = fs_mod.grep_elements(sess, pattern, path)
-    if _json_output:
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "grep failed"), body="")
+    elif _json_output:
         output(result)
     else:
         matches = result.get("matches", [])
@@ -303,9 +343,12 @@ def act():
 def act_click(path):
     """Click an element at the given path."""
     sess = get_session()
-    use_daemon = sess.daemon_mode
+    use_daemon = sess.daemon_mode or backend.daemon_started()
     result = backend.click(path, use_daemon=use_daemon)
-    output(result, f"Clicked: {path}")
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "click failed"), body="")
+    else:
+        output(result, f"Clicked: {path}", body="")
 
 
 @act.command("type")
@@ -315,9 +358,12 @@ def act_click(path):
 def act_type(path, text):
     """Type text into an input element."""
     sess = get_session()
-    use_daemon = sess.daemon_mode
+    use_daemon = sess.daemon_mode or backend.daemon_started()
     result = backend.type_text(path, text, use_daemon=use_daemon)
-    output(result, f"Typed into: {path}")
+    if tool_result_has_error(result):
+        output(result, tool_result_error_text(result, "type failed"), body="")
+    else:
+        output(result, f"Typed into: {path}", body="")
 
 
 # ── Session Commands ─────────────────────────────────────────────
@@ -333,7 +379,8 @@ def session_status():
     """Show current session status."""
     sess = get_session()
     status = sess.status()
-    output(status)
+    status["daemon_mode"] = status.get("daemon_mode", False) or backend.daemon_started()
+    output(status, body=_format_session_status(status))
 
 
 @session.command("daemon-start")
@@ -342,10 +389,12 @@ def session_daemon_start():
     """Start persistent daemon mode."""
     try:
         backend.start_daemon()
-        get_session().enable_daemon()
-        output({"daemon": "started"}, "Daemon mode started")
+        sess = get_session()
+        sess.persist_state = True
+        sess.enable_daemon()
+        output({"daemon": "started"}, "Daemon mode started", body="")
     except RuntimeError as e:
-        output({"error": str(e)}, str(e))
+        output({"error": str(e)}, str(e), body="")
 
 
 @session.command("daemon-stop")
@@ -353,8 +402,10 @@ def session_daemon_start():
 def session_daemon_stop():
     """Stop persistent daemon mode."""
     backend.stop_daemon()
-    get_session().disable_daemon()
-    output({"daemon": "stopped"}, "Daemon mode stopped")
+    sess = get_session()
+    sess.persist_state = True
+    sess.disable_daemon()
+    output({"daemon": "stopped"}, "Daemon mode stopped", body="")
 
 
 # ── REPL ─────────────────────────────────────────────────────────

@@ -31,6 +31,8 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 
 **One Command Line**: Make any software agent-ready for Pi, OpenClaw, nanobot, Cursor, Claude Code, etc.&nbsp;&nbsp;[**中文文档**](README_CN.md) | [**日本語ドキュメント**](README_JA.md)
 
+**🛠️ Maintenance**: REPL skin canonical source + sync/verification workflow lives in [`docs/repl-skin-maintenance.md`](docs/repl-skin-maintenance.md).
+
 <p align="center">
   <img src="assets/cli-typing.gif" alt="CLI-Anything typing demo" width="800">
 </p>

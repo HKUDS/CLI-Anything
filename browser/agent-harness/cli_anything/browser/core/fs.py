@@ -10,6 +10,8 @@ These commands provide filesystem-like navigation:
 
 from typing import TYPE_CHECKING
 
+from cli_anything.browser.utils.tool_result import tool_result_has_error
+
 if TYPE_CHECKING:
     from cli_anything.browser.core.session import Session
 
@@ -28,11 +30,23 @@ def list_elements(session: "Session", path: str = "") -> dict:
 
     Example:
         >>> list_elements(session, "/main")
-        {"path": "/main", "entries": [{"name": "button", "role": "button", ...}]}
+        {"path": "/", "entries": [{"name": "main", "role": "landmark", ...}]}
     """
     target_path = path if path else session.working_dir
-    use_daemon = session.daemon_mode
-    return backend.ls(target_path, use_daemon=use_daemon)
+    use_daemon = session.daemon_mode or backend.daemon_started()
+
+    # DOMShell ls can silently return an empty list for invalid paths. Preflight
+    # the target with cd, then restore the original working directory.
+    if target_path and target_path != "/":
+        cd_result = backend.cd(target_path, use_daemon=use_daemon)
+        if tool_result_has_error(cd_result):
+            return cd_result
+
+    try:
+        return backend.ls(target_path, use_daemon=use_daemon)
+    finally:
+        if target_path and target_path != "/":
+            backend.cd(session.working_dir or "/", use_daemon=use_daemon)
 
 
 def change_directory(session: "Session", path: str) -> dict:
@@ -68,11 +82,11 @@ def change_directory(session: "Session", path: str) -> dict:
         else:
             path = session.working_dir.rstrip("/") + "/" + path
 
-    use_daemon = session.daemon_mode
+    use_daemon = session.daemon_mode or backend.daemon_started()
     result = backend.cd(path, use_daemon=use_daemon)
     # Only update working_dir if backend succeeded
-    if isinstance(result, dict) and "error" not in result:
-        new_working_dir = result.get("path", path)
+    if isinstance(result, dict) and not tool_result_has_error(result):
+        new_working_dir = result.get("path") or result.get("working_dir") or path
         session.set_working_dir(new_working_dir)
     return result
 
@@ -92,7 +106,7 @@ def read_element(session: "Session", path: str = "") -> dict:
         {"name": "Submit", "role": "button", "text": "Submit", ...}
     """
     target_path = path if path else session.working_dir
-    use_daemon = session.daemon_mode
+    use_daemon = session.daemon_mode or backend.daemon_started()
     return backend.cat(target_path, use_daemon=use_daemon)
 
 
@@ -112,13 +126,13 @@ def grep_elements(session: "Session", pattern: str, path: str = "") -> dict:
         {"matches": ["/main/button[0]", "/main/link[1]"]}
     """
     target_path = path if path else session.working_dir
-    use_daemon = session.daemon_mode
+    use_daemon = session.daemon_mode or backend.daemon_started()
 
     # DOMShell's grep searches from the server-side CWD. To root the search
     # at the requested path, cd there first, grep, then restore.
     if target_path and target_path != "/":
         cd_result = backend.cd(target_path, use_daemon=use_daemon)
-        if hasattr(cd_result, 'isError') and cd_result.isError:
+        if tool_result_has_error(cd_result):
             return cd_result
 
     try:
