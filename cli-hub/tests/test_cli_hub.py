@@ -43,7 +43,7 @@ SAMPLE_REGISTRY = {
             "homepage": "https://gimp.org",
             "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=gimp/agent-harness",
             "entry_point": "cli-anything-gimp",
-            "skill_md": "gimp/agent-harness/cli_anything/gimp/skills/SKILL.md",
+            "skill_md": "skills/cli-anything-gimp/SKILL.md",
             "category": "image",
             "contributor": "test-user",
             "contributor_url": "https://github.com/test-user",
@@ -244,7 +244,7 @@ class TestMatrixSkill:
         content = Path(rendered).read_text()
         assert "## Installed CLI Skills" in content
         assert "/tmp/gimp/skills/SKILL.md" in content
-        assert "gimp/agent-harness/cli_anything/gimp/skills/SKILL.md" in content
+        assert "skills/cli-anything-gimp/SKILL.md" in content
         assert "not installed" in content
 
 
