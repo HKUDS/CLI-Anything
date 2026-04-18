@@ -88,7 +88,7 @@ SAMPLE_MATRIX_REGISTRY = {
             "description": "Curated video workflow matrix",
             "category": "video",
             "matrix": "cli-matrix",
-            "matrix_id": "V1",
+            "matrix_id": "S1",
             "skill_md": "cli-hub-matrix/video-creation/SKILL.md",
             "clis": ["gimp", "blender", "audacity"],
             "stages": [

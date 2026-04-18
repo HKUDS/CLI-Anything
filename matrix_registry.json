@@ -1,24 +1,27 @@
 {
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
-    "description": "Curated CLI Matrix registry for CLI-Hub multi-CLI workflows",
-    "updated": "2026-04-17"
+    "description": "Curated CLI Matrix registry for CLI-Hub multi-CLI workflows (capability-based, v2 schema)",
+    "updated": "2026-04-18",
+    "schema_doc": "docs/cli-matrix/matrix_registry.schema.md"
   },
   "matrices": [
     {
       "name": "video-creation",
       "display_name": "Video Creation & Editing",
-      "version": "2",
-      "description": "Curated end-to-end video production matrix spanning generation, capture, voice/music, editing, captioning, and thumbnailing for an agent-driven workflow.",
+      "version": "3",
+      "schema_version": "2",
+      "description": "Capability-based matrix for end-to-end video production: generation, capture, voice/music, transcription, assembly, overlay, thumbnail, and encode. Providers include harness CLIs, public CLIs, Python libs, native binaries, and cloud APIs.",
       "category": "video",
       "matrix": "cli-matrix",
-      "matrix_id": "V1",
-      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix.md",
+      "matrix_id": "S1",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix-plan.md",
       "skill_md": "cli-hub-matrix/video-creation/SKILL.md",
       "clis": [
         "generate-veo-video",
         "jimeng",
         "openscreen",
+        "obs-studio",
         "audacity",
         "minimax-cli",
         "elevenlabs",
@@ -26,112 +29,202 @@
         "kdenlive",
         "shotcut",
         "videocaptioner",
-        "gimp"
+        "gimp",
+        "krita",
+        "inkscape"
       ],
-      "stages": [
+      "capabilities": [
         {
-          "name": "AI video gen",
-          "goal": "Generate video clips from text prompts or reference images",
-          "clis": [
-            "generate-veo-video",
-            "jimeng"
-          ],
-          "alternatives": {
-            "python": ["replicate (Runway, Kling)", "diffusers"],
-            "api": ["Runway API", "Kling API", "Pika API"]
-          },
-          "skill_search_hints": ["video generation", "text-to-video", "AI video"]
+          "id": "visual.generate",
+          "intent": "Produce a video clip from a text prompt or reference image.",
+          "inputs": ["prompt:text", "ref_image?:path", "duration?:seconds"],
+          "outputs": ["video_clip:path"],
+          "skill_search_hints": ["text-to-video", "AI video", "video generation"],
+          "providers": [
+            {"kind": "public-cli", "name": "generate-veo-video", "requires": {"binary": ["generate-veo"], "env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "public-cli", "name": "jimeng", "requires": {"binary": ["dreamina"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "ByteDance Dreamina; shares model family with Seedance."},
+            {"kind": "api", "name": "Runway Gen-4", "requires": {"env": ["RUNWAY_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "~$0.05/sec, cinematic motion."},
+            {"kind": "api", "name": "Kling", "requires": {"env": ["KLING_API_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Pika", "requires": {"env": ["PIKA_API_KEY"]}, "cost_tier": "paid", "quality_tier": "good", "offline": false},
+            {"kind": "api", "name": "Seedance", "requires": {"env": ["SEEDANCE_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "ByteDance Seedance; realistic motion."},
+            {"kind": "python", "name": "replicate", "requires": {"package": ["replicate"], "env": ["REPLICATE_API_TOKEN"]}, "cost_tier": "metered", "quality_tier": "good", "offline": false},
+            {"kind": "python", "name": "diffusers (SVD/AnimateDiff)", "requires": {"package": ["diffusers"]}, "cost_tier": "free", "quality_tier": "basic", "offline": true}
+          ]
         },
         {
-          "name": "Screen/cam capture",
-          "goal": "Record screen activity, webcam, or application windows to video files",
-          "clis": [
-            "openscreen"
-          ],
-          "alternatives": {
-            "python": ["pyautogui + cv2", "mss"],
-            "native": ["ffmpeg -f x11grab (Linux)", "screencapture (macOS)"]
-          },
-          "skill_search_hints": ["screen recording", "capture", "screencast"]
+          "id": "visual.capture",
+          "intent": "Record screen, webcam, or application windows to a video file.",
+          "inputs": ["source:screen|window|webcam", "duration?:seconds"],
+          "outputs": ["video_clip:path"],
+          "skill_search_hints": ["screen recording", "screencast", "webcam capture"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-openscreen", "requires": {"binary": ["cli-anything-openscreen"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-obs-studio", "requires": {"binary": ["cli-anything-obs-studio"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "ffmpeg x11grab/avfoundation", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "screencapture (macOS)", "requires": {"binary": ["screencapture"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "mss + cv2", "requires": {"package": ["mss", "opencv-python"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
         },
         {
-          "name": "Audio capture/edit",
-          "goal": "Record, clean, trim, normalize, and process audio tracks",
-          "clis": [
-            "audacity"
-          ],
-          "alternatives": {
-            "python": ["pydub", "soundfile", "librosa", "noisereduce"],
-            "native": ["sox", "ffmpeg"]
-          },
-          "skill_search_hints": ["audio editing", "noise reduction", "audio processing"]
+          "id": "audio.capture",
+          "intent": "Record, clean, trim, normalize, or denoise audio tracks.",
+          "inputs": ["source:mic|file"],
+          "outputs": ["audio_clip:path"],
+          "skill_search_hints": ["audio editing", "noise reduction"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-audacity", "requires": {"binary": ["cli-anything-audacity"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "sox/ffmpeg", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "pydub/soundfile/librosa/noisereduce", "requires": {"package": ["pydub"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
         },
         {
-          "name": "Voice/TTS",
-          "goal": "Generate speech audio from text for narration or voiceover",
-          "clis": [
-            "minimax-cli",
-            "elevenlabs"
-          ],
-          "alternatives": {
-            "python": ["TTS (coqui-ai)", "pyttsx3", "edge-tts"],
-            "api": ["Google Cloud TTS", "Amazon Polly", "Azure Speech"]
-          },
-          "skill_search_hints": ["text-to-speech", "TTS", "voice synthesis", "narration"]
+          "id": "audio.synthesize",
+          "intent": "Generate speech audio from text (narration / voiceover).",
+          "inputs": ["text", "voice?:id", "lang?:code"],
+          "outputs": ["audio_clip:path"],
+          "skill_search_hints": ["text-to-speech", "TTS", "voice synthesis"],
+          "providers": [
+            {"kind": "public-cli", "name": "minimax-cli", "requires": {"binary": ["minimax-cli"], "env": ["MINIMAX_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "public-cli", "name": "elevenlabs", "requires": {"binary": ["elevenlabs"], "env": ["ELEVENLABS_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "OpenAI TTS", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Google Cloud TTS", "requires": {"env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "python", "name": "edge-tts", "requires": {"package": ["edge-tts"]}, "cost_tier": "free", "quality_tier": "good", "offline": false},
+            {"kind": "python", "name": "TTS (coqui)", "requires": {"package": ["TTS"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "pyttsx3", "requires": {"package": ["pyttsx3"]}, "cost_tier": "free", "quality_tier": "basic", "offline": true}
+          ]
         },
         {
-          "name": "Music/BGM gen",
-          "goal": "Generate background music or sound effects from prompts",
-          "clis": [
-            "minimax-cli",
-            "suno"
-          ],
-          "alternatives": {
-            "python": ["audiocraft (Meta MusicGen)", "stable-audio-tools"],
-            "api": ["Suno API", "Udio API"]
-          },
-          "skill_search_hints": ["music generation", "background music", "audio synthesis"]
+          "id": "audio.music",
+          "intent": "Generate background music or sound effects.",
+          "inputs": ["prompt:text", "duration?:seconds"],
+          "outputs": ["audio_clip:path"],
+          "skill_search_hints": ["music generation", "background music"],
+          "providers": [
+            {"kind": "public-cli", "name": "suno", "requires": {"binary": ["suno"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "public-cli", "name": "minimax-cli", "requires": {"binary": ["minimax-cli"], "env": ["MINIMAX_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Udio", "requires": {"env": ["UDIO_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "python", "name": "audiocraft (MusicGen)", "requires": {"package": ["audiocraft"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "stable-audio-tools", "requires": {"package": ["stable-audio-tools"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
         },
         {
-          "name": "NLE editing",
-          "goal": "Assemble video/audio clips on a timeline, add transitions, and export the final cut",
-          "clis": [
-            "kdenlive",
-            "shotcut"
-          ],
-          "alternatives": {
-            "python": ["moviepy", "ffmpeg-python"],
-            "native": ["ffmpeg concat/filter_complex"]
-          },
-          "skill_search_hints": ["video editing", "timeline", "NLE", "video assembly"]
+          "id": "text.transcribe",
+          "intent": "Transcribe speech to text and produce subtitle files (SRT/ASS).",
+          "inputs": ["audio_or_video:path", "lang?:code"],
+          "outputs": ["subtitles:path", "transcript:text"],
+          "skill_search_hints": ["subtitle", "transcribe", "speech-to-text"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-videocaptioner", "requires": {"binary": ["cli-anything-videocaptioner"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Can use cloud ASR backends if configured."},
+            {"kind": "python", "name": "openai-whisper", "requires": {"package": ["whisper"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "faster-whisper/stable-ts", "requires": {"package": ["faster_whisper"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "api", "name": "AssemblyAI", "requires": {"env": ["ASSEMBLYAI_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Deepgram", "requires": {"env": ["DEEPGRAM_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Google Speech-to-Text", "requires": {"env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
         },
         {
-          "name": "Captions/subs",
-          "goal": "Transcribe speech, generate subtitles (SRT/ASS), optionally translate, and burn into video",
-          "clis": [
-            "videocaptioner"
-          ],
-          "alternatives": {
-            "python": ["whisper (openai-whisper)", "pysrt", "stable-ts"],
-            "api": ["Google Speech-to-Text", "AssemblyAI", "Deepgram"],
-            "native": ["ffmpeg -vf subtitles=subs.srt"]
-          },
-          "skill_search_hints": ["subtitle", "transcribe", "caption", "speech-to-text"]
+          "id": "text.translate",
+          "intent": "Translate subtitles or script text across languages.",
+          "inputs": ["text_or_srt:path", "target_lang:code"],
+          "outputs": ["translated:path"],
+          "skill_search_hints": ["translation", "subtitle translation"],
+          "providers": [
+            {"kind": "api", "name": "OpenAI/Claude", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "DeepL", "requires": {"env": ["DEEPL_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "python", "name": "argos-translate", "requires": {"package": ["argostranslate"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
         },
         {
-          "name": "Thumbnail",
-          "goal": "Create a thumbnail image or social card for the video",
-          "clis": [
-            "gimp"
-          ],
-          "alternatives": {
-            "python": ["Pillow", "cairosvg", "html2image"],
-            "api": ["Google Nano Banana", "OpenAI GPT-Image-1", "Ideogram API", "Stability AI image generation"],
-            "native": ["ffmpeg -ss 00:01:00 -frames:v 1 thumb.png", "ImageMagick convert"]
-          },
-          "skill_search_hints": ["image editing", "thumbnail", "graphic design"]
+          "id": "composite.assemble",
+          "intent": "Assemble clips on a timeline with transitions and export a single cut.",
+          "inputs": ["clips:path[]", "edit_plan?:json"],
+          "outputs": ["video:path"],
+          "skill_search_hints": ["video editing", "timeline", "NLE"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-kdenlive", "requires": {"binary": ["cli-anything-kdenlive"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-shotcut", "requires": {"binary": ["cli-anything-shotcut"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "moviepy", "requires": {"package": ["moviepy"], "binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "ffmpeg-python", "requires": {"package": ["ffmpeg-python"], "binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "ffmpeg concat/filter_complex", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true}
+          ]
+        },
+        {
+          "id": "composite.overlay",
+          "intent": "Burn subtitles, watermark, or picture-in-picture onto a video.",
+          "inputs": ["video:path", "overlay:path_or_srt"],
+          "outputs": ["video:path"],
+          "skill_search_hints": ["burn subtitles", "watermark", "overlay"],
+          "providers": [
+            {"kind": "native", "name": "ffmpeg -vf subtitles/overlay", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "moviepy (CompositeVideoClip)", "requires": {"package": ["moviepy"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "package.thumbnail",
+          "intent": "Create a thumbnail image or social card.",
+          "inputs": ["concept:text", "reference?:path"],
+          "outputs": ["image:path"],
+          "skill_search_hints": ["thumbnail", "social card", "image design"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-gimp", "requires": {"binary": ["cli-anything-gimp"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-krita", "requires": {"binary": ["cli-anything-krita"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-inkscape", "requires": {"binary": ["cli-anything-inkscape"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "Pillow", "requires": {"package": ["PIL"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "cairosvg/html2image", "requires": {"package": ["cairosvg"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "api", "name": "OpenAI GPT-Image-1", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Google Nano Banana", "requires": {"env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Ideogram", "requires": {"env": ["IDEOGRAM_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Stability AI", "requires": {"env": ["STABILITY_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "native", "name": "ffmpeg frame-grab", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "basic", "offline": true},
+            {"kind": "native", "name": "ImageMagick convert/magick", "requires": {"binary": ["magick"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "package.encode",
+          "intent": "Final mux / codec / container for the output video.",
+          "inputs": ["video:path", "target?:codec_or_container"],
+          "outputs": ["video:path"],
+          "skill_search_hints": ["encode", "transcode", "codec"],
+          "providers": [
+            {"kind": "native", "name": "ffmpeg", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true}
+          ]
         }
-      ]
+      ],
+      "recipes": [
+        {
+          "id": "ai-short",
+          "description": "Fully-generative social short.",
+          "capabilities_used": ["visual.generate", "audio.synthesize", "audio.music", "composite.assemble", "composite.overlay", "package.thumbnail", "package.encode"]
+        },
+        {
+          "id": "screencast-tutorial",
+          "description": "Record a screen walkthrough with narration and subtitles.",
+          "capabilities_used": ["visual.capture", "audio.capture", "text.transcribe", "composite.overlay", "package.thumbnail", "package.encode"]
+        },
+        {
+          "id": "talking-head-explainer",
+          "description": "Webcam + b-roll + captions.",
+          "capabilities_used": ["visual.capture", "visual.generate", "audio.capture", "text.transcribe", "composite.assemble", "composite.overlay", "package.thumbnail", "package.encode"]
+        },
+        {
+          "id": "podcast-to-video",
+          "description": "Audio-first, visualize and caption for video platforms.",
+          "capabilities_used": ["audio.capture", "text.transcribe", "package.thumbnail", "composite.overlay", "composite.assemble", "package.encode"]
+        }
+      ],
+      "known_gaps": [
+        {
+          "capability": "publish.upload",
+          "reason": "No first-party or public CLI for YouTube/TikTok/Bilibili/Instagram yet.",
+          "workaround": "Instruct the user to upload manually via the web UI, or escalate to a custom script using each platform's v3 API with an OAuth token the user supplies."
+        },
+        {
+          "capability": "visual.generate",
+          "reason": "Sota-tier cinematic output is only available via paid APIs (Runway, Kling, Seedance).",
+          "workaround": "Use generate-veo-video or jimeng for high-quality output; fall back to local diffusers (basic) for offline contexts."
+        }
+      ],
+      "suggest_to_user_template": "To enable <capability> via <provider>, please set <ENV_VAR>. Cost: <cost_tier>. Quality: <quality_tier>. Reply 'skip' to fall back to <next provider>."
     }
   ]
 }
