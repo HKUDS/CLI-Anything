@@ -13,6 +13,7 @@ Usage:
 """
 
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -137,7 +138,7 @@ def repl(ctx):
             continue
 
         # Parse and dispatch via Click
-        args = raw.split()
+        args = shlex.split(raw)
         try:
             main.main(args=args, obj={"session": sess, "as_json": False},
                       standalone_mode=False)
