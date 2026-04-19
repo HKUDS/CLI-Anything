@@ -29,6 +29,10 @@ DEFAULT_SERVER_CMD = "npx"
 DEFAULT_TOOL_TIMEOUT_SECONDS = 20.0
 
 
+class MCPToolTimeoutError(RuntimeError):
+    """Raised when a DOMShell MCP operation exceeds configured timeout."""
+
+
 def _build_server_args() -> list[str]:
     """Build server args at call time so env var changes are honored."""
     token = os.environ.get("DOMSHELL_TOKEN", "")
@@ -66,7 +70,7 @@ async def _await_with_timeout(coro: Awaitable[Any], operation: str) -> Any:
     try:
         return await asyncio.wait_for(coro, timeout=timeout_seconds)
     except asyncio.TimeoutError as e:
-        raise RuntimeError(
+        raise MCPToolTimeoutError(
             "DOMShell MCP request timed out after "
             f"{timeout_seconds:.1f}s during {operation}. "
             "Verify DOMSHELL_TOKEN and that the DOMShell server is reachable."
@@ -165,8 +169,8 @@ async def _call_tool(
                 f"{tool_name} (daemon)",
             )
             return result
-        except RuntimeError:
-            # Timeout/runtime errors should not re-run potentially non-idempotent tools.
+        except MCPToolTimeoutError:
+            # Timeout errors should not re-run potentially non-idempotent tools.
             raise
         except Exception:
             # Daemon died, fall back to spawning new server
