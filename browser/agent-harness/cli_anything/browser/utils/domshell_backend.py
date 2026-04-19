@@ -165,6 +165,9 @@ async def _call_tool(
                 f"{tool_name} (daemon)",
             )
             return result
+        except RuntimeError:
+            # Timeout/runtime errors should not re-run potentially non-idempotent tools.
+            raise
         except Exception:
             # Daemon died, fall back to spawning new server
             await _stop_daemon()

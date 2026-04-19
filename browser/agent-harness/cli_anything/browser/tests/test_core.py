@@ -8,7 +8,7 @@ Usage:
 
 import pytest
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page, fs
@@ -429,3 +429,31 @@ class TestBackendTimeouts:
 
         with pytest.raises(RuntimeError, match="timed out"):
             asyncio.run(backend_mod._await_with_timeout(_slow(), "unit-test"))
+
+    def test_daemon_timeout_is_not_retried_in_non_daemon_mode(self):
+        """Daemon timeout should bubble up and avoid duplicate tool reissue."""
+        class _DummyDaemonSession:
+            def call_tool(self, _tool_name, _arguments):
+                return object()
+
+        original_daemon = backend_mod._daemon_session
+        try:
+            backend_mod._daemon_session = _DummyDaemonSession()
+
+            with patch(
+                "cli_anything.browser.utils.domshell_backend._await_with_timeout",
+                side_effect=RuntimeError("timed out"),
+            ) as mock_await, patch(
+                "cli_anything.browser.utils.domshell_backend._stop_daemon",
+                new_callable=AsyncMock,
+            ) as mock_stop, patch(
+                "cli_anything.browser.utils.domshell_backend.stdio_client",
+            ) as mock_stdio:
+                with pytest.raises(RuntimeError, match="timed out"):
+                    asyncio.run(backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=True))
+
+                mock_await.assert_called_once()
+                mock_stop.assert_not_awaited()
+                mock_stdio.assert_not_called()
+        finally:
+            backend_mod._daemon_session = original_daemon
