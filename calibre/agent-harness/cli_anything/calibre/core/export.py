@@ -307,7 +307,12 @@ def export_chapters_pdf(
         epub_dir = Path(tmpdir) / "epub_content"
         epub_dir.mkdir()
         with zipfile.ZipFile(epub_files[0]) as zf:
-            zf.extractall(epub_dir)
+            # Validate each member path to prevent Zip Slip directory traversal attacks
+            for member in zf.infolist():
+                member_path = (epub_dir / member.filename).resolve()
+                if not str(member_path).startswith(str(epub_dir.resolve())):
+                    raise ValueError(f"Unsafe EPUB entry rejected: {member.filename}")
+                zf.extract(member, epub_dir)
 
         chapters = _parse_epub_chapters(epub_dir)
         if not chapters:
