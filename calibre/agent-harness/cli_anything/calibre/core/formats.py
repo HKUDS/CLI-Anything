@@ -127,9 +127,10 @@ def convert_format(
                 f"Book {book_id} does not have format {input_fmt} in the library."
             )
 
-        # Determine output path
+        # Determine output path; default to cwd (mirrors calibredb export default)
         if output_path is None:
-            output_path = str(Path(tmpdir) / f"converted.{output_fmt.lower()}")
+            input_stem = Path(input_file).stem
+            output_path = str(Path.cwd() / f"{input_stem}.{output_fmt.lower()}")
         else:
             os.makedirs(Path(output_path).parent, exist_ok=True)
 
