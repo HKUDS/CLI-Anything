@@ -170,7 +170,8 @@ async def _call_tool(
             )
             return result
         except MCPToolTimeoutError:
-            # Timeout errors should not re-run potentially non-idempotent tools.
+            # Do not auto-retry this tool call, but reset daemon for future recovery.
+            await _stop_daemon()
             raise
         except Exception:
             # Daemon died, fall back to spawning new server

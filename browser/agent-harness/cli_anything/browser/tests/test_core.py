@@ -431,7 +431,7 @@ class TestBackendTimeouts:
             asyncio.run(backend_mod._await_with_timeout(_slow(), "unit-test"))
 
     def test_daemon_timeout_is_not_retried_in_non_daemon_mode(self):
-        """Daemon timeout should bubble up and avoid duplicate tool reissue."""
+        """Daemon timeout should reset daemon, bubble up, and avoid duplicate reissue."""
         class _DummyDaemonSession:
             def call_tool(self, _tool_name, _arguments):
                 return object()
@@ -453,7 +453,7 @@ class TestBackendTimeouts:
                     asyncio.run(backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=True))
 
                 mock_await.assert_called_once()
-                mock_stop.assert_not_awaited()
+                mock_stop.assert_awaited_once()
                 mock_stdio.assert_not_called()
         finally:
             backend_mod._daemon_session = original_daemon
