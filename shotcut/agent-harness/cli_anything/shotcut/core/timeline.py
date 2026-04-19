@@ -30,6 +30,56 @@ def _get_fps(session: Session) -> tuple[int, int]:
     return fps_num, fps_den
 
 
+def _entry_duration_frames(session: Session, entry: dict) -> int:
+    """Return duration in frames for a playlist entry or blank."""
+    fps_num, fps_den = _get_fps(session)
+    if entry["type"] == "blank":
+        return parse_time_input(entry["length"], fps_num, fps_den)
+
+    in_point = entry.get("in") or "00:00:00.000"
+    out_point = entry.get("out")
+    if not out_point:
+        raise RuntimeError("Absolute timeline placement requires clips with finite out points")
+    return parse_time_input(out_point, fps_num, fps_den) - parse_time_input(in_point, fps_num, fps_den)
+
+
+def _absolute_insertion_point(
+    session: Session, playlist: etree._Element, at_time: str
+) -> tuple[int, int, int]:
+    """Resolve where a new clip can start on a track timeline.
+
+    Returns:
+        (insert_child_index, leading_blank_frames, trailing_blank_frames)
+    """
+    fps_num, fps_den = _get_fps(session)
+    target = parse_time_input(at_time, fps_num, fps_den)
+    if target < 0:
+        raise ValueError(f"Timeline position must be non-negative, got {at_time!r}")
+
+    children = list(playlist)
+    entries = mlt_xml.get_playlist_entries(playlist)
+    timeline_cursor = 0
+
+    for idx, entry in enumerate(entries):
+        duration = _entry_duration_frames(session, entry)
+        start = timeline_cursor
+        end = start + duration
+        if target == start:
+            return idx + len([c for c in children[: idx] if c.tag == "property"]), 0, 0
+        if entry["type"] == "blank" and start < target < end:
+            leading = target - start
+            trailing = end - target
+            return idx + len([c for c in children[: idx] if c.tag == "property"]), leading, trailing
+        if entry["type"] == "entry" and start < target < end:
+            raise RuntimeError(
+                f"Timeline position {at_time} overlaps an existing clip on track; "
+                "split or move clips before placing another clip there"
+            )
+        timeline_cursor = end
+
+    return len(children), max(0, target - timeline_cursor), 0
+
+
 def add_track(session: Session, track_type: str = "video",
               name: str = "") -> dict:
     """Add a new track to the timeline.
@@ -149,6 +199,7 @@ def add_clip(session: Session, resource: str, track_index: int,
              in_point: Optional[str] = None,
              out_point: Optional[str] = None,
              position: Optional[int] = None,
+             at_time: Optional[str] = None,
              caption: Optional[str] = None) -> dict:
     """Add a media clip to a track.
 
@@ -159,11 +210,14 @@ def add_clip(session: Session, resource: str, track_index: int,
         in_point: Trim in point (timecode or frames)
         out_point: Trim out point (timecode or frames)
         position: Insert position (clip index on track), None = append
+        at_time: Absolute timeline start time for the clip
         caption: Display name for the clip
     """
     resource = os.path.abspath(resource)
     if not os.path.isfile(resource):
         raise FileNotFoundError(f"Media file not found: {resource}")
+    if position is not None and at_time is not None:
+        raise ValueError("Use either position or at_time, not both")
 
     session.checkpoint()
 
@@ -177,12 +231,36 @@ def add_clip(session: Session, resource: str, track_index: int,
 
     # Add entry to the track's playlist
     playlist = _get_track_playlist(session, track_index)
-    entry = mlt_xml.add_entry_to_playlist(
-        playlist, producer.get("id"),
-        in_point=in_point,
-        out_point=out_point,
-        position=position,
-    )
+    if at_time is not None:
+        insert_child_index, leading_blank_frames, trailing_blank_frames = _absolute_insertion_point(
+            session, playlist, at_time
+        )
+        fps_num, fps_den = _get_fps(session)
+        if leading_blank_frames:
+            blank = etree.Element("blank")
+            blank.set("length", frames_to_timecode(leading_blank_frames, fps_num, fps_den))
+            playlist.insert(insert_child_index, blank)
+            insert_child_index += 1
+
+        entry = etree.Element("entry")
+        entry.set("producer", producer.get("id"))
+        if in_point:
+            entry.set("in", in_point)
+        if out_point:
+            entry.set("out", out_point)
+        playlist.insert(insert_child_index, entry)
+
+        if trailing_blank_frames:
+            blank = etree.Element("blank")
+            blank.set("length", frames_to_timecode(trailing_blank_frames, fps_num, fps_den))
+            playlist.insert(insert_child_index + 1, blank)
+    else:
+        entry = mlt_xml.add_entry_to_playlist(
+            playlist, producer.get("id"),
+            in_point=in_point,
+            out_point=out_point,
+            position=position,
+        )
 
     return {
         "action": "add_clip",
@@ -192,6 +270,7 @@ def add_clip(session: Session, resource: str, track_index: int,
         "in": in_point,
         "out": out_point,
         "position": position,
+        "at_time": at_time,
         "caption": caption or os.path.basename(resource),
     }
 

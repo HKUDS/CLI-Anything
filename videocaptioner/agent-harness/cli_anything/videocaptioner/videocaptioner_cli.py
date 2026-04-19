@@ -2,12 +2,12 @@
 """VideoCaptioner CLI — AI-powered video captioning from the command line.
 
 Transcribe speech, optimize and translate subtitles, then burn them into
-video with beautiful customizable styles (ASS outline or rounded background).
+video via the production VideoCaptioner backend.
 
 Usage:
     cli-anything-videocaptioner transcribe video.mp4 --asr bijian
     cli-anything-videocaptioner subtitle input.srt --translator bing --target-language en
-    cli-anything-videocaptioner synthesize video.mp4 -s sub.srt --subtitle-mode hard --style anime
+    cli-anything-videocaptioner synthesize video.mp4 -s sub.srt --subtitle-mode hard
     cli-anything-videocaptioner process video.mp4 --asr bijian --translator bing --target-language ja
     cli-anything-videocaptioner --json transcribe video.mp4 --asr bijian
 """
@@ -23,6 +23,7 @@ from cli_anything.videocaptioner.core import transcribe as transcribe_mod
 from cli_anything.videocaptioner.core import subtitle as subtitle_mod
 from cli_anything.videocaptioner.core import synthesize as synthesize_mod
 from cli_anything.videocaptioner.core import pipeline as pipeline_mod
+from cli_anything.videocaptioner.core import review as review_mod
 
 _json_output = False
 _repl_mode = False
@@ -65,7 +66,8 @@ def cli(ctx, use_json):
     """VideoCaptioner CLI — AI-powered video captioning.
 
     Transcribe speech, optimize/translate subtitles, burn into video with
-    beautiful styles. Free ASR (bijian) and translation (Bing/Google) included.
+    the stable backend surface. Free ASR (bijian) and translation
+    (Bing/Google) included.
 
     Run without a subcommand to enter interactive REPL mode.
     """
@@ -150,29 +152,25 @@ def subtitle(input_path, translator, target_language, fmt, output_path, layout,
 @click.option("--quality", type=click.Choice(["ultra", "high", "medium", "low"]),
               default="medium", help="Video quality (ultra=CRF18, high=CRF23, medium=CRF28, low=CRF32)")
 @click.option("-o", "--output", "output_path", default=None, help="Output video file path")
-@click.option("--layout", type=click.Choice(["target-above", "source-above", "target-only", "source-only"]),
-              default=None, help="Bilingual subtitle layout")
-@click.option("--render-mode", type=click.Choice(["ass", "rounded"]),
-              default=None, help="ass: outline/shadow, rounded: background boxes")
-@click.option("--style", default=None, help="Style preset (default, anime, vertical, rounded)")
-@click.option("--style-override", default=None, help='Inline JSON, e.g. \'{"outline_color": "#ff0000"}\'')
-@click.option("--font-file", default=None, help="Custom font file (.ttf/.otf)")
+@click.option("--review-script", default=None,
+              help="Reference script/transcript text to verify before synthesize")
+@click.option("--max-script-diff-ratio", default=0.12, show_default=True, type=float,
+              help="Fail review when subtitle/script drift exceeds this ratio")
 @handle_error
 def synthesize(video_path, subtitle_path, subtitle_mode, quality, output_path,
-               layout, render_mode, style, style_override, font_file):
-    """Burn subtitles into video with customizable styles.
+               review_script, max_script_diff_ratio):
+    """Burn subtitles into video.
 
-    Two rendering modes for beautiful subtitles:
-      ASS — traditional outline/shadow (presets: default, anime, vertical)
-      Rounded — modern rounded background boxes
-
-    Use 'cli-anything-videocaptioner styles' to see all presets.
+    The harness mirrors the backend's stable synthesize surface. Advanced style
+    controls are backend-version dependent and are not exposed here unless the
+    installed backend supports them. Use --review-script to block a final burn
+    when the subtitle asset drifts too far from an approved script.
     """
     result_path = synthesize_mod.synthesize(
         video_path, subtitle_path, output_path=output_path,
-        subtitle_mode=subtitle_mode, quality=quality, layout=layout,
-        render_mode=render_mode, style=style, style_override=style_override,
-        font_file=font_file,
+        subtitle_mode=subtitle_mode, quality=quality,
+        review_script=review_script,
+        max_script_diff_ratio=max_script_diff_ratio,
     )
     output({"output_path": result_path}, f"✓ Video synthesis complete → {result_path}")
 
@@ -190,9 +188,6 @@ def synthesize(video_path, subtitle_path, subtitle_mode, quality, output_path,
 @click.option("--quality", type=click.Choice(["ultra", "high", "medium", "low"]), default="medium")
 @click.option("-o", "--output", "output_path", default=None, help="Output file or directory path")
 @click.option("--layout", type=click.Choice(["target-above", "source-above", "target-only", "source-only"]), default=None)
-@click.option("--style", default=None, help="Style preset name")
-@click.option("--style-override", default=None, help="Inline JSON style override")
-@click.option("--render-mode", type=click.Choice(["ass", "rounded"]), default=None)
 @click.option("--no-optimize", is_flag=True, help="Skip optimization")
 @click.option("--no-translate", is_flag=True, help="Skip translation")
 @click.option("--no-split", is_flag=True, help="Skip re-segmentation")
@@ -204,7 +199,7 @@ def synthesize(video_path, subtitle_path, subtitle_mode, quality, output_path,
 @click.option("--model", default=None, help="LLM model name")
 @handle_error
 def process(input_path, asr, language, translator, target_language, subtitle_mode,
-            quality, output_path, layout, style, style_override, render_mode,
+            quality, output_path, layout,
             no_optimize, no_translate, no_split, no_synthesize, reflect,
             prompt, api_key, api_base, model):
     """Full pipeline: transcribe → optimize → translate → synthesize.
@@ -216,7 +211,6 @@ def process(input_path, asr, language, translator, target_language, subtitle_mod
         input_path, output_path=output_path, asr=asr, language=language,
         translator=translator, target_language=target_language,
         subtitle_mode=subtitle_mode, quality=quality, layout=layout,
-        style=style, style_override=style_override, render_mode=render_mode,
         no_optimize=no_optimize, no_translate=no_translate, no_split=no_split,
         no_synthesize=no_synthesize, reflect=reflect, prompt=prompt,
         api_key=api_key, api_base=api_base, model=model,
@@ -228,12 +222,37 @@ def process(input_path, asr, language, translator, target_language, subtitle_mod
 @cli.command()
 @handle_error
 def styles():
-    """List available subtitle style presets."""
+    """Show subtitle style availability for the installed backend."""
     result = vc_backend.get_styles()
     if _json_output:
         click.echo(json.dumps({"styles": result}))
     else:
         click.echo(result)
+
+
+# ── Review ──────────────────────────────────────────────────────
+@cli.command()
+@click.argument("subtitle_path")
+@click.option("--script", "script_path", default=None, help="Reference script/transcript text file")
+@click.option("--max-diff-ratio", default=0.12, show_default=True, type=float,
+              help="Maximum allowed subtitle/script drift")
+@click.option("--preview-video", default=None, help="Video file to render a review frame from")
+@click.option("--preview-at", default="00:00:05.000", show_default=True,
+              help="Timestamp for preview frame generation")
+@click.option("--preview-output", default=None, help="Output PNG/JPG path for the review frame")
+@handle_error
+def review(subtitle_path, script_path, max_diff_ratio, preview_video, preview_at, preview_output):
+    """Review subtitle consistency and optionally render a preview frame."""
+    report = review_mod.review_subtitles(
+        subtitle_path,
+        script_path=script_path,
+        max_diff_ratio=max_diff_ratio,
+        preview_video=preview_video,
+        preview_at=preview_at if preview_output else None,
+        preview_output=preview_output,
+    )
+    status_text = report.get("status", "pass").upper()
+    output(report, f"✓ Review {status_text}")
 
 
 # ── Config ──────────────────────────────────────────────────────
@@ -289,7 +308,7 @@ def session():
 def session_status():
     """Show VideoCaptioner version and configuration."""
     version = vc_backend.get_version()
-    data = {"version": version, "json_output": _json_output}
+    data = {"version": version, "json_output": _json_output, **vc_backend.get_runtime_guidance()}
     output(data, f"VideoCaptioner {version}")
 
 
@@ -312,6 +331,7 @@ def repl():
         "transcribe": "Transcribe audio/video to subtitles",
         "subtitle":   "Optimize and/or translate subtitles",
         "synthesize": "Burn subtitles into video",
+        "review":     "Check subtitle/script drift and optionally render a preview frame",
         "process":    "Full pipeline (transcribe → translate → synthesize)",
         "styles":     "List subtitle style presets",
         "config":     "show|set <key> <value>",

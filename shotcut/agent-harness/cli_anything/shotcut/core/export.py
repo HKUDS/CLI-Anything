@@ -184,7 +184,7 @@ def _build_volume(props: dict) -> Optional[str]:
     """Convert MLT volume filter to ffmpeg volume/afade."""
     level = props.get("level", props.get("gain", "1.0"))
     if "=" in level and ";" in level:
-        return _build_audio_fade(level)
+        return _build_volume_expression(level)
     # Check if gain in dB
     gain = props.get("gain")
     if gain:
@@ -192,20 +192,33 @@ def _build_volume(props: dict) -> Optional[str]:
     return f"volume={level}"
 
 
-def _build_audio_fade(keyframes: str) -> Optional[str]:
-    """Convert keyframed volume to ffmpeg afade."""
-    parts = keyframes.split(";")
-    if len(parts) < 2:
+def _build_volume_expression(keyframes: str) -> Optional[str]:
+    """Convert keyframed volume to an ffmpeg volume expression."""
+    parts = [part for part in keyframes.split(";") if part]
+    if not parts:
         return None
     try:
-        first_val = float(parts[0].split("=")[1])
-        last_val = float(parts[-1].split("=")[1])
-        last_tc = parts[-1].split("=")[0]
-        duration = _tc_to_seconds(last_tc)
-        if first_val < last_val:
-            return f"afade=t=in:st=0:d={duration:.3f}"
-        else:
-            return f"afade=t=out:st=0:d={duration:.3f}"
+        points = []
+        for part in parts:
+            timecode, value = part.split("=", 1)
+            points.append((_tc_to_seconds(timecode), float(value)))
+        if len(points) == 1:
+            return f"volume={points[0][1]}"
+
+        def _segment(index: int) -> str:
+            current_t, current_val = points[index]
+            next_t, next_val = points[index + 1]
+            if next_t <= current_t:
+                return _segment(index + 1)
+            linear = (
+                f"({current_val:.6f}+({next_val:.6f}-{current_val:.6f})"
+                f"*(t-{current_t:.6f})/{(next_t - current_t):.6f})"
+            )
+            if index + 1 == len(points) - 1:
+                return linear
+            return f"if(lt(t,{next_t:.6f}),{linear},{_segment(index + 1)})"
+
+        return f"volume='if(lt(t,{points[0][0]:.6f}),{points[0][1]:.6f},{_segment(0)})'"
     except (ValueError, IndexError):
         return None
 

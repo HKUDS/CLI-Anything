@@ -354,13 +354,14 @@ def timeline_remove_track(track_index):
 @click.option("--in", "in_point", default=None, help="In point (timecode)")
 @click.option("--out", "out_point", default=None, help="Out point (timecode)")
 @click.option("--position", default=None, type=int, help="Insert position (clip index)")
+@click.option("--at", "at_time", default=None, help="Absolute timeline start time")
 @click.option("--caption", default=None, help="Display name")
 @handle_error
-def timeline_add_clip(resource, track_index, in_point, out_point, position, caption):
+def timeline_add_clip(resource, track_index, in_point, out_point, position, at_time, caption):
     """Add a media clip to a track."""
     session = get_session()
     result = tl_mod.add_clip(session, resource, track_index,
-                             in_point, out_point, position, caption)
+                             in_point, out_point, position, at_time, caption)
     output(result, f"Added clip to track {track_index}")
 
 
@@ -522,7 +523,6 @@ def filter_add(filter_name, track_index, clip_index, params):
                                  param_dict if param_dict else None)
     output(result, f"Added filter '{filter_name}'")
 
-
 @filter_group.command("remove")
 @click.argument("filter_index", type=int)
 @click.option("--track", "track_index", default=None, type=int,
@@ -568,6 +568,70 @@ def filter_list(track_index, clip_index):
     elif track_index is not None:
         target = f"track {track_index}"
     output(result, f"Filters on {target}:")
+
+
+@filter_group.command("volume-envelope")
+@click.option("--track", "track_index", default=None, type=int,
+              help="Track index (omit for global)")
+@click.option("--clip", "clip_index", default=None, type=int,
+              help="Clip index on track (omit for track-level)")
+@click.option("--point", "points", multiple=True, required=True,
+              help="Envelope point as TIME=LEVEL (repeatable)")
+@handle_error
+def filter_volume_envelope(track_index, clip_index, points):
+    """Create or update a keyframed volume envelope."""
+    session = get_session()
+    parsed = []
+    for point in points:
+        if "=" not in point:
+            raise ValueError(f"Invalid point format: {point!r}. Use TIME=LEVEL")
+        timecode, level = point.split("=", 1)
+        parsed.append((timecode, level))
+    result = filt_mod.set_volume_envelope(
+        session,
+        parsed,
+        track_index=track_index,
+        clip_index=clip_index,
+    )
+    output(result, "Updated volume envelope")
+
+
+@filter_group.command("duck")
+@click.option("--track", "track_index", default=None, type=int,
+              help="Track index (omit for global)")
+@click.option("--clip", "clip_index", default=None, type=int,
+              help="Clip index on track (omit for track-level)")
+@click.option("--window", "windows", multiple=True, required=True,
+              help="Ducking window as START:END (repeatable)")
+@click.option("--normal", "normal_level", default=1.0, show_default=True, type=float,
+              help="Volume outside ducking windows")
+@click.option("--duck", "duck_level", default=0.25, show_default=True, type=float,
+              help="Volume inside ducking windows")
+@click.option("--attack", default="00:00:00.150", show_default=True,
+              help="Fade-down duration before each window")
+@click.option("--release", default="00:00:00.250", show_default=True,
+              help="Fade-up duration after each window")
+@handle_error
+def filter_duck(track_index, clip_index, windows, normal_level, duck_level, attack, release):
+    """Apply a simple ducking envelope over one or more windows."""
+    session = get_session()
+    parsed = []
+    for window in windows:
+        if ":" not in window:
+            raise ValueError(f"Invalid window format: {window!r}. Use START:END")
+        start, end = window.rsplit(":", 1)
+        parsed.append((start, end))
+    result = filt_mod.duck_volume(
+        session,
+        parsed,
+        track_index=track_index,
+        clip_index=clip_index,
+        normal_level=normal_level,
+        duck_level=duck_level,
+        attack=attack,
+        release=release,
+    )
+    output(result, "Applied ducking envelope")
 
 
 # ============================================================================
@@ -925,7 +989,7 @@ def _run_repl(s: Session, skin):
         "tracks": "List timeline tracks",
         "show": "Show timeline overview",
         "add-track <video|audio> [name]": "Add a track",
-        "add-clip <file> <track> [in] [out]": "Add clip to track",
+        "add-clip <file> <track> [in] [out] [--at tc]": "Add clip to track",
         "clips <track>": "List clips on a track",
         "remove-clip <track> <clip>": "Remove a clip",
         "trim <track> <clip> [--in tc] [--out tc]": "Trim a clip",
@@ -934,6 +998,8 @@ def _run_repl(s: Session, skin):
         "filters [--track n] [--clip n]": "List filters on target",
         "remove-filter <idx> [--track n] [--clip n]": "Remove a filter",
         "set-filter <idx> <param> <value> [--track n] [--clip n]": "Set filter param",
+        "volume-envelope [--track n] [--clip n] TIME=LEVEL ...": "Set a keyframed volume envelope",
+        "duck [--track n] [--clip n] START:END ...": "Apply ducking across timeline windows",
         "filter-info <name>": "Show filter details",
         "list-filters [video|audio]": "List available filters",
         "media": "List media in project",
@@ -1025,14 +1091,22 @@ def _run_repl(s: Session, skin):
                 output(result, f"Added {ttype} track")
 
             elif cmd == "add-clip":
+                at_time = None
+                if "--at" in args:
+                    at_index = args.index("--at")
+                    if at_index + 1 >= len(args):
+                        click.echo("Usage: add-clip <file> <track> [in] [out] [--at tc]")
+                        continue
+                    at_time = args[at_index + 1]
+                    args = args[:at_index] + args[at_index + 2:]
                 if len(args) < 2:
-                    click.echo("Usage: add-clip <file> <track> [in] [out]")
+                    click.echo("Usage: add-clip <file> <track> [in] [out] [--at tc]")
                     continue
                 resource = args[0]
                 track = int(args[1])
                 in_pt = args[2] if len(args) > 2 else None
                 out_pt = args[3] if len(args) > 3 else None
-                result = tl_mod.add_clip(s, resource, track, in_pt, out_pt)
+                result = tl_mod.add_clip(s, resource, track, in_pt, out_pt, at_time=at_time)
                 output(result, f"Added clip to track {track}")
 
             elif cmd == "clips":
@@ -1161,6 +1235,79 @@ def _run_repl(s: Session, skin):
                 result = filt_mod.set_filter_param(s, fidx, pname, pval,
                                                     track_idx, clip_idx)
                 output(result)
+
+            elif cmd == "volume-envelope":
+                track_idx = None
+                clip_idx = None
+                points = []
+                i = 0
+                while i < len(args):
+                    if args[i] == "--track" and i + 1 < len(args):
+                        track_idx = int(args[i + 1])
+                        i += 2
+                    elif args[i] == "--clip" and i + 1 < len(args):
+                        clip_idx = int(args[i + 1])
+                        i += 2
+                    else:
+                        if "=" not in args[i]:
+                            click.echo("Usage: volume-envelope [--track n] [--clip n] TIME=LEVEL ...")
+                            break
+                        timecode, level = args[i].split("=", 1)
+                        points.append((timecode, level))
+                        i += 1
+                else:
+                    result = filt_mod.set_volume_envelope(
+                        s, points, track_index=track_idx, clip_index=clip_idx
+                    )
+                    output(result)
+
+            elif cmd == "duck":
+                track_idx = None
+                clip_idx = None
+                windows = []
+                normal_level = 1.0
+                duck_level = 0.25
+                attack = "00:00:00.150"
+                release = "00:00:00.250"
+                i = 0
+                while i < len(args):
+                    if args[i] == "--track" and i + 1 < len(args):
+                        track_idx = int(args[i + 1])
+                        i += 2
+                    elif args[i] == "--clip" and i + 1 < len(args):
+                        clip_idx = int(args[i + 1])
+                        i += 2
+                    elif args[i] == "--normal" and i + 1 < len(args):
+                        normal_level = float(args[i + 1])
+                        i += 2
+                    elif args[i] == "--duck" and i + 1 < len(args):
+                        duck_level = float(args[i + 1])
+                        i += 2
+                    elif args[i] == "--attack" and i + 1 < len(args):
+                        attack = args[i + 1]
+                        i += 2
+                    elif args[i] == "--release" and i + 1 < len(args):
+                        release = args[i + 1]
+                        i += 2
+                    else:
+                        if ":" not in args[i]:
+                            click.echo("Usage: duck [--track n] [--clip n] START:END ...")
+                            break
+                        start, end = args[i].rsplit(":", 1)
+                        windows.append((start, end))
+                        i += 1
+                else:
+                    result = filt_mod.duck_volume(
+                        s,
+                        windows,
+                        track_index=track_idx,
+                        clip_index=clip_idx,
+                        normal_level=normal_level,
+                        duck_level=duck_level,
+                        attack=attack,
+                        release=release,
+                    )
+                    output(result)
 
             elif cmd == "filter-info":
                 if not args:

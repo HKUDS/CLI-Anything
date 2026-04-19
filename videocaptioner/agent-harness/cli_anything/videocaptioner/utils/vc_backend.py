@@ -8,17 +8,34 @@ work to the production-tested videocaptioner package.
 import json
 import subprocess
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
+from functools import lru_cache
+
+UPSTREAM_REQUIRES_PYTHON = ">=3.10,<3.13"
+UPSTREAM_COMPATIBLE_MINORS = "3.10-3.12"
+
+
+def get_runtime_guidance() -> dict[str, str]:
+    """Return install/runtime guidance for the upstream backend."""
+    return {
+        "python_runtime": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "upstream_requires_python": UPSTREAM_REQUIRES_PYTHON,
+        "recommended_python": UPSTREAM_COMPATIBLE_MINORS,
+    }
 
 
 def _find_vc() -> str:
     """Locate the videocaptioner binary."""
     path = shutil.which("videocaptioner")
     if not path:
+        guidance = get_runtime_guidance()
         raise RuntimeError(
             "videocaptioner not found on PATH. "
-            "Install with: pip install videocaptioner"
+            "Install with: pip install videocaptioner. "
+            f"Upstream videocaptioner 1.4.1 requires Python {guidance['upstream_requires_python']} "
+            f"(use Python {guidance['recommended_python']})."
         )
     return path
 
@@ -81,7 +98,32 @@ def get_config() -> str:
     return result["stdout"]
 
 
+@lru_cache(maxsize=None)
+def get_command_help(command: str) -> str:
+    """Return backend help text for a subcommand, or an empty string."""
+    result = run([command, "--help"])
+    if result["exit_code"] != 0:
+        return ""
+    return result["stdout"]
+
+
+@lru_cache(maxsize=None)
+def has_subcommand(command: str) -> bool:
+    """Check whether the installed backend exposes a subcommand."""
+    result = run(["--help"])
+    if result["exit_code"] != 0:
+        return False
+    return command in result["stdout"]
+
+
 def get_styles() -> str:
-    """Get available subtitle styles."""
+    """Get available subtitle styles, or explain when unsupported."""
+    if not has_subcommand("style"):
+        version = get_version()
+        return (
+            f"{version}\n"
+            "Installed backend does not expose a 'style' subcommand. "
+            "Style presets are not available in this VideoCaptioner version."
+        )
     result = run(["style"])
     return result["stdout"]

@@ -17,6 +17,7 @@ from cli_anything.shotcut.core import media as media_mod
 from cli_anything.shotcut.core import export as export_mod
 from cli_anything.shotcut.core import transitions as trans_mod
 from cli_anything.shotcut.core import compositing as comp_mod
+from cli_anything.shotcut.core.export import _build_volume_expression
 from cli_anything.shotcut.utils.time import (
     timecode_to_frames, frames_to_timecode, parse_time_input,
     frames_to_seconds, seconds_to_frames,
@@ -365,6 +366,62 @@ class TestTimeline:
         finally:
             os.unlink(tmpfile)
 
+    def test_add_clip_at_absolute_time(self):
+        s = self._make_session()
+        tl_mod.add_track(s, "video")
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"dummy")
+            tmpfile = f.name
+
+        try:
+            result = tl_mod.add_clip(
+                s,
+                tmpfile,
+                1,
+                in_point="00:00:00.000",
+                out_point="00:00:02.000",
+                at_time="00:00:05.000",
+            )
+            assert result["at_time"] == "00:00:05.000"
+
+            clips = tl_mod.list_clips(s, 1)
+            assert clips[0]["type"] == "blank"
+            assert abs(
+                parse_time_input(clips[0]["length"]) - parse_time_input("00:00:05.000")
+            ) <= 1
+            assert clips[1]["clip_index"] == 0
+        finally:
+            os.unlink(tmpfile)
+
+    def test_add_clip_at_absolute_time_rejects_overlap(self):
+        s = self._make_session()
+        tl_mod.add_track(s, "video")
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"dummy")
+            tmpfile = f.name
+
+        try:
+            tl_mod.add_clip(
+                s,
+                tmpfile,
+                1,
+                in_point="00:00:00.000",
+                out_point="00:00:05.000",
+            )
+            with pytest.raises(RuntimeError, match="overlaps an existing clip"):
+                tl_mod.add_clip(
+                    s,
+                    tmpfile,
+                    1,
+                    in_point="00:00:00.000",
+                    out_point="00:00:02.000",
+                    at_time="00:00:03.000",
+                )
+        finally:
+            os.unlink(tmpfile)
+
     def test_remove_clip(self):
         s = self._make_session()
         tl_mod.add_track(s, "video")
@@ -483,6 +540,54 @@ class TestTimeline:
         result = tl_mod.add_blank(s, 1, "00:00:02.000")
         assert result["action"] == "add_blank"
 
+    def test_add_clip_at_time_inserts_gap(self):
+        s = self._make_session()
+        tl_mod.add_track(s, "video")
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"dummy")
+            tmpfile = f.name
+        try:
+            result = tl_mod.add_clip(
+                s,
+                tmpfile,
+                1,
+                in_point="00:00:00.000",
+                out_point="00:00:02.000",
+                at_time="00:00:08.000",
+            )
+            assert result["at_time"] == "00:00:08.000"
+            clips = tl_mod.list_clips(s, 1)
+            assert clips[0]["type"] == "blank"
+            assert clips[1]["clip_index"] == 0
+        finally:
+            os.unlink(tmpfile)
+
+    def test_add_clip_at_time_rejects_overlap(self):
+        s = self._make_session()
+        tl_mod.add_track(s, "video")
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"dummy")
+            tmpfile = f.name
+        try:
+            tl_mod.add_clip(
+                s,
+                tmpfile,
+                1,
+                in_point="00:00:00.000",
+                out_point="00:00:05.000",
+            )
+            with pytest.raises(RuntimeError, match="overlaps an existing clip"):
+                tl_mod.add_clip(
+                    s,
+                    tmpfile,
+                    1,
+                    in_point="00:00:00.000",
+                    out_point="00:00:01.000",
+                    at_time="00:00:02.000",
+                )
+        finally:
+            os.unlink(tmpfile)
+
     def test_undo_add_track(self):
         s = self._make_session()
         initial = len(tl_mod.list_tracks(s))
@@ -598,6 +703,37 @@ class TestFilters:
         finally:
             os.unlink(tmpfile)
 
+    def test_set_volume_envelope(self):
+        s, tmpfile = self._make_session_with_clip()
+        try:
+            result = filt_mod.set_volume_envelope(
+                s,
+                [("00:00:00.000", "1.0"), ("00:00:03.000", "0.25"), ("00:00:04.000", "1.0")],
+                track_index=1,
+            )
+            assert result["action"] == "set_volume_envelope"
+            filters = filt_mod.list_filters(s, track_index=1)
+            assert filters[0]["service"] == "volume"
+            assert filters[0]["params"]["level"].count("=") == 3
+        finally:
+            os.unlink(tmpfile)
+
+    def test_duck_volume(self):
+        s, tmpfile = self._make_session_with_clip()
+        try:
+            result = filt_mod.duck_volume(
+                s,
+                [("00:00:01.000", "00:00:02.000")],
+                track_index=1,
+                normal_level=1.0,
+                duck_level=0.3,
+            )
+            assert result["action"] == "duck_volume"
+            filters = filt_mod.list_filters(s, track_index=1)
+            assert "0.3" in filters[0]["params"]["level"]
+        finally:
+            os.unlink(tmpfile)
+
 
 # ============================================================================
 # Media module
@@ -658,6 +794,15 @@ class TestExport:
     def test_list_presets(self):
         result = export_mod.list_presets()
         assert len(result) > 0
+
+    def test_build_volume_expression_from_keyframes(self):
+        expr = _build_volume_expression("00:00:00.000=1;00:00:02.000=0.3;00:00:03.000=1")
+        assert expr is not None
+        assert expr.startswith("volume='if(")
+        assert "0.300000" in expr
+
+    def test_list_presets_contains_defaults(self):
+        result = export_mod.list_presets()
         names = [p["name"] for p in result]
         assert "default" in names
         assert "h264-high" in names

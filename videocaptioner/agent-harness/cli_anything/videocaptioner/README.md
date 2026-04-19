@@ -1,6 +1,7 @@
 # VideoCaptioner CLI
 
-AI-powered video captioning tool with beautiful customizable subtitle styles.
+AI-powered video captioning tool that mirrors the stable `videocaptioner`
+backend surface.
 
 ## Architecture
 
@@ -13,14 +14,17 @@ AI-powered video captioning tool with beautiful customizable subtitle styles.
 
 ```
 Audio/Video → ASR Transcription → Subtitle Splitting → LLM Optimization → Translation → Video Synthesis
-                  (bijian/whisper)      (semantic)         (fix errors)      (38 languages)  (styled subtitles)
+                  (bijian/whisper)      (semantic)         (fix errors)      (38 languages)  (video synthesis)
 ```
 
 ## Install
 
 ```bash
-pip install videocaptioner click prompt-toolkit
+python3.12 -m pip install videocaptioner click prompt-toolkit
 ```
+
+VideoCaptioner `1.4.1` currently declares `Requires-Python: >=3.10,<3.13`.
+Use Python `3.10`-`3.12`; Python `3.13+` is not a safe default for this stack.
 
 ## Run
 
@@ -34,12 +38,19 @@ cli-anything-videocaptioner transcribe video.mp4 --asr bijian -o output.srt
 # Translate existing subtitles
 cli-anything-videocaptioner subtitle input.srt --translator google --target-language ja
 
-# Burn subtitles with anime style
-cli-anything-videocaptioner synthesize video.mp4 -s sub.srt --subtitle-mode hard --style anime
+# Burn subtitles into a video
+cli-anything-videocaptioner synthesize video.mp4 -s sub.srt --subtitle-mode hard
 
-# Custom style (red outline, large font)
-cli-anything-videocaptioner synthesize video.mp4 -s sub.srt --subtitle-mode hard \
-  --style-override '{"outline_color": "#ff0000", "font_size": 48}'
+# Block a hard-burn if the subtitle file drifted too far from the approved script
+cli-anything-videocaptioner synthesize video.mp4 -s sub.srt \
+  --subtitle-mode hard \
+  --review-script approved_script.txt
+
+# Review a subtitle file and render a single preview frame before final export
+cli-anything-videocaptioner review sub.srt \
+  --script approved_script.txt \
+  --preview-video video.mp4 \
+  --preview-output review_5s.png
 
 # JSON output mode (for agent consumption)
 cli-anything-videocaptioner --json transcribe video.mp4 --asr bijian
@@ -48,17 +59,15 @@ cli-anything-videocaptioner --json transcribe video.mp4 --asr bijian
 cli-anything-videocaptioner
 ```
 
-## Subtitle Styles
+## Backend compatibility
 
-Two rendering modes for beautiful subtitles:
+The harness intentionally tracks the stable `videocaptioner` backend interface.
+As of backend `1.4.x`, `synthesize` exposes subtitle mode, quality, and output
+path controls, while styling is driven by the subtitle asset itself rather than
+runtime style flags.
 
-**ASS mode** — traditional outline/shadow:
-- Presets: `default` (white+black), `anime` (warm+orange), `vertical` (portrait videos)
-
-**Rounded mode** — modern rounded background boxes:
-- Preset: `rounded` (dark text on semi-transparent background)
-
-Fully customizable via `--style-override` with inline JSON.
+Use the `review` command, or `synthesize --review-script`, to catch subtitle
+drift before hard-burning a permanent delivery.
 
 ## Coverage
 
@@ -66,6 +75,6 @@ Fully customizable via `--style-override` with inline JSON.
 |---------|----------|
 | Transcription | 4 ASR engines, auto language detection, word timestamps |
 | Subtitle Processing | Split + optimize + translate, 3 translators, 38 languages |
-| Video Synthesis | Soft/hard subtitles, 4 quality levels, 5 style presets |
-| Styles | ASS outline + rounded background, inline JSON customization |
+| Video Synthesis | Soft/hard subtitles, 4 quality levels |
+| Styles | Backend-version dependent; the harness reports availability |
 | Utilities | Config management, style listing, video download |

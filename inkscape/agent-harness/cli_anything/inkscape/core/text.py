@@ -20,6 +20,8 @@ TEXT_PROPERTIES = {
     "letter-spacing": {"type": "float", "description": "Letter spacing"},
     "word-spacing": {"type": "float", "description": "Word spacing"},
     "line-height": {"type": "float", "description": "Line height multiplier"},
+    "box-width": {"type": "float", "description": "Optional text box width for wrapping"},
+    "box-height": {"type": "float", "description": "Optional text box height for wrapping"},
     "fill": {"type": "str", "description": "Text fill color"},
     "stroke": {"type": "str", "description": "Text stroke color"},
     "opacity": {"type": "float", "description": "Text opacity (0.0-1.0)"},
@@ -45,6 +47,9 @@ def add_text(
     font_style: str = "normal",
     fill: str = "#000000",
     text_anchor: str = "start",
+    box_width: Optional[float] = None,
+    box_height: Optional[float] = None,
+    line_height: float = 1.2,
     name: Optional[str] = None,
     layer: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -53,6 +58,12 @@ def add_text(
         raise ValueError("Text content cannot be empty")
     if font_size <= 0:
         raise ValueError(f"Font size must be positive: {font_size}")
+    if box_width is not None and box_width <= 0:
+        raise ValueError(f"Text box width must be positive: {box_width}")
+    if box_height is not None and box_height <= 0:
+        raise ValueError(f"Text box height must be positive: {box_height}")
+    if line_height <= 0:
+        raise ValueError(f"Line height must be positive: {line_height}")
 
     # Build style string
     style_parts = {
@@ -79,10 +90,15 @@ def add_text(
         "font_style": font_style,
         "fill": fill,
         "text_anchor": text_anchor,
+        "line_height": line_height,
         "style": style,
         "transform": "",
         "layer": _default_layer_id(project),
     }
+    if box_width is not None:
+        obj["box_width"] = box_width
+    if box_height is not None:
+        obj["box_height"] = box_height
     if layer:
         obj["layer"] = layer
 
@@ -130,6 +146,14 @@ def set_text_property(
         value = float(value)
         if value <= 0:
             raise ValueError(f"Font size must be positive: {value}")
+    if prop in {"box-width", "box-height"}:
+        value = float(value)
+        if value <= 0:
+            raise ValueError(f"{prop} must be positive: {value}")
+    if prop == "line-height":
+        value = float(value)
+        if value <= 0:
+            raise ValueError(f"Line height must be positive: {value}")
     if prop == "opacity":
         value = float(value)
         if value < 0 or value > 1:
@@ -147,6 +171,8 @@ def set_text_property(
         "letter-spacing": "letter_spacing",
         "word-spacing": "word_spacing",
         "line-height": "line_height",
+        "box-width": "box_width",
+        "box-height": "box_height",
     }
 
     internal_name = field_map.get(prop, prop)
@@ -173,8 +199,41 @@ def list_text_objects(project: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "fill": obj.get("fill", "#000000"),
                 "x": obj.get("x", 0),
                 "y": obj.get("y", 0),
+                "box_width": obj.get("box_width"),
+                "box_height": obj.get("box_height"),
             })
     return result
+
+
+def layout_text_lines(obj: Dict[str, Any]) -> List[str]:
+    """Lay out wrapped text lines for a text object."""
+    text = str(obj.get("text", ""))
+    if not text:
+        return [""]
+
+    box_width = obj.get("box_width")
+    line_height = float(obj.get("line_height", 1.2) or 1.2)
+    font_size = float(obj.get("font_size", 24) or 24)
+
+    if not box_width:
+        return text.splitlines() or [text]
+
+    avg_char_width = max(1.0, font_size * 0.58)
+    max_chars = max(1, int(float(box_width) / avg_char_width))
+
+    lines: List[str] = []
+    for paragraph in text.splitlines() or [text]:
+        wrapped = _wrap_paragraph(paragraph, max_chars)
+        lines.extend(wrapped or [""])
+
+    box_height = obj.get("box_height")
+    if box_height:
+        max_lines = max(1, int(float(box_height) / max(1.0, font_size * line_height)))
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+            lines[-1] = _truncate_with_ellipsis(lines[-1], max_chars)
+
+    return lines
 
 
 # ── Internal Helpers ────────────────────────────────────────────
@@ -210,6 +269,20 @@ def _rebuild_text_style(obj: Dict[str, Any]) -> None:
     obj["style"] = serialize_style(style_parts)
 
 
+def text_anchor_x(obj: Dict[str, Any]) -> float:
+    """Compute the anchor x-position, taking text boxes into account."""
+    x = float(obj.get("x", 0))
+    box_width = obj.get("box_width")
+    anchor = obj.get("text_anchor", "start")
+    if not box_width:
+        return x
+    if anchor == "middle":
+        return x + float(box_width) / 2.0
+    if anchor == "end":
+        return x + float(box_width)
+    return x
+
+
 def _default_layer_id(project: Dict[str, Any]) -> str:
     """Get the ID of the first layer."""
     layers = project.get("layers", [])
@@ -228,3 +301,43 @@ def _add_object(project: Dict[str, Any], obj: Dict[str, Any]) -> None:
             if layer.get("id") == layer_id:
                 layer.setdefault("objects", []).append(obj["id"])
                 break
+
+
+def _wrap_paragraph(paragraph: str, max_chars: int) -> List[str]:
+    """Wrap a paragraph to an approximate character count."""
+    words = paragraph.split()
+    if not words:
+        return [""]
+
+    lines: List[str] = []
+    current = ""
+    for word in words:
+        if len(word) > max_chars:
+            if current:
+                lines.append(current)
+                current = ""
+            while len(word) > max_chars:
+                lines.append(word[:max_chars])
+                word = word[max_chars:]
+            current = word
+            continue
+
+        candidate = word if not current else f"{current} {word}"
+        if len(candidate) <= max_chars:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _truncate_with_ellipsis(text: str, max_chars: int) -> str:
+    """Trim text to fit and add an ellipsis when needed."""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 1:
+        return text[:max_chars]
+    return text[: max_chars - 1].rstrip() + "…"
