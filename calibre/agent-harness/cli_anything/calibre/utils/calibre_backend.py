@@ -7,9 +7,21 @@ Calibre is a HARD DEPENDENCY. If it is not installed, clear error messages are
 shown with install instructions.
 """
 
+import os
 import shutil
 import subprocess
 from typing import Any
+
+
+def _english_env() -> dict[str, str]:
+    """Return a copy of the current environment with Calibre forced to English.
+
+    This ensures that output strings like 'Added book ids:' are always in
+    English regardless of the system locale — critical for reliable parsing.
+    """
+    env = os.environ.copy()
+    env["CALIBRE_OVERRIDE_LANG"] = "en"
+    return env
 
 
 # ── Tool discovery ─────────────────────────────────────────────────────────
@@ -87,6 +99,7 @@ def run_calibredb(
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=_english_env(),
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"calibredb timed out after {timeout}s: {' '.join(cmd)}")
@@ -125,6 +138,7 @@ def run_ebook_convert(
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=_english_env(),
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"ebook-convert timed out after {timeout}s")
@@ -163,6 +177,7 @@ def run_ebook_meta(
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=_english_env(),
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"ebook-meta timed out after {timeout}s")

@@ -23,6 +23,13 @@ import zipfile
 from pathlib import Path
 
 
+def _english_env() -> dict[str, str]:
+    """Environment dict that forces Calibre to output in English."""
+    env = os.environ.copy()
+    env["CALIBRE_OVERRIDE_LANG"] = "en"
+    return env
+
+
 # ── EPUB generation helpers ────────────────────────────────────────────────
 
 
@@ -151,7 +158,7 @@ class CalibreTestMixin:
         # Add to library
         result = subprocess.run(
             [calibredb, "--with-library", cls.lib_dir, "add", cls.epub_path],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, env=_english_env(),
         )
         # Extract the book ID from output "Added book ids: 1"
         cls.book_id = 1
@@ -263,7 +270,7 @@ class TestFormatConversion(CalibreTestMixin, unittest.TestCase):
         calibredb = shutil.which("calibredb")
         result = subprocess.run(
             [calibredb, "--with-library", self.lib_dir, "add", epub],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, env=_english_env(),
         )
         # Find the new book ID
         new_id = None
@@ -296,7 +303,7 @@ class TestFormatConversion(CalibreTestMixin, unittest.TestCase):
         calibredb = shutil.which("calibredb")
         r = subprocess.run(
             [calibredb, "--with-library", self.lib_dir, "add", epub],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, env=_english_env(),
         )
         new_id = None
         for line in r.stdout.splitlines():
@@ -334,7 +341,7 @@ class TestFormatConversion(CalibreTestMixin, unittest.TestCase):
         calibredb = shutil.which("calibredb")
         r = subprocess.run(
             [calibredb, "--with-library", self.lib_dir, "add", epub],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, env=_english_env(),
         )
         new_id = None
         for line in r.stdout.splitlines():
@@ -390,7 +397,7 @@ class TestCLISubprocess(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def _run(self, args, check=True, env=None):
-        full_env = os.environ.copy()
+        full_env = _english_env()
         if env:
             full_env.update(env)
         return subprocess.run(
