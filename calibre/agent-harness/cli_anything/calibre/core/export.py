@@ -47,7 +47,7 @@ def export_books(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    file_count_before = sum(1 for _ in Path(output_dir).rglob("*") if _.is_file())
+    files_before = {str(p) for p in Path(output_dir).rglob("*") if p.is_file()}
 
     cmd = ["export", "--to-dir", output_dir]
     if export_all:
@@ -64,13 +64,8 @@ def export_books(
 
     result = run_calibredb(cmd, library_path=library_path)
 
-    exported_files = [
-        str(p) for p in Path(output_dir).rglob("*") if p.is_file()
-    ]
-    new_files = exported_files[file_count_before:]
-
-    for f in new_files:
-        print(f"  Exported: {f} ({Path(f).stat().st_size:,} bytes)")
+    files_after = {str(p) for p in Path(output_dir).rglob("*") if p.is_file()}
+    new_files = sorted(files_after - files_before)
 
     return {
         "output_dir": output_dir,
@@ -328,21 +323,21 @@ def export_chapters_pdf(
 
         # Step 4: convert each chapter to PDF
         exported_pdfs: list[dict] = []
+        skipped_chapters: list[dict] = []
         total = len(chapters)
         for i, chapter in enumerate(chapters, 1):
             src_path = epub_dir / chapter["src"]
             if not src_path.exists():
-                print(f"  ⚠ Missing source file: {chapter['src']}, skipping")
+                skipped_chapters.append({"order": chapter["order"], "title": chapter["title"], "reason": "missing source file"})
                 continue
 
             out_name = _safe_chapter_filename(chapter["title"], chapter["order"]) + ".pdf"
             out_path = Path(output_dir) / out_name
-            print(f"  [{i}/{total}] {chapter['title']} → {out_name}")
 
             try:
                 run_ebook_convert([str(src_path), str(out_path)])
             except RuntimeError as exc:
-                print(f"  ⚠ Conversion failed (chapter {chapter['order']}): {exc}")
+                skipped_chapters.append({"order": chapter["order"], "title": chapter["title"], "reason": str(exc)})
                 continue
 
             if out_path.exists():
@@ -353,13 +348,13 @@ def export_chapters_pdf(
                     "size": out_path.stat().st_size,
                 })
 
-    print(f"\n  Exported {len(exported_pdfs)}/{total} chapters to {output_dir}")
     return {
         "book_id": book_id,
         "output_dir": output_dir,
         "total_chapters": total,
         "exported_chapters": len(exported_pdfs),
         "exported_pdfs": exported_pdfs,
+        "skipped_chapters": skipped_chapters,
     }
 
 

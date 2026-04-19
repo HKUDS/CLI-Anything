@@ -157,7 +157,7 @@ def convert_format(
                 library_path=library_path,
             )
 
-        result = {
+        return {
             "book_id": book_id,
             "input_format": input_fmt,
             "output_format": output_fmt,
@@ -165,5 +165,3 @@ def convert_format(
             "output_size": output_size,
             "added_to_library": add_to_library,
         }
-        print(f"\n  Converted: {output_path} ({output_size:,} bytes)")
-        return result
