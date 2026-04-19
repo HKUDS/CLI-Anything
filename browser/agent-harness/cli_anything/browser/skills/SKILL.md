@@ -158,6 +158,7 @@ The CLI provides clear error messages for common issues:
 - **npx not found**: Install Node.js from https://nodejs.org/
 - **DOMShell not found**: Run `npx @apireno/domshell --version`
 - **MCP call failed**: Install DOMShell Chrome extension
+- **MCP timeout / hanging calls**: Verify `DOMSHELL_TOKEN`, ensure DOMShell server is running, and optionally tune timeout via `CLI_ANYTHING_BROWSER_MCP_TIMEOUT` (default: 20s)
 
 Check `is_available()` return value before running commands.
 

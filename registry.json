@@ -103,7 +103,7 @@
     {
       "name": "browser",
       "display_name": "Browser",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Browser automation via DOMShell MCP server. Maps Chrome's Accessibility Tree to a virtual filesystem for agent-native navigation.",
       "requires": "Node.js, npx, Chrome + DOMShell extension",
       "homepage": "https://github.com/apireno/DOMShell",

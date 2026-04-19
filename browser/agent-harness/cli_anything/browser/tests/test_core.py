@@ -7,10 +7,12 @@ Usage:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import patch
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page, fs
+from cli_anything.browser.utils import domshell_backend as backend_mod
 
 
 # ── Session Tests ────────────────────────────────────────────────
@@ -387,3 +389,43 @@ class TestDaemonMode:
             result = fs.list_elements(sess)
 
             mock_ls.assert_called_once_with("/", use_daemon=False)
+
+
+class TestBackendTimeouts:
+    """Test backend timeout parsing and behavior."""
+
+    def test_timeout_default_value(self, monkeypatch):
+        """Timeout defaults to safe value when env var is unset."""
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", raising=False)
+        assert backend_mod._get_tool_timeout_seconds() == 20.0
+
+    def test_timeout_invalid_env_falls_back_to_default(self, monkeypatch):
+        """Invalid timeout env var falls back to default."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "not-a-number")
+        assert backend_mod._get_tool_timeout_seconds() == 20.0
+
+    def test_timeout_is_clamped_to_minimum(self, monkeypatch):
+        """Timeout values below 1 second are clamped to 1 second."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "0")
+        assert backend_mod._get_tool_timeout_seconds() == 1.0
+
+    def test_await_with_timeout_passes_fast_calls(self, monkeypatch):
+        """Fast operations should complete without timeout errors."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+
+        async def _fast():
+            return {"ok": True}
+
+        result = asyncio.run(backend_mod._await_with_timeout(_fast(), "unit-test"))
+        assert result == {"ok": True}
+
+    def test_await_with_timeout_raises_runtime_error_on_timeout(self, monkeypatch):
+        """Slow operations should raise actionable RuntimeError."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "1")
+
+        async def _slow():
+            await asyncio.sleep(2)
+            return {"ok": True}
+
+        with pytest.raises(RuntimeError, match="timed out"):
+            asyncio.run(backend_mod._await_with_timeout(_slow(), "unit-test"))
