@@ -112,7 +112,7 @@ def convert_format(
     with tempfile.TemporaryDirectory() as tmpdir:
         # Export the book to get the source file
         export_result = run_calibredb(
-            ["export", "--to-dir", tmpdir, "--all", str(book_id)],
+            ["export", "--to-dir", tmpdir, str(book_id)],
             library_path=library_path,
         )
 

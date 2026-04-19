@@ -7,7 +7,7 @@ Usage:
     from cli_anything.<software>.utils.repl_skin import ReplSkin
 
     skin = ReplSkin("shotcut", version="1.0.0")
-    skin.print_banner()
+    skin.print_banner()  # auto-detects skills/SKILL.md inside the package
     prompt_text = skin.prompt(project_name="my_video.mlt", modified=True)
     skin.success("Project saved")
     skin.error("File not found")
@@ -97,7 +97,7 @@ class ReplSkin:
     """
 
     def __init__(self, software: str, version: str = "1.0.0",
-                 history_file: str | None = None):
+                 history_file: str | None = None, skill_path: str | None = None):
         """Initialize the REPL skin.
 
         Args:
@@ -105,10 +105,23 @@ class ReplSkin:
             version: CLI version string.
             history_file: Path for persistent command history.
                          Defaults to ~/.cli-anything-<software>/history
+            skill_path: Path to the SKILL.md file for agent discovery.
+                        Auto-detected from the package's skills/ directory if not provided.
+                        Displayed in banner for AI agents to know where to read skill info.
         """
         self.software = software.lower().replace("-", "_")
         self.display_name = software.replace("_", " ").title()
         self.version = version
+
+        # Auto-detect skill path from package layout:
+        #   cli_anything/<software>/utils/repl_skin.py  (this file)
+        #   cli_anything/<software>/skills/SKILL.md     (target)
+        if skill_path is None:
+            from pathlib import Path
+            _auto = Path(__file__).resolve().parent.parent / "skills" / "SKILL.md"
+            if _auto.is_file():
+                skill_path = str(_auto)
+        self.skill_path = skill_path
         self.accent = _ACCENT_COLORS.get(self.software, _DEFAULT_ACCENT)
 
         # History file
@@ -165,9 +178,19 @@ class ReplSkin:
         tip = f" {self._c(_DARK_GRAY, '   Type help for commands, quit to exit')}"
         empty = ""
 
+        # Skill path for agent discovery
+        skill_line = None
+        if self.skill_path:
+            skill_icon = self._c(_MAGENTA, "◇")
+            skill_label = self._c(_DARK_GRAY, "   Skill:")
+            skill_path_display = self._c(_LIGHT_GRAY, self.skill_path)
+            skill_line = f" {skill_icon} {skill_label} {skill_path_display}"
+
         print(top)
         print(_box_line(title))
         print(_box_line(ver))
+        if skill_line:
+            print(_box_line(skill_line))
         print(_box_line(empty))
         print(_box_line(tip))
         print(bot)

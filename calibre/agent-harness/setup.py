@@ -7,6 +7,7 @@ setup(
     long_description=open("cli_anything/calibre/README.md").read(),
     long_description_content_type="text/markdown",
     packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.calibre": ["skills/*.md"]},
     install_requires=[
         "click>=8.0.0",
         "prompt-toolkit>=3.0.0",
