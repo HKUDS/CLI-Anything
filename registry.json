@@ -253,6 +253,25 @@
       ]
     },
     {
+      "name": "calibre",
+      "display_name": "Calibre",
+      "version": "1.0.0",
+      "description": "E-book library management — list, search, metadata editing, format conversion via calibredb, ebook-convert, ebook-meta",
+      "requires": "Calibre (apt install calibre, brew install --cask calibre)",
+      "homepage": "https://calibre-ebook.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=calibre/agent-harness",
+      "entry_point": "cli-anything-calibre",
+      "skill_md": "calibre/agent-harness/cli_anything/calibre/skills/SKILL.md",
+      "category": "office",
+      "contributors": [
+        {
+          "name": "orgleaf",
+          "url": "https://github.com/orgleaf"
+        }
+      ]
+    },
+    {
       "name": "libreoffice",
       "display_name": "LibreOffice",
       "version": "1.0.0",
