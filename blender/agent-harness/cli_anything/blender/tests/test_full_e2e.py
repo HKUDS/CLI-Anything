@@ -288,7 +288,7 @@ class TestBPYScriptGeneration:
     def test_script_render_settings_eevee(self):
         proj = create_scene(engine="EEVEE", samples=64)
         script = generate_full_script(proj, "/tmp/render.png")
-        assert "BLENDER_EEVEE_NEXT" in script
+        assert "BLENDER_EEVEE" in script
         assert "eevee.taa_render_samples" in script
 
     def test_script_world_settings(self):
@@ -611,25 +611,39 @@ class TestCLISubprocess:
         assert result.returncode == 0
         assert "cycles_default" in result.stdout
 
+    def test_legacy_add_mesh_command(self, tmp_dir):
+        proj_path = os.path.join(tmp_dir, "legacy.json")
+
+        self._run(["scene", "new", "-o", proj_path, "-n", "legacy"])
+        result = self._run([
+            "--project", proj_path,
+            "object", "add-mesh",
+            "--type", "cube",
+            "--location", "0", "0", "1",
+        ])
+
+        assert result.returncode == 0
+        with open(proj_path) as f:
+            data = json.load(f)
+        assert len(data["objects"]) == 1
+        assert data["objects"][0]["mesh_type"] == "cube"
+        assert data["objects"][0]["location"] == [0.0, 0.0, 1.0]
+
     def test_full_workflow_json(self, tmp_dir):
         proj_path = os.path.join(tmp_dir, "workflow.json")
 
         # Create scene
         self._run(["--json", "scene", "new", "-o", proj_path, "-n", "workflow"])
 
-        # Add object and save (each subprocess is a separate session)
-        self._run(["--json", "--project", proj_path,
-                    "object", "add", "cube", "--name", "Box"])
+        # Add object and verify the one-shot command auto-saved the project.
+        self._run(["--json", "--project", proj_path, "object", "add", "cube", "--name", "Box"])
 
-        # Since each subprocess is a separate session, the object add above
-        # loads the project, adds the object, but doesn't auto-save.
-        # We need to verify the CLI works correctly in a single invocation.
-        # Instead, verify the project file was created correctly and test
-        # direct API roundtrip.
         assert os.path.exists(proj_path)
         with open(proj_path) as f:
             data = json.load(f)
         assert data["name"] == "workflow"
+        assert len(data["objects"]) == 1
+        assert data["objects"][0]["name"] == "Box"
 
         # Test that the scene file is valid
         loaded_result = self._run(["--json", "--project", proj_path, "scene", "info"])
@@ -729,6 +743,48 @@ class TestBlenderBackend:
 
 class TestBlenderRenderE2E:
     """True E2E tests: generate scene → bpy script → blender --background → verify output."""
+
+    def test_cli_render_execute(self, tmp_dir):
+        """Render through the public CLI command, not just the backend helper."""
+        from cli_anything.blender.utils.blender_backend import find_render_outputs
+
+        proj = create_scene(name="cli_render", engine="WORKBENCH", samples=1)
+        set_render_settings(proj, resolution_x=320, resolution_y=240, engine="WORKBENCH", samples=1)
+
+        add_object(proj, mesh_type="cube", name="TestCube", location=[0, 0, 0])
+        add_camera(proj, name="Cam", location=[5, -5, 3],
+                   rotation=[63, 0, 46], set_active=True)
+        add_light(proj, light_type="SUN", name="Sun", rotation=[-45, 0, 30])
+
+        proj_path = os.path.join(tmp_dir, "cli_render.json")
+        save_scene(proj, proj_path)
+
+        output_path = os.path.join(tmp_dir, "cli_render.png")
+        result = subprocess.run(
+            _resolve_cli("cli-anything-blender") + [
+                "--json",
+                "--project", proj_path,
+                "render", "execute",
+                "--output", output_path,
+                "--engine", "WORKBENCH",
+                "--samples", "1",
+                "--overwrite",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["executed"] is True
+        assert payload["method"] == "blender-headless"
+        outputs = find_render_outputs(output_path)
+        assert outputs
+        assert os.path.exists(payload["output"])
+        assert payload["output"] == os.path.abspath(outputs[0])
+        assert payload["file_size"] > 0
+        print(f"\n  CLI render: {payload['output']} ({payload['file_size']:,} bytes)")
 
     def test_render_simple_cube(self, tmp_dir):
         """Render a simple cube scene with Blender."""

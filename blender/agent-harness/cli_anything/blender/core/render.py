@@ -5,9 +5,9 @@ for actual Blender rendering.
 """
 
 import os
-import json
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+
+from cli_anything.blender.utils import blender_backend
 
 
 # Render presets
@@ -185,11 +185,10 @@ def render_scene(
     frame: Optional[int] = None,
     animation: bool = False,
     overwrite: bool = False,
+    execute: bool = False,
+    timeout: int = 300,
 ) -> Dict[str, Any]:
-    """Render the scene by generating a bpy script.
-
-    Since we cannot call Blender directly in all environments, this generates
-    a Python script that can be run with `blender --background --python script.py`.
+    """Prepare a render script, and optionally execute it with Blender.
 
     Args:
         project: The scene dict
@@ -197,9 +196,11 @@ def render_scene(
         frame: Specific frame to render (None = current frame)
         animation: If True, render the full animation range
         overwrite: Allow overwriting existing files
+        execute: If True, run Blender headless after generating the script
+        timeout: Maximum seconds to wait when execute=True
 
     Returns:
-        Dict with render info and script path
+        Dict with render info, script path, and optional backend output metadata
     """
     if os.path.exists(output_path) and not overwrite and not animation:
         raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite.")
@@ -235,6 +236,32 @@ def render_scene(
         result["frame_range"] = f"{scene_settings.get('frame_start', 1)}-{scene_settings.get('frame_end', 250)}"
     else:
         result["frame"] = frame or scene_settings.get("frame_current", 1)
+
+    if execute:
+        backend_result = blender_backend.render_script(
+            result["script_path"],
+            output_path=result["output_path"],
+            animation=animation,
+            timeout=timeout,
+        )
+        if backend_result["returncode"] != 0:
+            raise RuntimeError(
+                f"Blender render failed (exit {backend_result['returncode']}):\n"
+                f"  stderr: {backend_result['stderr'][-500:]}"
+            )
+
+        result.update({
+            "executed": True,
+            "output": backend_result["output"],
+            "outputs": backend_result["outputs"],
+            "output_count": backend_result["output_count"],
+            "file_size": backend_result["file_size"],
+            "blender_version": backend_result["blender_version"],
+            "method": backend_result["method"],
+            "returncode": backend_result["returncode"],
+        })
+    else:
+        result["executed"] = False
 
     return result
 

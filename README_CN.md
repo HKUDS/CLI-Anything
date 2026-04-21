@@ -749,6 +749,7 @@ $ cli-anything-libreoffice --project report.json writer add-table --rows 4 --col
 ✓ Added 4×3 table
 
 # 通过 LibreOffice headless 导出为真实 PDF
+# 需要本机 PATH 中存在 LibreOffice/soffice 可执行文件。
 $ cli-anything-libreoffice --project report.json export render output.pdf -p pdf --overwrite
 ✓ Exported: output.pdf (42,831 bytes) via libreoffice-headless
 
@@ -775,11 +776,11 @@ $ cli-anything-blender
 blender> scene new --name ProductShot
 ✓ Created scene: ProductShot
 
-blender[ProductShot]> object add-mesh --type cube --location 0 0 1
-✓ Added mesh: Cube at (0, 0, 1)
+blender[ProductShot]> object add cube --location 0,0,1
+✓ Added cube: Cube
 
-blender[ProductShot]*> render execute --output render.png --engine CYCLES
-✓ Rendered: render.png (1920×1080, 2.3 MB) via blender --background
+blender[ProductShot]*> render execute render.png --engine CYCLES --overwrite
+✓ Rendered: /absolute/path/render0001.png (84,512 bytes) via blender-headless
 
 blender[ProductShot]> exit
 Goodbye! 👋
