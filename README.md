@@ -840,6 +840,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 153</td>
 </tr>
 <tr>
+<td align="center"><strong>📱 <a href="nslogger/agent-harness/">NSLogger</a></strong></td>
+<td>iOS/macOS Log Capture</td>
+<td><code>cli-anything-nslogger</code></td>
+<td>NSLogger wire protocol + native macOS Bonjour</td>
+<td align="center">✅ 139</td>
+</tr>
+<tr>
 <td align="center"><strong>🎞️ Kdenlive</strong></td>
 <td>Video Editing</td>
 <td><code>cli-anything-kdenlive</code></td>
@@ -988,11 +995,11 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 <tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 2,152</strong></td>
+<td align="center"><strong>✅ 2,291</strong></td>
 </tr>
 </table>
 
-> **100% pass rate** across all 2,152 tests — 1,564 unit tests + 569 end-to-end tests + 19 Node.js tests.
+> **100% pass rate** across all 2,291 tests — 1,661 unit tests + 611 end-to-end tests + 19 Node.js tests.
 
 ---
 
@@ -1016,6 +1023,7 @@ audacity      161 passed  ✅   (107 unit + 54 e2e)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 mubu           96 passed  ✅   (85 unit + 11 e2e)
 obs-studio    153 passed  ✅   (116 unit + 37 e2e)
+nslogger      139 passed  ✅   (97 unit + 42 e2e)
 kdenlive      155 passed  ✅   (111 unit + 44 e2e)
 shotcut       154 passed  ✅   (110 unit + 44 e2e)
 zoom           22 passed  ✅   (22 unit + 0 e2e)
@@ -1033,7 +1041,7 @@ cloudcompare   88 passed  ✅   (49 unit + 39 e2e)
 openscreen    101 passed  ✅   (78 unit + 23 e2e)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,120 passed  ✅   100% pass rate
+TOTAL        2,259 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1091,6 +1099,7 @@ cli-anything/
 ├── 📚 zotero/agent-harness/             # Zotero CLI (new, write import support)
 ├── 📝 mubu/agent-harness/               # Mubu CLI (96 tests)
 ├── 📹 obs-studio/agent-harness/         # OBS Studio CLI (153 tests)
+├── 📱 nslogger/agent-harness/           # NSLogger CLI (139 tests)
 ├── 🎞️ kdenlive/agent-harness/           # Kdenlive CLI (155 tests)
 ├── 🎬 shotcut/agent-harness/            # Shotcut CLI (154 tests)
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22 tests)
