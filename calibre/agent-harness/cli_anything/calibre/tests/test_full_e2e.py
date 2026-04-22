@@ -465,3 +465,210 @@ def test_workflow_library_mutation(cli_base, workflow_env, real_library, sample_
     print(f"  导出文件列表:")
     for f in exported_files:
         print(f"    - {f.name} ({f.stat().st_size:,} bytes)")
+
+
+@pytest.mark.skipif(
+    shutil.which("calibredb") is None,
+    reason="calibre tools not installed",
+)
+def test_session_management_workflow(cli_base, workflow_env, real_library, sample_epub):
+    add_result = _run_cli(
+        cli_base,
+        [
+            "--json",
+            "--library",
+            str(real_library),
+            "book",
+            "add",
+            str(sample_epub),
+            "--title",
+            "Session Test Book",
+            "--authors",
+            "Session Author",
+        ],
+        env=workflow_env,
+    )
+    assert add_result.returncode == 0
+    add_data = json.loads(add_result.stdout)
+    assert "input" in add_data
+
+    list_result = _run_cli(
+        cli_base,
+        ["--json", "--library", str(real_library), "book", "list"],
+        env=workflow_env,
+    )
+    assert list_result.returncode == 0
+    books = json.loads(list_result.stdout)
+    assert len(books) == 1
+    book_id = books[0]["id"]
+
+    status_result = _run_cli(
+        cli_base,
+        ["--json", "--library", str(real_library), "session", "status"],
+        env=workflow_env,
+    )
+    assert status_result.returncode == 0
+    status_data = json.loads(status_result.stdout)
+    assert status_data["has_library"] is True
+    assert status_data["library_path"] is not None
+
+    save_result = _run_cli(
+        cli_base,
+        ["--json", "--library", str(real_library), "session", "save"],
+        env=workflow_env,
+    )
+    assert save_result.returncode == 0
+    save_data = json.loads(save_result.stdout)
+    assert "saved" in save_data
+
+
+@pytest.mark.skipif(
+    shutil.which("calibredb") is None,
+    reason="calibre tools not installed",
+)
+def test_book_set_field_workflow(cli_base, workflow_env, real_library, sample_epub):
+    add_result = _run_cli(
+        cli_base,
+        [
+            "--json",
+            "--library",
+            str(real_library),
+            "book",
+            "add",
+            str(sample_epub),
+            "--title",
+            "Field Test Book",
+            "--authors",
+            "Field Author",
+        ],
+        env=workflow_env,
+    )
+    assert add_result.returncode == 0
+    add_data = json.loads(add_result.stdout)
+    assert "input" in add_data
+
+    list_result = _run_cli(
+        cli_base,
+        ["--json", "--library", str(real_library), "book", "list"],
+        env=workflow_env,
+    )
+    assert list_result.returncode == 0
+    books = json.loads(list_result.stdout)
+    assert len(books) == 1
+    book_id = books[0]["id"]
+
+    get_before = _run_cli(
+        cli_base,
+        ["--json", "--library", str(real_library), "book", "get", str(book_id)],
+        env=workflow_env,
+    )
+    assert get_before.returncode == 0
+    before_data = json.loads(get_before.stdout)
+    assert "Field Test Book" in before_data["metadata"]
+
+    set_result = _run_cli(
+        cli_base,
+        [
+            "--json",
+            "--library",
+            str(real_library),
+            "book",
+            "set-field",
+            str(book_id),
+            "--title",
+            "Updated Field Book",
+            "--authors",
+            "Updated Author",
+            "--tags",
+            "test,updated",
+        ],
+        env=workflow_env,
+    )
+    assert set_result.returncode == 0
+
+    get_after = _run_cli(
+        cli_base,
+        ["--json", "--library", str(real_library), "book", "get", str(book_id)],
+        env=workflow_env,
+    )
+    assert get_after.returncode == 0
+    after_data = json.loads(get_after.stdout)
+    assert "Updated Field Book" in after_data["metadata"]
+    assert "Updated Author" in after_data["metadata"]
+
+
+@pytest.mark.skipif(
+    shutil.which("ebook-convert") is None,
+    reason="ebook-convert not installed",
+)
+def test_convert_presets_and_formats(cli_base, workflow_env):
+    presets_result = _run_cli(
+        cli_base,
+        ["--json", "convert", "presets"],
+        env=workflow_env,
+    )
+    assert presets_result.returncode == 0
+    presets_data = json.loads(presets_result.stdout)
+    assert "kindle" in presets_data
+    assert "generic-epub" in presets_data
+    assert "tablet" in presets_data
+
+    formats_result = _run_cli(
+        cli_base,
+        ["--json", "convert", "formats"],
+        env=workflow_env,
+    )
+    assert formats_result.returncode == 0
+    formats_data = json.loads(formats_result.stdout)
+    assert isinstance(formats_data, list)
+    assert len(formats_data) > 0
+    assert "epub" in formats_data
+    assert "mobi" in formats_data
+
+    convert_result = _run_cli(
+        cli_base,
+        ["--json", "convert", "run", "missing.epub", "output.mobi", "--preset", "invalid_preset"],
+        env=workflow_env,
+    )
+    assert convert_result.returncode != 0
+    error_data = json.loads(convert_result.stdout)
+    assert "error" in error_data
+
+
+@pytest.mark.skipif(
+    shutil.which("calibredb") is None,
+    reason="calibre tools not installed",
+)
+def test_export_catalog_workflow(cli_base, workflow_env, workflow_root, real_library, sample_epub):
+    add_result = _run_cli(
+        cli_base,
+        [
+            "--json",
+            "--library",
+            str(real_library),
+            "book",
+            "add",
+            str(sample_epub),
+            "--title",
+            "Catalog Test Book",
+            "--authors",
+            "Catalog Author",
+        ],
+        env=workflow_env,
+    )
+    assert add_result.returncode == 0
+
+    backup_result = _run_cli(
+        cli_base,
+        [
+            "--json",
+            "--library",
+            str(real_library),
+            "export",
+            "backup",
+        ],
+        env=workflow_env,
+    )
+    assert backup_result.returncode == 0
+    backup_data = json.loads(backup_result.stdout)
+    assert "library_path" in backup_data or "stdout" in backup_data
