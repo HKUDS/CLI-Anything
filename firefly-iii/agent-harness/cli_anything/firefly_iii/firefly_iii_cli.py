@@ -119,6 +119,13 @@ from .core.insights import insights
 from .core.search import search
 from .core.export import export
 from .core.info import info
+from .core.autocomplete import autocomplete
+from .core.currencies import currencies
+from .core.recurrences import recurrences
+from .core.rules import rules
+from .core.rule_groups import rule_groups
+from .core.summary import summary
+from .core.webhooks import webhooks
 
 # Register command groups
 cli.add_command(accounts)
@@ -132,6 +139,13 @@ cli.add_command(insights)
 cli.add_command(search)
 cli.add_command(export)
 cli.add_command(info)
+cli.add_command(autocomplete)
+cli.add_command(currencies)
+cli.add_command(recurrences)
+cli.add_command(rules)
+cli.add_command(rule_groups)
+cli.add_command(summary)
+cli.add_command(webhooks)
 
 
 @cli.command()
