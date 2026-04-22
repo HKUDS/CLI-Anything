@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-31"
+    "updated": "2026-04-16"
   },
   "clis": [
     {
@@ -685,6 +685,25 @@
         {
           "name": "levishilf",
           "url": "https://github.com/levishilf"
+        }
+      ]
+    },
+    {
+      "name": "unrealinsights",
+      "display_name": "Unreal Insights",
+      "version": "0.1.0",
+      "description": "Windows-first Unreal trace capture, background session control, engine-matched UnrealInsights builds, and headless Timing Insights export workflows",
+      "requires": "Windows + Unreal Engine source or installed build with UnrealEditor and Unreal trace support",
+      "homepage": "https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-in-unreal-engine",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unrealinsights/agent-harness",
+      "entry_point": "cli-anything-unrealinsights",
+      "skill_md": "unrealinsights/agent-harness/cli_anything/unrealinsights/skills/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
         }
       ]
     },

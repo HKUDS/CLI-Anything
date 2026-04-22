@@ -15,7 +15,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start"></a>
   <a href="https://hkuds.github.io/CLI-Anything/"><img src="https://img.shields.io/badge/CLI_Hub-Browse_%26_Install-ff69b4?style=for-the-badge" alt="CLI Hub"></a>
   <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-16_Apps-green?style=for-the-badge" alt="Demos"></a>
-  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-2%2C130_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
+  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-2%2C202_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -50,6 +50,8 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 - **2026-04-17** 🌐 **CLI-Hub** received another install UX pass — public registry metadata and skill coverage were tightened, visit counting was corrected, and the web hub was further refined. 🧪 **Shotcut** render output duration was fixed (#92). 📝 **SKILL** contribution paths were corrected for the new docs flow (#224), and the skill generator now safely handles empty intros (#203).
 
 - **2026-04-16** 🗺️ **QGIS CLI** merged (#207) — a full GIS / map authoring harness landed. 🧬 **UniMol Tools CLI** merged (#219) for molecular modeling workflows. 🌐 **CLI-Hub** also added more public CLIs, including **py4csr**, refreshed its generated meta-skill, corrected SKILL contribution docs, and fixed `apt-get` package extraction in skill generation (#204).
+
+- **2026-04-16** 📈 **Unreal Insights CLI** expanded — added background capture session control (`capture start/status/snapshot/stop`), engine-root-matched `UnrealInsights.exe` resolution/build flows, and refreshed docs/tests for the new orchestration workflow.
 
 - **2026-04-15** 🌐 **CLI-Hub** updated to **v0.2.0** — the PyPI package now supports public CLIs from multiple install sources (`pip`, `npm`, `brew`, bundled/system tools), backed by a new `public_registry.json`. The Hub frontend was redesigned with separate **CLI-Anything CLIs** and **Public CLIs** decks, and live end-to-end checks now cover real install, update, and uninstall flows across both pip and npm packages.
 
@@ -594,7 +596,7 @@ AI agents are great at reasoning but terrible at using real professional softwar
 | 💸 "UI automation breaks constantly" | No screenshots, no clicking, no RPA fragility. Pure command-line reliability with structured interfaces |
 | 📊 "Agents need structured data" | Built-in JSON output for seamless agent consumption + human-readable formats for debugging |
 | 🔧 "Custom integrations are expensive" | One Claude plugin auto-generates CLIs for ANY codebase through proven 7-phase pipeline |
-| ⚡ "Prototype vs Production gap" | 1,839+ tests with real software validation. Battle-tested across 16 major applications |
+| ⚡ "Prototype vs Production gap" | 2,202+ tests with real software validation. Battle-tested across 16 major applications |
 
 ---
 
@@ -980,6 +982,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 40</td>
 </tr>
 <tr>
+<td align="center"><strong>📈 <a href="unrealinsights/agent-harness/">Unreal Insights</a></strong></td>
+<td>Performance Profiling</td>
+<td><code>cli-anything-unrealinsights</code></td>
+<td>Background trace sessions + engine-matched UnrealInsights build + headless export</td>
+<td align="center">✅ 50</td>
+</tr>
+<tr>
 <td align="center"><strong>☁️ <a href="cloudanalyzer/agent-harness/">CloudAnalyzer</a></strong></td>
 <td>Point cloud / trajectory QA</td>
 <td><code>cli-anything-cloudanalyzer</code></td>
@@ -995,11 +1004,11 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 <tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 2,291</strong></td>
+<td align="center"><strong>✅ 2,202</strong></td>
 </tr>
 </table>
 
-> **100% pass rate** across all 2,291 tests — 1,661 unit tests + 611 end-to-end tests + 19 Node.js tests.
+> **100% pass rate** across all 2,202 tests — 1,613 unit tests + 570 end-to-end tests + 19 Node.js tests.
 
 ---
 
@@ -1039,9 +1048,10 @@ sketch         19 passed  ✅   (19 jest, Node.js)
 renderdoc      59 passed  ✅   (45 unit + 14 e2e)
 cloudcompare   88 passed  ✅   (49 unit + 39 e2e)
 openscreen    101 passed  ✅   (78 unit + 23 e2e)
+unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,259 passed  ✅   100% pass rate
+TOTAL        2,202 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1116,6 +1126,7 @@ cli-anything/
 ├── 🎮 godot/agent-harness/              # Godot Engine CLI (24 tests)
 ├── 🎨 sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
 ├── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
+├── 📈 unrealinsights/agent-harness/     # Unreal Insights CLI (50 tests)
 ├── 🎬 videocaptioner/agent-harness/     # VideoCaptioner CLI (26 tests)
 ├── 🎬 openscreen/agent-harness/         # Openscreen CLI — screen recording editor (101 tests)
 ├── ☁️ cloudcompare/agent-harness/       # CloudCompare CLI (88 tests)
@@ -1346,7 +1357,7 @@ MIT License — free to use, modify, and distribute.
 
 **CLI-Anything** — *Make any software with a codebase Agent-native.*
 
-<sub>A methodology for the age of AI agents | 16 professional software demos | 1,839 passing tests</sub>
+<sub>A methodology for the age of AI agents | 16 professional software demos | 2,202 passing tests</sub>
 
 <br>
 
