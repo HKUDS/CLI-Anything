@@ -14,8 +14,8 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 <p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start"></a>
   <a href="https://hkuds.github.io/CLI-Anything/"><img src="https://img.shields.io/badge/CLI_Hub-Browse_%26_Install-ff69b4?style=for-the-badge" alt="CLI Hub"></a>
-  <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-16_Apps-green?style=for-the-badge" alt="Demos"></a>
-  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-2%2C202_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
+  <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-17_Apps-green?style=for-the-badge" alt="Demos"></a>
+  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-2%2C229_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -596,7 +596,7 @@ AI agents are great at reasoning but terrible at using real professional softwar
 | 💸 "UI automation breaks constantly" | No screenshots, no clicking, no RPA fragility. Pure command-line reliability with structured interfaces |
 | 📊 "Agents need structured data" | Built-in JSON output for seamless agent consumption + human-readable formats for debugging |
 | 🔧 "Custom integrations are expensive" | One Claude plugin auto-generates CLIs for ANY codebase through proven 7-phase pipeline |
-| ⚡ "Prototype vs Production gap" | 2,202+ tests with real software validation. Battle-tested across 16 major applications |
+| ⚡ "Prototype vs Production gap" | 2,229+ tests with real software validation. Battle-tested across 17 major applications |
 
 ---
 
@@ -968,6 +968,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 24</td>
 </tr>
 <tr>
+<td align="center"><strong>🐞 <a href="lldb/agent-harness/">LLDB</a></strong></td>
+<td>Native Debugging</td>
+<td><code>cli-anything-lldb</code></td>
+<td>LLDB Python API</td>
+<td align="center">✅ 27</td>
+</tr>
+<tr>
 <td align="center"><strong>🔍 <a href="exa/agent-harness/">Exa</a></strong></td>
 <td>AI-Native Web Search</td>
 <td><code>cli-anything-exa</code></td>
@@ -997,11 +1004,11 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 <tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 2,202</strong></td>
+<td align="center"><strong>✅ 2,229</strong></td>
 </tr>
 </table>
 
-> **100% pass rate** across all 2,202 tests — 1,613 unit tests + 570 end-to-end tests + 19 Node.js tests.
+> **100% pass rate** across all 2,229 tests — 1,636 unit tests + 574 end-to-end tests + 19 Node.js tests.
 
 ---
 
@@ -1040,10 +1047,11 @@ sketch         19 passed  ✅   (19 jest, Node.js)
 renderdoc      59 passed  ✅   (45 unit + 14 e2e)
 cloudcompare   88 passed  ✅   (49 unit + 39 e2e)
 openscreen    101 passed  ✅   (78 unit + 23 e2e)
+lldb           27 passed  ✅   (23 unit + 4 e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,202 passed  ✅   100% pass rate
+TOTAL        2,229 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1117,6 +1125,7 @@ cli-anything/
 ├── 🎮 godot/agent-harness/              # Godot Engine CLI (24 tests)
 ├── 🎨 sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
 ├── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
+├── 🐞 lldb/agent-harness/               # LLDB CLI (27 tests)
 ├── 📈 unrealinsights/agent-harness/     # Unreal Insights CLI (50 tests)
 ├── 🎬 videocaptioner/agent-harness/     # VideoCaptioner CLI (26 tests)
 ├── 🎬 openscreen/agent-harness/         # Openscreen CLI — screen recording editor (101 tests)
@@ -1223,7 +1232,7 @@ HARNESS.md is our definitive SOP for making any software agent-accessible via au
 
 It encodes proven patterns and methodologies refined through automated generation processes.
 
-The playbook distills key insights from successfully building all 16 diverse, production-ready harnesses.
+The playbook distills key insights from successfully building all 17 diverse, production-ready harnesses.
 
 ### Critical Lessons
 
@@ -1348,7 +1357,7 @@ MIT License — free to use, modify, and distribute.
 
 **CLI-Anything** — *Make any software with a codebase Agent-native.*
 
-<sub>A methodology for the age of AI agents | 16 professional software demos | 2,202 passing tests</sub>
+<sub>A methodology for the age of AI agents | 17 professional software demos | 2,229 passing tests</sub>
 
 <br>
 

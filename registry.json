@@ -272,6 +272,25 @@
       ]
     },
     {
+      "name": "lldb",
+      "display_name": "LLDB",
+      "version": "0.1.0",
+      "description": "Stateful native debugging via the LLDB Python API with JSON-friendly inspection commands",
+      "requires": "LLDB installation with Python bindings available (for example LLVM.LLVM on Windows)",
+      "homepage": "https://lldb.llvm.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=lldb/agent-harness",
+      "entry_point": "cli-anything-lldb",
+      "skill_md": "lldb/agent-harness/cli_anything/lldb/skills/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
+        }
+      ]
+    },
+    {
       "name": "zotero",
       "display_name": "Zotero",
       "version": "0.4.1",

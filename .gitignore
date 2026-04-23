@@ -100,6 +100,7 @@
 !/obsidian/
 !/unrealinsights/
 !/firefly-iii/
+!/lldb/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -184,6 +185,8 @@
 /obsidian/.*
 /unrealinsights/*
 /unrealinsights/.*
+/lldb/*
+/lldb/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -234,6 +237,7 @@
 !/safari/agent-harness/
 !/unrealinsights/agent-harness/
 !/firefly-iii/agent-harness/
+!/lldb/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
