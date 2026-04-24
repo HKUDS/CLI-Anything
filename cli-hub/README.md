@@ -70,7 +70,7 @@ cli-hub search blender --json
 
 ## Analytics
 
-cli-hub sends anonymous install/uninstall events to help track adoption (via [Umami](https://umami.is)). No personal data is collected.
+cli-hub sends anonymous usage events to help track adoption. The default provider is [PostHog](https://posthog.com), while the legacy Umami path remains available via `CLI_HUB_ANALYTICS_PROVIDER=umami`. No personal data is collected.
 
 Opt out:
 

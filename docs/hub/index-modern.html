@@ -1487,8 +1487,8 @@
       backdrop-filter: blur(18px);
       box-shadow: var(--shadow-md);
       display: grid;
-      grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr);
-      gap: 0.9rem;
+      grid-template-columns: 1fr;
+      gap: 0.8rem;
     }
 
     .footer-band,
@@ -1538,45 +1538,89 @@
       flex-direction: column;
       justify-content: center;
       gap: 0.55rem;
+      width: min(760px, 100%);
+      margin: 0 auto;
     }
 
-    .footer-analytics-link {
+    .footer-analytics-board {
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+      padding: 0.34rem 0.95rem;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    }
+
+    .analytics-row {
+      display: grid;
+      grid-template-columns: minmax(0, 168px) repeat(3, minmax(0, 1fr));
+      align-items: end;
+      gap: 0.7rem;
+      padding: 0.74rem 0;
+    }
+
+    .analytics-row + .analytics-row {
+      border-top: 1px solid var(--border);
+    }
+
+    .analytics-title {
+      font-size: 0.93rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+
+    .metric-cell {
       display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.18rem;
+      min-width: 0;
+    }
+
+    .metric-label {
+      display: inline-flex;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 0.55rem;
-      color: var(--text-secondary);
-      font-size: 0.9rem;
-    }
-
-    .footer-analytics-link svg {
-      width: 15px;
-      height: 15px;
+      gap: 0.34rem;
+      min-width: 0;
+      font-size: 0.69rem;
       color: var(--text-tertiary);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
     }
 
-    .stat-dot {
-      width: 0.45rem;
-      height: 0.45rem;
+    .metric-dot {
+      width: 0.42rem;
+      height: 0.42rem;
       border-radius: 999px;
-      display: inline-block;
       flex-shrink: 0;
+      background: rgba(129, 144, 171, 0.55);
     }
 
-    .dot-total {
-      background: var(--text);
+    .metric-value {
+      font-size: 1.05rem;
+      line-height: 1;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+      white-space: nowrap;
     }
 
-    .dot-human {
+    .metric-cell.total .metric-value {
+      font-weight: 700;
+    }
+
+    .metric-cell.human .metric-dot {
       background: var(--green);
     }
 
-    .dot-agent {
-      background: var(--amber);
+    .metric-cell.agent .metric-dot {
+      background: var(--accent);
     }
 
-    .analytics-sep {
-      color: var(--text-tertiary);
+    .metric-cell.total .metric-label {
+      color: var(--text-secondary);
     }
 
     .sr-only {
@@ -1694,6 +1738,15 @@
       .grid {
         grid-template-columns: 1fr;
       }
+
+      .analytics-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem 0.75rem;
+      }
+
+      .analytics-title {
+        grid-column: 1 / -1;
+      }
     }
 
     @media (max-width: 640px) {
@@ -1767,18 +1820,24 @@
         padding-left: 0.9rem;
         padding-right: 0.9rem;
       }
+
+      .footer-analytics-board {
+        padding: 0.3rem 0.78rem;
+      }
+
+      .analytics-row {
+        padding: 0.58rem 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .analytics-title {
+        grid-column: 1 / -1;
+      }
     }
   </style>
-  <!-- Umami Analytics — hkuds.github.io -->
-  <script defer src="https://cloud.umami.is/script.js" data-website-id="07082d05-efd3-4f85-a7a1-b426b0e8bfaa"></script>
-  <!-- Umami Analytics — clianything.cc -->
-  <script defer src="https://cloud.umami.is/script.js" data-website-id="a076c661-bed1-405c-a522-813794e688b4"></script>
+  <!-- Analytics provider is configured in the footer script. -->
 </head>
 <body>
-  <noscript>
-    <img src="https://cloud.umami.is/api/send?type=event&amp;payload=%7B%22website%22%3A%2207082d05-efd3-4f85-a7a1-b426b0e8bfaa%22%2C%22name%22%3A%22noscript-visit%22%7D" style="position:absolute;left:-9999px" alt="" width="1" height="1">
-  </noscript>
-
   <div class="page-shell">
     <nav class="nav">
       <a class="nav-brand" href="#">
@@ -2033,16 +2092,37 @@
       </div>
       <div class="footer-stats">
         <div class="footer-label">Traffic Snapshot</div>
-        <div class="footer-analytics-link" aria-label="Traffic snapshot">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span class="stat-dot dot-total"></span>
-          <span id="stat-total">&mdash;</span> visits
-          <span class="analytics-sep">&middot;</span>
-          <span class="stat-dot dot-human"></span>
-          <span id="stat-human">&mdash;</span> human
-          <span class="analytics-sep">&middot;</span>
-          <span class="stat-dot dot-agent"></span>
-          <span id="stat-agent">&mdash;</span> AI agent
+        <div class="footer-analytics-board" aria-label="Traffic snapshot">
+          <div class="analytics-row">
+            <div class="analytics-title">Website Visits</div>
+            <div class="metric-cell total">
+              <span class="metric-label">Total</span>
+              <strong id="stat-total" class="metric-value">21,123</strong>
+            </div>
+            <div class="metric-cell human">
+              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Human</span>
+              <strong id="stat-human" class="metric-value">7,689</strong>
+            </div>
+            <div class="metric-cell agent">
+              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Agent</span>
+              <strong id="stat-agent" class="metric-value">13,434</strong>
+            </div>
+          </div>
+          <div class="analytics-row">
+            <div class="analytics-title">CLI-Hub Calls</div>
+            <div class="metric-cell total">
+              <span class="metric-label">Total</span>
+              <strong id="stat-cli-total" class="metric-value">16,361</strong>
+            </div>
+            <div class="metric-cell human">
+              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Human</span>
+              <strong id="stat-cli-human" class="metric-value">3,237</strong>
+            </div>
+            <div class="metric-cell agent">
+              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Agent</span>
+              <strong id="stat-cli-agent" class="metric-value">13,124</strong>
+            </div>
+          </div>
         </div>
       </div>
     </footer>
@@ -2394,7 +2474,7 @@
       return '<div class="card-command-block">' +
         '<div class="card-command-label"><span>Install Commands</span><span>' + esc(sourceLabel) + '</span></div>' +
         '<div class="card-command">' + display + '</div>' +
-        '<div class="card-command-actions"><button class="card-copy-btn" onclick=\'copyCmd(this, ' + JSON.stringify(copyText) + ')'>Copy</button></div>' +
+        '<div class="card-command-actions"><button class="card-copy-btn" onclick=\'copyCmd(this, ' + JSON.stringify(copyText) + ')\'>Copy</button></div>' +
       '</div>';
     }
 
@@ -2550,67 +2630,276 @@
     loadRegistries().then(updateDeckPosition);
 
     (function() {
-      const AI_UA_PATTERNS = [
-        /claude/i, /anthropic/i, /openai/i, /gpt/i, /chatgpt/i,
-        /bingbot/i, /googlebot/i, /baiduspider/i, /yandexbot/i,
-        /slurp/i, /duckduckbot/i, /facebookexternalhit/i,
-        /twitterbot/i, /linkedinbot/i, /whatsapp/i, /telegrambot/i,
-        /applebot/i, /semrushbot/i, /ahrefsbot/i, /dotbot/i,
-        /petalbot/i, /mj12bot/i, /bytespider/i,
-        /headless/i, /phantom/i, /selenium/i, /puppeteer/i, /playwright/i,
-        /crawl/i, /spider/i, /bot\\b/i, /scraper/i,
-        /python-requests/i, /axios/i, /node-fetch/i, /go-http/i, /curl/i, /wget/i,
-        /ccbot/i, /gptbot/i, /perplexity/i, /cohere/i,
+      const ANALYTICS_PROVIDER = 'posthog';
+      const ANALYTICS_SITE = 'clianything.cc';
+      const COUNTED_HOSTS = new Set(['clianything.cc', 'www.clianything.cc']);
+      const BASELINE_STATS = {
+        total: 21123,
+        human: 7689,
+        agent: 13434,
+        cli_hub_total: 16361,
+        cli_hub_human: 3237,
+        cli_hub_agent: 13124,
+      };
+      const ANALYTICS_TEST_RUN = new URLSearchParams(location.search).get('analytics_test_run') || '';
+      const POSTHOG_CONFIG = {
+        projectToken: 'phc_ovP8d5bmjpn8YZnTo7pb6rE3TikcAMgmNVt75o3Ywejz',
+        apiHost: 'https://us.i.posthog.com',
+        defaults: '2026-01-30',
+        personProfiles: 'identified_only',
+      };
+      const UMAMI_CONFIG = {
+        sendUrl: 'https://cloud.umami.is/api/send',
+        websiteId: 'a076c661-bed1-405c-a522-813794e688b4',
+      };
+      const OFFICIAL_AGENT_UA_RULES = [
+        { id: 'openai-oai-searchbot', category: 'official_ai_agent', regex: /\bOAI-SearchBot\b/i },
+        { id: 'openai-gptbot', category: 'official_ai_agent', regex: /\bGPTBot\b/i },
+        { id: 'openai-chatgpt-user', category: 'official_ai_agent', regex: /\bChatGPT-User\b/i },
+        { id: 'anthropic-claudebot', category: 'official_ai_agent', regex: /\bClaudeBot\b/i },
+        { id: 'anthropic-claude-user', category: 'official_ai_agent', regex: /\bClaude-User\b/i },
+        { id: 'anthropic-claude-searchbot', category: 'official_ai_agent', regex: /\bClaude-SearchBot\b/i },
+        { id: 'perplexity-bot', category: 'official_ai_agent', regex: /\bPerplexityBot\b/i },
+        { id: 'perplexity-user', category: 'official_ai_agent', regex: /\bPerplexity-User\b/i },
+        { id: 'google-vertex-bot', category: 'official_ai_agent', regex: /\bGoogle-CloudVertexBot\b/i },
       ];
-
-      const ua = navigator.userAgent || '';
-      const isKnownAgent = AI_UA_PATTERNS.some((p) => p.test(ua));
-      const isWebdriver = navigator.webdriver === true;
+      const AGENT_TOOL_UA_RULES = [
+        { id: 'claude-code', category: 'agent_tool', regex: /\bclaude(?:[ -]?code)\b/i },
+        { id: 'codex', category: 'agent_tool', regex: /\bcodex\b/i },
+        { id: 'cursor', category: 'agent_tool', regex: /\bcursor\b/i },
+        { id: 'cline', category: 'agent_tool', regex: /\bcline\b/i },
+        { id: 'aider', category: 'agent_tool', regex: /\baider\b/i },
+        { id: 'continue', category: 'agent_tool', regex: /\bcontinue\b/i },
+        { id: 'openhands', category: 'agent_tool', regex: /\bopenhands\b/i },
+        { id: 'openclaw', category: 'agent_tool', regex: /\bopenclaw\b/i },
+        { id: 'nanobot', category: 'agent_tool', regex: /\bnanobot\b/i },
+        { id: 'browser-use', category: 'agent_tool', regex: /\bbrowser[- ]use\b/i },
+        { id: 'stagehand', category: 'agent_tool', regex: /\bstagehand\b/i },
+      ];
+      const AUTOMATION_UA_RULES = [
+        { id: 'headless-browser', category: 'automation_runtime', regex: /\bHeadlessChrome\b|\bHeadless\b/i },
+        { id: 'playwright', category: 'automation_runtime', regex: /\bPlaywright\b/i },
+        { id: 'puppeteer', category: 'automation_runtime', regex: /\bPuppeteer\b/i },
+        { id: 'selenium', category: 'automation_runtime', regex: /\bSelenium\b/i },
+        { id: 'phantomjs', category: 'automation_runtime', regex: /\bPhantomJS\b|\bPhantom\b/i },
+      ];
+      const SCRIPTED_CLIENT_UA_RULES = [
+        { id: 'python-requests', category: 'scripted_client', regex: /\bpython-requests\b/i },
+        { id: 'python-httpx', category: 'scripted_client', regex: /\bpython-httpx\b/i },
+        { id: 'axios', category: 'scripted_client', regex: /\baxios\b/i },
+        { id: 'node-fetch', category: 'scripted_client', regex: /\bnode-fetch\b/i },
+        { id: 'undici', category: 'scripted_client', regex: /\bundici\b/i },
+        { id: 'go-http-client', category: 'scripted_client', regex: /\bGo-http-client\b/i },
+        { id: 'curl', category: 'scripted_client', regex: /\bcurl\b/i },
+        { id: 'wget', category: 'scripted_client', regex: /\bwget\b/i },
+      ];
+      const CATEGORY_PRIORITY = ['official_ai_agent', 'agent_tool', 'automation_runtime', 'scripted_client'];
       let humanConfirmed = false;
+      let posthogReady = false;
+      const pendingPosthogEvents = [];
 
-      const UMAMI_SEND = 'https://cloud.umami.is/api/send';
-      const DUAL_WEBSITE_IDS = [
-        '07082d05-efd3-4f85-a7a1-b426b0e8bfaa',
-        'a076c661-bed1-405c-a522-813794e688b4',
-      ];
+      function isTrackedHost() {
+        return COUNTED_HOSTS.has(location.hostname);
+      }
 
-      function trackBoth(eventName, eventData) {
-        DUAL_WEBSITE_IDS.forEach((wid) => {
-          const payload = {
-            type: 'event',
-            payload: {
-              website: wid,
-              hostname: location.hostname,
-              url: location.pathname,
-              name: eventName,
-              data: eventData || {},
-            },
-          };
-          fetch(UMAMI_SEND, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            keepalive: true,
-          }).catch(() => {});
+      function applyVisitorStats(stats) {
+        document.getElementById('stat-total').textContent = (stats.total || 0).toLocaleString();
+        document.getElementById('stat-human').textContent = (stats.human || 0).toLocaleString();
+        document.getElementById('stat-agent').textContent = (stats.agent || 0).toLocaleString();
+        document.getElementById('stat-cli-total').textContent = (stats.cli_hub_total || 0).toLocaleString();
+        document.getElementById('stat-cli-human').textContent = (stats.cli_hub_human || 0).toLocaleString();
+        document.getElementById('stat-cli-agent').textContent = (stats.cli_hub_agent || 0).toLocaleString();
+      }
+
+      function readUaBrands() {
+        const brands = navigator.userAgentData && Array.isArray(navigator.userAgentData.brands)
+          ? navigator.userAgentData.brands
+          : [];
+        return brands.map((brand) => brand.brand).join(' ');
+      }
+
+      function collectRuleSignals(ua, rules, signals) {
+        rules.forEach((rule) => {
+          if (rule.regex.test(ua)) {
+            signals.push(rule);
+          }
         });
       }
 
-      if (isKnownAgent || isWebdriver) {
-        trackBoth('visit-agent', { ua: ua.slice(0, 200) });
+      function collectRuntimeSignals(brands, signals) {
+        if (navigator.webdriver === true) {
+          signals.push({ id: 'webdriver', category: 'automation_runtime' });
+        }
+        if (/HeadlessChrome/i.test(brands)) {
+          signals.push({ id: 'ua-brand-headlesschrome', category: 'automation_runtime' });
+        }
+        if ('__playwright__binding__' in window || '__pwManual' in window) {
+          signals.push({ id: 'playwright-runtime', category: 'automation_runtime' });
+        }
+        if ('Cypress' in window) {
+          signals.push({ id: 'cypress-runtime', category: 'automation_runtime' });
+        }
+        if ('_phantom' in window || 'callPhantom' in window) {
+          signals.push({ id: 'phantom-runtime', category: 'automation_runtime' });
+        }
+        if ('domAutomation' in window || 'domAutomationController' in window) {
+          signals.push({ id: 'dom-automation', category: 'automation_runtime' });
+        }
       }
 
-      window.addEventListener('load', () => {
-        setTimeout(() => {
-          if (isKnownAgent || isWebdriver) {
-            trackBoth('visit-agent', { ua: ua.slice(0, 200) });
-          }
-        }, 500);
-      });
+      function classifyVisitor() {
+        const ua = navigator.userAgent || '';
+        const brands = readUaBrands();
+        const signals = [];
+        collectRuleSignals(ua, OFFICIAL_AGENT_UA_RULES, signals);
+        collectRuleSignals(ua, AGENT_TOOL_UA_RULES, signals);
+        collectRuleSignals(ua, AUTOMATION_UA_RULES, signals);
+        collectRuleSignals(ua, SCRIPTED_CLIENT_UA_RULES, signals);
+        collectRuntimeSignals(brands, signals);
 
-      function onHumanInteraction() {
-        if (humanConfirmed) return;
+        const seen = new Set();
+        const uniqueSignals = signals.filter((signal) => {
+          if (seen.has(signal.id)) return false;
+          seen.add(signal.id);
+          return true;
+        }).sort((left, right) => CATEGORY_PRIORITY.indexOf(left.category) - CATEGORY_PRIORITY.indexOf(right.category));
+
+        const primary = uniqueSignals[0] || null;
+        const isAgent = uniqueSignals.length > 0;
+        return {
+          ua,
+          brands,
+          webdriver: navigator.webdriver === true,
+          isAgent,
+          isAutomation: !!primary && (primary.category === 'automation_runtime' || primary.category === 'scripted_client'),
+          trafficType: isAgent ? 'agent' : 'human',
+          reason: primary ? primary.id : 'human',
+          category: primary ? primary.category : 'human',
+          signals: uniqueSignals.map((signal) => signal.id),
+        };
+      }
+
+      const visitor = classifyVisitor();
+
+      function analyticsContext(eventData) {
+        const base = {
+          source: 'web',
+          site: ANALYTICS_SITE,
+          host: location.hostname,
+          visitor_type: visitor.trafficType,
+          is_agent: visitor.isAgent,
+          is_automation: visitor.isAutomation,
+          agent_category: visitor.category,
+          agent_reason: visitor.reason,
+          agent_signals: visitor.signals.slice(0, 12),
+          ua: visitor.ua.slice(0, 200),
+          ua_brands: visitor.brands.slice(0, 200),
+          webdriver: visitor.webdriver,
+        };
+        if (ANALYTICS_TEST_RUN) {
+          base.test_run = ANALYTICS_TEST_RUN;
+        }
+        return { ...base, ...eventData };
+      }
+
+      function initPosthog() {
+        if (!isTrackedHost()) return;
+        !function(t,e){var o,n,p,r;e.__SV||(window.posthog&&window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split('.');2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement('script')).type='text/javascript',p.crossOrigin='anonymous',p.async=!0,p.src=s.api_host.replace('.i.posthog.com','-assets.i.posthog.com')+'/static/array.js',(r=t.getElementsByTagName('script')[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a='posthog',u.people=u.people||[],u.toString=function(t){var e='posthog';return'posthog'!==a&&(e+='.'+a),t||(e+=' (stub)'),e},u.people.toString=function(){return u.toString(1)+'.people (stub)'},o='init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug'.split(' '),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+        window.posthog.init(POSTHOG_CONFIG.projectToken, {
+          api_host: POSTHOG_CONFIG.apiHost,
+          defaults: POSTHOG_CONFIG.defaults,
+          person_profiles: POSTHOG_CONFIG.personProfiles,
+          opt_out_useragent_filter: true,
+          loaded: function(posthog) {
+            posthogReady = true;
+            while (pendingPosthogEvents.length) {
+              const queued = pendingPosthogEvents.shift();
+              posthog.capture(queued.eventName, analyticsContext(queued.eventData));
+            }
+          },
+        });
+      }
+
+      function initUmami() {
+        if (!isTrackedHost()) return;
+        const script = document.createElement('script');
+        script.defer = true;
+        script.src = 'https://cloud.umami.is/script.js';
+        script.dataset.websiteId = UMAMI_CONFIG.websiteId;
+        document.head.appendChild(script);
+      }
+
+      function trackWithPosthog(eventName, eventData) {
+        if (!isTrackedHost() || !window.posthog) return;
+        if (!posthogReady || typeof window.posthog.capture !== 'function') {
+          pendingPosthogEvents.push({ eventName, eventData });
+          return;
+        }
+        window.posthog.capture(eventName, analyticsContext(eventData));
+      }
+
+      function trackWithUmami(eventName, eventData) {
+        if (!isTrackedHost()) return;
+        const payload = {
+          type: 'event',
+          payload: {
+            website: UMAMI_CONFIG.websiteId,
+            hostname: ANALYTICS_SITE,
+            url: location.pathname,
+            name: eventName,
+            data: analyticsContext(eventData),
+          },
+        };
+        fetch(UMAMI_CONFIG.sendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true,
+        }).catch(() => {});
+      }
+
+      function trackAnalyticsEvent(eventName, eventData) {
+        if (ANALYTICS_PROVIDER === 'umami') {
+          trackWithUmami(eventName, eventData);
+          return;
+        }
+        trackWithPosthog(eventName, eventData);
+      }
+
+      if (ANALYTICS_PROVIDER === 'umami') {
+        initUmami();
+      } else {
+        initPosthog();
+      }
+
+      if (ANALYTICS_TEST_RUN) {
+        window.__CLI_ANYTHING_ANALYTICS__ = {
+          visitor: {
+            isAgent: visitor.isAgent,
+            isAutomation: visitor.isAutomation,
+            trafficType: visitor.trafficType,
+            category: visitor.category,
+            reason: visitor.reason,
+            signals: visitor.signals.slice(),
+            webdriver: visitor.webdriver,
+            ua: visitor.ua,
+          },
+        };
+      }
+
+      if (isTrackedHost() && visitor.isAgent) {
+        trackAnalyticsEvent('visit-agent', {
+          classification_source: 'initial-load',
+        });
+      }
+
+      function onHumanInteraction(event) {
+        if (humanConfirmed || !isTrackedHost() || visitor.trafficType !== 'human') return;
         humanConfirmed = true;
-        trackBoth('visit-human');
+        trackAnalyticsEvent('visit-human', {
+          classification_source: 'user-interaction',
+          interaction: event.type,
+        });
         ['mousemove', 'touchstart', 'scroll', 'keydown', 'click'].forEach((evt) => {
           document.removeEventListener(evt, onHumanInteraction);
         });
@@ -2620,49 +2909,84 @@
         document.addEventListener(evt, onHumanInteraction, { once: false, passive: true });
       });
 
-      const UMAMI_API = 'https://api.umami.is/v1';
-      const UMAMI_KEY = 'api_idAebMhzn6z0hsUQT7BSxRuCK2GUZvRY';
-      const HKUDS_WEBSITE_ID = '07082d05-efd3-4f85-a7a1-b426b0e8bfaa';
-      const CC_WEBSITE_ID = 'a076c661-bed1-405c-a522-813794e688b4';
-      const headers = { Accept: 'application/json', 'x-umami-api-key': UMAMI_KEY };
+      // ── Live analytics (PostHog HogQL) ──
+      // Read-only personal API key, scoped to `query:read` on project 393992 only.
+      // See https://us.posthog.com/settings/user-api-keys.
+      const POSTHOG_READONLY_KEY = 'phx_FizBjpYkycqd7b9UC2ZebHNhze6gn8T9SmUv5uG8dXXLepHj';
+      const POSTHOG_QUERY_HOST = 'https://us.posthog.com';
+      const POSTHOG_QUERY_PROJECT_ID = '393992';
+      const MIGRATION_STARTED_AT = '2026-04-23T09:06:38Z';
+      const LIVE_STATS_REFRESH_MS = 60_000;
 
-      async function loadVisitorStats() {
+      async function fetchPosthogIncrement() {
+        if (!POSTHOG_READONLY_KEY || POSTHOG_READONLY_KEY.indexOf('REPLACE') !== -1) {
+          throw new Error('posthog readonly key not configured');
+        }
+        const hogql = (
+          "select " +
+          "countIf(event = 'visit-human' and properties.source = 'web' and properties.site = 'clianything.cc') as human, " +
+          "countIf(event = 'visit-agent' and properties.source = 'web' and properties.site = 'clianything.cc') as agent, " +
+          "countIf(event = 'cli-hub call' and properties.source = 'cli' and properties.channel = 'cli-hub' and properties.is_agent = false) as cli_hub_human, " +
+          "countIf(event = 'cli-hub call' and properties.source = 'cli' and properties.channel = 'cli-hub' and properties.is_agent = true) as cli_hub_agent " +
+          "from events " +
+          "where timestamp >= parseDateTimeBestEffort('" + MIGRATION_STARTED_AT + "')"
+        );
+        const response = await fetch(POSTHOG_QUERY_HOST + '/api/projects/' + POSTHOG_QUERY_PROJECT_ID + '/query/', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + POSTHOG_READONLY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: { kind: 'HogQLQuery', query: hogql } }),
+        });
+        if (!response.ok) throw new Error('posthog query http ' + response.status);
+        const data = await response.json();
+        const row = (data.results && data.results[0]) || [0, 0, 0, 0];
+        const human = Number(row[0]) || 0;
+        const agent = Number(row[1]) || 0;
+        const cliHuman = Number(row[2]) || 0;
+        const cliAgent = Number(row[3]) || 0;
+        return {
+          total: human + agent,
+          human,
+          agent,
+          cli_hub_total: cliHuman + cliAgent,
+          cli_hub_human: cliHuman,
+          cli_hub_agent: cliAgent,
+        };
+      }
+
+      function mergeStats(baseline, increment) {
+        return {
+          total: baseline.total + increment.total,
+          human: baseline.human + increment.human,
+          agent: baseline.agent + increment.agent,
+          cli_hub_total: baseline.cli_hub_total + increment.cli_hub_total,
+          cli_hub_human: baseline.cli_hub_human + increment.cli_hub_human,
+          cli_hub_agent: baseline.cli_hub_agent + increment.cli_hub_agent,
+        };
+      }
+
+      async function refreshVisitorStats() {
         try {
-          const now = Date.now();
-          let hkudsHumanVisits = 0;
-          let ccHumanVisits = 0;
-          let ccAgentVisits = 0;
-          const [hkudsStatsResp, ccEventsResp] = await Promise.all([
-            fetch(UMAMI_API + '/websites/' + HKUDS_WEBSITE_ID + '/stats?startAt=0&endAt=' + now, { headers }),
-            fetch(UMAMI_API + '/websites/' + CC_WEBSITE_ID + '/events/series?startAt=0&endAt=' + now + '&unit=year&timezone=UTC', { headers })
-          ]);
-
-          if (hkudsStatsResp.ok) {
-            const stats = await hkudsStatsResp.json();
-            hkudsHumanVisits = stats.visits ?? 0;
-          }
-
-          if (ccEventsResp.ok) {
-            const events = await ccEventsResp.json();
-            events.forEach((e) => {
-              if (e.x === 'visit-human') ccHumanVisits += e.y || 0;
-              if (e.x === 'visit-agent') ccAgentVisits += e.y || 0;
-            });
-          }
-
-          const humanCount = hkudsHumanVisits + ccHumanVisits;
-          const totalVisits = humanCount + ccAgentVisits;
-
-          document.getElementById('stat-total').textContent = totalVisits.toLocaleString();
-          document.getElementById('stat-human').textContent = humanCount.toLocaleString();
-          document.getElementById('stat-agent').textContent = ccAgentVisits.toLocaleString();
+          const increment = await fetchPosthogIncrement();
+          applyVisitorStats(mergeStats(BASELINE_STATS, increment));
+          return true;
         } catch (_) {
-          // Leave fallback dashes.
+          return false;
         }
       }
 
+      async function loadVisitorStats() {
+        applyVisitorStats(BASELINE_STATS);
+        await refreshVisitorStats();
+        setInterval(refreshVisitorStats, LIVE_STATS_REFRESH_MS);
+      }
+
       loadVisitorStats();
-      loadGitHubStars();
+      if (typeof loadGitHubStars === 'function') {
+        loadGitHubStars();
+      }
     })();
   </script>
 </body>

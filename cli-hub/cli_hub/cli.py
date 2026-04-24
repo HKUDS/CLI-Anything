@@ -2,13 +2,28 @@
 
 import os
 import shutil
+import sys
 
 import click
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_all_clis, get_cli, search_clis, list_categories
 from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli
-from cli_hub.analytics import track_install, track_uninstall, track_visit, track_first_run, _detect_is_agent
+from cli_hub.analytics import detect_invocation_context, track_install, track_uninstall, track_visit, track_first_run
+
+
+def _invocation_command(ctx, version):
+    """Return a compact label for the current invocation."""
+    argv = sys.argv[1:]
+    if version:
+        return "--version"
+    if ctx.invoked_subcommand:
+        return ctx.invoked_subcommand
+    if any(arg in ("--help", "-h") for arg in argv):
+        return "--help"
+    if argv:
+        return argv[0]
+    return "root"
 
 
 @click.group(invoke_without_command=True)
@@ -17,7 +32,7 @@ from cli_hub.analytics import track_install, track_uninstall, track_visit, track
 def main(ctx, version):
     """cli-hub — Download and manage CLI-Anything harnesses and public CLIs."""
     track_first_run()
-    track_visit(is_agent=_detect_is_agent())
+    track_visit(command=_invocation_command(ctx, version), detection=detect_invocation_context())
     if version:
         click.echo(f"cli-hub {__version__}")
         return

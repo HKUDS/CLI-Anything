@@ -22,7 +22,7 @@ from cli_hub.installer import (
     _install_strategy,
     _UV_INSTALL_HINT,
 )
-from cli_hub.analytics import _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent
+from cli_hub.analytics import _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent, detect_invocation_context
 from cli_hub.cli import main
 
 
@@ -510,8 +510,9 @@ class TestAnalytics:
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "test-event"
-            assert payload["payload"]["hostname"] == "clianything.cc"
+            assert payload["event"] == "test-event"
+            assert payload["properties"]["hostname"] == "clianything.cc"
+            assert payload["properties"]["source"] == "cli"
 
     @patch("cli_hub.analytics._send_event")
     def test_track_event_noop_when_disabled(self, mock_send):
@@ -522,6 +523,17 @@ class TestAnalytics:
             mock_send.assert_not_called()
 
     @patch("cli_hub.analytics._send_event")
+    def test_track_event_supports_umami_provider(self, mock_send):
+        with patch.dict(os.environ, {"CLI_HUB_ANALYTICS_PROVIDER": "umami"}, clear=False):
+            track_event("test-event")
+            import time
+            time.sleep(0.2)
+            mock_send.assert_called_once()
+            payload = mock_send.call_args[0][0]
+            assert payload["payload"]["name"] == "test-event"
+            assert payload["payload"]["hostname"] == "clianything.cc"
+
+    @patch("cli_hub.analytics._send_event")
     def test_track_install_event_name_includes_cli(self, mock_send):
         """cli-install event name must include CLI name for dashboard visibility."""
         with patch.dict(os.environ, {}, clear=True):
@@ -530,11 +542,11 @@ class TestAnalytics:
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "cli-install:gimp"
-            assert payload["payload"]["url"] == "/cli-anything-hub/install/gimp"
-            assert payload["payload"]["data"]["cli"] == "gimp"
-            assert payload["payload"]["data"]["version"] == "1.0.0"
-            assert "platform" in payload["payload"]["data"]
+            assert payload["event"] == "cli-install:gimp"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/install/gimp"
+            assert payload["properties"]["cli"] == "gimp"
+            assert payload["properties"]["version"] == "1.0.0"
+            assert "platform" in payload["properties"]
 
     @patch("cli_hub.analytics._send_event")
     def test_track_uninstall_event_name_includes_cli(self, mock_send):
@@ -545,33 +557,38 @@ class TestAnalytics:
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "cli-uninstall:blender"
-            assert payload["payload"]["url"] == "/cli-anything-hub/uninstall/blender"
-            assert payload["payload"]["data"]["cli"] == "blender"
+            assert payload["event"] == "cli-uninstall:blender"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/uninstall/blender"
+            assert payload["properties"]["cli"] == "blender"
 
     @patch("cli_hub.analytics._send_event")
     def test_track_visit_human(self, mock_send):
-        """visit-human event sent when not detected as agent."""
+        """cli-hub call event sent when not detected as agent."""
         with patch.dict(os.environ, {}, clear=True):
             track_visit(is_agent=False)
             import time
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "visit-human"
-            assert payload["payload"]["url"] == "/cli-anything-hub"
-            assert payload["payload"]["data"]["source"] == "cli-anything-hub"
+            assert payload["event"] == "cli-hub call"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/call"
+            assert payload["properties"]["command"] == "root"
+            assert payload["properties"]["is_agent"] is False
+            assert payload["properties"]["traffic_type"] == "human"
 
     @patch("cli_hub.analytics._send_event")
     def test_track_visit_agent(self, mock_send):
-        """visit-agent event sent when agent environment detected."""
+        """cli-hub call event captures the agent flag."""
         with patch.dict(os.environ, {}, clear=True):
-            track_visit(is_agent=True)
+            track_visit(is_agent=True, command="--version")
             import time
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "visit-agent"
+            assert payload["event"] == "cli-hub call"
+            assert payload["properties"]["command"] == "--version"
+            assert payload["properties"]["is_agent"] is True
+            assert payload["properties"]["traffic_type"] == "agent"
 
     def test_detect_agent_claude_code(self):
         with patch.dict(os.environ, {"CLAUDE_CODE": "1"}):
@@ -581,12 +598,78 @@ class TestAnalytics:
         with patch.dict(os.environ, {"CODEX": "1"}):
             assert _detect_is_agent() is True
 
-    def test_detect_not_agent_clean_env(self):
+    @patch("cli_hub.analytics._parent_process_commands", return_value=["/usr/local/bin/codex --run"])
+    def test_detect_agent_from_parent_process(self, mock_cmds):
+        with patch.dict(os.environ, {}, clear=True):
+            context = detect_invocation_context()
+            assert context["is_agent"] is True
+            assert context["reason"] == "codex-process"
+            assert "codex-process" in context["signals"]
+
+    @pytest.mark.parametrize(
+        ("command", "expected_reason"),
+        [
+            ("/usr/local/bin/gemini --prompt fix tests", "gemini-process"),
+            ("/usr/local/bin/copilot agent", "copilot-process"),
+            ("/usr/local/bin/auggie --print review", "auggie-process"),
+            ("/opt/augment/bin/augment", "augment-process"),
+            ("/usr/local/bin/ampcode fix build", "amp-process"),
+            ("/usr/local/bin/opencode agent create", "opencode-process"),
+            ("/usr/local/bin/kilo auth", "kilo-process"),
+            ("/usr/local/bin/qodo chat", "qodo-process"),
+            ("/usr/local/bin/kiro /agent create", "kiro-process"),
+        ],
+    )
+    @patch("cli_hub.analytics._parent_process_commands")
+    def test_detect_agent_from_expanded_parent_process_names(self, mock_cmds, command, expected_reason):
+        mock_cmds.return_value = [command]
+        with patch.dict(os.environ, {}, clear=True):
+            context = detect_invocation_context()
+            assert context["is_agent"] is True
+            assert context["reason"] == expected_reason
+            assert expected_reason in context["signals"]
+
+    @patch("cli_hub.analytics._parent_process_commands", return_value=[])
+    def test_detect_not_agent_clean_env(self, mock_cmds):
         """Clean env with a tty should not detect as agent."""
         with patch.dict(os.environ, {}, clear=True):
             with patch("sys.stdin") as mock_stdin:
                 mock_stdin.isatty.return_value = True
                 assert _detect_is_agent() is False
+
+    @patch("cli_hub.analytics._parent_process_commands", return_value=[])
+    def test_detect_non_tty_is_agent(self, mock_cmds):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("sys.stdin") as mock_stdin:
+                mock_stdin.isatty.return_value = False
+                context = detect_invocation_context()
+                assert context["is_agent"] is True
+                assert context["traffic_type"] == "agent"
+                assert context["category"] == "scripted_client"
+                assert context["reason"] == "stdin-not-tty"
+
+    @patch("cli_hub.analytics._send_event")
+    def test_track_visit_uses_detection_context(self, mock_send):
+        detection = {
+            "is_agent": True,
+            "traffic_type": "agent",
+            "category": "agent_tool",
+            "reason": "codex-process",
+            "signals": ["codex-process", "stdin-not-tty"],
+            "stdin_tty": False,
+            "is_interactive": False,
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            track_visit(command="search", detection=detection)
+            import time
+            time.sleep(0.2)
+            payload = mock_send.call_args[0][0]
+            assert payload["properties"]["command"] == "search"
+            assert payload["properties"]["agent_reason"] == "codex-process"
+            assert payload["properties"]["agent_category"] == "agent_tool"
+            assert payload["properties"]["agent_signals"] == ["codex-process", "stdin-not-tty"]
+            assert payload["properties"]["stdin_tty"] is False
+            assert payload["properties"]["is_interactive"] is False
 
     @patch("cli_hub.analytics._send_event")
     def test_first_run_sends_event(self, mock_send, tmp_path):
@@ -597,8 +680,8 @@ class TestAnalytics:
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "cli-anything-hub-installed"
-            assert payload["payload"]["url"] == "/cli-anything-hub/installed"
+            assert payload["event"] == "cli-anything-hub-installed"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/installed"
             # Marker file should now exist
             assert (tmp_path / ".cli-hub" / ".first_run_sent").exists()
 
@@ -623,32 +706,53 @@ class TestCLI:
 
     def setup_method(self):
         self.runner = click.testing.CliRunner()
+        self.human_detection = {
+            "is_agent": False,
+            "traffic_type": "human",
+            "category": "human",
+            "reason": "human",
+            "signals": [],
+            "stdin_tty": True,
+            "is_interactive": True,
+        }
+        self.agent_detection = {
+            "is_agent": True,
+            "traffic_type": "agent",
+            "category": "agent_tool",
+            "reason": "codex-env",
+            "signals": ["codex-env"],
+            "stdin_tty": False,
+            "is_interactive": False,
+        }
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     def test_version(self, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["--version"])
         assert __version__ in result.output
         assert result.exit_code == 0
-        mock_visit.assert_called_once_with(is_agent=False)
+        mock_visit.assert_called_once_with(command="--version", detection=self.human_detection)
         mock_first_run.assert_called_once()
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     def test_help(self, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["--help"])
         assert "cli-hub" in result.output
         assert result.exit_code == 0
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
     @patch("cli_hub.cli.list_categories", return_value=["3d", "audio", "image"])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_list_command(self, mock_installed, mock_categories, mock_fetch, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["list"])
         assert "gimp" in result.output
         assert "blender" in result.output
@@ -656,31 +760,34 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
     @patch("cli_hub.cli.list_categories", return_value=["3d", "audio", "image"])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_list_with_category(self, mock_installed, mock_categories, mock_fetch, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["list", "-c", "image"])
         assert "gimp" in result.output
         assert "blender" not in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.search_clis", return_value=[SAMPLE_REGISTRY["clis"][0]])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_search_command(self, mock_installed, mock_search, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["search", "gimp"])
         assert "gimp" in result.output
         assert result.exit_code == 0
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.get_cli", return_value=SAMPLE_REGISTRY["clis"][0])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_info_command(self, mock_installed, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["info", "gimp"])
         assert "GIMP" in result.output
         assert "image" in result.output
@@ -689,19 +796,21 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.get_cli", return_value=None)
     def test_info_not_found(self, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["info", "nonexistent"])
         assert result.exit_code == 1
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.track_install")
     @patch("cli_hub.cli.install_cli", return_value=(True, "Installed GIMP (cli-anything-gimp)"))
     @patch("cli_hub.cli.get_cli", return_value=SAMPLE_REGISTRY["clis"][0])
     def test_install_command(self, mock_get, mock_install, mock_track, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["install", "gimp"])
         assert result.exit_code == 0
         assert "Installed" in result.output
@@ -709,30 +818,33 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.track_uninstall")
     @patch("cli_hub.cli.uninstall_cli", return_value=(True, "Uninstalled GIMP"))
     def test_uninstall_command(self, mock_uninstall, mock_track, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["uninstall", "gimp"])
         assert result.exit_code == 0
         mock_track.assert_called_once()
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=True)
+    @patch("cli_hub.cli.detect_invocation_context")
     def test_visit_agent_on_invocation(self, mock_detect, mock_visit, mock_first_run):
-        """When agent env detected, track_visit is called with is_agent=True."""
+        """When agent env detected, track_visit is called with the new cli-hub call metadata."""
+        mock_detect.return_value = self.agent_detection
         result = self.runner.invoke(main, ["--version"])
-        mock_visit.assert_called_once_with(is_agent=True)
+        mock_visit.assert_called_once_with(command="--version", detection=self.agent_detection)
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.install_cli", return_value=(True, "Installed Jimeng / Dreamina CLI (dreamina)"))
     @patch("cli_hub.cli.get_cli", return_value={**SAMPLE_REGISTRY["clis"][0], "entry_point": "dreamina", "name": "jimeng", "display_name": "Jimeng / Dreamina CLI", "version": "latest", "_source": "public"})
     @patch("cli_hub.cli.track_install")
     def test_install_shows_launch_hint(self, mock_track, mock_get, mock_install, mock_detect, mock_visit, mock_first_run):
         """Post-install output includes both entry point and cli-hub launch hint."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["install", "jimeng"])
         assert result.exit_code == 0
         assert "dreamina" in result.output
@@ -740,32 +852,35 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.shutil.which", return_value="/usr/bin/dreamina")
     @patch("cli_hub.cli.os.execvp")
     @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
     def test_launch_execs_entry_point(self, mock_get, mock_execvp, mock_which, mock_detect, mock_visit, mock_first_run):
         """launch execs the CLI entry point, passing through extra args."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["launch", "jimeng", "login"])
         mock_execvp.assert_called_once_with("dreamina", ["dreamina", "login"])
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.shutil.which", return_value=None)
     @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
     def test_launch_not_on_path_shows_install_hint(self, mock_get, mock_which, mock_detect, mock_visit, mock_first_run):
         """launch fails gracefully when entry point not on PATH."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["launch", "jimeng"])
         assert result.exit_code == 1
         assert "cli-hub install jimeng" in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.get_cli", return_value=None)
     def test_launch_unknown_cli(self, mock_get, mock_detect, mock_visit, mock_first_run):
         """launch with an unknown CLI name exits with error."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["launch", "nonexistent"])
         assert result.exit_code == 1
         assert "not found" in result.output
