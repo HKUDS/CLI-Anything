@@ -266,15 +266,15 @@ def launch(name, args):
     os.execvp(entry, [entry] + list(args))
 
 
-@main.group(name="preview", invoke_without_command=True)
+@main.group(name="previews", invoke_without_command=True)
 @click.pass_context
-def preview(ctx):
-    """Inspect preview bundles emitted by CLI-Anything harnesses."""
+def previews(ctx):
+    """Inspect existing preview bundles or live sessions; this command does not publish previews."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
 
-@preview.command("inspect")
+@previews.command("inspect")
 @click.argument("preview_ref")
 @click.option("--json", "as_json", is_flag=True, help="Output preview metadata as JSON.")
 def preview_inspect(preview_ref, as_json):
@@ -292,7 +292,7 @@ def preview_inspect(preview_ref, as_json):
     click.echo(render_inspect_text(preview_ref), nl=False)
 
 
-@preview.command("html")
+@previews.command("html")
 @click.argument("preview_ref")
 @click.option("--output", "-o", "output_path", default=None, help="Output HTML path.")
 @click.option("--poll-ms", default=1500, show_default=True, help="Polling interval for live session pages.")
@@ -327,7 +327,7 @@ def _serve_live_session(session_ref, poll_ms, auto_open, port):
             click.echo(
                 "Browser launch unavailable. Open this manually:\n"
                 f"  {live_url}\n"
-                f"  Suggested command: {session.get('watch_command') or f'cli-hub preview watch {session_dir} --open'}"
+                f"  Suggested command: {session.get('watch_command') or f'cli-hub previews watch {session_dir} --open'}"
             )
     click.echo("Press Ctrl-C to stop the live preview server.")
     try:
@@ -338,7 +338,7 @@ def _serve_live_session(session_ref, poll_ms, auto_open, port):
         server.server_close()
 
 
-@preview.command("watch")
+@previews.command("watch")
 @click.argument("session_ref")
 @click.option("--poll-ms", default=1500, show_default=True, help="Polling interval for the live page.")
 @click.option("--port", default=0, show_default=True, help="Preferred localhost port. Use 0 for auto.")
@@ -348,7 +348,7 @@ def preview_watch(session_ref, poll_ms, port, auto_open):
     _serve_live_session(session_ref, poll_ms=poll_ms, auto_open=auto_open, port=port)
 
 
-@preview.command("open")
+@previews.command("open")
 @click.argument("preview_ref")
 @click.option("--output", "-o", "output_path", default=None, help="Override the generated HTML path.")
 @click.option("--poll-ms", default=1500, show_default=True, help="Polling interval when opening a live session.")

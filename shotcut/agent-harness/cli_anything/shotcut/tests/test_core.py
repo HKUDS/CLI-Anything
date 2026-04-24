@@ -477,7 +477,12 @@ class TestPreview:
         assert live["source_state"]["project_path"] == str(project_path)
         assert live["source_state"]["last_rendered_fingerprint"].startswith("sha256:")
         assert Path(live["_session_path"]).is_file()
+        assert Path(live["_trajectory_path"]).is_file()
         assert (Path(live["_session_dir"]) / "current" / "manifest.json").is_file()
+        trajectory = json.loads(Path(live["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert trajectory["step_count"] == 1
+        assert trajectory["steps"][0]["bundle_id"] == "bundle-a"
+        assert live["trajectory_step_count"] == 1
 
     def test_live_push_updates_history(self, tmp_path, monkeypatch):
         session = Session("preview_live")
@@ -499,6 +504,54 @@ class TestPreview:
         assert pushed["current_bundle_id"] == "bundle-b"
         assert pushed["history"][0]["bundle_id"] == "bundle-b"
         assert pushed["history"][1]["bundle_id"] == "bundle-a"
+        trajectory = json.loads(Path(pushed["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert trajectory["step_count"] == 2
+        assert [step["bundle_id"] for step in trajectory["steps"]] == ["bundle-a", "bundle-b"]
+        assert pushed["current_step_id"] == "step-0002"
+
+    def test_live_status_includes_trajectory_summary(self, tmp_path, monkeypatch):
+        session = Session("preview_live")
+        session.new_project()
+        project_path = tmp_path / "live-demo.mlt"
+        session.save_project(str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        monkeypatch.setattr(preview_mod, "capture", lambda *args, **kwargs: dict(bundle_manifest))
+
+        preview_mod.live_start(session, root_dir=str(tmp_path), live_mode="manual")
+        status = preview_mod.live_status(session, root_dir=str(tmp_path))
+        summary = status["trajectory_summary"]
+        assert summary["step_count"] == 1
+        assert summary["latest_bundle_id"] == "bundle-a"
+        assert summary["latest_publish_reason"] == "live-start"
+        assert summary["recent_steps"][0]["step_id"] == "step-0001"
+
+    def test_live_push_records_publish_time_when_bundle_is_reused(self, tmp_path, monkeypatch):
+        session = Session("preview_live")
+        session.new_project()
+        project_path = tmp_path / "live-demo.mlt"
+        session.save_project(str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+        bundle_manifest["created_at"] = "2025-01-01T00:00:00Z"
+        publish_times = [
+            "2026-04-23T10:00:00Z",
+            "2026-04-23T10:05:00Z",
+        ]
+
+        monkeypatch.setattr(preview_mod, "capture", lambda *args, **kwargs: dict(bundle_manifest))
+        monkeypatch.setattr(preview_mod, "_now_iso", lambda: publish_times.pop(0))
+
+        preview_mod.live_start(session, root_dir=str(tmp_path), live_mode="manual")
+        pushed = preview_mod.live_push(session, root_dir=str(tmp_path))
+        trajectory = json.loads(Path(pushed["_trajectory_path"]).read_text(encoding="utf-8"))
+
+        assert len(pushed["history"]) == 1
+        assert [step["bundle_id"] for step in trajectory["steps"]] == ["bundle-a", "bundle-a"]
+        assert [step["command_finished_at"] for step in trajectory["steps"]] == [
+            "2026-04-23T10:00:00Z",
+            "2026-04-23T10:05:00Z",
+        ]
+        assert all(step["created_at"] == "2025-01-01T00:00:00Z" for step in trajectory["steps"])
 
     def test_live_stop_marks_session_stopped(self, tmp_path, monkeypatch):
         session = Session("preview_live")
@@ -572,11 +625,14 @@ class TestPreview:
 
         result = preview_mod.poll_live_session_once(str(started_session_dir))
         refreshed = json.loads(Path(started["_session_path"]).read_text())
+        trajectory = json.loads(Path(started["_session_dir"]).joinpath("trajectory.json").read_text())
         assert result["action"] == "captured"
         assert refreshed["current_bundle_id"] == "bundle-b"
         assert refreshed["source_state"]["last_rendered_fingerprint"].startswith("sha256:")
         assert refreshed["poller"]["last_capture_status"] == "ok"
         assert calls
+        assert trajectory["step_count"] == 2
+        assert trajectory["steps"][-1]["publish_reason"] == "auto-poll"
 
     def test_poll_live_session_once_exits_for_manual_mode(self, tmp_path, monkeypatch):
         session = Session("preview_live")

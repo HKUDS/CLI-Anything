@@ -1,6 +1,6 @@
 # Preview Progress
 
-Last updated: 2026-04-22 UTC
+Last updated: 2026-04-23 UTC
 
 This file tracks the current state of the preview work on the dedicated preview
 branch and records the next design direction for live popup preview windows.
@@ -125,10 +125,11 @@ What was added:
     - real turntable motion video
     - polished build-story video with turntable ending
 - `cli-hub` live viewer surface:
-  - `preview inspect` now understands live sessions
-  - `preview html` now renders live-session HTML
-  - `preview watch` now serves a live session over localhost with auto-refresh
-  - `preview open` now opens bundles or live sessions in a separate window
+  - `previews inspect` now understands live sessions
+  - `previews html` now renders bundle and live-session HTML
+  - `previews watch` now serves a live session over localhost with auto-refresh
+  - `previews open` now opens bundles or live sessions in a separate window
+  - live pages and inspect output now consume `trajectory.json` when present
 
 The live split now looks like this:
 
@@ -596,18 +597,20 @@ This adds one key capability:
 - the live window can watch one stable path while harnesses keep publishing new
   preview states
 
-## Proposed Command Surface
+## Canonical Command Surface
 
 ### `cli-hub`
 
-Add these commands:
+The current canonical viewer commands are:
 
-- `cli-hub preview open <bundle-or-session>`
-  - open a preview in a separate window if possible
-- `cli-hub preview watch <session-dir>`
+- `cli-hub previews inspect <bundle-or-session>`
+  - inspect an existing bundle or live session in text or JSON
+- `cli-hub previews html <bundle-or-session>`
+  - render HTML for a bundle or live session
+- `cli-hub previews watch <session-dir>`
   - run a live preview viewer against a session
-- `cli-hub preview serve <bundle-or-session>`
-  - start a local HTTP server for a preview viewer
+- `cli-hub previews open <bundle-or-session>`
+  - open a bundle or live session in a browser window
 
 Useful flags:
 
@@ -632,7 +635,8 @@ Behavior:
 - `start` creates a live session and optionally opens the viewer window
 - `push` publishes a new preview state into the session
 - `stop` closes the session cleanly
-- `status` reports session path, viewer URL, and last update metadata
+- `status` reports session path, current bundle metadata, and compact
+  `trajectory_summary` for agent use
 
 The first implementation can make `push` explicit.
 
@@ -747,7 +751,7 @@ Goal:
 
 Deliverables:
 
-- `cli-hub preview open`
+- `cli-hub previews open`
 - browser app-mode launch on Linux/Ubuntu
 - headless fallback to URL output
 
@@ -762,8 +766,9 @@ Goal:
 Deliverables:
 
 - `session.json`
-- `current/` + `history/`
-- `cli-hub preview watch`
+- `trajectory.json`
+- `current/`
+- `cli-hub previews watch`
 - polling-based live reload
 
 ### Phase 3: Harness Integration
@@ -794,8 +799,8 @@ This should be opt-in, because automatic preview generation can be expensive.
 
 The next concrete move should be:
 
-- implement `cli-hub preview open`
-- implement `cli-hub preview watch`
+- keep `cli-hub previews open`
+- keep `cli-hub previews watch`
 - use browser-window popup as the default Linux/Ubuntu strategy
 
 Reason:

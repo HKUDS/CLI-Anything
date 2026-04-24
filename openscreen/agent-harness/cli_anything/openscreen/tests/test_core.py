@@ -297,6 +297,11 @@ class TestPreview:
         assert any(item["role"] == "preview-clip" for item in manifest["artifacts"])
         assert any(item["role"] == "hero" for item in manifest["artifacts"])
         assert os.path.isfile(manifest["_manifest_path"])
+        assert os.path.isfile(manifest["_trajectory_path"])
+        trajectory = json.loads(Path(manifest["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert trajectory["step_count"] == 1
+        assert trajectory["steps"][0]["bundle_id"] == manifest["bundle_id"]
+        assert trajectory["steps"][0]["publish_reason"] == "capture"
 
     def test_latest_bundle(self, tmp_path, monkeypatch):
         session = Session("preview_test")
@@ -326,6 +331,7 @@ class TestPreview:
         created = preview_mod.capture(session, root_dir=str(tmp_path))
         latest = preview_mod.latest(root_dir=str(tmp_path))
         assert latest["bundle_id"] == created["bundle_id"]
+        assert os.path.isfile(latest["_trajectory_path"])
 
 
 # ── Zoom Tests ────────────────────────────────────────────────────────────

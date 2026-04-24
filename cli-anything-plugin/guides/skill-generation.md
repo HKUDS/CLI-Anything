@@ -96,6 +96,20 @@ skill definition.
 - List all command groups with brief descriptions
 - Provide realistic examples that demonstrate common workflows
 
+## Preview-Capable Harnesses
+
+If the harness supports previews, the generated or edited `SKILL.md` should
+include a dedicated preview section that covers:
+
+- the producer command surface: `cli-anything-<software> preview ...`
+- the consumer command surface: `cli-hub previews ...`
+- whether `preview diff`, `preview live ...`, or poll mode exist
+- how agents should use `--json` results and artifact paths
+- at least one publish example and one inspect/watch example
+
+For the full preview methodology, see
+[`preview-methodology.md`](preview-methodology.md).
+
 ## Skill Path in CLI Banner
 
 ReplSkin prefers the repo-root canonical skill file and falls back to the

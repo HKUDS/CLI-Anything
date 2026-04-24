@@ -263,6 +263,40 @@ Add `--json` before the subcommand for machine-readable output:
 python3 -m cli.shotcut_cli --json --project p.mlt timeline clips 1
 ```
 
+## Preview and Live Preview
+
+Shotcut supports both static preview bundles and live preview sessions.
+
+```bash
+# Capture a low-res preview bundle
+cli-anything-shotcut --json --project edit.mlt preview capture --recipe quick
+
+# Start poll-mode live preview
+cli-anything-shotcut --json --project edit.mlt preview live start --recipe quick --mode poll --source-poll-ms 500
+
+# Query the current live session without rendering
+cli-anything-shotcut --json --project edit.mlt preview live status --recipe quick
+```
+
+The default `quick` bundle contains:
+
+- `preview.mp4`
+- sampled frames
+- midpoint `hero.png`
+- `summary.json`
+
+Live preview persists `session.json`, immutable bundle dirs, and
+`trajectory.json`.
+
+Inspect or open published preview state with:
+
+```bash
+cli-hub previews inspect /path/to/bundle-or-session
+cli-hub previews html /path/to/bundle-or-session -o page.html
+cli-hub previews watch /path/to/session --open
+cli-hub previews open /path/to/bundle-or-session
+```
+
 ## Running Tests
 
 ```bash

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Render a polished Blender build-story video from a real preview demo run."""
+"""Render a polished Blender build-story video from a real preview demo run.
+
+The source build run must already contain real preview bundles, a persisted live
+session, and a `trajectory.json`. This script turns that trajectory into a
+split-screen story video, then appends the real turntable ending from the
+source run.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +41,10 @@ LEFT_W = STYLE.LEFT_W
 FPS = STYLE.FPS
 COLORS = STYLE.COLORS
 HOLD_TAIL_S = 1.4
+BASELINE_START_S = 0.55
+PREVIEW_SWITCH_LATENCY_S = 0.0
+FINAL_STILL_STEP_S = 0.85
+TURNTABLE_STEP_S = 0.7
 
 DISPLAY_FONT_PATH = STYLE.DISPLAY_FONT_PATH
 SANS_FONT_PATH = STYLE.SANS_FONT_PATH
@@ -52,125 +62,21 @@ def write_json(path: Path, payload: Dict[str, Any]) -> Path:
     return path
 
 
-def _stage_title(stage: str) -> str:
-    labels = {
-        "01_chassis": "Stage 01 · Chassis Blockout",
-        "02_power_and_wings": "Stage 02 · Power + Wings",
-        "03_payload_and_rig": "Stage 03 · Payload + Rig",
-        "04_motion_ready": "Stage 04 · Motion Ready",
-    }
-    return labels.get(stage, stage.replace("_", " "))
+def _stage_title(stage: Dict[str, Any]) -> str:
+    stage_id = str(stage.get("stage") or "stage").strip()
+    label = str(stage.get("label") or stage_id.replace("_", " ")).strip()
+    prefix = stage_id.split("_", 1)[0]
+    if prefix.isdigit():
+        return f"Stage {prefix} · {label}"
+    return label
 
 
-def _stage_story(stage: str) -> str:
-    stories = {
-        "01_chassis": "Display plinth, main hull, bridge pod, docking ring, and service cabin.",
-        "02_power_and_wings": "Wing spar, solar panel arms, panel rib arrays, engine block, and thruster pack.",
-        "03_payload_and_rig": "Radar dish, nav beacons, service arm, comm fin, and drone-root parenting rig.",
-        "04_motion_ready": "Hover motion, dish spin, beacon pulse, and the final preview-ready presentation state.",
-    }
-    return stories.get(stage, stage.replace("_", " "))
+def _stage_story(stage: Dict[str, Any]) -> str:
+    return str(stage.get("story") or stage.get("label") or stage.get("stage") or "Build stage").strip()
 
 
-def _command_specs(project_path: Path, live_root: Path, final_render_path: Path, turntable_path: Path) -> List[Dict[str, Any]]:
-    return [
-        {
-            "id": "scene-bootstrap",
-            "label": "Create preview scene",
-            "display_cmd": "create_scene(name='orbital-relay-drone', profile='preview')",
-            "duration_s": 0.8,
-        },
-        {
-            "id": "scene-setup",
-            "label": "Configure camera, lights, and materials",
-            "display_cmd": "_configure_scene(project) + _add_materials(project)",
-            "duration_s": 1.0,
-        },
-        {
-            "id": "stage01-build",
-            "label": "Block out the hull and docking silhouette",
-            "display_cmd": "add DeckFloor / DisplayBase / LaunchPad / HullCore / NoseCone / DockRing / ServiceCabin",
-            "duration_s": 1.1,
-        },
-        {
-            "id": "stage01-preview",
-            "label": "Capture stage 01 live preview",
-            "display_cmd": f"cli-anything-blender --project {project_path} preview live start --recipe quick --mode manual --root-dir {live_root}",
-            "duration_s": 0.9,
-        },
-        {
-            "id": "stage02-spar",
-            "label": "Add wing spar and panel arms",
-            "display_cmd": "add WingSpar + PanelArmLeft + PanelArmRight",
-            "duration_s": 0.8,
-        },
-        {
-            "id": "stage02-panels",
-            "label": "Add solar panels and rib arrays",
-            "display_cmd": "add SolarPanelLeft/Right + array SolarRibLeft/Right",
-            "duration_s": 0.9,
-        },
-        {
-            "id": "stage02-engine",
-            "label": "Add engine block and thruster pack",
-            "display_cmd": "add EngineBlock + thrusters + nozzle cones",
-            "duration_s": 1.0,
-        },
-        {
-            "id": "stage02-preview",
-            "label": "Capture stage 02 live preview",
-            "display_cmd": f"cli-anything-blender --project {project_path} preview live push --recipe quick --root-dir {live_root} --publish-reason stage:02_power_and_wings",
-            "duration_s": 0.8,
-        },
-        {
-            "id": "stage03-sensors",
-            "label": "Add radar dish and navigation payloads",
-            "display_cmd": "add DishPivot + SensorMast + RadarDish + NavLightLeft/Right",
-            "duration_s": 0.9,
-        },
-        {
-            "id": "stage03-detail",
-            "label": "Add service arm and comm fin",
-            "display_cmd": "add ServiceArmBase + ServiceArmReach + ServiceTool + CommFin",
-            "duration_s": 0.9,
-        },
-        {
-            "id": "stage03-rig",
-            "label": "Wire DroneRoot parenting hierarchy",
-            "display_cmd": "set parent -> DroneRoot / DishPivot / rotating payloads",
-            "duration_s": 0.7,
-        },
-        {
-            "id": "stage03-preview",
-            "label": "Capture stage 03 live preview",
-            "display_cmd": f"cli-anything-blender --project {project_path} preview live push --recipe quick --root-dir {live_root} --publish-reason stage:03_payload_and_rig",
-            "duration_s": 0.8,
-        },
-        {
-            "id": "motion-authoring",
-            "label": "Author hover, spin, and beacon motion",
-            "display_cmd": "add_keyframe(DroneRoot, DishPivot, DockRing, BeaconCore, NavLights)",
-            "duration_s": 1.0,
-        },
-        {
-            "id": "stage04-preview",
-            "label": "Capture stage 04 live preview",
-            "display_cmd": f"cli-anything-blender --project {project_path} preview live push --recipe quick --root-dir {live_root} --publish-reason stage:04_motion_ready",
-            "duration_s": 0.8,
-        },
-        {
-            "id": "final-still",
-            "label": "Render final hero still",
-            "display_cmd": f"render_scene(..., output='{final_render_path}')",
-            "duration_s": 1.1,
-        },
-        {
-            "id": "turntable",
-            "label": "Encode turntable motion video",
-            "display_cmd": f"ffmpeg -> {turntable_path}",
-            "duration_s": 0.9,
-        },
-    ]
+def _stage_display_cmd(stage: Dict[str, Any]) -> str:
+    return str(stage.get("display_cmd") or f"publish {stage.get('stage') or 'stage'}").strip()
 
 
 def build_trajectory(build_manifest_path: Path, output_dir: Path) -> Dict[str, Any]:
@@ -179,38 +85,33 @@ def build_trajectory(build_manifest_path: Path, output_dir: Path) -> Dict[str, A
     live_root = Path(build_manifest["preview_root"]).expanduser().resolve()
     final_render_path = Path(build_manifest["final_render"]["output"]).expanduser().resolve()
     turntable_path = Path(build_manifest["motion"]["video"]["video_path"]).expanduser().resolve()
+    live_session = build_manifest.get("live_session") or {}
+    stage_log = build_manifest.get("stage_log") or []
+    if not stage_log:
+        raise RuntimeError(f"No stage_log entries found in {build_manifest_path}")
 
-    command_specs = _command_specs(project_path, live_root, final_render_path, turntable_path)
     commands: List[Dict[str, Any]] = []
     t = 0.0
-    command_index_by_id: Dict[str, int] = {}
-    for index, spec in enumerate(command_specs):
-        duration_s = float(spec["duration_s"])
+
+    def add_command(cmd_id: str, label: str, display_cmd: str, duration_s: float) -> Dict[str, Any]:
+        nonlocal t
         command = {
-            "index": index,
-            "id": spec["id"],
-            "label": spec["label"],
-            "display_cmd": spec["display_cmd"],
-            "duration_s": duration_s,
+            "index": len(commands),
+            "id": cmd_id,
+            "label": label,
+            "display_cmd": display_cmd,
+            "duration_s": float(duration_s),
             "timeline_start_s": round(t, 3),
-            "timeline_end_s": round(t + duration_s, 3),
+            "timeline_end_s": round(t + float(duration_s), 3),
             "stdout": "",
             "stderr": "",
             "returncode": 0,
         }
         commands.append(command)
-        command_index_by_id[spec["id"]] = index
-        t += duration_s
+        t += float(duration_s)
+        return command
 
-    preview_events: List[Dict[str, Any]] = []
-    preview_step_map = {
-        "01_chassis": "stage01-preview",
-        "02_power_and_wings": "stage02-preview",
-        "03_payload_and_rig": "stage03-preview",
-        "04_motion_ready": "stage04-preview",
-    }
-
-    for sequence_index, stage in enumerate(build_manifest["stage_log"], start=1):
+    def bundle_payload(stage: Dict[str, Any]) -> Dict[str, Any]:
         bundle_dir = Path(stage["current_bundle_dir"]).expanduser().resolve()
         manifest_path = Path(stage["current_manifest_path"]).expanduser().resolve()
         summary_path = bundle_dir / "summary.json"
@@ -220,43 +121,92 @@ def build_trajectory(build_manifest_path: Path, output_dir: Path) -> Dict[str, A
             item["artifact_id"]: str((bundle_dir / item["path"]).resolve())
             for item in manifest.get("artifacts", [])
         }
-        stage_id = stage["stage"]
-        cmd_id = preview_step_map[stage_id]
-        step_index = command_index_by_id[cmd_id]
-        step = commands[step_index]
-        ready_t = round(float(step["timeline_end_s"]) + 0.2, 3)
+        return {
+            "bundle_id": manifest["bundle_id"],
+            "bundle_dir": str(bundle_dir),
+            "manifest_path": str(manifest_path),
+            "summary_path": str(summary_path),
+            "artifacts": artifacts,
+            "summary": summary,
+        }
+
+    baseline_command = add_command(
+        "live-baseline",
+        "Bring live preview online from the launch-platform baseline",
+        str(
+            live_session.get("start_command")
+            or f"cli-anything-blender --project {project_path} preview live start --recipe quick --mode manual --root-dir {live_root}"
+        ),
+        BASELINE_START_S,
+    )
+
+    preview_events: List[Dict[str, Any]] = []
+    baseline_stage = stage_log[0]
+    preview_events.append(
+        {
+            "sequence_index": 1,
+            "step_index": baseline_command["index"],
+            "step_id": baseline_command["id"],
+            "step_label": baseline_command["label"],
+            "stage_id": baseline_stage["stage"],
+            "stage_title": _stage_title(baseline_stage),
+            "stage_story": _stage_story(baseline_stage),
+            "timeline_ready_s": 0.0,
+            "latency_s": 0.0,
+            "bundle_count": int(baseline_stage.get("bundle_count") or 1),
+            "publish_reason": f"stage:{baseline_stage['stage']}",
+            "session_path": baseline_stage["session_path"],
+            "session_dir": str(Path(baseline_stage["session_path"]).expanduser().resolve().parent),
+            "copied_bundle": bundle_payload(baseline_stage),
+        }
+    )
+
+    for sequence_index, stage in enumerate(stage_log[1:], start=2):
+        command = add_command(
+            f"stage-{stage['stage']}",
+            str(stage.get("label") or stage["stage"]).strip(),
+            _stage_display_cmd(stage),
+            float(stage.get("duration_s") or 0.9),
+        )
+        ready_t = round(float(command["timeline_end_s"]) + PREVIEW_SWITCH_LATENCY_S, 3)
         preview_events.append(
             {
                 "sequence_index": sequence_index,
-                "step_index": step_index,
-                "step_id": cmd_id,
-                "step_label": step["label"],
-                "stage_id": stage_id,
-                "stage_title": _stage_title(stage_id),
-                "stage_story": _stage_story(stage_id),
+                "step_index": command["index"],
+                "step_id": command["id"],
+                "step_label": command["label"],
+                "stage_id": stage["stage"],
+                "stage_title": _stage_title(stage),
+                "stage_story": _stage_story(stage),
                 "timeline_ready_s": ready_t,
-                "latency_s": 0.2,
+                "latency_s": PREVIEW_SWITCH_LATENCY_S,
                 "bundle_count": int(stage["bundle_count"]),
-                "publish_reason": f"stage:{stage_id}",
+                "publish_reason": f"stage:{stage['stage']}",
                 "session_path": stage["session_path"],
                 "session_dir": str(Path(stage["session_path"]).expanduser().resolve().parent),
-                "copied_bundle": {
-                    "bundle_id": manifest["bundle_id"],
-                    "bundle_dir": str(bundle_dir),
-                    "manifest_path": str(manifest_path),
-                    "summary_path": str(summary_path),
-                    "artifacts": artifacts,
-                    "summary": summary,
-                },
+                "copied_bundle": bundle_payload(stage),
             }
         )
+
+    add_command(
+        "final-still",
+        "Render final hero still",
+        f"render_scene(..., output='{final_render_path}')",
+        FINAL_STILL_STEP_S,
+    )
+    add_command(
+        "turntable",
+        "Package the real turntable ending",
+        f"ffmpeg -> {turntable_path}",
+        TURNTABLE_STEP_S,
+    )
 
     trajectory = {
         "protocol": "blender-preview-trajectory/v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "scenario": "orbital-relay-drone",
         "scenario_title": "Orbital Relay Drone",
-        "scenario_subtitle": "agent-built Blender drone with live preview and a real turntable ending",
+        "scenario_subtitle": "launch-platform baseline, step-aligned real preview checkpoints, then a real turntable ending",
         "build_manifest_path": str(build_manifest_path.resolve()),
         "project_path": str(project_path),
         "live_root": str(live_root),
@@ -265,8 +215,8 @@ def build_trajectory(build_manifest_path: Path, output_dir: Path) -> Dict[str, A
         "commands": commands,
         "preview_events": preview_events,
         "notes": [
-            "The left panel is a scripted agent build trace derived from the actual Blender demo run.",
-            "The preview monitor uses real Blender quick-preview bundles captured during that run.",
+            "The first preview shown on the right is the real stage-00 launch-platform bundle, used as a live baseline instead of leaving the monitor empty.",
+            "Every later preview switch is keyed from the matching real stage_log entry, so command completion and preview refresh stay aligned.",
             "The ending appends the existing real turntable video from the same run.",
         ],
     }
@@ -465,7 +415,7 @@ def draw_trace_panel(
 
         card_y += card_height + card_gap
 
-    footer = "Structured build steps derived from the real Blender demo script; preview captures remain real artifacts."
+    footer = "Step-aligned build trace driven by the real Blender stage_log; preview captures remain real artifacts."
     draw.text((x0 + 24, y1 - 28), footer, fill=COLORS["terminal_muted"], font=fonts["small"])
 
 
@@ -511,6 +461,7 @@ def draw_preview_panel(
 ) -> None:
     x0, y0, x1, y1 = area
     draw = ImageDraw.Draw(canvas)
+    snapshot = progress_snapshot(trajectory, t_real)
     STYLE._draw_panel(canvas, area, radius=30, fill=COLORS["panel"], outline=COLORS["panel_line"], accent=COLORS["accent_warm"])
     draw.text((x0 + 24, y0 + 24), "Preview Monitor", fill=COLORS["white"], font=fonts["title"])
     STYLE._draw_chip(
@@ -532,6 +483,9 @@ def draw_preview_panel(
     current = event["copied_bundle"]
     summary = current.get("summary") or {}
     facts = summary.get("facts") or {}
+    previous_event = None
+    if event["sequence_index"] > 1:
+        previous_event = trajectory["preview_events"][event["sequence_index"] - 2]
 
     stage_area = (x0 + 20, y0 + 96, x1 - 260, y1 - 20)
     info_area = (x1 - 244, y0 + 96, x1 - 20, y1 - 20)
@@ -550,11 +504,16 @@ def draw_preview_panel(
         label="WORKBENCH",
         fonts=fonts,
     )
+    secondary_label = "FINAL STILL"
+    secondary_img = trajectory.get("final_render")
+    if previous_event is not None:
+        secondary_label = "PREV HERO"
+        secondary_img = previous_event["copied_bundle"]["artifacts"].get("hero")
     _paste_preview_card(
         canvas,
         (stage_area[0] + thumb_w + 12, thumb_y, stage_area[2], thumb_y + thumb_h),
-        img_path=trajectory.get("final_render"),
-        label="FINAL STILL",
+        img_path=secondary_img,
+        label=secondary_label,
         fonts=fonts,
     )
 
@@ -562,8 +521,8 @@ def draw_preview_panel(
     meta_lines = [
         ("STAGE", event["stage_title"]),
         ("BUNDLE", STYLE._trim_middle(current["bundle_id"], 18)),
-        ("OBJECTS", str(facts.get("object_count", "n/a"))),
-        ("MATERIALS", str(facts.get("material_count", "n/a"))),
+        ("CAUSE", STYLE._trim_middle(str(event.get("publish_reason") or "n/a"), 18)),
+        ("LATENCY", f"{event.get('latency_s', 0.0):.2f}s"),
         ("FRAME", str(facts.get("frame_current", "n/a"))),
         ("STREAM", f"{event['sequence_index']:02d}/{len(trajectory['preview_events']):02d}"),
     ]
@@ -582,7 +541,10 @@ def draw_preview_panel(
         meta_y += 74
 
     story_lines = STYLE._wrap_trimmed(event["stage_story"], width_chars=24, max_lines=5)
-    draw.text((info_area[0] + 16, info_area[3] - 176), "Stage note", fill=COLORS["white"], font=fonts["body"])
+    note_title = "Stage note"
+    if snapshot["active_cmd"] and snapshot["active_cmd"]["id"] in {"final-still", "turntable"}:
+        note_title = "Handoff note"
+    draw.text((info_area[0] + 16, info_area[3] - 176), note_title, fill=COLORS["white"], font=fonts["body"])
     story_y = info_area[3] - 148
     for line in story_lines:
         draw.text((info_area[0] + 16, story_y), line, fill=COLORS["preview_muted"], font=fonts["small"])
@@ -634,7 +596,7 @@ def render_process_video(
         draw_preview_panel(image, (LEFT_W + 10, 116, VIDEO_W - 26, VIDEO_H - 34), trajectory, t_real, fonts, image_cache)
 
         draw = ImageDraw.Draw(image)
-        footer_left = "SCRIPTED agent build trace · REAL Blender preview bundles · real turntable ending appended"
+        footer_left = "STEP-ALIGNED build trace · REAL Blender preview bundles · real turntable ending appended"
         footer_right = STYLE._trim_middle(str(output_dir / "trajectory.json"), 64)
         draw.text((34, VIDEO_H - 26), footer_left, fill="#7891ab", font=fonts["small"])
         _draw_text_right(draw, VIDEO_W - 34, VIDEO_H - 26, footer_right, font=fonts["mono_small"], fill="#7891ab")
@@ -762,13 +724,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--build-manifest",
-        default=f"/root/preview-artifacts/{today}/blender-orbital-relay-drone-v4/build_manifest.json",
+        default=f"/root/preview-artifacts/{today}/blender-orbital-relay-drone-v6/build_manifest.json",
         help="Existing Blender build_manifest.json path from the orbital relay drone demo.",
     )
     parser.add_argument(
         "--output-dir",
-        default=f"/root/preview-artifacts/{today}/blender-orbital-relay-drone-story",
-        help="Directory for trajectory.json, process frames, stills, and final polished video.",
+        default=f"/root/preview-artifacts/{today}/blender-orbital-relay-drone-story-v5",
+        help="Directory for trajectory.json, process frames, stills, and the final polished video assembled from real preview bundles.",
     )
     parser.add_argument("--fps", type=int, default=FPS, help="Output video FPS.")
     parser.add_argument(

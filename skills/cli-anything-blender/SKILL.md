@@ -1,5 +1,6 @@
 ---
-name: "cli-anything-blender"
+name: >-
+  cli-anything-blender
 description: >-
   Command-line interface for Blender - A stateful command-line interface for 3D scene editing, following the same patterns as the GIMP CLI ...
 ---
@@ -32,11 +33,11 @@ cli-anything-blender --help
 # Start interactive REPL mode
 cli-anything-blender
 
-# Create a new project
-cli-anything-blender project new -o project.json
+# Create a new scene project
+cli-anything-blender scene new -o scene.blend-cli.json
 
 # Run with JSON output (for agent consumption)
-cli-anything-blender --json project info -p project.json
+cli-anything-blender --json --project scene.blend-cli.json scene info
 ```
 
 ### REPL Mode
@@ -156,6 +157,38 @@ Render settings and output commands.
 | `execute` | Render the scene (generates bpy script) |
 | `script` | Generate bpy script without rendering |
 
+### Preview
+
+Real preview bundle capture and live preview session commands.
+
+| Command | Description |
+|---------|-------------|
+| `preview recipes` | List available preview recipes |
+| `preview capture` | Render a real preview bundle for the active scene |
+| `preview latest` | Return the latest existing preview bundle |
+| `preview live start` | Start a live preview session and publish the first bundle |
+| `preview live push` | Publish a refreshed bundle into the live session |
+| `preview live status` | Read current live-session state without rendering |
+| `preview live stop` | Stop the live session without deleting artifacts |
+
+Typical bundle artifacts for recipe `quick`:
+
+- `hero.png` from real Eevee preview rendering
+- `workbench.png` from real Blender Workbench rendering
+
+Live sessions persist:
+
+- `session.json` as the mutable head
+- immutable bundle directories
+- `trajectory.json` as append-only command-to-preview history
+
+Viewer side:
+
+- `cli-hub previews inspect <bundle-or-session>`
+- `cli-hub previews html <bundle-or-session> -o page.html`
+- `cli-hub previews watch <session-dir> --open`
+- `cli-hub previews open <bundle-or-session>`
+
 
 ### Session
 
@@ -176,12 +209,12 @@ Session management commands.
 
 ### Create a New Project
 
-Create a new blender project file.
+Create a new Blender scene project file.
 
 ```bash
-cli-anything-blender project new -o myproject.json
+cli-anything-blender scene new -o myscene.blend-cli.json
 # Or with JSON output for programmatic use
-cli-anything-blender --json project new -o myproject.json
+cli-anything-blender --json scene new -o myscene.blend-cli.json
 ```
 
 
@@ -214,11 +247,33 @@ All commands support dual output modes:
 
 ```bash
 # Human output
-cli-anything-blender project info -p project.json
+cli-anything-blender --project scene.blend-cli.json scene info
 
 # JSON output for agents
-cli-anything-blender --json project info -p project.json
+cli-anything-blender --json --project scene.blend-cli.json scene info
 ```
+
+## Preview Workflow
+
+Use Blender previews when the agent needs truthful visual checkpoints:
+
+```bash
+# List preview recipes
+cli-anything-blender --project scene.blend-cli.json preview recipes
+
+# Capture a real preview bundle
+cli-anything-blender --json --project scene.blend-cli.json preview capture --recipe quick
+
+# Start a live preview loop
+cli-anything-blender --json --project scene.blend-cli.json preview live start --recipe quick --mode poll --source-poll-ms 500
+
+# Query current live head without rendering
+cli-anything-blender --json --project scene.blend-cli.json preview live status --recipe quick
+```
+
+For agents, `preview capture --json` returns bundle metadata plus artifact file
+paths. `preview live status --json` returns session metadata plus a compact
+`trajectory_summary`.
 
 ## For AI Agents
 
@@ -228,7 +283,10 @@ When using this CLI programmatically:
 2. **Check return codes** - 0 for success, non-zero for errors
 3. **Parse stderr** for error messages on failure
 4. **MANDATORY: Use absolute paths** for all file operations (rendering, project files). Relative paths are prone to failure in background execution.
-5. **Verify outputs exist** after export operations
+5. **Use `preview capture` or `preview live ...` for visual verification** instead of inferring scene quality from JSON alone
+6. **Read returned artifact paths** such as `hero.png` and `workbench.png`; the JSON payload references files, it does not inline image bytes
+7. **Treat `_bundle_dir` as one snapshot only**; for stable live history, use `_session_dir` plus `_trajectory_path`
+8. **Use `cli-hub previews ...` only to inspect/open existing previews**; preview generation itself always happens through `cli-anything-blender preview ...`
 
 ## More Information
 

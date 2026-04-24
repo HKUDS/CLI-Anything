@@ -14,12 +14,17 @@ from typing import Any, Dict, List, Optional
 from cli_anything.freecad.utils import freecad_backend
 from cli_anything.freecad.utils import freecad_macro_gen as macro_gen
 from cli_anything.freecad.utils.preview_bundle import (
+    append_live_trajectory,
     artifact_record,
+    build_live_history_item,
     finalize_bundle,
     find_latest_manifest,
     fingerprint_data,
     fingerprint_file,
+    live_trajectory_path,
+    load_live_trajectory,
     prepare_bundle,
+    summarize_trajectory,
 )
 
 from . import document as doc_mod
@@ -191,6 +196,9 @@ def _terminate_pid(pid: Any) -> bool:
 def _with_live_refs(session_dir: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
     payload["_session_dir"] = str(session_dir.resolve())
     payload["_session_path"] = str((session_dir / "session.json").resolve())
+    trajectory_path = live_trajectory_path(session_dir)
+    if trajectory_path.is_file():
+        payload["_trajectory_path"] = str(trajectory_path.resolve())
     return payload
 
 
@@ -223,15 +231,7 @@ def _update_current_symlink(session_dir: Path, bundle_dir: str) -> Path:
 
 
 def _history_item(bundle_manifest: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "bundle_id": bundle_manifest.get("bundle_id"),
-        "bundle_dir": bundle_manifest.get("_bundle_dir"),
-        "manifest_path": bundle_manifest.get("_manifest_path"),
-        "summary_path": bundle_manifest.get("_summary_path"),
-        "created_at": bundle_manifest.get("created_at"),
-        "status": bundle_manifest.get("status"),
-        "cached": bool(bundle_manifest.get("cached")),
-    }
+    return build_live_history_item(bundle_manifest)
 
 
 def _generate_preview_macro(
@@ -480,6 +480,7 @@ def _publish_live_session(
     live_mode: Optional[str] = None,
     source_poll_ms: int = DEFAULT_SOURCE_POLL_MS,
     publish_reason: str = "manual",
+    command: Optional[str] = None,
 ) -> Dict[str, Any]:
     session_dir = _live_session_dir(session, recipe, root_dir=root_dir)
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -487,7 +488,21 @@ def _publish_live_session(
 
     existing = _load_existing_live_session(session_dir)
     now = _now_iso()
-    current_item = _history_item(bundle_manifest)
+    project = session.get_project()
+    trajectory = append_live_trajectory(
+        session_dir,
+        software="freecad",
+        recipe=recipe,
+        bundle_manifest=bundle_manifest,
+        publish_reason=publish_reason,
+        project_path=session.project_path,
+        project_name=Path(session.project_path).name if session.project_path else project.get("name", "Untitled"),
+        session_name=session_dir.name,
+        command=command,
+        command_started_at=now,
+        command_finished_at=now,
+    )
+    current_item = dict(trajectory.get("latest_step") or _history_item(bundle_manifest))
     history = [current_item]
     for item in existing.get("history", []):
         if item.get("bundle_id") == current_item["bundle_id"]:
@@ -504,7 +519,6 @@ def _publish_live_session(
     poller = dict(existing.get("poller") or {})
     poller["running"] = _pid_is_running(poller.get("pid"))
     project_file_fingerprint = _project_file_fingerprint(session.project_path)
-    project = session.get_project()
     source_state = dict(existing.get("source_state") or {})
     if session.project_path:
         source_state["source_type"] = "project-file"
@@ -515,6 +529,7 @@ def _publish_live_session(
         source_state["last_rendered_fingerprint"] = project_file_fingerprint
         source_state["last_rendered_at"] = now
     source_state["last_publish_reason"] = publish_reason
+    trajectory_rel = os.path.relpath(Path(trajectory["_trajectory_path"]).resolve(), session_dir)
 
     payload = {
         "protocol_version": LIVE_PROTOCOL_VERSION,
@@ -538,16 +553,22 @@ def _publish_live_session(
         "current_cached": bool(bundle_manifest.get("cached")),
         "bundle_count": len(history),
         "history": history,
+        "trajectory_path": trajectory_rel,
+        "trajectory_protocol_version": trajectory.get("protocol_version"),
+        "trajectory_step_count": trajectory.get("step_count", 0),
+        "current_step_id": trajectory.get("current_step_id"),
+        "latest_command": current_item.get("command"),
+        "latest_publish_reason": current_item.get("publish_reason", publish_reason),
         "source_state": source_state,
         "poller": poller,
         "publish_command": (
             f"cli-anything-freecad{project_flag} preview live push --recipe {recipe}{root_flag}"
         ).strip(),
         "watch_command": (
-            f"cli-hub preview watch {session_dir} --open --poll-ms {int(refresh_hint_ms)}"
+            f"cli-hub previews watch {session_dir} --open --poll-ms {int(refresh_hint_ms)}"
         ),
-        "inspect_command": f"cli-hub preview inspect {session_dir}",
-        "html_command": f"cli-hub preview html {session_dir}",
+        "inspect_command": f"cli-hub previews inspect {session_dir}",
+        "html_command": f"cli-hub previews html {session_dir}",
         "start_command": (
             f"cli-anything-freecad{project_flag} preview live start --recipe {recipe} "
             f"--mode {current_live_mode} --source-poll-ms {current_source_poll_ms}{root_flag}"
@@ -594,6 +615,7 @@ def live_start(
         live_mode=live_mode,
         source_poll_ms=source_poll_ms,
         publish_reason=publish_reason,
+        command=command,
     )
     live_payload["bundle"] = {
         "bundle_id": bundle_manifest.get("bundle_id"),
@@ -650,6 +672,9 @@ def live_status(
     if poller:
         poller["running"] = _pid_is_running(poller.get("pid"))
         payload["poller"] = poller
+    trajectory = load_live_trajectory(session_dir)
+    if trajectory:
+        payload["trajectory_summary"] = summarize_trajectory(trajectory)
     return _with_live_refs(session_dir, payload)
 
 

@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Build a clear Blender orbital relay drone demo with live previews and motion."""
+"""Build a clear Blender orbital relay drone demo with live previews and motion.
+
+Outputs:
+
+- real staged preview bundles
+- a persisted live `session.json`
+- append-only `trajectory.json`
+- `live.html` rendered through `cli-hub previews html`
+- a final still render and turntable video
+"""
 
 from __future__ import annotations
 
@@ -117,10 +126,10 @@ def _render_live_html(session_dir: Path, output_path: Path) -> str | None:
     if not hub:
         return None
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    command = [hub, "preview", "html", str(session_dir), "-o", str(output_path)]
+    command = [hub, "previews", "html", str(session_dir), "-o", str(output_path)]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"cli-hub preview html failed:\n{result.stderr[-1200:]}")
+        raise RuntimeError(f"cli-hub previews html failed:\n{result.stderr[-1200:]}")
     return str(output_path)
 
 
@@ -153,7 +162,7 @@ def _configure_scene(project: Dict) -> None:
     add_light(project, light_type="POINT", name="BeaconBounce", location=[0.0, 0.0, 3.35], power=180)
 
 
-def _build_stage_01_foundation(project: Dict) -> None:
+def _build_stage_00_launch_platform(project: Dict) -> None:
     add_object(project, mesh_type="plane", name="DeckFloor", mesh_params={"size": 22.0}, location=[0, 0, 0])
     add_object(
         project,
@@ -188,6 +197,8 @@ def _build_stage_01_foundation(project: Dict) -> None:
     )
     add_modifier(project, "bevel", _object_index(project, "LiftColumn"), params={"width": 0.02, "segments": 2})
 
+
+def _build_stage_01_hull_blockout(project: Dict) -> None:
     add_object(project, mesh_type="empty", name="DroneRoot", location=[0, 0, 0], rotation=[0, 0, 18])
     add_object(
         project,
@@ -234,7 +245,7 @@ def _build_stage_01_foundation(project: Dict) -> None:
     add_modifier(project, "bevel", _object_index(project, "ServiceCabin"), params={"width": 0.03, "segments": 2})
 
 
-def _build_stage_02_power_and_wings(project: Dict) -> None:
+def _build_stage_02_wing_structure(project: Dict) -> None:
     add_object(
         project,
         mesh_type="cube",
@@ -259,6 +270,9 @@ def _build_stage_02_power_and_wings(project: Dict) -> None:
         rotation=[0, 0, -18],
         scale=[0.56, 0.08, 0.06],
     )
+
+
+def _build_stage_03_solar_arrays(project: Dict) -> None:
     add_object(
         project,
         mesh_type="cube",
@@ -305,6 +319,9 @@ def _build_stage_02_power_and_wings(project: Dict) -> None:
         _object_index(project, "SolarRibRight"),
         params={"count": 7, "relative_offset_x": 1.95, "relative_offset_y": 0.0, "relative_offset_z": 0.0},
     )
+
+
+def _build_stage_04_propulsion(project: Dict) -> None:
     add_object(
         project,
         mesh_type="cube",
@@ -346,7 +363,7 @@ def _build_stage_02_power_and_wings(project: Dict) -> None:
         )
 
 
-def _build_stage_03_payload_and_rig(project: Dict) -> None:
+def _build_stage_05_sensor_payload(project: Dict) -> None:
     add_object(project, mesh_type="empty", name="DishPivot", location=[0.62, 0, 4.18])
     add_object(
         project,
@@ -389,6 +406,9 @@ def _build_stage_03_payload_and_rig(project: Dict) -> None:
         scale=[0.11, 0.11, 0.11],
         mesh_params={"radius": 1.0, "segments": 18, "rings": 10},
     )
+
+
+def _build_stage_06_service_rig(project: Dict) -> None:
     add_object(
         project,
         mesh_type="cylinder",
@@ -540,7 +560,18 @@ def _add_motion(project: Dict) -> None:
     set_current_frame(project, 1)
 
 
-def _capture_stage(session: Session, stage_name: str, stage_log: List[Dict], preview_root: Path, started: bool) -> bool:
+def _capture_stage(
+    session: Session,
+    stage_name: str,
+    stage_log: List[Dict],
+    preview_root: Path,
+    started: bool,
+    *,
+    label: str,
+    story: str,
+    display_cmd: str,
+    duration_s: float,
+) -> bool:
     if not started:
         live_payload = preview_mod.live_start(
             session,
@@ -570,18 +601,13 @@ def _capture_stage(session: Session, stage_name: str, stage_log: List[Dict], pre
             "session_path": live_payload.get("_session_path"),
             "current_manifest_path": live_payload.get("current_manifest_path"),
             "current_bundle_dir": live_payload.get("current_bundle_dir"),
+            "label": label,
+            "story": story,
+            "display_cmd": display_cmd,
+            "duration_s": duration_s,
         }
     )
     return True
-
-
-def _build_demo_scene(project: Dict) -> None:
-    _build_stage_01_foundation(project)
-    _build_stage_02_power_and_wings(project)
-    _build_stage_03_payload_and_rig(project)
-    _assign_materials(project)
-    _rig_parents(project)
-    _add_motion(project)
 
 
 def build_demo(output_dir: Path, use_live_preview: bool = True) -> Dict:
@@ -602,37 +628,150 @@ def build_demo(output_dir: Path, use_live_preview: bool = True) -> Dict:
     stage_log: List[Dict] = []
     live_started = False
 
-    _build_stage_01_foundation(project)
+    _build_stage_00_launch_platform(project)
     _assign_materials(project)
-    print("[demo] Stage 01: chassis")
+    print("[demo] Stage 00: launch platform")
     save_scene(project, str(project_path))
     session.set_project(project, str(project_path))
     if use_live_preview:
-        live_started = _capture_stage(session, "01_chassis", stage_log, preview_root, live_started)
+        live_started = _capture_stage(
+            session,
+            "00_launch_platform",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Build launch platform",
+            story="Deck floor, display base, raised launch pad, stripe ring, and center lift column.",
+            display_cmd="add DeckFloor / DisplayBase / LaunchPad / PadStripeRing / LiftColumn",
+            duration_s=0.9,
+        )
 
-    _build_stage_02_power_and_wings(project)
+    _build_stage_01_hull_blockout(project)
     _assign_materials(project)
-    print("[demo] Stage 02: power and wings")
+    print("[demo] Stage 01: hull blockout")
     save_scene(project, str(project_path))
     if use_live_preview:
-        live_started = _capture_stage(session, "02_power_and_wings", stage_log, preview_root, live_started)
+        live_started = _capture_stage(
+            session,
+            "01_hull_blockout",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Block out the hull and docking silhouette",
+            story="Drone root, main hull cylinder, nose cone, bridge pod, docking ring, and service cabin.",
+            display_cmd="add DroneRoot / HullCore / NoseCone / BridgePod / DockRing / ServiceCabin",
+            duration_s=1.0,
+        )
 
-    _build_stage_03_payload_and_rig(project)
+    _build_stage_02_wing_structure(project)
+    _assign_materials(project)
+    print("[demo] Stage 02: wing structure")
+    save_scene(project, str(project_path))
+    if use_live_preview:
+        live_started = _capture_stage(
+            session,
+            "02_wing_structure",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Add wing spar and panel arms",
+            story="The drone starts reading as a spacecraft once the lateral wing spar and panel hinges appear.",
+            display_cmd="add WingSpar / PanelArmLeft / PanelArmRight",
+            duration_s=0.8,
+        )
+
+    _build_stage_03_solar_arrays(project)
+    _assign_materials(project)
+    print("[demo] Stage 03: solar arrays")
+    save_scene(project, str(project_path))
+    if use_live_preview:
+        live_started = _capture_stage(
+            session,
+            "03_solar_arrays",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Add solar panels and rib arrays",
+            story="Blue panel slabs and rib arrays turn the side arms into readable power modules.",
+            display_cmd="add SolarPanelLeft/Right / array SolarRibLeft/Right",
+            duration_s=0.9,
+        )
+
+    _build_stage_04_propulsion(project)
+    _assign_materials(project)
+    print("[demo] Stage 04: propulsion")
+    save_scene(project, str(project_path))
+    if use_live_preview:
+        live_started = _capture_stage(
+            session,
+            "04_propulsion",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Add engine block and thruster pack",
+            story="The rear engine block and clustered nozzles complete the propulsion silhouette.",
+            display_cmd="add EngineBlock / thrusters / nozzle cones",
+            duration_s=0.9,
+        )
+
+    _build_stage_05_sensor_payload(project)
+    _assign_materials(project)
+    print("[demo] Stage 05: sensor payload")
+    save_scene(project, str(project_path))
+    if use_live_preview:
+        live_started = _capture_stage(
+            session,
+            "05_sensor_payload",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Add radar dish and navigation payloads",
+            story="Dish pivot, radar plate, beacon core, and nav lights add the recognizable inspection payloads.",
+            display_cmd="add DishPivot / SensorMast / RadarDish / BeaconCore / NavLightLeft/Right",
+            duration_s=0.9,
+        )
+
+    _build_stage_06_service_rig(project)
     _assign_materials(project)
     _rig_parents(project)
-    print("[demo] Stage 03: payload and rig")
+    print("[demo] Stage 06: service rig")
     save_scene(project, str(project_path))
     if use_live_preview:
-        live_started = _capture_stage(session, "03_payload_and_rig", stage_log, preview_root, live_started)
+        live_started = _capture_stage(
+            session,
+            "06_service_rig",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Add service arm and parenting rig",
+            story="Service arm, comm fin, and object parenting wire the drone into an assembled, animatable artifact.",
+            display_cmd="add ServiceArmBase / ServiceArmReach / ServiceTool / CommFin / set parent hierarchy",
+            duration_s=1.0,
+        )
 
     _add_motion(project)
-    print("[demo] Stage 04: motion ready")
+    print("[demo] Stage 07: motion ready")
+    set_current_frame(project, 18)
     save_scene(project, str(project_path))
     if use_live_preview:
-        live_started = _capture_stage(session, "04_motion_ready", stage_log, preview_root, live_started)
+        live_started = _capture_stage(
+            session,
+            "07_motion_ready",
+            stage_log,
+            preview_root,
+            live_started,
+            label="Author hover, spin, and beacon motion",
+            story="Hover motion, dish spin, ring rotation, and beacon pulses prepare the final presentation state.",
+            display_cmd="add_keyframe DroneRoot / DishPivot / DockRing / BeaconCore / NavLights",
+            duration_s=1.0,
+        )
+        set_current_frame(project, 1)
+        save_scene(project, str(project_path))
         live_payload = preview_mod.live_stop(session, recipe="quick", root_dir=str(preview_root))
         live_html = _render_live_html(Path(live_payload["_session_dir"]), output_dir / "live.html")
     else:
+        set_current_frame(project, 1)
+        save_scene(project, str(project_path))
         live_payload = None
         live_html = None
 
@@ -683,8 +822,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",
-        default="/root/preview-artifacts/20260422/blender-orbital-relay-drone-v2",
-        help="Directory for the generated scene, preview bundles, final render, and motion video.",
+        default="/root/preview-artifacts/20260422/blender-orbital-relay-drone-v6",
+        help="Directory for the generated scene, preview bundles, live session, trajectory.json, final render, and motion video.",
     )
     parser.add_argument(
         "--no-live-preview",

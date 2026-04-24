@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..utils.preview_bundle import (
+    append_live_trajectory,
     artifact_record,
+    bundle_root,
     finalize_bundle,
     find_latest_manifest,
     fingerprint_data,
@@ -71,6 +74,28 @@ def _metrics(session: Session) -> Dict[str, Any]:
     }
 
 
+def _trajectory_dir(session: Session, recipe: str, root_dir: Optional[str] = None) -> str:
+    return str(
+        bundle_root(
+            "openscreen",
+            recipe,
+            project_path=session.project_path,
+            root_dir=root_dir,
+        ).resolve()
+    )
+
+
+def _attach_trajectory_ref(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    bundle_dir = manifest.get("_bundle_dir")
+    context = manifest.get("context") or {}
+    trajectory_ref = context.get("trajectory_path")
+    if bundle_dir and trajectory_ref:
+        trajectory_path = (Path(str(bundle_dir)) / str(trajectory_ref)).resolve()
+        if trajectory_path.is_file():
+            manifest["_trajectory_path"] = str(trajectory_path)
+    return manifest
+
+
 def capture(
     session: Session,
     recipe: str = "quick",
@@ -103,10 +128,12 @@ def capture(
     if prepared["cached"]:
         manifest = dict(prepared["manifest"])
         manifest["cached"] = True
-        return manifest
+        return _attach_trajectory_ref(manifest)
 
     bundle_dir = prepared["bundle_dir"]
     artifacts_dir = prepared["artifacts_dir"]
+    trajectory_dir = _trajectory_dir(session, recipe, root_dir=root_dir)
+    trajectory_rel = os.path.relpath(Path(trajectory_dir) / "trajectory.json", Path(bundle_dir))
     preview_clip = os.path.join(artifacts_dir, "preview.mp4")
 
     render_result = export_mod.render(session, preview_clip)
@@ -168,7 +195,7 @@ def capture(
         "warnings": warnings,
         "next_actions": [
             "Inspect the review clip for zoom timing, speed ramps, and padding.",
-            "Open the bundle in cli-hub preview html for a gallery layout.",
+            "Open the bundle in cli-hub previews html for a gallery layout.",
         ],
     }
 
@@ -196,10 +223,26 @@ def capture(
         },
         status="partial" if warnings else "ok",
         warnings=warnings or None,
-        context={"editor": {"aspectRatio": metrics["aspect_ratio"], "background": metrics["background"]}},
+        context={
+            "editor": {"aspectRatio": metrics["aspect_ratio"], "background": metrics["background"]},
+            "trajectory_path": trajectory_rel,
+        },
         metrics=metrics,
         labels=["video", "screen-recording", "preview"],
     )
+    trajectory = append_live_trajectory(
+        trajectory_dir,
+        software="openscreen",
+        recipe=recipe,
+        bundle_manifest=manifest,
+        publish_reason="capture",
+        project_path=session.project_path,
+        project_name=os.path.basename(session.project_path) if session.project_path else None,
+        session_name=f"{os.path.splitext(os.path.basename(session.project_path or 'untitled'))[0]}-{recipe}",
+        command=command,
+        stage_label="preview-capture",
+    )
+    manifest["_trajectory_path"] = trajectory["_trajectory_path"]
     manifest["cached"] = False
     return manifest
 
@@ -220,4 +263,4 @@ def latest(
     )
     if manifest is None:
         raise FileNotFoundError("No Openscreen preview bundle found")
-    return manifest
+    return _attach_trajectory_ref(manifest)

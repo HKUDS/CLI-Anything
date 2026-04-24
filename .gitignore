@@ -26,25 +26,6 @@
 !/.github/PULL_REQUEST_TEMPLATE.md
 !/.github/ISSUE_TEMPLATE/
 
-# Allow examples directory
-!/examples/
-# Ignore everything inside examples first
-/examples/*
-# Then allow only the subdirs and files we need
-!/examples/README.md
-!/examples/drawio/
-!/examples/slay_the_spire_ii/
-!/examples/videocaptioner/
-# Inside each subdir, ignore everything then allow specific files
-/examples/drawio/*
-!/examples/drawio/drawio_demo.gif
-!/examples/drawio/https_handshake.png
-/examples/slay_the_spire_ii/*
-!/examples/slay_the_spire_ii/example_preview.gif
-/examples/videocaptioner/*
-!/examples/videocaptioner/videocaptioner_before.png
-!/examples/videocaptioner/videocaptioner_after.png
-
 # Step 3: Allow cli-anything-plugin, codex-skill, and skill_generation tests
 !/cli-anything-plugin/
 !/codex-skill/

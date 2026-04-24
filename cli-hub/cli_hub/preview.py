@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -77,6 +77,439 @@ def format_bytes(size: int) -> str:
     return f"{size / (1024 * 1024 * 1024):.1f} GB"
 
 
+_TRAJECTORY_FILENAMES = ("trajectory.json", "timeline.json")
+_TRAJECTORY_CONTAINER_KEYS = {"trajectory", "timeline"}
+_TRAJECTORY_PATH_KEYS = {
+    "trajectory_path",
+    "timeline_path",
+    "trajectory_file",
+    "timeline_file",
+    "trajectory_ref",
+    "timeline_ref",
+}
+
+
+def _coalesce(*values: Any) -> Any:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return None
+
+
+def _stringify_command(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    if isinstance(value, (list, tuple)):
+        text = " ".join(str(part) for part in value if part is not None)
+        return text.strip() or None
+    if isinstance(value, dict):
+        for key in ("display", "display_cmd", "command", "raw", "argv"):
+            if key in value:
+                return _stringify_command(value[key])
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def _normalize_index(value: Any, fallback: int) -> int:
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return fallback
+
+
+def _resolve_ref_path(base_dir: Path, path_ref: str) -> Path:
+    ref = Path(path_ref).expanduser()
+    if not ref.is_absolute():
+        ref = (base_dir / ref).resolve()
+    else:
+        ref = ref.resolve()
+    return ref
+
+
+def _iter_trajectory_hints(node: Any, *, _seen: Optional[set[int]] = None) -> Iterable[Tuple[str, Any, str]]:
+    if _seen is None:
+        _seen = set()
+    if not isinstance(node, (dict, list)):
+        return
+    node_id = id(node)
+    if node_id in _seen:
+        return
+    _seen.add(node_id)
+    if isinstance(node, list):
+        for item in node:
+            yield from _iter_trajectory_hints(item, _seen=_seen)
+        return
+    for key, value in node.items():
+        lower = str(key).lower()
+        if lower in _TRAJECTORY_CONTAINER_KEYS:
+            if isinstance(value, dict):
+                yield ("object", value, lower)
+            elif isinstance(value, str):
+                yield ("path", value, lower)
+        elif lower in _TRAJECTORY_PATH_KEYS and isinstance(value, str):
+            yield ("path", value, lower)
+        if isinstance(value, (dict, list)):
+            yield from _iter_trajectory_hints(value, _seen=_seen)
+
+
+def _trajectory_candidate_refs(base_dir: Path, *payloads: Dict[str, Any]) -> List[str]:
+    refs: List[str] = []
+    seen = set()
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for kind, value, _label in _iter_trajectory_hints(payload):
+            if kind != "path" or not isinstance(value, str):
+                continue
+            resolved = _resolve_ref_path(base_dir, value)
+            if not resolved.is_file():
+                continue
+            rel = os.path.relpath(resolved, base_dir)
+            if rel not in seen:
+                refs.append(rel)
+                seen.add(rel)
+    for filename in _TRAJECTORY_FILENAMES:
+        if filename not in seen:
+            refs.append(filename)
+            seen.add(filename)
+    return refs
+
+
+def _extract_bundle_payload(item: Dict[str, Any]) -> Dict[str, Any]:
+    for key in ("copied_bundle", "bundle", "preview_bundle", "current_bundle", "published_bundle"):
+        value = item.get(key)
+        if isinstance(value, dict):
+            return value
+    return item
+
+
+def _normalize_timeline_row(item: Any, index: int) -> Dict[str, Any]:
+    if not isinstance(item, dict):
+        return {
+            "order_index": index,
+            "step_index": index,
+            "step_id": f"step-{index:03d}",
+            "step_label": str(item),
+            "command": None,
+            "command_started_at": None,
+            "command_finished_at": None,
+            "timeline_ready_at": None,
+            "publish_reason": None,
+            "bundle_id": None,
+            "bundle_dir": None,
+            "manifest_path": None,
+            "summary_path": None,
+            "status": None,
+            "stage_label": None,
+            "note": None,
+        }
+
+    bundle = _extract_bundle_payload(item)
+    command = _stringify_command(
+        _coalesce(
+            item.get("command"),
+            item.get("display_cmd"),
+            item.get("display_command"),
+            item.get("argv"),
+            item.get("raw_command"),
+        )
+    )
+    step_index = _normalize_index(
+        _coalesce(item.get("step_index"), item.get("index"), item.get("sequence_index")),
+        index,
+    )
+    status = item.get("status")
+    if status is None and "returncode" in item:
+        status = "ok" if int(item.get("returncode", 1)) == 0 else "error"
+
+    return {
+        "order_index": index,
+        "step_index": step_index,
+        "step_id": str(
+            _coalesce(item.get("step_id"), item.get("id"), item.get("command_id"), f"step-{step_index:03d}")
+        ),
+        "step_label": _coalesce(
+            item.get("step_label"),
+            item.get("label"),
+            item.get("title"),
+            item.get("name"),
+            item.get("stage_title"),
+            item.get("stage_label"),
+        ),
+        "command": command,
+        "command_started_at": _coalesce(
+            item.get("command_started_at"),
+            item.get("started_at"),
+            item.get("timeline_start_s"),
+            item.get("start_s"),
+        ),
+        "command_finished_at": _coalesce(
+            item.get("command_finished_at"),
+            item.get("finished_at"),
+            item.get("timeline_end_s"),
+            item.get("end_s"),
+            item.get("completed_at"),
+        ),
+        "timeline_ready_at": _coalesce(
+            item.get("timeline_ready_s"),
+            item.get("ready_at"),
+            item.get("published_at"),
+            item.get("created_at"),
+        ),
+        "publish_reason": _coalesce(item.get("publish_reason"), item.get("reason")),
+        "bundle_id": _coalesce(item.get("bundle_id"), bundle.get("bundle_id")),
+        "bundle_dir": _coalesce(item.get("bundle_dir"), bundle.get("bundle_dir")),
+        "manifest_path": _coalesce(item.get("manifest_path"), bundle.get("manifest_path")),
+        "summary_path": _coalesce(item.get("summary_path"), bundle.get("summary_path")),
+        "status": status,
+        "stage_label": _coalesce(
+            item.get("stage_title"),
+            item.get("stage_label"),
+            item.get("stage_id"),
+            item.get("stage"),
+        ),
+        "note": _coalesce(
+            item.get("note"),
+            item.get("stage_story"),
+            item.get("story"),
+            item.get("description"),
+        ),
+    }
+
+
+def _merge_timeline_rows(target: Dict[str, Any], source: Dict[str, Any]) -> None:
+    for key in (
+        "step_label",
+        "command",
+        "command_started_at",
+        "command_finished_at",
+        "timeline_ready_at",
+        "publish_reason",
+        "bundle_id",
+        "bundle_dir",
+        "manifest_path",
+        "summary_path",
+        "status",
+        "stage_label",
+        "note",
+    ):
+        target[key] = _coalesce(target.get(key), source.get(key))
+
+
+def _pick_trajectory_events(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+    for key in ("preview_events", "events", "publishes", "entries", "history", "steps", "timeline"):
+        value = raw.get(key)
+        if isinstance(value, list) and value:
+            return value
+    return []
+
+
+def _sort_timeline_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def sort_key(row: Dict[str, Any]) -> Tuple[int, int, str]:
+        step_index = _normalize_index(row.get("step_index"), row.get("order_index", 0))
+        order_index = _normalize_index(row.get("order_index"), step_index)
+        finish = _coalesce(row.get("command_finished_at"), row.get("timeline_ready_at"), "")
+        return step_index, order_index, str(finish)
+
+    return sorted(rows, key=sort_key)
+
+
+def _normalize_trajectory(raw: Optional[Dict[str, Any]], *, fallback_history: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+    if not raw and not fallback_history:
+        return None
+
+    rows: List[Dict[str, Any]] = []
+    rows_by_id: Dict[str, Dict[str, Any]] = {}
+    rows_by_index: Dict[int, Dict[str, Any]] = {}
+    commands = raw.get("commands", []) if isinstance(raw, dict) else []
+
+    if isinstance(commands, list):
+        for index, item in enumerate(commands):
+            row = _normalize_timeline_row(item, index)
+            rows.append(row)
+            rows_by_id[row["step_id"]] = row
+            rows_by_index[row["step_index"]] = row
+
+    events = _pick_trajectory_events(raw) if isinstance(raw, dict) else []
+    if events:
+        for index, item in enumerate(events):
+            event_row = _normalize_timeline_row(item, index)
+            existing = rows_by_id.get(event_row["step_id"]) or rows_by_index.get(event_row["step_index"])
+            if existing is None:
+                rows.append(event_row)
+                rows_by_id[event_row["step_id"]] = event_row
+                rows_by_index[event_row["step_index"]] = event_row
+                continue
+            _merge_timeline_rows(existing, event_row)
+
+    if not rows and fallback_history:
+        for index, item in enumerate(fallback_history):
+            rows.append(_normalize_timeline_row(item, index))
+
+    rows = _sort_timeline_rows(rows)
+    if not rows:
+        return None
+
+    recent_command_row = next((row for row in reversed(rows) if row.get("command")), None)
+    recent_publish_row = next(
+        (row for row in reversed(rows) if row.get("publish_reason") or row.get("bundle_id")),
+        None,
+    )
+
+    step_count = _coalesce(
+        raw.get("step_count") if isinstance(raw, dict) else None,
+        len(commands) if isinstance(commands, list) and commands else None,
+        len(rows),
+    )
+    published_bundles = sum(1 for row in rows if row.get("bundle_id"))
+    return {
+        "protocol": raw.get("protocol") or raw.get("protocol_version") if isinstance(raw, dict) else None,
+        "step_count": step_count,
+        "current_step_id": _coalesce(
+            raw.get("current_step_id") if isinstance(raw, dict) else None,
+            recent_publish_row.get("step_id") if recent_publish_row else None,
+            recent_command_row.get("step_id") if recent_command_row else None,
+        ),
+        "published_bundle_count": published_bundles,
+        "recent_command": _coalesce(
+            raw.get("latest_command") if isinstance(raw, dict) else None,
+            recent_command_row.get("command") if recent_command_row else None,
+        ),
+        "recent_publish_reason": _coalesce(
+            raw.get("latest_publish_reason") if isinstance(raw, dict) else None,
+            recent_publish_row.get("publish_reason") if recent_publish_row else None,
+        ),
+        "recent_bundle_id": recent_publish_row.get("bundle_id") if recent_publish_row else None,
+        "entries": rows,
+    }
+
+
+def _load_trajectory(base_dir: Path, *payloads: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    for ref in _trajectory_candidate_refs(base_dir, *payloads):
+        candidate = _resolve_ref_path(base_dir, ref)
+        if candidate.is_file():
+            raw = _read_json(candidate)
+            normalized = _normalize_trajectory(raw)
+            if normalized is not None:
+                normalized["mode"] = "trajectory"
+                normalized["source_path"] = str(candidate)
+                normalized["source_label"] = os.path.relpath(candidate, base_dir)
+                return normalized
+
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for kind, value, label in _iter_trajectory_hints(payload):
+            if kind != "object" or not isinstance(value, dict):
+                continue
+            normalized = _normalize_trajectory(value)
+            if normalized is not None:
+                normalized["mode"] = "trajectory"
+                normalized["source_path"] = None
+                normalized["source_label"] = label
+                return normalized
+    return None
+
+
+def _history_from_session(session: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    history = session.get("history", [])
+    if not isinstance(history, list) or not history:
+        return None
+    normalized = _normalize_trajectory({}, fallback_history=history)
+    if normalized is None:
+        return None
+    source_state = session.get("source_state", {}) if isinstance(session.get("source_state"), dict) else {}
+    normalized["mode"] = "legacy-history"
+    normalized["source_path"] = None
+    normalized["source_label"] = "session.history"
+    normalized["current_step_id"] = _coalesce(
+        session.get("current_step_id"),
+        normalized.get("current_step_id"),
+    )
+    normalized["recent_command"] = _coalesce(
+        session.get("latest_command"),
+        normalized.get("recent_command"),
+    )
+    normalized["recent_publish_reason"] = _coalesce(
+        session.get("latest_publish_reason"),
+        normalized.get("recent_publish_reason"),
+        source_state.get("last_publish_reason"),
+    )
+    return normalized
+
+
+def _apply_session_trajectory_metadata(trajectory: Optional[Dict[str, Any]], session: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if trajectory is None:
+        return None
+    trajectory["protocol"] = _coalesce(
+        trajectory.get("protocol"),
+        session.get("trajectory_protocol_version"),
+    )
+    trajectory["step_count"] = _coalesce(
+        session.get("trajectory_step_count"),
+        trajectory.get("step_count"),
+    )
+    trajectory["current_step_id"] = _coalesce(
+        session.get("current_step_id"),
+        trajectory.get("current_step_id"),
+    )
+    trajectory["recent_command"] = _coalesce(
+        session.get("latest_command"),
+        trajectory.get("recent_command"),
+    )
+    trajectory["recent_publish_reason"] = _coalesce(
+        session.get("latest_publish_reason"),
+        trajectory.get("recent_publish_reason"),
+    )
+    return trajectory
+
+
+def _render_trajectory_text_lines(title: str, trajectory: Optional[Dict[str, Any]], *, limit: int = 5) -> List[str]:
+    if not trajectory:
+        return []
+    lines = [
+        "",
+        title,
+        f"  Source: {trajectory.get('source_label') or trajectory.get('mode') or 'unknown'}",
+        f"  Steps: {trajectory.get('step_count', 0)}",
+        f"  Published bundles: {trajectory.get('published_bundle_count', 0)}",
+    ]
+    if trajectory.get("current_step_id"):
+        lines.append(f"  Current step: {trajectory['current_step_id']}")
+    if trajectory.get("recent_command"):
+        lines.append(f"  Recent command: {trajectory['recent_command']}")
+    if trajectory.get("recent_publish_reason"):
+        lines.append(f"  Recent publish: {trajectory['recent_publish_reason']}")
+    if trajectory.get("recent_bundle_id"):
+        lines.append(f"  Recent bundle: {trajectory['recent_bundle_id']}")
+    entries = trajectory.get("entries", [])
+    if entries:
+        lines.append("  Timeline")
+        for entry in entries[-limit:]:
+            label = entry.get("step_label") or entry.get("stage_label") or entry.get("step_id") or "step"
+            lines.append(f"    - {label}")
+            if entry.get("command"):
+                lines.append(f"      Command: {entry['command']}")
+            if entry.get("publish_reason"):
+                lines.append(f"      Publish: {entry['publish_reason']}")
+            if entry.get("bundle_id"):
+                lines.append(f"      Bundle: {entry['bundle_id']}")
+    return lines
+
+
 def inspect_bundle(bundle_ref: str) -> Dict[str, Any]:
     bundle_dir, manifest, summary = load_bundle(bundle_ref)
     return {
@@ -84,6 +517,7 @@ def inspect_bundle(bundle_ref: str) -> Dict[str, Any]:
         "manifest": manifest,
         "summary": summary,
         "artifact_count": len(manifest.get("artifacts", [])),
+        "trajectory": _load_trajectory(bundle_dir, manifest, summary),
     }
 
 
@@ -94,15 +528,23 @@ def inspect_session(session_ref: str) -> Dict[str, Any]:
         current_bundle = inspect_bundle(str(session_dir / session.get("current_link", "current")))
     except (FileNotFoundError, ValueError):
         current_bundle = None
+    trajectory = _load_trajectory(session_dir, session)
+    if trajectory is None:
+        trajectory = _history_from_session(session)
+    trajectory = _apply_session_trajectory_metadata(trajectory, session)
     return {
         "session_dir": str(session_dir),
         "session": session,
         "current_bundle": current_bundle,
+        "trajectory": trajectory,
     }
 
 
 def render_inspect_text(bundle_ref: str) -> str:
-    bundle_dir, manifest, summary = load_bundle(bundle_ref)
+    payload = inspect_bundle(bundle_ref)
+    bundle_dir = Path(payload["bundle_dir"])
+    manifest = payload["manifest"]
+    summary = payload["summary"]
     lines = [
         f"Bundle:      {bundle_dir}",
         f"Protocol:    {manifest.get('protocol_version', 'unknown')}",
@@ -147,11 +589,15 @@ def render_inspect_text(bundle_ref: str) -> str:
         if artifact.get("bytes") is not None:
             desc += f" ({format_bytes(int(artifact['bytes']))})"
         lines.append(desc)
+    lines.extend(_render_trajectory_text_lines("Trajectory", payload.get("trajectory")))
     return "\n".join(lines) + "\n"
 
 
 def render_session_text(session_ref: str) -> str:
-    session_dir, session = load_session(session_ref)
+    payload = inspect_session(session_ref)
+    session_dir = Path(payload["session_dir"])
+    session = payload["session"]
+    trajectory = payload.get("trajectory")
     lines = [
         f"Live Session: {session_dir}",
         f"Protocol:     {session.get('protocol_version', 'unknown')}",
@@ -164,15 +610,18 @@ def render_session_text(session_ref: str) -> str:
     ]
     if session.get("watch_command"):
         lines.append(f"Watch:        {session['watch_command']}")
-    history = session.get("history", [])
-    if history:
-        lines.append("")
-        lines.append("History")
-        for item in history:
-            lines.append(
-                f"  - {item.get('bundle_id', '?')} "
-                f"[{item.get('status', 'unknown')}] {item.get('created_at', 'unknown')}"
-            )
+    history_title = "History" if trajectory and trajectory.get("mode") == "legacy-history" else "Trajectory"
+    lines.extend(_render_trajectory_text_lines(history_title, trajectory))
+    if trajectory is None:
+        history = session.get("history", [])
+        if history:
+            lines.append("")
+            lines.append("History")
+            for item in history:
+                lines.append(
+                    f"  - {item.get('bundle_id', '?')} "
+                    f"[{item.get('status', 'unknown')}] {item.get('created_at', 'unknown')}"
+                )
     return "\n".join(lines) + "\n"
 
 
@@ -223,8 +672,65 @@ def _render_artifact_card(output_dir: Path, bundle_dir: Path, artifact: Dict[str
     )
 
 
+def _render_trajectory_html_section(trajectory: Optional[Dict[str, Any]]) -> str:
+    if not trajectory:
+        return ""
+
+    summary_cards = [
+        ("Source", trajectory.get("source_label") or trajectory.get("mode") or "unknown"),
+        ("Steps", trajectory.get("step_count", 0)),
+        ("Published", trajectory.get("published_bundle_count", 0)),
+    ]
+    if trajectory.get("recent_publish_reason"):
+        summary_cards.append(("Recent publish", trajectory["recent_publish_reason"]))
+    elif trajectory.get("recent_bundle_id"):
+        summary_cards.append(("Recent bundle", trajectory["recent_bundle_id"]))
+
+    cards_html = "".join(
+        f'<div class="fact-card"><span>{html.escape(str(label))}</span><strong>{html.escape(str(value))}</strong></div>'
+        for label, value in summary_cards
+    )
+
+    items = trajectory.get("entries", [])[-6:]
+    items_html = "".join(
+        (
+            '<article class="trajectory-item">'
+            f'<strong>{html.escape(str(item.get("step_label") or item.get("stage_label") or item.get("step_id") or "step"))}</strong>'
+            + (
+                f'<div class="trajectory-command"><code>{html.escape(str(item["command"]))}</code></div>'
+                if item.get("command")
+                else ""
+            )
+            + (
+                f'<div class="trajectory-meta">Publish reason: {html.escape(str(item["publish_reason"]))}</div>'
+                if item.get("publish_reason")
+                else ""
+            )
+            + (
+                f'<div class="trajectory-meta">Bundle: {html.escape(str(item["bundle_id"]))}</div>'
+                if item.get("bundle_id")
+                else ""
+            )
+            + "</article>"
+        )
+        for item in items
+    )
+
+    return (
+        '<section class="section">'
+        "<h2>Trajectory</h2>"
+        f'<div class="facts">{cards_html}</div>'
+        f'<div class="trajectory-list">{items_html or "<div class=\"artifact-file\">No step timeline entries yet.</div>"}</div>'
+        "</section>"
+    )
+
+
 def render_html(bundle_ref: str, output_path: str) -> str:
-    bundle_dir, manifest, summary = load_bundle(bundle_ref)
+    payload = inspect_bundle(bundle_ref)
+    bundle_dir = Path(payload["bundle_dir"])
+    manifest = payload["manifest"]
+    summary = payload["summary"]
+    trajectory = payload.get("trajectory")
     output_file = Path(output_path).expanduser().resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -242,6 +748,7 @@ def render_html(bundle_ref: str, output_path: str) -> str:
         _render_artifact_card(output_file.parent, bundle_dir, artifact)
         for artifact in manifest.get("artifacts", [])
     )
+    trajectory_html = _render_trajectory_html_section(trajectory)
 
     html_text = f"""<!doctype html>
 <html lang="en">
@@ -424,6 +931,39 @@ def render_html(bundle_ref: str, output_path: str) -> str:
       color: var(--accent);
       text-decoration: none;
     }}
+    .trajectory-list {{
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }}
+    .trajectory-item {{
+      border: 1px solid var(--edge);
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.72);
+    }}
+    .trajectory-item strong {{
+      display: block;
+      font-size: 0.98rem;
+    }}
+    .trajectory-command {{
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(23,23,23,0.05);
+      overflow-x: auto;
+    }}
+    .trajectory-command code {{
+      font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+      font-size: 12px;
+      color: var(--ink);
+    }}
+    .trajectory-meta {{
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      word-break: break-word;
+    }}
     @media (max-width: 720px) {{
       .shell {{ padding: 18px 12px 36px; }}
       .hero-top, .meta-grid {{ padding: 20px 18px; }}
@@ -447,6 +987,7 @@ def render_html(bundle_ref: str, output_path: str) -> str:
         <div class="meta-item">Source<strong>{html.escape(str(manifest.get("source", {}).get("project_path") or manifest.get("source", {}).get("capture_path") or "n/a"))}</strong></div>
       </div>
     </section>
+    {trajectory_html}
     <section class="section">
       <h2>Artifacts</h2>
       <div class="artifact-grid">{artifact_cards}</div>
@@ -461,7 +1002,10 @@ def render_html(bundle_ref: str, output_path: str) -> str:
 
 
 def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) -> str:
-    session_dir, session = load_session(session_ref)
+    payload = inspect_session(session_ref)
+    session_dir = Path(payload["session_dir"])
+    session = payload["session"]
+    trajectory = payload.get("trajectory")
     output_file = Path(output_path).expanduser().resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)
     headline = html.escape(
@@ -470,6 +1014,7 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
         or f"{session.get('software', 'Preview')} live preview"
     )
     poll_ms = max(250, int(poll_ms))
+    trajectory_candidate_refs = _trajectory_candidate_refs(session_dir, session)
     html_text = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -710,6 +1255,30 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
       color: var(--muted);
       word-break: break-word;
     }}
+    .history-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      background: rgba(17,18,21,0.06);
+      color: var(--muted);
+      padding: 4px 9px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-top: 8px;
+      width: fit-content;
+    }}
+    .history-command {{
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(17,18,21,0.05);
+      font-family: var(--mono);
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }}
     .empty {{
       padding: 28px;
       border: 1px dashed var(--edge);
@@ -782,8 +1351,8 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
         </article>
         <article class="panel">
           <div class="panel-header">
-            <h2>Recent Bundles</h2>
-            <span id="history-meta" class="subtitle">Latest publishes first</span>
+            <h2 id="history-title">History / Timeline</h2>
+            <span id="history-meta" class="subtitle">Trajectory-aware command to bundle view</span>
           </div>
           <div class="panel-body">
             <div id="history" class="history"></div>
@@ -795,6 +1364,7 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
   <script>
     const POLL_MS = {poll_ms};
     const CURRENT_LINK = {json.dumps(session.get("current_link", "current"))};
+    const TRAJECTORY_CANDIDATES = {json.dumps(trajectory_candidate_refs)};
 
     function escapeHtml(value) {{
       return String(value ?? "")
@@ -802,6 +1372,25 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }}
+
+    function firstDefined(...values) {{
+      for (const value of values) {{
+        if (value === null || value === undefined) continue;
+        if (typeof value === "string" && value.trim() === "") continue;
+        return value;
+      }}
+      return null;
+    }}
+
+    function commandText(value) {{
+      if (value === null || value === undefined) return null;
+      if (typeof value === "string") return value.trim() || null;
+      if (Array.isArray(value)) return value.map((part) => String(part)).join(" ").trim() || null;
+      if (typeof value === "object") {{
+        return commandText(value.display_cmd || value.command || value.argv || value.raw) || JSON.stringify(value);
+      }}
+      return String(value);
     }}
 
     async function fetchJson(path) {{
@@ -819,19 +1408,191 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
       chip.dataset.state = isError ? "error" : "ok";
     }}
 
-    function renderFacts(session, manifest, summary) {{
+    function collectTrajectoryHints(node, state) {{
+      if (!node || typeof node !== "object") return;
+      if (state.seen.has(node)) return;
+      state.seen.add(node);
+      if (Array.isArray(node)) {{
+        for (const item of node) collectTrajectoryHints(item, state);
+        return;
+      }}
+      for (const [key, value] of Object.entries(node)) {{
+        const lower = String(key).toLowerCase();
+        if ((lower === "trajectory" || lower === "timeline") && value && typeof value === "object" && !Array.isArray(value)) {{
+          state.embedded ||= value;
+        }}
+        if ((lower === "trajectory" || lower === "timeline" || lower.endsWith("_trajectory") || lower.endsWith("_timeline")) && typeof value === "string") {{
+          state.refs.add(value);
+        }}
+        if ((lower === "trajectory_path" || lower === "timeline_path" || lower === "trajectory_ref" || lower === "timeline_ref") && typeof value === "string") {{
+          state.refs.add(value);
+        }}
+        if (value && typeof value === "object") {{
+          collectTrajectoryHints(value, state);
+        }}
+      }}
+    }}
+
+    function collectTrajectoryCandidates(session) {{
+      const state = {{ refs: new Set(TRAJECTORY_CANDIDATES), embedded: null, seen: new Set() }};
+      collectTrajectoryHints(session, state);
+      return {{ refs: Array.from(state.refs), embedded: state.embedded }};
+    }}
+
+    async function fetchTrajectory(session) {{
+      const hints = collectTrajectoryCandidates(session);
+      if (hints.embedded) {{
+        return {{ raw: hints.embedded, ref: "embedded:session" }};
+      }}
+      for (const ref of hints.refs) {{
+        try {{
+          const raw = await fetchJson(ref);
+          return {{ raw, ref }};
+        }} catch (_error) {{
+        }}
+      }}
+      return null;
+    }}
+
+    function normalizeTimelineItem(item, fallbackIndex) {{
+      const bundle = (item && typeof item === "object" && !Array.isArray(item))
+        ? (item.copied_bundle || item.bundle || item.preview_bundle || item.current_bundle || item.published_bundle || item)
+        : {{}};
+      const stepIndex = Number.parseInt(firstDefined(item?.step_index, item?.index, item?.sequence_index, fallbackIndex), 10);
+      const returnCode = item?.returncode;
+      return {{
+        orderIndex: fallbackIndex,
+        stepIndex: Number.isFinite(stepIndex) ? stepIndex : fallbackIndex,
+        stepId: String(firstDefined(item?.step_id, item?.id, item?.command_id, `step-${{fallbackIndex}}`)),
+        stepLabel: firstDefined(item?.step_label, item?.label, item?.title, item?.name, item?.stage_title, item?.stage_label),
+        command: commandText(firstDefined(item?.command, item?.display_cmd, item?.display_command, item?.argv, item?.raw_command)),
+        commandStartedAt: firstDefined(item?.command_started_at, item?.started_at, item?.timeline_start_s, item?.start_s),
+        commandFinishedAt: firstDefined(item?.command_finished_at, item?.finished_at, item?.timeline_end_s, item?.end_s, item?.completed_at),
+        createdAt: firstDefined(item?.created_at, item?.timeline_ready_s, item?.ready_at, item?.published_at),
+        publishReason: firstDefined(item?.publish_reason, item?.reason),
+        bundleId: firstDefined(item?.bundle_id, bundle?.bundle_id),
+        bundleDir: firstDefined(item?.bundle_dir, bundle?.bundle_dir),
+        manifestPath: firstDefined(item?.manifest_path, bundle?.manifest_path),
+        summaryPath: firstDefined(item?.summary_path, bundle?.summary_path),
+        status: firstDefined(item?.status, returnCode === 0 ? "ok" : null),
+        cached: item?.cached,
+        sourceFingerprint: item?.source_fingerprint,
+        note: firstDefined(item?.note, item?.stage_story, item?.story, item?.description),
+      }};
+    }}
+
+    function normalizeLegacyHistory(session) {{
+      const history = Array.isArray(session.history) ? session.history : [];
+      const entries = history.map((item, index) => normalizeTimelineItem(item, index));
+      return {{
+        mode: "legacy-history",
+        sourceLabel: "session.history",
+        stepCount: firstDefined(session.trajectory_step_count, entries.length, 0),
+        currentStepId: session.current_step_id || null,
+        recentCommand: session.latest_command || null,
+        recentPublishReason: firstDefined(session.latest_publish_reason, session.source_state?.last_publish_reason),
+        publishedBundleCount: entries.filter((entry) => entry.bundleId).length,
+        entries,
+      }};
+    }}
+
+    function normalizeTrajectory(session, payload) {{
+      if (!payload || !payload.raw || typeof payload.raw !== "object") {{
+        return normalizeLegacyHistory(session);
+      }}
+
+      const raw = payload.raw;
+      const commands = Array.isArray(raw.commands) ? raw.commands : [];
+      const entries = [];
+      const byId = new Map();
+      const byIndex = new Map();
+
+      for (let index = 0; index < commands.length; index += 1) {{
+        const row = normalizeTimelineItem(commands[index], index);
+        entries.push(row);
+        byId.set(row.stepId, row);
+        byIndex.set(row.stepIndex, row);
+      }}
+
+      let events = [];
+      for (const key of ["steps", "preview_events", "entries", "events", "history", "timeline", "publishes"]) {{
+        if (Array.isArray(raw[key]) && raw[key].length) {{
+          events = raw[key];
+          break;
+        }}
+      }}
+
+      for (let index = 0; index < events.length; index += 1) {{
+        const row = normalizeTimelineItem(events[index], index);
+        const existing = byId.get(row.stepId) || byIndex.get(row.stepIndex);
+        if (!existing) {{
+          entries.push(row);
+          byId.set(row.stepId, row);
+          byIndex.set(row.stepIndex, row);
+          continue;
+        }}
+        for (const key of [
+          "stepLabel",
+          "command",
+          "commandStartedAt",
+          "commandFinishedAt",
+          "createdAt",
+          "publishReason",
+          "bundleId",
+          "bundleDir",
+          "manifestPath",
+          "summaryPath",
+          "status",
+          "cached",
+          "sourceFingerprint",
+          "note",
+        ]) {{
+          existing[key] = firstDefined(existing[key], row[key]);
+        }}
+      }}
+
+      if (!entries.length) {{
+        return normalizeLegacyHistory(session);
+      }}
+
+      entries.sort((left, right) =>
+        (left.stepIndex - right.stepIndex)
+        || (left.orderIndex - right.orderIndex)
+        || String(left.commandFinishedAt || left.createdAt || "").localeCompare(String(right.commandFinishedAt || right.createdAt || ""))
+      );
+
+      const recentCommandEntry = [...entries].reverse().find((entry) => entry.command);
+      const recentPublishEntry = [...entries].reverse().find((entry) => entry.publishReason || entry.bundleId);
+
+      return {{
+        mode: "trajectory",
+        protocol: raw.protocol_version || raw.protocol || session.trajectory_protocol_version || null,
+        sourceLabel: payload.ref || session.trajectory_path || "trajectory.json",
+        stepCount: firstDefined(raw.step_count, session.trajectory_step_count, commands.length || entries.length, 0),
+        currentStepId: firstDefined(raw.current_step_id, session.current_step_id, recentPublishEntry?.stepId, recentCommandEntry?.stepId),
+        recentCommand: firstDefined(session.latest_command, raw.latest_command, recentCommandEntry?.command),
+        recentPublishReason: firstDefined(session.latest_publish_reason, raw.latest_publish_reason, recentPublishEntry?.publishReason),
+        publishedBundleCount: entries.filter((entry) => entry.bundleId).length,
+        entries,
+      }};
+    }}
+
+    function renderFacts(session, manifest, summary, trajectory) {{
       const facts = Object.assign(
         {{
           software: manifest.software || session.software || "unknown",
           recipe: manifest.recipe || session.recipe || "unknown",
           bundle: manifest.bundle_id || session.current_bundle_id || "n/a",
+          step_count: trajectory.stepCount || session.trajectory_step_count || "n/a",
+          current_step: trajectory.currentStepId || session.current_step_id || "n/a",
+          publish_reason: trajectory.recentPublishReason || session.latest_publish_reason || "n/a",
           updated: session.updated_at || "unknown",
         }},
         summary.facts || {{}}
       );
       const row = document.getElementById("fact-row");
       row.innerHTML = Object.entries(facts)
-        .slice(0, 8)
+        .slice(0, 9)
         .map(([key, value]) => `
           <div class="fact-card">
             <span>${{escapeHtml(key)}}</span>
@@ -915,15 +1676,22 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
       `).join("");
     }}
 
-    function renderNotes(session, manifest, summary) {{
+    function renderNotes(session, manifest, summary, trajectory) {{
       const warnings = summary.warnings || manifest.warnings || [];
       const actions = summary.next_actions || [];
       const notes = document.getElementById("notes");
       const lines = [
         `<div><strong>Current bundle</strong><br>${{escapeHtml(session.current_bundle_id || manifest.bundle_id || "n/a")}}</div>`,
+        `<div><strong>Current step</strong><br>${{escapeHtml(trajectory.currentStepId || session.current_step_id || "n/a")}}</div>`,
         `<div><strong>Session path</strong><br>${{escapeHtml(session.project_path || session.project_name || "n/a")}}</div>`,
         `<div><strong>Last update</strong><br>${{escapeHtml(session.updated_at || "unknown")}}</div>`,
       ];
+      if (trajectory.recentCommand) {{
+        lines.push(`<div><strong>Latest command</strong><br>${{escapeHtml(trajectory.recentCommand)}}</div>`);
+      }}
+      if (trajectory.recentPublishReason) {{
+        lines.push(`<div><strong>Latest publish reason</strong><br>${{escapeHtml(trajectory.recentPublishReason)}}</div>`);
+      }}
       if (warnings.length) {{
         lines.push(`<div><strong>Warnings</strong><ul>${{warnings.map((item) => `<li>${{escapeHtml(item)}}</li>`).join("")}}</ul></div>`);
       }}
@@ -933,26 +1701,50 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
       notes.innerHTML = lines.join("");
     }}
 
-    function renderHistory(session) {{
-      const history = session.history || [];
+    function renderHistory(session, trajectory) {{
       const root = document.getElementById("history");
-      if (!history.length) {{
+      const title = document.getElementById("history-title");
+      const meta = document.getElementById("history-meta");
+      const entries = Array.isArray(trajectory.entries) ? [...trajectory.entries].reverse() : [];
+      if (!entries.length) {{
+        title.textContent = "History / Timeline";
+        meta.textContent = "No trajectory or publish history yet";
         root.innerHTML = '<div class="empty">No live preview publishes yet.</div>';
         return;
       }}
-      root.innerHTML = history.map((item) => `
-        <article class="history-item">
-          <strong>${{escapeHtml(item.bundle_id || "unknown")}}</strong>
-          <span>${{escapeHtml(item.created_at || "unknown")}}</span>
-          <span>${{escapeHtml(item.bundle_dir || "")}}</span>
-        </article>
-      `).join("");
+      title.textContent = trajectory.mode === "trajectory" ? "Trajectory Timeline" : "Recent Bundles";
+      meta.textContent = `${{trajectory.stepCount || entries.length}} steps · ${{trajectory.publishedBundleCount || 0}} published bundles · ${{trajectory.sourceLabel || trajectory.mode}}`;
+      root.innerHTML = entries.slice(0, 10).map((entry) => {{
+        const titleText = entry.stepLabel || entry.stepId || entry.bundleId || "step";
+        const chips = [];
+        if (entry.stepId && entry.stepId === trajectory.currentStepId) chips.push("current-step");
+        if (entry.bundleId && entry.bundleId === session.current_bundle_id) chips.push("current-bundle");
+        if (entry.status) chips.push(entry.status);
+        if (entry.cached === true) chips.push("cached");
+        const detailLines = [
+          entry.commandFinishedAt || entry.createdAt,
+          entry.publishReason ? `publish=${{entry.publishReason}}` : null,
+          entry.bundleId ? `bundle=${{entry.bundleId}}` : null,
+          entry.sourceFingerprint ? `fp=${{entry.sourceFingerprint}}` : null,
+          entry.bundleDir || entry.manifestPath || null,
+        ].filter(Boolean);
+        return `
+          <article class="history-item">
+            <strong>${{escapeHtml(titleText)}}</strong>
+            ${{chips.map((chip) => `<div class="history-chip">${{escapeHtml(chip)}}</div>`).join("")}}
+            ${{entry.command ? `<div class="history-command">${{escapeHtml(entry.command)}}</div>` : ""}}
+            ${{detailLines.map((line) => `<span>${{escapeHtml(line)}}</span>`).join("")}}
+          </article>
+        `;
+      }}).join("");
     }}
 
     async function refresh() {{
       try {{
         const session = await fetchJson("session.json");
         const manifest = await fetchJson(`${{CURRENT_LINK}}/manifest.json`);
+        const trajectoryPayload = await fetchTrajectory(session);
+        const trajectory = normalizeTrajectory(session, trajectoryPayload);
         let summary = {{}};
         const summaryPath = manifest.summary_path ? `${{CURRENT_LINK}}/${{manifest.summary_path}}` : `${{CURRENT_LINK}}/summary.json`;
         try {{
@@ -963,15 +1755,16 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
 
         document.getElementById("subtitle").textContent =
           (summary.headline || "Latest bundle loaded") +
+          ` · ${{trajectory.stepCount || session.trajectory_step_count || 0}} tracked steps` +
           ` · polling every ${{POLL_MS}} ms`;
 
-        renderFacts(session, manifest, summary);
+        renderFacts(session, manifest, summary, trajectory);
         renderCommands(session);
         renderHero(session, manifest);
         renderClip(session, manifest);
         renderGallery(session, manifest);
-        renderNotes(session, manifest, summary);
-        renderHistory(session);
+        renderNotes(session, manifest, summary, trajectory);
+        renderHistory(session, trajectory);
         setStatus("Watching", false);
       }} catch (error) {{
         setStatus("Waiting", true);

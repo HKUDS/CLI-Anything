@@ -68,7 +68,7 @@ def _spawn_live_viewer(session_dir: str, poll_ms: int) -> dict:
     hub = shutil.which("cli-hub")
     command = [
         hub or "cli-hub",
-        "preview",
+        "previews",
         "watch",
         session_dir,
         "--open",

@@ -1,5 +1,6 @@
 ---
-name: "cli-anything-shotcut"
+name: >-
+  cli-anything-shotcut
 description: >-
   Command-line interface for Shotcut - A stateful command-line interface for video editing, built on the MLT XML format. Designed for AI ag...
 ---
@@ -212,6 +213,45 @@ Session management: status, undo, redo.
 | `save` | Save session state to disk |
 | `list` | List all saved sessions |
 
+### Preview
+
+Preview bundles and live preview sessions for iterative editing review.
+
+| Command | Description |
+|---------|-------------|
+| `preview recipes` | List preview recipes |
+| `preview capture` | Render a low-res preview bundle |
+| `preview latest` | Return the latest existing bundle |
+| `preview live start` | Start a live preview session and publish the first bundle |
+| `preview live push` | Publish a new bundle into the live session |
+| `preview live status` | Query current live-session state without rendering |
+| `preview live stop` | Stop the live session without deleting artifacts |
+
+Typical `quick` bundle contents:
+
+- `preview.mp4`
+- several sampled frames
+- midpoint `hero.png`
+- `summary.json` with project facts
+
+Poll mode is supported:
+
+```bash
+cli-anything-shotcut --json --project edit.mlt preview live start --recipe quick --mode poll --source-poll-ms 500
+```
+
+`preview live status --json` includes session refs and a compact
+`trajectory_summary` so agents can cheaply understand the latest few publishes.
+
+Viewer commands:
+
+```bash
+cli-hub previews inspect /path/to/bundle-or-session
+cli-hub previews html /path/to/bundle-or-session -o page.html
+cli-hub previews watch /path/to/session --open
+cli-hub previews open /path/to/bundle-or-session
+```
+
 
 
 
@@ -316,6 +356,10 @@ When using this CLI programmatically:
 5. **Verify outputs exist** after export operations
 6. **Prefer `timeline add-clip --at`** when recreating a known edit
 7. **Review final renders** after keyframed volume or ducking changes
+8. **Use `preview capture` or `preview live ...` to validate pacing, cuts, and filter effects visually**
+9. **Read returned artifact paths** such as `hero.png` and `preview.mp4`; JSON payloads reference files on disk
+10. **Use `preview live status --json` before reading the full `trajectory.json`**
+11. **Use `cli-hub previews ...` only to inspect/open existing bundles or live sessions**
 
 ## More Information
 

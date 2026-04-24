@@ -1,6 +1,6 @@
 # Preview Mechanism Progress
 
-Last updated: 2026-04-22 UTC
+Last updated: 2026-04-23 UTC
 
 This document records the current state of the cross-harness preview mechanism
 work on the dedicated preview branch.
@@ -36,9 +36,9 @@ The current mechanism is built as five layers:
 
 3. `Live Session`
    - A long-lived directory that tracks:
-     - current bundle
-     - history
-     - session metadata
+     - mutable `session.json`
+     - append-only `trajectory.json`
+     - current bundle head
    - Supports both:
      - explicit push
      - poll-first automatic refresh based on source-state fingerprints
@@ -46,10 +46,10 @@ The current mechanism is built as five layers:
 4. `Generic Viewer`
    - Implemented in `cli-hub`.
    - Supports:
-     - inspect
-     - html
-     - watch
-     - open
+     - `cli-hub previews inspect`
+     - `cli-hub previews html`
+     - `cli-hub previews watch`
+     - `cli-hub previews open`
    - Lets agents and humans consume the same preview state through different
      surfaces.
 
@@ -66,7 +66,7 @@ The current mechanism is built as five layers:
 - `cli-anything-plugin/preview_bundle.py`
 - `cli-anything-plugin/HARNESS.md` preview requirements
 - `cli-hub/cli_hub/preview.py`
-- `cli-hub` preview CLI integration
+- `cli-hub` previews CLI integration
 
 ### Harnesses with preview support
 
@@ -79,17 +79,20 @@ The current mechanism is built as five layers:
 - `openscreen`
   - quick preview capture
   - bundle emission
+  - append-only `trajectory.json` beside stable preview roots
 
 - `blender`
   - preview capture
   - live session
   - poll-mode auto refresh
+  - `preview live status --json` returns `trajectory_summary`
   - real Gyro Observatory demo script with stage-by-stage preview checkpoints
 
 - `freecad`
   - quick preview capture
   - live session
   - poll-mode auto refresh
+  - `preview live status --json` returns `trajectory_summary`
   - richer preview/export macro reconstruction
   - motion CLI for true frame rendering
 
@@ -97,6 +100,18 @@ The current mechanism is built as five layers:
   - preview capture
   - preview diff
   - replay-oriented bundle generation
+  - append-only `trajectory.json` for capture/diff history
+
+## Canonical Command Split
+
+Use this wording consistently:
+
+- software harnesses publish previews through `cli-anything-<software> preview ...`
+- `cli-hub previews ...` only inspects, renders, opens, or watches existing
+  bundles and live sessions
+
+There are no `cli-hub preview`, `cli-hub review`, or `cli-hub open-preview`
+aliases in the current command surface.
 
 ## FreeCAD-Specific Preview Mechanism Progress
 

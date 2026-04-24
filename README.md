@@ -7,7 +7,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 
 **🌐 [CLI-Hub](https://hkuds.github.io/CLI-Anything/)**: `pip install cli-anything-hub` then `cli-hub install <name>` — browse, install, and manage all community-built CLIs. Want to add your own? [Open a PR](https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md) — the hub updates instantly.
 
-**🎬 [See Demos](#-real-world-demos)**: Watch AI agents use generated CLIs to produce real artifacts — diagrams, gameplay, subtitles, and more.
+**🎬 [See Demos](#-real-world-demos)**: Watch AI agents use generated CLIs plus preview, live preview, and trajectory loops to produce real artifacts — CAD builds, 3D scenes, diagrams, gameplay, subtitles, and more.
 
 **🙋 [Become a Contributor, or Request a CLI]**: [Join us](https://github.com/HKUDS/CLI-Anything/issues/new?template=contributor-signup.yml)! Sign up to build a new CLI harness — once reviewed and merged, you'll gain access as one of our community contributors! Wish CLI-Anything supported a specific software or service? Submit a [wishlist request](https://github.com/HKUDS/CLI-Anything/issues/new?template=cli-wishlist.yml)!
 
@@ -695,6 +695,34 @@ SKILL.md files are auto-generated during Phase 6.5 of the pipeline using `skill_
 
 AI agents using generated CLIs to produce complete, useful artifacts — no GUI needed.
 
+### FreeCAD &mdash; Curiosity Rover via Preview, Live Preview, and Trajectory
+
+> **Harness:** `cli-anything-freecad` | **Preview Stack:** `preview` + `preview live` + `trajectory.json` | **Artifact:** Agent-built Curiosity-style rover
+
+An agent incrementally assembles a Curiosity-inspired rover while publishing real FreeCAD preview bundles, refreshing a live preview session, and recording command-to-preview history for later replay. The resulting demo shows the artifact evolving step by step before the final showcase.
+
+<p align="center">
+  <img src="assets/demos/freecad-curiosity-preview-trajectory.gif" alt="FreeCAD Curiosity rover demo driven by preview, live preview, and trajectory history" width="860" />
+</p>
+
+<p align="center">
+  <sub>README GIF generated from the full local demo video with a speed-adjusted, high-quality ffmpeg palette workflow.</sub>
+</p>
+
+### Blender &mdash; Orbital Relay Drone via Preview, Live Preview, and Trajectory
+
+> **Harness:** `cli-anything-blender` | **Preview Stack:** `preview` + `preview live` + `trajectory.json` | **Artifact:** Agent-built orbital relay drone
+
+An agent uses the Blender harness to grow a hard-surface orbital relay drone under a real preview loop: each stage pushes new render-backed bundles, the live session tracks the current head, and the trajectory ties every command to the matching visual state. The demo finishes with the completed scene ready for a polished turntable.
+
+<p align="center">
+  <img src="assets/demos/blender-orbital-relay-drone-preview-trajectory.gif" alt="Blender orbital relay drone demo driven by preview, live preview, and trajectory history" width="860" />
+</p>
+
+<p align="center">
+  <sub>README GIF generated from the full local demo video with a speed-adjusted, high-quality ffmpeg palette workflow.</sub>
+</p>
+
 ### Draw.io &mdash; HTTPS Handshake Diagram
 
 > **Harness:** `cli-anything-drawio` | **Time:** ~4 min | **Artifact:** `.drawio` + `.png`
@@ -702,13 +730,13 @@ AI agents using generated CLIs to produce complete, useful artifacts — no GUI 
 An agent creates a full HTTPS connection lifecycle diagram from scratch — TCP three-way handshake, TLS negotiation, encrypted data exchange, and TCP four-way termination — entirely through CLI commands.
 
 <p align="center">
-  <img src="examples/drawio/drawio_demo.gif" alt="Draw.io CLI demo: building an HTTPS handshake diagram" width="720" />
+  <img src="assets/demos/drawio-demo.gif" alt="Draw.io CLI demo: building an HTTPS handshake diagram" width="720" />
 </p>
 
 <details>
 <summary>Final artifact</summary>
 <p align="center">
-  <img src="examples/drawio/https_handshake.png" alt="HTTPS handshake sequence diagram" width="600" />
+  <img src="assets/demos/drawio-https-handshake.png" alt="HTTPS handshake sequence diagram" width="600" />
 </p>
 </details>
 
@@ -721,7 +749,7 @@ An agent creates a full HTTPS connection lifecycle diagram from scratch — TCP 
 An agent plays through a Slay the Spire II run using the CLI harness — reading game state, selecting cards, choosing paths, and making strategic decisions in real-time.
 
 <p align="center">
-  <img src="examples/slay_the_spire_ii/example_preview.gif" alt="Slay the Spire II CLI gameplay demo" width="720" />
+  <img src="assets/demos/slay-the-spire-ii-gameplay.gif" alt="Slay the Spire II CLI gameplay demo" width="720" />
 </p>
 
 *Contributed by [@TianyuFan0504](https://github.com/TianyuFan0504)*
@@ -738,8 +766,8 @@ An agent uses the VideoCaptioner CLI to automatically generate and overlay style
 <td align="center"><strong>Sub B</strong></td>
 </tr>
 <tr>
-<td><img src="examples/videocaptioner/videocaptioner_before.png" alt="Video frame before captioning" width="380" /></td>
-<td><img src="examples/videocaptioner/videocaptioner_after.png" alt="Video frame after captioning" width="380" /></td>
+<td><img src="assets/demos/videocaptioner-before.png" alt="Video frame before captioning" width="380" /></td>
+<td><img src="assets/demos/videocaptioner-after.png" alt="Video frame after captioning" width="380" /></td>
 </tr>
 </table>
 

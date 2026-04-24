@@ -11,6 +11,16 @@ This script has two phases:
 
 The composition is programmatic, but the commands, outputs, timing, and preview
 artifacts are all captured from real execution.
+
+The collected run persists:
+
+- `session.json`
+- `trajectory.json`
+- copied preview bundle snapshots
+- optional `live.html` rendered from the live session
+
+Use `cli-hub previews inspect|html|watch|open` on the resulting session or
+bundle paths when you want a generic viewer outside the final composed video.
 """
 
 from __future__ import annotations
@@ -4897,7 +4907,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         default=str(default_output),
-        help="Directory for collected artifacts and rendered video.",
+        help="Directory for collected artifacts, live preview state, trajectory.json, and rendered video.",
     )
     parser.add_argument(
         "--scenario",
@@ -4908,7 +4918,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--timeline",
         default=None,
-        help="Existing trajectory.json path for render mode.",
+        help="Existing trajectory.json path for render or motion-showcase mode.",
     )
     parser.add_argument("--fps", type=int, default=FPS, help="Output video framerate.")
     parser.add_argument("--speed", type=float, default=1.0, help="Playback speed multiplier.")

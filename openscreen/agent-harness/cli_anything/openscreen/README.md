@@ -36,6 +36,30 @@ cli-anything-openscreen export render demo.mp4
 cli-anything-openscreen --json project info
 ```
 
+## Preview Bundles
+
+Openscreen supports static preview bundles for review-ready editing checks.
+
+```bash
+# Capture a low-res preview bundle
+cli-anything-openscreen --json --project project.openscreen preview capture --recipe quick
+
+# Read the latest bundle
+cli-anything-openscreen --json --project project.openscreen preview latest --recipe quick
+```
+
+The preview bundle contains a low-res review clip, sampled frames, and summary
+metadata. Capture also appends to a stable `trajectory.json` beside the preview
+recipe root.
+
+Inspect or open the resulting bundle with:
+
+```bash
+cli-hub previews inspect /path/to/bundle
+cli-hub previews html /path/to/bundle -o page.html
+cli-hub previews open /path/to/bundle
+```
+
 ## Command Groups
 
 | Group | Commands |

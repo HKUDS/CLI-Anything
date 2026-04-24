@@ -1,5 +1,7 @@
 # Preview Protocol
 
+Last updated: 2026-04-23 UTC
+
 This document proposes a minimal, cross-harness protocol for previewing
 intermediate results in CLI-Anything workflows.
 
@@ -74,12 +76,16 @@ The protocol has three layers:
 1. Harness layer
    The harness generates real preview artifacts and writes a `Preview Bundle`.
 2. Viewer layer
-   `cli-hub` reads any compliant bundle and renders a generic inspection view.
+   `cli-hub previews ...` reads any compliant bundle or live session and
+   renders a generic inspection view.
 3. Host/runtime layer
    An agent host may decide to attach selected bundle artifacts back into model
    context, but this is outside the harness itself.
 
 The central object is the `Preview Bundle`.
+
+For live preview workflows, the stable object is the `Live Session`, with an
+append-only `trajectory.json` beside it.
 
 ## Preview Bundle
 
@@ -258,6 +264,128 @@ Recommended shape:
 
 The viewer should render `headline`, `facts`, and `warnings` first.
 
+## Live Session
+
+Live preview adds two more protocol objects:
+
+1. `session.json`
+   Mutable session head. Tracks the current bundle, viewer commands, and live
+   poller state.
+2. `trajectory.json`
+   Append-only history of command-to-preview publishes for the session. This is
+   the permanent replay object.
+
+Recommended live session layout:
+
+```text
+<session_dir>/
+  session.json
+  trajectory.json
+  current -> ../quick/<bundle_id>/
+```
+
+### Why `trajectory.json` exists
+
+`bundle_dir` is a single immutable snapshot, not the stable history object.
+For the same working project:
+
+- a bundle directory may be reused if the cache key is unchanged
+- a new bundle directory is created whenever the source fingerprint, recipe,
+  options, harness version, or protocol version changes
+
+So agents and host UIs should not treat `bundle_dir` as the permanent handle
+for the whole build. The stable handle for live preview is:
+
+- `session_dir` for the current channel
+- `trajectory.json` for the full publish history
+
+### `session.json` responsibilities
+
+Recommended fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `protocol_version` | string | Start with `preview-live/v1` |
+| `software` | string | Harness name |
+| `recipe` | string | Active live recipe |
+| `status` | string | `active` or `stopped` |
+| `current_bundle_id` | string | Current head bundle |
+| `current_bundle_dir` | string | Absolute current bundle path |
+| `current_manifest_path` | string | Absolute manifest path |
+| `current_summary_path` | string | Absolute summary path |
+| `current_step_id` | string | Current trajectory step id |
+| `latest_command` | string | Latest publish command for agent/UI inspection |
+| `latest_publish_reason` | string | Latest publish reason |
+| `trajectory_path` | string | Relative path, usually `trajectory.json` |
+| `trajectory_step_count` | integer | Total trajectory steps |
+| `history` | array | Short recent-bundles list for compatibility |
+
+`history` remains useful for quick inspection, but it is not the authoritative
+replay log.
+
+### `trajectory.json` schema
+
+Recommended top-level shape:
+
+```json
+{
+  "protocol_version": "preview-trajectory/v1",
+  "software": "blender",
+  "recipe": "quick",
+  "session_name": "orbital-relay-drone-blend-cli-48261b51-quick",
+  "project_path": "/work/scene.blend-cli.json",
+  "project_name": "scene.blend-cli.json",
+  "created_at": "2026-04-23T10:10:00Z",
+  "updated_at": "2026-04-23T10:12:41Z",
+  "step_count": 3,
+  "current_step_id": "step-0003",
+  "steps": [
+    {
+      "step_id": "step-0001",
+      "step_index": 1,
+      "command": "cli-anything-blender --project scene.blend-cli.json preview live start --recipe quick",
+      "command_started_at": "2026-04-23T10:10:00Z",
+      "command_finished_at": "2026-04-23T10:10:07Z",
+      "publish_reason": "live-start",
+      "source_fingerprint": "sha256:...",
+      "bundle_id": "20260423T101007Z_deadbeef_quick",
+      "bundle_dir": "/work/.cli-anything/previews/blender/quick/20260423T101007Z_deadbeef_quick",
+      "manifest_path": "/work/.cli-anything/previews/blender/quick/20260423T101007Z_deadbeef_quick/manifest.json",
+      "summary_path": "/work/.cli-anything/previews/blender/quick/20260423T101007Z_deadbeef_quick/summary.json",
+      "status": "ok",
+      "cached": false,
+      "stage_label": "service-rig"
+    }
+  ]
+}
+```
+
+Minimum recommended step fields:
+
+- `step_id`
+- `command`
+- `command_started_at`
+- `command_finished_at`
+- `publish_reason`
+- `source_fingerprint`
+- `bundle_id`
+- `bundle_dir`
+- `manifest_path`
+- `summary_path`
+
+Optional but useful:
+
+- `stage_label`
+- `note`
+- `status`
+- `cached`
+
+This gives viewers enough structure to render:
+
+- command stream on the left
+- matching preview state on the right
+- arbitrary rewind to previous build checkpoints
+
 ## Artifact Descriptor
 
 Each artifact entry in `manifest.json` should use relative paths and carry enough
@@ -383,6 +511,59 @@ Returns the latest successful bundle for the current project and optional recipe
 Recommended for domains with meaningful before/after or event/event comparison.
 Not every harness must implement this in v1, but the protocol supports it.
 
+### `preview live start`
+
+Starts a live preview session and publishes the initial bundle.
+
+Recommended options:
+
+- `--recipe <name>`
+- `--root-dir <path>`
+- `--poll-ms <int>`
+- `--mode manual|poll`
+- `--source-poll-ms <int>`
+- `--open`
+
+### `preview live push`
+
+Publishes a fresh bundle into an existing live session.
+
+Use this when:
+
+- the harness supports manual live refresh
+- the agent wants an explicit command-to-preview checkpoint
+- the source did not change enough to justify poll mode
+
+### `preview live status`
+
+Returns the current live session state without rendering a new bundle.
+
+This command exists for agents. It should answer:
+
+- is there a live session for this project and recipe
+- where is `session.json`
+- what is the current bundle
+- what is the latest publish reason
+- where is `trajectory.json`
+
+For `--json`, implementations SHOULD include:
+
+- `_session_dir`
+- `_session_path`
+- `_trajectory_path`
+- `current_bundle_id`
+- `current_bundle_dir`
+- `current_step_id`
+- `latest_publish_reason`
+- `trajectory_summary`
+
+`trajectory_summary` should be a compact in-band summary so agents do not need a
+second file read just to understand the latest few steps.
+
+### `preview live stop`
+
+Stops a live preview session without deleting published artifacts.
+
 ## Caching Rules
 
 `preview capture` may return a cached bundle if:
@@ -426,12 +607,19 @@ logic. It only needs bundle-aware preview logic.
 
 ## Generic Viewer
 
-The generic viewer should live in `cli-hub`.
+The generic viewer lives in `cli-hub`.
 
-Minimal viewer commands for v1:
+The split is intentional:
 
-- `cli-hub preview inspect <bundle-or-manifest>`
-- `cli-hub preview html <bundle-or-manifest> [-o output.html]`
+- `cli-anything-<software> preview ...` publishes preview state
+- `cli-hub previews ...` inspects existing preview state
+
+Canonical viewer commands:
+
+- `cli-hub previews inspect <bundle-or-session>`
+- `cli-hub previews html <bundle-or-session> [-o output.html]`
+- `cli-hub previews watch <session-dir> [--open] [--poll-ms 1500]`
+- `cli-hub previews open <bundle-or-session>`
 
 `inspect` prints:
 
@@ -439,6 +627,7 @@ Minimal viewer commands for v1:
 - source identity
 - summary headline/facts/warnings
 - artifact table
+- trajectory summary when available
 
 `html` writes a static HTML page that:
 
@@ -446,6 +635,14 @@ Minimal viewer commands for v1:
 - renders image galleries from `hero` and `gallery` artifacts
 - embeds playable `<video>` elements for `preview-clip`
 - links to JSON artifacts for detailed inspection
+- renders session history from `trajectory.json` when present
+
+`watch` serves a live session over localhost and auto-refreshes the page.
+
+`open` opens either:
+
+- a generated HTML file for a bundle
+- a browser-backed live session watcher for `session_dir`
 
 This viewer is intentionally generic. It does not know what Shotcut, FreeCAD,
 Blender, or RenderDoc "mean". It only knows bundle roles and artifact kinds.
@@ -522,9 +719,9 @@ Concrete file plan:
 
 Concrete behavior:
 
-- `cli-hub preview inspect <bundle>`
+- `cli-hub previews inspect <bundle>`
   prints manifest metadata, summary, and artifact inventory
-- `cli-hub preview html <bundle> -o page.html`
+- `cli-hub previews html <bundle> -o page.html`
   writes a static HTML page with summary + gallery + video embedding
 
 Why this works:
@@ -611,7 +808,7 @@ Why this works:
 Acceptance criteria:
 
 - both harnesses emit valid bundles for a real project
-- `cli-hub preview inspect` can read them
+- `cli-hub previews inspect` can read them
 - the HTML viewer shows the gallery and preview clip without app-specific code
 
 Out of scope:

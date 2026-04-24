@@ -38,6 +38,7 @@ The catalog is auto-updated and provides:
 - One-line `cli-hub install` commands for each tool
 - Complete descriptions and usage patterns
 
+
 ## What Can You Do?
 
 CLI-Hub covers a broad range of software and codebases, empowering agents to conduct complex workflows via CLI:
@@ -55,6 +56,32 @@ Each CLI provides stateful operations, JSON output for agents, REPL mode, and in
 
 `cli-hub` is a lightweight wrapper around `pip`. When you run `cli-hub install gimp`, it installs a separate Python package (`cli-anything-gimp`) with its own CLI entry point (`cli-anything-gimp`). Each CLI is an independent pip package — `cli-hub` simply resolves names from the registry and tracks installs.
 
+## Preview Consumption
+
+Some installed harnesses also support preview workflows. The command split is:
+
+- `cli-anything-<software> preview ...` creates or updates real preview artifacts
+- `cli-hub previews ...` inspects, renders, watches, or opens those existing artifacts
+
+Use:
+
+```bash
+# From the harness side: publish preview state
+cli-anything-blender --json --project scene.blend-cli.json preview capture --recipe quick
+
+# From cli-hub: inspect or open the resulting bundle or live session
+cli-hub previews inspect /path/to/bundle-or-session
+cli-hub previews html /path/to/bundle-or-session -o page.html
+cli-hub previews watch /path/to/session --open
+cli-hub previews open /path/to/bundle-or-session
+```
+
+For live sessions, `cli-hub previews` reads:
+
+- `session.json` for the current head
+- `trajectory.json` for append-only history
+- the current bundle manifest and artifacts
+
 ## How to Use
 
 1. **Install cli-hub**: `pip install cli-anything-hub`
@@ -62,6 +89,8 @@ Each CLI provides stateful operations, JSON output for agents, REPL mode, and in
 3. **Install**: `cli-hub install <name>` (installs the `cli-anything-<name>` pip package)
 4. **Run**: `cli-anything-<name>` for REPL, or `cli-anything-<name> <command>` for one-shot
 5. **JSON output**: All CLIs support `--json` flag for machine-readable output
+6. **Preview-capable CLIs**: use `cli-anything-<name> preview ... --json` to publish,
+   then `cli-hub previews ...` to inspect or open the result
 
 ## Example Workflow
 

@@ -96,6 +96,50 @@ cli-anything-renderdoc -c frame.rdc counters list
 cli-anything-renderdoc -c frame.rdc counters fetch --ids 1,2,3
 ```
 
+## Preview Bundles
+
+RenderDoc preview support is for truthful capture inspection rather than live
+creative preview.
+
+```bash
+# List preview recipes
+cli-anything-renderdoc -c frame.rdc --json preview recipes
+
+# Capture a preview bundle for the active capture or a specific event
+cli-anything-renderdoc -c frame.rdc --json preview capture --recipe quick --event-id 42
+
+# Capture a diff preview bundle for two events or captures
+cli-anything-renderdoc -c frame.rdc --json preview diff 100 200
+cli-anything-renderdoc -c a.rdc --json preview diff 100 200 --capture-b b.rdc
+
+# Return the latest existing bundle for the capture
+cli-anything-renderdoc -c frame.rdc --json preview latest --recipe quick
+```
+
+Typical preview bundle contents:
+
+- capture thumbnail
+- output-target images
+- `pipeline_state.json`
+- `action_summary.json`
+
+Diff bundles additionally include:
+
+- A/B thumbnails
+- A/B output-target images
+- `pipeline_diff.json`
+
+RenderDoc does not currently expose live preview sessions. Instead, each
+capture/diff bundle appends to a stable recipe-level `trajectory.json`.
+
+Viewer commands:
+
+```bash
+cli-hub previews inspect /path/to/bundle
+cli-hub previews html /path/to/bundle -o page.html
+cli-hub previews open /path/to/bundle
+```
+
 ## JSON Mode
 
 All commands support `--json` for machine-readable output:
@@ -121,6 +165,10 @@ cli-anything-renderdoc -c frame.rdc --json actions summary
 - Always specify `--json` for programmatic consumption
 - Use `actions summary` first to understand capture complexity
 - Use `actions list --draws-only` to focus on actual rendering
+- Use `preview capture` or `preview diff` when the agent needs a portable,
+  honest inspection bundle rather than raw replay calls alone
+- Read `_trajectory_path` from preview JSON if you need persistent capture/diff history
+- Use `cli-hub previews ...` only to inspect/open already-generated bundles
 - Pipeline state requires an event ID from the action list
 - Texture save supports: png, jpg, bmp, tga, hdr, exr, dds
 - Buffer data can be decoded as hex, float32, uint32, or raw bytes

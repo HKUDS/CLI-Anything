@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..utils.preview_bundle import (
+    append_live_trajectory,
     artifact_record,
+    bundle_root,
     finalize_bundle,
     find_latest_manifest,
     fingerprint_data,
@@ -83,6 +86,28 @@ def _count_differences(obj: Any) -> int:
     return 1
 
 
+def _trajectory_dir(capture_path: str, recipe: str, root_dir: Optional[str] = None) -> str:
+    return str(
+        bundle_root(
+            "renderdoc",
+            recipe,
+            project_path=capture_path,
+            root_dir=root_dir,
+        ).resolve()
+    )
+
+
+def _attach_trajectory_ref(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    bundle_dir = manifest.get("_bundle_dir")
+    context = manifest.get("context") or {}
+    trajectory_ref = context.get("trajectory_path")
+    if bundle_dir and trajectory_ref:
+        trajectory_path = (Path(str(bundle_dir)) / str(trajectory_ref)).resolve()
+        if trajectory_path.is_file():
+            manifest["_trajectory_path"] = str(trajectory_path)
+    return manifest
+
+
 def capture(
     handle,
     capture_path: str,
@@ -115,10 +140,12 @@ def capture(
     if prepared["cached"]:
         manifest = dict(prepared["manifest"])
         manifest["cached"] = True
-        return manifest
+        return _attach_trajectory_ref(manifest)
 
     bundle_dir = prepared["bundle_dir"]
     artifacts_dir = prepared["artifacts_dir"]
+    trajectory_dir = _trajectory_dir(capture_path, recipe, root_dir=root_dir)
+    trajectory_rel = os.path.relpath(Path(trajectory_dir) / "trajectory.json", Path(bundle_dir))
     warnings: List[str] = []
     artifacts: List[Dict[str, Any]] = []
     metadata = handle.metadata()
@@ -230,13 +257,27 @@ def capture(
         },
         status="partial" if warnings else "ok",
         warnings=warnings or None,
-        context={"event_id": chosen_event},
+        context={"event_id": chosen_event, "trajectory_path": trajectory_rel},
         metrics={
             "drawcalls": action_summary.get("drawcalls", 0),
             "output_targets": output_count,
         },
         labels=["gpu", "capture", "preview"],
     )
+    trajectory = append_live_trajectory(
+        trajectory_dir,
+        software="renderdoc",
+        recipe=recipe,
+        bundle_manifest=manifest,
+        publish_reason="capture",
+        project_path=os.path.abspath(capture_path),
+        project_name=os.path.basename(capture_path),
+        session_name=f"{os.path.splitext(os.path.basename(capture_path))[0]}-{recipe}",
+        command=command,
+        stage_label=f"event-{chosen_event}" if chosen_event is not None else "capture",
+        note=f"RenderDoc capture preview for event {chosen_event}" if chosen_event is not None else None,
+    )
+    manifest["_trajectory_path"] = trajectory["_trajectory_path"]
     manifest["cached"] = False
     return manifest
 
@@ -277,10 +318,12 @@ def diff(
     if prepared["cached"]:
         manifest = dict(prepared["manifest"])
         manifest["cached"] = True
-        return manifest
+        return _attach_trajectory_ref(manifest)
 
     bundle_dir = prepared["bundle_dir"]
     artifacts_dir = prepared["artifacts_dir"]
+    trajectory_dir = _trajectory_dir(capture_path_a, "diff", root_dir=root_dir)
+    trajectory_rel = os.path.relpath(Path(trajectory_dir) / "trajectory.json", Path(bundle_dir))
     warnings: List[str] = []
     artifacts: List[Dict[str, Any]] = []
 
@@ -427,7 +470,7 @@ def diff(
         },
         status="partial" if warnings else "ok",
         warnings=warnings or None,
-        context={"event_a": event_a, "event_b": event_b},
+        context={"event_a": event_a, "event_b": event_b, "trajectory_path": trajectory_rel},
         metrics={"difference_count": diff_count},
         labels=["gpu", "capture", "diff", "preview"],
         source_bundles=[
@@ -435,6 +478,20 @@ def diff(
             {"capture_path": os.path.abspath(capture_path_b), "event_id": event_b},
         ],
     )
+    trajectory = append_live_trajectory(
+        trajectory_dir,
+        software="renderdoc",
+        recipe="diff",
+        bundle_manifest=manifest,
+        publish_reason="diff",
+        project_path=os.path.abspath(capture_path_a),
+        project_name=os.path.basename(capture_path_a),
+        session_name=f"{os.path.splitext(os.path.basename(capture_path_a))[0]}-diff",
+        command=command,
+        stage_label=f"diff-{event_a}-vs-{event_b}",
+        note=f"Pipeline diff for events {event_a} vs {event_b}",
+    )
+    manifest["_trajectory_path"] = trajectory["_trajectory_path"]
     manifest["cached"] = False
     return manifest
 
@@ -456,4 +513,4 @@ def latest(
     )
     if manifest is None:
         raise FileNotFoundError("No RenderDoc preview bundle found")
-    return manifest
+    return _attach_trajectory_ref(manifest)
