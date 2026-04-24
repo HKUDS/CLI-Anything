@@ -11,6 +11,27 @@ designed for humans, without needing a display or mouse.
 
 ### Phase 1: Codebase Analysis
 
+**⚠ Binary Application Detection:** Before starting analysis, check if the provided
+path is a compiled application bundle (`.app`, `.exe`, `.AppImage`, `.msi`, `.deb`,
+`.rpm`, `.flatpak`) rather than source code. If the path contains only compiled
+binaries and no source files, **abort immediately** with a clear message:
+*"CLI-Anything requires access to the software's source code repository, not a
+compiled/installed application. Please provide the source code path or GitHub URL."*
+
+**Scan before reading:** Before opening any files, list the directory tree (file names
+and sizes only). Build a prioritized reading plan, starting with high-signal files
+(README, CLI entry points, API headers, core modules).
+
+**Always exclude the following from analysis:**
+  - Binary files: `.o`, `.so`, `.dylib`, `.a`, `.exe`, `.dll`, `.wasm`, `.pyc`, `.class`, `.jar`
+  - Build artifacts: `build/`, `dist/`, `__pycache__/`, `node_modules/`, `.git/`, `target/`, `cmake-build*/`
+  - Generated code: `*_generated.*`, `*.pb.go`, `*.pb.cc`
+  - Media/assets: images, videos, fonts, archives (`.png`, `.jpg`, `.mp4`, `.zip`, `.tar.*`)
+  - Test fixtures and large data files
+  - Vendored/third-party code (`vendor/`, `third_party/`)
+
+Perform the analysis:
+
 1. **Identify the backend engine** — Most GUI apps separate presentation from logic.
    Find the core library/framework (e.g., MLT for Shotcut, ImageMagick for GIMP).
 2. **Map GUI actions to API calls** — Every button click, drag, and menu item
@@ -586,11 +607,41 @@ the output**.
 Detailed guides live in `guides/`. Use this table to decide which ones to read
 based on the software you're building a harness for.
 
-| Guide | Read when... | Phase |
-|-------|-------------|-------|
-| [`session-locking.md`](guides/session-locking.md) | Implementing session save (all harnesses) | Phase 3 |
-| [`skill-generation.md`](guides/skill-generation.md) | Generating the SKILL.md file | Phase 6.5 |
-| [`pypi-publishing.md`](guides/pypi-publishing.md) | Packaging and installing the CLI | Phase 7 |
-| [`mcp-backend.md`](guides/mcp-backend.md) | Software has an MCP server, no native CLI | Phase 3 |
-| [`filter-translation.md`](guides/filter-translation.md) | Video/audio CLI with effects that need render-time translation | Phase 3 |
-| [`timecode-precision.md`](guides/timecode-precision.md) | Video/audio CLI with non-integer frame rates (29.97fps, etc.) | Phase 3, 5 |
+**Why namespace packages:**
+- Multiple CLIs coexist in the same Python environment without conflicts
+- Clean, organized imports under a single `cli_anything` namespace
+- Each CLI is independently installable/uninstallable via pip
+- Agents can discover all installed CLIs via `cli_anything.*`
+- Standard Python packaging — no hacks or workarounds
+
+## Optional Modes
+
+### `--economic` Mode
+
+The `--economic` flag activates a token-constrained analysis mode designed for users
+working with smaller context windows or who want faster, cheaper runs. When enabled,
+it applies stricter budgets and reading strategies on top of the default exclusion rules.
+
+**When to use:** If the target codebase is large and you are running on a model with
+a limited context window, or you want to minimize token usage for cost or speed reasons.
+
+**Token budget:** Keep all file content read during Phase 1 under **~50,000 tokens**
+(~200KB of text). This leaves room for the prompt, instructions, and completion.
+
+**File size limit:** Skip individual files larger than **100KB**. For important large
+files, read only the first 200 lines to understand the interface.
+
+**Priority reading order:**
+1. README, CONTRIBUTING, docs/ (architecture overview)
+2. CLI entry points and main() functions
+3. Public API headers / interface definitions
+4. Core module files (< 50KB each)
+5. Plugin/extension interfaces
+6. Configuration schemas
+
+**Summarize, don't dump:** For large directories with many similar files (e.g., 50
+filter implementations), read 2-3 representative examples and note the pattern.
+Do not read all 50.
+
+**Incremental deepening:** Start with high-level architecture files. Only drill into
+implementation details for areas directly relevant to CLI design.
