@@ -188,14 +188,16 @@ def process_group():
 @click.option("--arg", "args", multiple=True, help="Launch argument. Repeat for multiple.")
 @click.option("--env", "envs", multiple=True, help="Environment entry KEY=VALUE.")
 @click.option("--cwd", "working_dir", type=click.Path(exists=True), default=None)
+@click.option("--stop-at-entry", is_flag=True, help="Stop at the process entry point before user code.")
 @click.pass_context
-def process_launch(ctx, args, envs, working_dir):
+def process_launch(ctx, args, envs, working_dir, stop_at_entry):
     """Launch process for current target."""
     try:
         data = _require_target().launch(
             args=list(args) or None,
             env=list(envs) or None,
             working_dir=working_dir,
+            stop_at_entry=stop_at_entry,
         )
         _output(ctx, data)
     except Exception as exc:
@@ -228,6 +230,17 @@ def process_continue(ctx):
     """Continue execution."""
     try:
         data = _require_process().continue_exec()
+        _output(ctx, data)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@process_group.command("interrupt")
+@click.pass_context
+def process_interrupt(ctx):
+    """Interrupt a running process."""
+    try:
+        data = _require_process().interrupt()
         _output(ctx, data)
     except Exception as exc:
         _handle_exc(ctx, exc)
@@ -270,8 +283,9 @@ def breakpoint_group():
 @click.option("--line", type=int, default=None)
 @click.option("--function", type=str, default=None)
 @click.option("--condition", type=str, default=None)
+@click.option("--allow-pending", is_flag=True, help="Allow unresolved pending breakpoints.")
 @click.pass_context
-def breakpoint_set(ctx, file_path, line, function, condition):
+def breakpoint_set(ctx, file_path, line, function, condition, allow_pending):
     """Set a breakpoint by file/line or function."""
     try:
         data = _require_target().breakpoint_set(
@@ -279,6 +293,7 @@ def breakpoint_set(ctx, file_path, line, function, condition):
             line=line,
             function=function,
             condition=condition,
+            allow_pending=allow_pending,
         )
         _output(ctx, data)
     except Exception as exc:
@@ -563,6 +578,19 @@ def core_load(ctx, core_path: str):
 
 
 # ===========================================================================
+# dap
+# ===========================================================================
+
+
+@cli.command("dap")
+def dap_server():
+    """Run a stdio Debug Adapter Protocol server."""
+    from cli_anything.lldb.dap import main as dap_main
+
+    dap_main([])
+
+
+# ===========================================================================
 # session
 # ===========================================================================
 
@@ -606,13 +634,13 @@ def repl(ctx):
     """Start interactive REPL session."""
     from cli_anything.lldb.utils.repl_skin import ReplSkin
 
-    skin = ReplSkin("lldb", version="0.1.0")
+    skin = ReplSkin("lldb", version="1.0.0")
     skin.print_banner()
     pt_session = skin.create_prompt_session()
 
     repl_commands = {
         "target": "create|info",
-        "process": "launch|attach|continue|detach|info",
+        "process": "launch|attach|continue|interrupt|detach|info",
         "breakpoint": "set|list|delete|enable|disable",
         "thread": "list|select|backtrace|info",
         "frame": "select|info|locals",
@@ -620,6 +648,7 @@ def repl(ctx):
         "expr": "<expression>",
         "memory": "read|find",
         "core": "load",
+        "dap": "Run Debug Adapter Protocol server",
         "session": "info|close",
         "help": "Show this help",
         "quit": "Exit REPL",

@@ -7,8 +7,21 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 
-def set_breakpoint(session, file: Optional[str] = None, line: Optional[int] = None, function: Optional[str] = None, condition: Optional[str] = None) -> Dict[str, Any]:
-    return session.breakpoint_set(file=file, line=line, function=function, condition=condition)
+def set_breakpoint(
+    session,
+    file: Optional[str] = None,
+    line: Optional[int] = None,
+    function: Optional[str] = None,
+    condition: Optional[str] = None,
+    allow_pending: bool = False,
+) -> Dict[str, Any]:
+    return session.breakpoint_set(
+        file=file,
+        line=line,
+        function=function,
+        condition=condition,
+        allow_pending=allow_pending,
+    )
 
 
 def list_breakpoints(session) -> Dict[str, Any]:

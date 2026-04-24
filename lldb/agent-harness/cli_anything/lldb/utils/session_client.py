@@ -11,12 +11,27 @@ import socket
 import struct
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 MAX_MESSAGE_BYTES = 1024 * 1024
+
+
+def default_session_root() -> Path:
+    env_override = os.environ.get("CLI_ANYTHING_LLDB_SESSION_DIR")
+    if env_override:
+        return Path(env_override).expanduser().resolve()
+
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        root = Path(base).expanduser() if base else Path.home() / "AppData" / "Local"
+        return (root / "cli-anything-lldb" / "sessions").resolve()
+
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        return (Path(runtime_dir).expanduser() / "cli-anything-lldb").resolve()
+    return (Path.home() / ".cache" / "cli-anything-lldb" / "sessions").resolve()
 
 
 def resolve_session_file(explicit: str | None = None) -> Path:
@@ -29,7 +44,7 @@ def resolve_session_file(explicit: str | None = None) -> Path:
 
     scope = os.environ.get("CLI_ANYTHING_LLDB_SESSION_SCOPE") or os.getcwd()
     digest = hashlib.sha256(os.path.abspath(scope).encode("utf-8")).hexdigest()[:12]
-    root = Path(tempfile.gettempdir()) / "cli-anything-lldb"
+    root = default_session_root()
     return (root / f"session-{digest}.json").resolve()
 
 

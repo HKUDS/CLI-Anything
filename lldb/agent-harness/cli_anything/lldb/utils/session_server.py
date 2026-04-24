@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import argparse
 import base64
+import getpass
 import hmac
 import json
 import os
 import socket
 import struct
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -20,17 +22,94 @@ from cli_anything.lldb.core.session import LLDBSession
 
 MAX_MESSAGE_BYTES = 1024 * 1024
 
+_ALLOWED_SESSION_METHODS = {
+    "target_create",
+    "target_info",
+    "attach_pid",
+    "attach_name",
+    "launch",
+    "detach",
+    "breakpoint_set",
+    "breakpoint_list",
+    "breakpoint_delete",
+    "breakpoint_enable",
+    "step_over",
+    "step_into",
+    "step_out",
+    "continue_exec",
+    "interrupt",
+    "backtrace",
+    "locals",
+    "local_values",
+    "set_local_variable",
+    "set_child_value",
+    "evaluate",
+    "threads",
+    "thread_select",
+    "frame_select",
+    "frame_info",
+    "read_memory",
+    "find_memory",
+    "disassemble",
+    "loaded_sources",
+    "modules",
+    "load_core",
+    "process_info",
+}
+
 
 def _encode_token(token: bytes) -> str:
     return base64.b64encode(token).decode("ascii")
 
 
-def _prepare_state_dir(state_dir: Path):
-    state_dir.mkdir(parents=True, exist_ok=True)
+def _best_effort_chmod(path: Path, mode: int):
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
+
+
+def _best_effort_restrict_windows_acl(path: Path):
     if os.name != "nt":
+        return
+    user = getpass.getuser()
+    try:
+        subprocess.run(
+            ["icacls", str(path), "/inheritance:r", "/grant:r", f"{user}:F"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        pass
+
+
+def _prepare_state_dir(state_dir: Path):
+    state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _best_effort_chmod(state_dir, 0o700)
+    _best_effort_restrict_windows_acl(state_dir)
+
+
+def _write_owner_only_json(path: Path, payload: dict[str, Any]):
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    fd = os.open(tmp_path, flags, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _best_effort_chmod(tmp_path, 0o600)
+        _best_effort_restrict_windows_acl(tmp_path)
+        os.replace(tmp_path, path)
+        _best_effort_chmod(path, 0o600)
+        _best_effort_restrict_windows_acl(path)
+    finally:
         try:
-            os.chmod(state_dir, 0o700)
-        except OSError:
+            tmp_path.unlink()
+        except FileNotFoundError:
             pass
 
 
@@ -42,21 +121,7 @@ def _write_state_file(state_file: Path, address: tuple[str, int], token: bytes):
         "token": _encode_token(token),
         "pid": os.getpid(),
     }
-
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    flags |= getattr(os, "O_BINARY", 0)
-    if os.name != "nt":
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-
-    fd = os.open(str(state_file), flags, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as state_fp:
-        json.dump(payload, state_fp)
-
-    if os.name != "nt":
-        try:
-            os.chmod(state_file, 0o600)
-        except OSError:
-            pass
+    _write_owner_only_json(state_file, payload)
 
 
 def _remove_state_file(state_file: Path):
@@ -139,6 +204,8 @@ class SessionServer:
             self.close()
 
         try:
+            if method not in _ALLOWED_SESSION_METHODS:
+                raise RuntimeError(f"Unsupported session method: {method}")
             if self._session is None:
                 self._session = LLDBSession()
 
