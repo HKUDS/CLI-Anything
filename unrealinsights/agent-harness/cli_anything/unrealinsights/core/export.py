@@ -87,6 +87,12 @@ def _filename_arg(output_path: str, insights_version: str | None = None) -> str:
     return _modern_filename_arg(output_abs)
 
 
+def _option_value_arg(name: str, value: str) -> str:
+    if not any(ch.isspace() for ch in value):
+        return f"-{name}={value}"
+    return f"-{name}={_quote(value)}"
+
+
 def build_export_exec_command(
     exporter: str,
     output_path: str,
@@ -110,19 +116,19 @@ def build_export_exec_command(
     parts = [EXPORTER_COMMANDS[exporter], filename_token]
 
     if counter:
-        parts.append(f"-counter={_quote(counter)}")
+        parts.append(_option_value_arg("counter", counter))
     if columns:
-        parts.append(f"-columns={_quote(columns)}")
+        parts.append(_option_value_arg("columns", columns))
     if threads:
-        parts.append(f"-threads={_quote(threads)}")
+        parts.append(_option_value_arg("threads", threads))
     if timers:
-        parts.append(f"-timers={_quote(timers)}")
+        parts.append(_option_value_arg("timers", timers))
     if start_time is not None:
         parts.append(f"-startTime={start_time}")
     if end_time is not None:
         parts.append(f"-endTime={end_time}")
     if region:
-        parts.append(f"-region={_quote(region)}")
+        parts.append(_option_value_arg("region", region))
 
     return " ".join(parts)
 
@@ -193,6 +199,52 @@ def expected_outputs_from_rsp(rsp_path: str) -> list[str]:
     return outputs
 
 
+def normalize_response_file_lines(lines: list[str], *, insights_version: str | None = None) -> list[str]:
+    """Normalize response-file output filename tokens for UnrealInsights parsing."""
+    normalized_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            normalized_lines.append(line)
+            continue
+        try:
+            tokens = shlex.split(stripped, posix=False)
+        except ValueError:
+            normalized_lines.append(line)
+            continue
+        if len(tokens) < 2:
+            normalized_lines.append(line)
+            continue
+        output_path = tokens[1].strip('"')
+        filename_token = _filename_arg(output_path, insights_version=insights_version)
+        normalized_lines.append(" ".join([tokens[0], filename_token, *tokens[2:]]))
+    return normalized_lines
+
+
+def normalized_response_file_path(rsp_path: str, *, insights_version: str | None = None) -> str:
+    """Return a normalized temporary response file path when normalization changes content."""
+    path = Path(rsp_path).expanduser().resolve()
+    if not path.is_file():
+        return str(path)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    normalized_lines = normalize_response_file_lines(lines, insights_version=insights_version)
+    if normalized_lines == lines:
+        return str(path)
+
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        errors="replace",
+        suffix=".rsp",
+        prefix=f"{path.stem}-normalized-",
+        delete=False,
+    )
+    with handle:
+        handle.write("\n".join(normalized_lines))
+        handle.write("\n")
+    return str(Path(handle.name).resolve())
+
+
 def default_log_path(reference_path: str, suffix: str = ".insights.log") -> str:
     path = Path(reference_path).expanduser().resolve()
     return str(path.with_name(f"{path.stem}{suffix}"))
@@ -225,6 +277,8 @@ def _execute_insights(
                 actual_outputs.append(match)
                 seen.add(match)
 
+    output_status, status_message = classify_export_result(run_result, log_info, actual_outputs, expected_outputs)
+
     run_result.update(
         {
             "trace_path": str(Path(trace_path).expanduser().resolve()),
@@ -234,14 +288,37 @@ def _execute_insights(
             "log_path": log_info["path"],
             "warnings": log_info["warnings"],
             "errors": log_info["errors"],
-            "succeeded": (
-                not run_result["timed_out"]
-                and run_result["exit_code"] == 0
-                and len(actual_outputs) > 0
-            ),
+            "output_status": output_status,
+            "status_message": status_message,
+            "succeeded": output_status == "ok",
         }
     )
     return run_result
+
+
+def classify_export_result(
+    run_result: dict[str, object],
+    log_info: dict[str, object],
+    actual_outputs: list[str],
+    expected_outputs: list[str],
+) -> tuple[str, str]:
+    """Classify an Unreal Insights exporter result for agent diagnostics."""
+    if run_result.get("timed_out"):
+        return "timed_out", "UnrealInsights.exe timed out before export completion."
+    if run_result.get("exit_code") != 0:
+        return "process_failed", f"UnrealInsights.exe exited with code {run_result.get('exit_code')}."
+    if actual_outputs:
+        return "ok", f"Materialized {len(actual_outputs)} output file(s)."
+
+    errors = list(log_info.get("errors") or [])
+    if errors:
+        return "exporter_error", errors[-1]
+    if expected_outputs:
+        return (
+            "no_output",
+            "Exporter completed without materializing expected outputs; the trace may not contain matching data.",
+        )
+    return "no_expected_outputs", "No output paths were inferred for this export command."
 
 
 def execute_export(
@@ -275,13 +352,15 @@ def execute_export(
         region=region,
         counter=counter,
     )
-    return _execute_insights(
+    result = _execute_insights(
         insights_exe,
         trace_path,
         exec_command=exec_command,
         expected_outputs=[output_abs],
         log_path=resolved_log_path,
     )
+    result["exporter"] = exporter
+    return result
 
 
 def execute_response_file(
@@ -313,7 +392,7 @@ def execute_response_file(
         with tempfile.NamedTemporaryFile("w", suffix=".rsp", delete=False, encoding="utf-8", newline="\n") as handle:
             temp_rsp_path = handle.name
             handle.write("\n".join(normalized_lines))
-        return _execute_insights(
+        result = _execute_insights(
             insights_exe,
             trace_path,
             exec_command=build_rsp_exec_command(temp_rsp_path),
@@ -326,3 +405,7 @@ def execute_response_file(
                 Path(temp_rsp_path).unlink()
             except OSError:
                 pass
+    result["response_file"] = rsp_abs
+    result["executed_response_file"] = str(Path(temp_rsp_path).resolve()) if temp_rsp_path else rsp_abs
+    result["exporter"] = "response-file"
+    return result

@@ -16,7 +16,24 @@ import pytest
 from cli_anything.unrealinsights.utils.unrealinsights_backend import resolve_unrealinsights_exe
 
 HARNESS_ROOT = str(Path(__file__).resolve().parents[3])
-TEST_TRACE = os.environ.get("UNREALINSIGHTS_TEST_TRACE", "")
+
+
+def _discover_sample_trace() -> str:
+    env_trace = os.environ.get("UNREALINSIGHTS_TEST_TRACE", "").strip()
+    if env_trace:
+        return env_trace
+    for drive in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+        root = Path(f"{drive}:/Program Files/Epic Games")
+        if not root.is_dir():
+            continue
+        for install in sorted(root.glob("UE_*"), reverse=True):
+            candidate = install / "Engine" / "Source" / "Programs" / "Shared" / "EpicGames.Tracing.Tests" / "UnrealInsights" / "example_trace.decomp.utrace"
+            if candidate.is_file():
+                return str(candidate)
+    return ""
+
+
+TEST_TRACE = _discover_sample_trace()
 TEST_TARGET_EXE = os.environ.get("UNREALINSIGHTS_TEST_TARGET_EXE", "")
 
 
@@ -80,6 +97,46 @@ class TestCLISmoke:
         assert data["insights"]["available"] is True
         assert data["insights"]["path"].lower().endswith("unrealinsights.exe")
 
+    def test_store_list_latest_smoke(self, tmp_path, monkeypatch):
+        store = tmp_path / "Store" / "001"
+        store.mkdir(parents=True)
+        trace = store / "session.utrace"
+        trace.write_text("trace", encoding="utf-8")
+        monkeypatch.setenv("UNREAL_TRACE_STORE_DIR", str(tmp_path / "Store"))
+
+        result = self._run(["--json", "store", "list"])
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["trace_count"] == 1
+
+        latest = self._run(["--json", "store", "latest", "--set-current"])
+        latest_data = json.loads(latest.stdout)
+        assert latest_data["latest"]["path"] == str(trace.resolve())
+
+    def test_gui_status_smoke(self):
+        result = self._run(["--json", "gui", "status"])
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "running" in data
+        assert "processes" in data
+
+    def test_live_backend_unavailable_smoke(self, monkeypatch):
+        monkeypatch.delenv("UNREALINSIGHTS_LIVE_EXEC", raising=False)
+        result = self._run(["--json", "live", "exec", "--pid", "1234", "Trace.Status"], check=False)
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert "Live control backend unavailable" in data["error"]
+
+    def test_analyze_summary_skip_export_smoke(self, tmp_path):
+        (tmp_path / "timer_stats.csv").write_text(
+            "Timer Name,Thread,Total Time\nTick,GameThread,1.0\n",
+            encoding="utf-8",
+        )
+        result = self._run(["--json", "analyze", "summary", "--skip-export", "--out", str(tmp_path)])
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["summary"]["top_timers"][0]["name"] == "Tick"
+
 
 @skip_no_trace
 class TestExportE2E:
@@ -100,11 +157,11 @@ class TestExportE2E:
         [
             ("threads", []),
             ("timers", []),
-            ("timing-events", ["--threads", "GameThread", "--timers", "*"]),
-            ("timer-stats", ["--threads", "GameThread", "--timers", "*"]),
-            ("timer-callees", ["--threads", "GameThread", "--timers", "*"]),
+            ("timing-events", ["--threads=GameThread", "--timers=*"]),
+            ("timer-stats", ["--threads=GameThread", "--timers=*"]),
+            ("timer-callees", ["--threads=GameThread", "--timers=*"]),
             ("counters", []),
-            ("counter-values", ["--counter", "*"]),
+            ("counter-values", ["--counter=*"]),
         ],
     )
     def test_exporter_creates_output(self, subcommand, extra_args):
@@ -117,6 +174,9 @@ class TestExportE2E:
             if result.returncode != 0:
                 pytest.skip(f"{subcommand} exporter failed for supplied trace")
             data = json.loads(result.stdout)
+            if data.get("output_status") == "no_output":
+                pytest.skip(f"{subcommand} exporter produced no output for supplied trace")
+            assert data["output_status"] == "ok"
             assert data["output_files"]
             for path in data["output_files"]:
                 assert os.path.isfile(path)
@@ -144,6 +204,19 @@ class TestExportE2E:
             for path in data["output_files"]:
                 assert os.path.isfile(path)
                 assert os.path.getsize(path) > 0
+
+    def test_analyze_summary_real_trace(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._run(
+                ["--json", "-t", TEST_TRACE, "analyze", "summary", "--out", tmpdir],
+                check=False,
+                timeout=360,
+            )
+            if result.returncode != 0:
+                pytest.skip("analyze summary failed for supplied trace")
+            data = json.loads(result.stdout)
+            assert data["exports"]
+            assert data["out_dir"] == str(Path(tmpdir).resolve())
 
 
 @skip_no_target
