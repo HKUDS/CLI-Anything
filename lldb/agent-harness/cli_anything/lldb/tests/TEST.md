@@ -153,14 +153,13 @@
 python -m pytest cli_anything/lldb/tests/test_core.py -v
 python -m pytest cli_anything/lldb/tests/test_full_e2e.py -v -s
 python -m pytest cli_anything/lldb/tests -q
-$env:LLDB_TEST_CORE="$env:TEMP/cli-anything-lldb-core-placeholder.dmp"; python -m pytest cli_anything/lldb/tests -q -rs
 ```
 
 ### Result summary
 
-- `test_core.py`: 35 passed
-- `test_full_e2e.py`: 7 passed
-- combined default run: 42 passed
+- `test_core.py`: 40 passed
+- `test_full_e2e.py`: 7 passed, 2 warnings from LLDB SWIG bindings
+- combined default run: 47 passed, 2 warnings from LLDB SWIG bindings
 - skip situation: 0 skipped in the current local run; older runs could skip the optional core-load negative-path scenario when `LLDB_TEST_CORE` was unset, but the fixture now creates a local placeholder core path for that negative-path test
 
 ### Notes
