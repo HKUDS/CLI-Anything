@@ -1,0 +1,247 @@
+{
+  "version": "1.0",
+  "name": "screen_recording_collab",
+  "settings": {
+    "output_width": 1920,
+    "output_height": 1080,
+    "fps": 30,
+    "video_bitrate": 8000,
+    "audio_bitrate": 160,
+    "encoder": "x264",
+    "preset": "balanced"
+  },
+  "scenes": [
+    {
+      "id": 0,
+      "name": "Main Scene",
+      "sources": [
+        {
+          "id": 0,
+          "name": "Screen",
+          "type": "display_capture",
+          "visible": true,
+          "locked": false,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1920,
+            "height": 1080
+          },
+          "crop": {
+            "top": 0,
+            "bottom": 0,
+            "left": 0,
+            "right": 0
+          },
+          "rotation": 0,
+          "opacity": 1.0,
+          "filters": [],
+          "settings": {}
+        },
+        {
+          "id": 1,
+          "name": "Host Mic",
+          "type": "audio_input",
+          "visible": true,
+          "locked": false,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1920,
+            "height": 1080
+          },
+          "crop": {
+            "top": 0,
+            "bottom": 0,
+            "left": 0,
+            "right": 0
+          },
+          "rotation": 0,
+          "opacity": 1.0,
+          "filters": [
+            {
+              "id": 0,
+              "type": "noise_suppress",
+              "settings": {
+                "method": "rnnoise"
+              }
+            },
+            {
+              "id": 1,
+              "type": "noise_gate",
+              "settings": {
+                "open_threshold": "-26"
+              }
+            }
+          ],
+          "settings": {}
+        },
+        {
+          "id": 2,
+          "name": "Guest Mic 1",
+          "type": "audio_input",
+          "visible": true,
+          "locked": false,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1920,
+            "height": 1080
+          },
+          "crop": {
+            "top": 0,
+            "bottom": 0,
+            "left": 0,
+            "right": 0
+          },
+          "rotation": 0,
+          "opacity": 1.0,
+          "filters": [
+            {
+              "id": 0,
+              "type": "noise_suppress",
+              "settings": {
+                "method": "rnnoise"
+              }
+            },
+            {
+              "id": 1,
+              "type": "noise_gate",
+              "settings": {
+                "open_threshold": "-26"
+              }
+            }
+          ],
+          "settings": {}
+        },
+        {
+          "id": 3,
+          "name": "Guest Mic 2",
+          "type": "audio_input",
+          "visible": true,
+          "locked": false,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1920,
+            "height": 1080
+          },
+          "crop": {
+            "top": 0,
+            "bottom": 0,
+            "left": 0,
+            "right": 0
+          },
+          "rotation": 0,
+          "opacity": 1.0,
+          "filters": [
+            {
+              "id": 0,
+              "type": "noise_suppress",
+              "settings": {
+                "method": "rnnoise"
+              }
+            },
+            {
+              "id": 1,
+              "type": "noise_gate",
+              "settings": {
+                "open_threshold": "-26"
+              }
+            }
+          ],
+          "settings": {}
+        },
+        {
+          "id": 4,
+          "name": "Desktop Audio",
+          "type": "audio_output",
+          "visible": true,
+          "locked": false,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1920,
+            "height": 1080
+          },
+          "crop": {
+            "top": 0,
+            "bottom": 0,
+            "left": 0,
+            "right": 0
+          },
+          "rotation": 0,
+          "opacity": 1.0,
+          "filters": [],
+          "settings": {}
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "BRB",
+      "sources": []
+    }
+  ],
+  "transitions": [
+    {
+      "name": "Cut",
+      "type": "cut",
+      "duration": 0
+    },
+    {
+      "name": "Fade",
+      "type": "fade",
+      "duration": 300
+    }
+  ],
+  "active_scene": 0,
+  "audio_sources": [
+    {
+      "name": "Host Mic",
+      "type": "audio_input",
+      "volume_db": 0.0,
+      "monitoring": "off"
+    },
+    {
+      "name": "Guest Mic 1",
+      "type": "audio_input",
+      "volume_db": 0.0,
+      "monitoring": "off"
+    },
+    {
+      "name": "Guest Mic 2",
+      "type": "audio_input",
+      "volume_db": 0.0,
+      "monitoring": "off"
+    },
+    {
+      "name": "Desktop Audio",
+      "type": "audio_output",
+      "volume_db": 0.0,
+      "monitoring": "off"
+    }
+  ],
+  "streaming": {
+    "service": "",
+    "server": "auto",
+    "key": ""
+  },
+  "recording": {
+    "path": "./recordings/",
+    "format": "mp4",
+    "quality": "high"
+  },
+  "history": [],
+  "project_id": "92430521-7f8a-4379-8988-eab9960f2891"
+}

@@ -1,86 +1,94 @@
-"""OBS Studio CLI - Scene management."""
+"""Scene operations."""
+
+from __future__ import annotations
 
 import copy
-from typing import Dict, Any, List, Optional
-from cli_anything.obs_studio.utils.obs_utils import generate_id, unique_name, get_item
+
+from .session import Session
 
 
-def _get_scenes(project: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return project.setdefault("scenes", [])
+def _get_state(session: Session) -> dict:
+    if not session.is_open or session.state is None:
+        raise RuntimeError("No project is open")
+    return session.state
 
 
-def add_scene(project: Dict[str, Any], name: str = "Scene") -> Dict[str, Any]:
-    """Add a new scene to the project."""
-    scenes = _get_scenes(project)
-    name = unique_name(name, scenes)
-    scene = {
-        "id": generate_id(scenes),
-        "name": name,
-        "sources": [],
-    }
-    scenes.append(scene)
+def _find_scene(state: dict, scene_name: str) -> dict:
+    for scene in state["scenes"]:
+        if scene["name"] == scene_name:
+            return scene
+    raise ValueError(f"Scene not found: {scene_name}")
+
+
+def add_scene(session_or_proj, name: str | None = None) -> dict:
+    if isinstance(session_or_proj, Session):
+        state = _get_state(session_or_proj)
+        if any(scene["name"] == name for scene in state["scenes"]):
+            raise ValueError(f"Scene already exists: {name}")
+        session_or_proj.checkpoint()
+        scene = {"id": len(state["scenes"]), "name": name, "sources": []}
+        state["scenes"].append(scene)
+        return {"action": "add_scene", "scene": scene}
+    proj = session_or_proj
+    scene = {"id": len(proj["scenes"]), "name": name, "sources": []}
+    proj["scenes"].append(scene)
     return scene
 
 
-def remove_scene(project: Dict[str, Any], index: int) -> Dict[str, Any]:
-    """Remove a scene by index."""
-    scenes = _get_scenes(project)
-    scene = get_item(scenes, index, "scene")
-    if len(scenes) <= 1:
-        raise ValueError("Cannot remove the last scene. At least one scene must exist.")
-    removed = scenes.pop(index)
-    # Fix active_scene reference
-    active = project.get("active_scene", 0)
-    if active >= len(scenes):
-        project["active_scene"] = len(scenes) - 1
-    elif active > index:
-        project["active_scene"] = active - 1
+def remove_scene(proj: dict, index: int) -> dict:
+    if index < 0 or index >= len(proj["scenes"]):
+        raise IndexError(f"Scene index {index} out of range")
+    removed = proj["scenes"].pop(index)
+    if proj["active_scene"] >= len(proj["scenes"]):
+        proj["active_scene"] = max(0, len(proj["scenes"]) - 1)
     return removed
 
 
-def duplicate_scene(project: Dict[str, Any], index: int) -> Dict[str, Any]:
-    """Duplicate a scene."""
-    scenes = _get_scenes(project)
-    original = get_item(scenes, index, "scene")
+def duplicate_scene(proj: dict, index: int) -> dict:
+    if index < 0 or index >= len(proj["scenes"]):
+        raise IndexError(f"Scene index {index} out of range")
+    original = proj["scenes"][index]
     dup = copy.deepcopy(original)
-    dup["id"] = generate_id(scenes)
-    dup["name"] = unique_name(original["name"] + " (Copy)", scenes)
-    # Give duplicated sources new IDs
-    for i, src in enumerate(dup.get("sources", [])):
-        src["id"] = i
-    scenes.append(dup)
+    dup["id"] = len(proj["scenes"])
+    dup["name"] = f"{original['name']} (Copy)"
+    proj["scenes"].append(dup)
     return dup
 
 
-def set_active_scene(project: Dict[str, Any], index: int) -> Dict[str, Any]:
-    """Set the active scene by index."""
-    scenes = _get_scenes(project)
-    scene = get_item(scenes, index, "scene")
-    project["active_scene"] = index
-    return {"active_scene": scene["name"], "index": index}
+def set_active_scene(proj: dict, index: int) -> None:
+    if index < 0 or index >= len(proj["scenes"]):
+        raise IndexError(f"Scene index {index} out of range")
+    proj["active_scene"] = index
 
 
-def list_scenes(project: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """List all scenes."""
-    scenes = _get_scenes(project)
-    active = project.get("active_scene", 0)
+def list_scenes(session_or_proj) -> dict | list:
+    if isinstance(session_or_proj, Session):
+        state = _get_state(session_or_proj)
+        return {
+            "active_scene": state["active_scene"],
+            "scenes": [
+                {
+                    "id": scene["id"],
+                    "name": scene["name"],
+                    "source_count": len(scene["sources"]),
+                }
+                for scene in state["scenes"]
+            ],
+        }
+    proj = session_or_proj
     return [
         {
-            "index": i,
-            "id": s.get("id", i),
-            "name": s.get("name", f"Scene {i}"),
-            "source_count": len(s.get("sources", [])),
-            "active": i == active,
+            "id": scene.get("id", i),
+            "name": scene.get("name", f"Scene {i}"),
+            "source_count": len(scene.get("sources", [])),
         }
-        for i, s in enumerate(scenes)
+        for i, scene in enumerate(proj["scenes"])
     ]
 
 
-def get_active_scene(project: Dict[str, Any]) -> Dict[str, Any]:
-    """Get the currently active scene."""
-    scenes = _get_scenes(project)
-    active = project.get("active_scene", 0)
-    if active >= len(scenes):
-        active = 0
-        project["active_scene"] = 0
-    return scenes[active]
+def select_scene(session: Session, name: str) -> dict:
+    state = _get_state(session)
+    scene = _find_scene(state, name)
+    session.checkpoint()
+    state["active_scene"] = scene["id"]
+    return {"action": "select_scene", "active_scene": scene["id"], "name": scene["name"]}

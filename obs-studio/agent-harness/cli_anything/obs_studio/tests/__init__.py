@@ -1,1 +1,1 @@
-# OBS Studio CLI - Tests
+"""Tests for cli_anything.obs_studio."""

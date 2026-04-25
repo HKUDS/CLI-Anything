@@ -1,248 +1,178 @@
-"""OBS Studio CLI - Source management."""
+"""Source operations."""
+
+from __future__ import annotations
 
 import copy
-from typing import Dict, Any, List, Optional
-from cli_anything.obs_studio.utils.obs_utils import generate_id, unique_name, get_item, validate_range
+
+from .session import Session
+from .scenes import _find_scene
+
+SOURCE_TYPES = [
+    "video_capture", "display_capture", "window_capture", "image",
+    "media", "browser", "text", "color", "audio_input", "audio_output",
+    "group", "scene",
+]
 
 
-SOURCE_TYPES = {
-    "video_capture": {
-        "label": "Video Capture Device",
-        "category": "video",
-        "default_settings": {"device": "", "resolution": "1920x1080", "fps": 30},
-    },
-    "display_capture": {
-        "label": "Display Capture",
-        "category": "video",
-        "default_settings": {"display": 0, "capture_cursor": True},
-    },
-    "window_capture": {
-        "label": "Window Capture",
-        "category": "video",
-        "default_settings": {"window": "", "capture_cursor": True},
-    },
-    "image": {
-        "label": "Image",
-        "category": "media",
-        "default_settings": {"file": "", "unload_when_hidden": True},
-    },
-    "media": {
-        "label": "Media Source",
-        "category": "media",
-        "default_settings": {"local_file": "", "looping": False, "restart_on_activate": True},
-    },
-    "browser": {
-        "label": "Browser Source",
-        "category": "web",
-        "default_settings": {"url": "", "width": 800, "height": 600, "css": ""},
-    },
-    "text": {
-        "label": "Text (FreeType 2)",
-        "category": "text",
-        "default_settings": {"text": "", "font": "Sans Serif", "size": 36, "color": "#FFFFFF"},
-    },
-    "color": {
-        "label": "Color Source",
-        "category": "utility",
-        "default_settings": {"color": "#000000", "width": 1920, "height": 1080},
-    },
-    "audio_input": {
-        "label": "Audio Input Capture",
-        "category": "audio",
-        "default_settings": {"device": ""},
-    },
-    "audio_output": {
-        "label": "Audio Output Capture",
-        "category": "audio",
-        "default_settings": {"device": ""},
-    },
-    "group": {
-        "label": "Group",
-        "category": "utility",
-        "default_settings": {"items": []},
-    },
-    "scene": {
-        "label": "Scene",
-        "category": "utility",
-        "default_settings": {"scene_name": ""},
-    },
-}
+def _get_state(session: Session) -> dict:
+    if not session.is_open or session.state is None:
+        raise RuntimeError("No project is open")
+    return session.state
 
 
-def _get_scene_sources(project: Dict[str, Any], scene_index: int) -> List[Dict[str, Any]]:
-    """Get sources for a scene."""
-    scenes = project.get("scenes", [])
-    scene = get_item(scenes, scene_index, "scene")
-    return scene.setdefault("sources", [])
+def _parse_setting_pairs(setting_pairs: tuple[str, ...]) -> dict:
+    settings: dict[str, object] = {}
+    for item in setting_pairs:
+        if "=" not in item:
+            raise ValueError(f"Invalid setting {item!r}; expected key=value")
+        key, value = item.split("=", 1)
+        settings[key] = value
+    return settings
 
 
-def _default_source(name: str, source_type: str) -> Dict[str, Any]:
-    """Create a default source dict."""
-    type_info = SOURCE_TYPES.get(source_type, {})
-    default_settings = copy.deepcopy(type_info.get("default_settings", {}))
-    return {
-        "id": 0,
-        "name": name,
+def _get_scene(proj: dict, scene_index: int | None = None) -> dict:
+    idx = scene_index if scene_index is not None else proj.get("active_scene", 0)
+    if idx < 0 or idx >= len(proj["scenes"]):
+        raise IndexError(f"Scene index {idx} out of range (0-{len(proj['scenes']) - 1})")
+    return proj["scenes"][idx]
+
+
+def _get_source(proj: dict, source_index: int, scene_index: int | None = None) -> dict:
+    scene = _get_scene(proj, scene_index)
+    sources = scene.get("sources", [])
+    if not sources:
+        raise ValueError("No sources exist in this scene.")
+    if source_index < 0 or source_index >= len(sources):
+        raise ValueError(f"Source index {source_index} out of range (0-{len(sources) - 1})")
+    return sources[source_index]
+
+
+def add_source(
+    session_or_proj,
+    source_type: str | None = None,
+    *,
+    name: str | None = None,
+    scene_name: str | None = None,
+    scene_index: int | None = None,
+    visible: bool = True,
+    settings=None,
+    position: dict | None = None,
+    size: dict | None = None,
+    hidden: bool = False,
+) -> dict:
+    if isinstance(session_or_proj, Session):
+        state = _get_state(session_or_proj)
+        target_scene_name = scene_name or state["scenes"][state["active_scene"]]["name"]
+        scene = _find_scene(state, target_scene_name)
+        if name and any(source["name"] == name for source in scene["sources"]):
+            raise ValueError(f"Source already exists in scene {target_scene_name}: {name}")
+        session_or_proj.checkpoint()
+        parsed_settings = _parse_setting_pairs(settings) if isinstance(settings, tuple) else (settings or {})
+        source = {
+            "id": len(scene["sources"]),
+            "name": name or source_type,
+            "type": source_type,
+            "visible": visible and not hidden,
+            "locked": False,
+            "position": position or {"x": 0, "y": 0},
+            "size": size or {"width": 1920, "height": 1080},
+            "crop": {"top": 0, "bottom": 0, "left": 0, "right": 0},
+            "rotation": 0,
+            "opacity": 1.0,
+            "filters": [],
+            "settings": parsed_settings,
+        }
+        scene["sources"].append(source)
+        if source_type in {"audio_input", "audio_output"}:
+            state["audio_sources"].append(
+                {"name": name, "type": source_type, "volume_db": 0.0, "monitoring": "off"}
+            )
+        return {"action": "add_source", "scene": target_scene_name, "source": source}
+
+    proj = session_or_proj
+    scene = _get_scene(proj, scene_index)
+    parsed_settings = settings if isinstance(settings, dict) else {}
+    source = {
+        "id": len(scene.get("sources", [])),
+        "name": name or source_type,
         "type": source_type,
-        "visible": True,
+        "visible": visible and not hidden,
         "locked": False,
-        "position": {"x": 0, "y": 0},
-        "size": {"width": 1920, "height": 1080},
+        "position": position or {"x": 0, "y": 0},
+        "size": size or {"width": 1920, "height": 1080},
         "crop": {"top": 0, "bottom": 0, "left": 0, "right": 0},
         "rotation": 0,
         "opacity": 1.0,
         "filters": [],
-        "settings": default_settings,
+        "settings": parsed_settings,
     }
+    scene.setdefault("sources", []).append(source)
+    return source
 
 
-def add_source(
-    project: Dict[str, Any],
-    source_type: str,
-    scene_index: int = 0,
-    name: Optional[str] = None,
-    position: Optional[Dict[str, Any]] = None,
-    size: Optional[Dict[str, Any]] = None,
-    visible: bool = True,
-    settings: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Add a source to a scene."""
-    if source_type not in SOURCE_TYPES:
-        raise ValueError(
-            f"Unknown source type: {source_type}. Valid: {', '.join(sorted(SOURCE_TYPES.keys()))}"
-        )
-
-    sources = _get_scene_sources(project, scene_index)
-    if name is None:
-        name = SOURCE_TYPES[source_type]["label"]
-    name = unique_name(name, sources)
-
-    src = _default_source(name, source_type)
-    src["id"] = generate_id(sources)
-    src["visible"] = visible
-
-    if position:
-        src["position"] = {"x": float(position.get("x", 0)), "y": float(position.get("y", 0))}
-    if size:
-        w = int(size.get("width", 1920))
-        h = int(size.get("height", 1080))
-        if w < 1 or h < 1:
-            raise ValueError(f"Size must be positive: {w}x{h}")
-        src["size"] = {"width": w, "height": h}
-    if settings:
-        src["settings"].update(settings)
-
-    sources.append(src)
-    return src
-
-
-def remove_source(project: Dict[str, Any], source_index: int, scene_index: int = 0) -> Dict[str, Any]:
-    """Remove a source from a scene."""
-    sources = _get_scene_sources(project, scene_index)
-    source = get_item(sources, source_index, "source")
+def remove_source(proj: dict, source_index: int, scene_index: int | None = None) -> dict:
+    scene = _get_scene(proj, scene_index)
+    sources = scene.get("sources", [])
+    if not sources:
+        raise ValueError("No sources exist in this scene.")
+    if source_index < 0 or source_index >= len(sources):
+        raise ValueError(f"Source index {source_index} out of range")
     return sources.pop(source_index)
 
 
-def duplicate_source(project: Dict[str, Any], source_index: int, scene_index: int = 0) -> Dict[str, Any]:
-    """Duplicate a source within a scene."""
-    sources = _get_scene_sources(project, scene_index)
-    original = get_item(sources, source_index, "source")
-    dup = copy.deepcopy(original)
-    dup["id"] = generate_id(sources)
-    dup["name"] = unique_name(original["name"] + " (Copy)", sources)
-    sources.append(dup)
+def duplicate_source(proj: dict, source_index: int, scene_index: int | None = None) -> dict:
+    scene = _get_scene(proj, scene_index)
+    source = _get_source(proj, source_index, scene_index)
+    dup = copy.deepcopy(source)
+    dup["id"] = len(scene["sources"])
+    dup["name"] = f"{source['name']} (Copy)"
+    scene["sources"].append(dup)
     return dup
 
 
-def set_source_property(
-    project: Dict[str, Any],
-    source_index: int,
-    prop: str,
-    value: Any,
-    scene_index: int = 0,
-) -> Dict[str, Any]:
-    """Set a property on a source."""
-    sources = _get_scene_sources(project, scene_index)
-    source = get_item(sources, source_index, "source")
-
-    valid_props = ("name", "visible", "locked", "opacity", "rotation")
-    if prop not in valid_props:
-        raise ValueError(f"Unknown source property: {prop}. Valid: {', '.join(valid_props)}")
-
+def set_source_property(proj: dict, source_index: int, prop: str, value, scene_index: int | None = None) -> dict:
+    source = _get_source(proj, source_index, scene_index)
     if prop == "visible":
         if isinstance(value, str):
-            value = value.lower() in ("true", "1", "yes")
-        source["visible"] = bool(value)
-    elif prop == "locked":
-        if isinstance(value, str):
-            value = value.lower() in ("true", "1", "yes")
-        source["locked"] = bool(value)
-    elif prop == "opacity":
-        source["opacity"] = validate_range(value, 0.0, 1.0, "Opacity")
-    elif prop == "rotation":
-        source["rotation"] = float(value)
-    elif prop == "name":
-        source["name"] = str(value)
-
+            source["visible"] = value.lower() == "true"
+        else:
+            source["visible"] = bool(value)
+    else:
+        source[prop] = value
     return source
 
 
 def transform_source(
-    project: Dict[str, Any],
+    proj: dict,
     source_index: int,
-    scene_index: int = 0,
-    position: Optional[Dict[str, Any]] = None,
-    size: Optional[Dict[str, Any]] = None,
-    crop: Optional[Dict[str, Any]] = None,
-    rotation: Optional[float] = None,
-) -> Dict[str, Any]:
-    """Transform a source (position, size, crop, rotation)."""
-    sources = _get_scene_sources(project, scene_index)
-    source = get_item(sources, source_index, "source")
-
-    if position:
-        source["position"] = {
-            "x": float(position.get("x", source["position"]["x"])),
-            "y": float(position.get("y", source["position"]["y"])),
-        }
-    if size:
-        w = int(size.get("width", source["size"]["width"]))
-        h = int(size.get("height", source["size"]["height"]))
-        if w < 1 or h < 1:
-            raise ValueError(f"Size must be positive: {w}x{h}")
-        source["size"] = {"width": w, "height": h}
-    if crop:
+    *,
+    position: dict | None = None,
+    size: dict | None = None,
+    crop: dict | None = None,
+    rotation: float | None = None,
+    scene_index: int | None = None,
+) -> dict:
+    source = _get_source(proj, source_index, scene_index)
+    if position is not None:
+        source["position"] = position
+    if size is not None:
+        source["size"] = size
+    if crop is not None:
         for key in ("top", "bottom", "left", "right"):
-            if key in crop:
-                val = int(crop[key])
-                if val < 0:
-                    raise ValueError(f"Crop {key} must be non-negative, got {val}")
-                source["crop"][key] = val
+            if key in crop and crop[key] < 0:
+                raise ValueError(f"Crop {key} must be non-negative, got {crop[key]}")
+        source["crop"] = {**source.get("crop", {}), **crop}
     if rotation is not None:
-        source["rotation"] = float(rotation)
-
+        source["rotation"] = rotation
     return source
 
 
-def list_sources(project: Dict[str, Any], scene_index: int = 0) -> List[Dict[str, Any]]:
-    """List all sources in a scene."""
-    sources = _get_scene_sources(project, scene_index)
-    return [
-        {
-            "index": i,
-            "id": s.get("id", i),
-            "name": s.get("name", f"Source {i}"),
-            "type": s.get("type", "unknown"),
-            "visible": s.get("visible", True),
-            "locked": s.get("locked", False),
-            "position": s.get("position", {"x": 0, "y": 0}),
-            "size": s.get("size", {"width": 0, "height": 0}),
-        }
-        for i, s in enumerate(sources)
-    ]
-
-
-def get_source(project: Dict[str, Any], source_index: int, scene_index: int = 0) -> Dict[str, Any]:
-    """Get detailed info about a source."""
-    sources = _get_scene_sources(project, scene_index)
-    return get_item(sources, source_index, "source")
+def list_sources(session_or_proj, scene_name: str | None = None, scene_index: int | None = None):
+    if isinstance(session_or_proj, Session):
+        state = _get_state(session_or_proj)
+        target_scene_name = scene_name or state["scenes"][state["active_scene"]]["name"]
+        scene = _find_scene(state, target_scene_name)
+        return {"scene": target_scene_name, "sources": scene["sources"]}
+    proj = session_or_proj
+    scene = _get_scene(proj, scene_index)
+    return scene.get("sources", [])

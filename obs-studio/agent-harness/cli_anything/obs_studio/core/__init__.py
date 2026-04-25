@@ -1,1 +1,1 @@
-# OBS Studio CLI - Core modules
+"""Core modules for the OBS Studio harness."""

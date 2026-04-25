@@ -1,155 +1,124 @@
-"""OBS Studio CLI - Output/streaming/recording configuration."""
+"""Streaming and recording configuration operations."""
 
-from typing import Dict, Any, List, Optional
-from cli_anything.obs_studio.utils.obs_utils import validate_range
+from __future__ import annotations
 
+from .session import Session
 
-ENCODING_PRESETS = {
-    "ultrafast": {"encoder": "x264", "video_bitrate": 2500, "audio_bitrate": 128, "preset_label": "Ultra Fast"},
-    "fast": {"encoder": "x264", "video_bitrate": 4500, "audio_bitrate": 160, "preset_label": "Fast"},
-    "balanced": {"encoder": "x264", "video_bitrate": 6000, "audio_bitrate": 160, "preset_label": "Balanced"},
-    "quality": {"encoder": "x264", "video_bitrate": 8000, "audio_bitrate": 192, "preset_label": "Quality"},
-    "high_quality": {"encoder": "x264", "video_bitrate": 12000, "audio_bitrate": 320, "preset_label": "High Quality"},
-    "nvenc_fast": {"encoder": "nvenc", "video_bitrate": 6000, "audio_bitrate": 160, "preset_label": "NVENC Fast"},
-    "nvenc_quality": {"encoder": "nvenc", "video_bitrate": 10000, "audio_bitrate": 192, "preset_label": "NVENC Quality"},
-    "recording_high": {"encoder": "x264", "video_bitrate": 20000, "audio_bitrate": 320, "preset_label": "Recording High"},
+PRESETS = {
+    "performance": {
+        "output_width": 1280, "output_height": 720, "fps": 30,
+        "video_bitrate": 3000, "audio_bitrate": 128, "encoder": "x264",
+    },
+    "balanced": {
+        "output_width": 1920, "output_height": 1080, "fps": 30,
+        "video_bitrate": 6000, "audio_bitrate": 160, "encoder": "x264",
+    },
+    "quality": {
+        "output_width": 1920, "output_height": 1080, "fps": 60,
+        "video_bitrate": 8000, "audio_bitrate": 320, "encoder": "x264",
+    },
 }
 
-VALID_SERVICES = ("twitch", "youtube", "facebook", "custom")
-VALID_RECORDING_FORMATS = ("mkv", "mp4", "mov", "flv", "ts")
-VALID_RECORDING_QUALITIES = ("low", "medium", "high", "lossless")
+
+def _get_state(session: Session) -> dict:
+    if not session.is_open or session.state is None:
+        raise RuntimeError("No project is open")
+    return session.state
 
 
-def set_streaming(
-    project: Dict[str, Any],
-    service: Optional[str] = None,
-    server: Optional[str] = None,
-    key: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Configure streaming settings."""
-    streaming = project.setdefault("streaming", {})
-
-    if service is not None:
-        if service not in VALID_SERVICES:
-            raise ValueError(f"Invalid streaming service: {service}. Valid: {', '.join(VALID_SERVICES)}")
-        streaming["service"] = service
-    if server is not None:
-        streaming["server"] = server
-    if key is not None:
-        streaming["key"] = key
-
-    return streaming
+def configure_streaming(session: Session, service: str, key: str, server: str = "auto") -> dict:
+    state = _get_state(session)
+    session.checkpoint()
+    state["streaming"] = {"service": service, "server": server, "key": key}
+    return {"action": "configure_streaming", "streaming": state["streaming"]}
 
 
-def set_recording(
-    project: Dict[str, Any],
-    path: Optional[str] = None,
-    fmt: Optional[str] = None,
-    quality: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Configure recording settings."""
-    recording = project.setdefault("recording", {})
+def configure_recording(
+    session: Session,
+    path: str | None = None,
+    format_name: str = "mkv",
+    quality: str = "high",
+) -> dict:
+    state = _get_state(session)
+    session.checkpoint()
+    if path:
+        state["recording"]["path"] = path
+    state["recording"]["format"] = format_name
+    state["recording"]["quality"] = quality
+    return {"action": "configure_recording", "recording": state["recording"]}
 
+
+def configure_output_settings(
+    session: Session,
+    preset: str | None = None,
+    fps: int | None = None,
+    output_width: int | None = None,
+    output_height: int | None = None,
+    video_bitrate: int | None = None,
+    audio_bitrate: int | None = None,
+    encoder: str | None = None,
+) -> dict:
+    state = _get_state(session)
+    session.checkpoint()
+    updates = {
+        "preset": preset,
+        "fps": fps,
+        "output_width": output_width,
+        "output_height": output_height,
+        "video_bitrate": video_bitrate,
+        "audio_bitrate": audio_bitrate,
+        "encoder": encoder,
+    }
+    for key, value in updates.items():
+        if value is not None:
+            state["settings"][key] = value
+    return {"action": "configure_output_settings", "settings": state["settings"]}
+
+
+# Standalone dict-based API
+
+def set_streaming(proj: dict, service: str = "", server: str = "auto", key: str = "") -> dict:
+    proj["streaming"] = {"service": service, "server": server, "key": key}
+    return proj["streaming"]
+
+
+def set_recording(proj: dict, path: str | None = None, fmt: str = "mkv", quality: str = "high") -> dict:
     if path is not None:
-        recording["path"] = path
-    if fmt is not None:
-        if fmt not in VALID_RECORDING_FORMATS:
-            raise ValueError(f"Invalid recording format: {fmt}. Valid: {', '.join(VALID_RECORDING_FORMATS)}")
-        recording["format"] = fmt
-    if quality is not None:
-        if quality not in VALID_RECORDING_QUALITIES:
-            raise ValueError(f"Invalid recording quality: {quality}. Valid: {', '.join(VALID_RECORDING_QUALITIES)}")
-        recording["quality"] = quality
-
-    return recording
+        proj["recording"]["path"] = path
+    proj["recording"]["format"] = fmt
+    proj["recording"]["quality"] = quality
+    return proj["recording"]
 
 
 def set_output_settings(
-    project: Dict[str, Any],
-    output_width: Optional[int] = None,
-    output_height: Optional[int] = None,
-    fps: Optional[int] = None,
-    video_bitrate: Optional[int] = None,
-    audio_bitrate: Optional[int] = None,
-    encoder: Optional[str] = None,
-    preset: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Configure output settings. Optionally apply an encoding preset."""
-    settings = project.setdefault("settings", {})
-
-    if preset is not None:
-        if preset not in ENCODING_PRESETS:
-            raise ValueError(f"Unknown encoding preset: {preset}. Valid: {', '.join(sorted(ENCODING_PRESETS.keys()))}")
-        p = ENCODING_PRESETS[preset]
-        settings["encoder"] = p["encoder"]
-        settings["video_bitrate"] = p["video_bitrate"]
-        settings["audio_bitrate"] = p["audio_bitrate"]
-
-    if output_width is not None:
-        if output_width < 1:
-            raise ValueError(f"Output width must be positive: {output_width}")
-        settings["output_width"] = output_width
-    if output_height is not None:
-        if output_height < 1:
-            raise ValueError(f"Output height must be positive: {output_height}")
-        settings["output_height"] = output_height
-    if fps is not None:
-        if fps < 1:
-            raise ValueError(f"FPS must be positive: {fps}")
-        settings["fps"] = fps
-    if video_bitrate is not None:
-        if video_bitrate < 100:
-            raise ValueError(f"Video bitrate must be at least 100: {video_bitrate}")
-        settings["video_bitrate"] = video_bitrate
-    if audio_bitrate is not None:
-        if audio_bitrate < 32:
-            raise ValueError(f"Audio bitrate must be at least 32: {audio_bitrate}")
-        settings["audio_bitrate"] = audio_bitrate
-    if encoder is not None:
-        valid_encoders = ("x264", "x265", "nvenc", "qsv", "amd", "svt-av1")
-        if encoder not in valid_encoders:
-            raise ValueError(f"Invalid encoder: {encoder}. Valid: {', '.join(valid_encoders)}")
-        settings["encoder"] = encoder
-
-    return settings
-
-
-def get_output_info(project: Dict[str, Any]) -> Dict[str, Any]:
-    """Get full output configuration info."""
-    settings = project.get("settings", {})
-    streaming = project.get("streaming", {})
-    recording = project.get("recording", {})
-
-    return {
-        "settings": {
-            "resolution": f"{settings.get('output_width', 1920)}x{settings.get('output_height', 1080)}",
-            "fps": settings.get("fps", 30),
-            "encoder": settings.get("encoder", "x264"),
-            "video_bitrate": settings.get("video_bitrate", 6000),
-            "audio_bitrate": settings.get("audio_bitrate", 160),
-        },
-        "streaming": {
-            "service": streaming.get("service", "twitch"),
-            "server": streaming.get("server", "auto"),
-            "has_key": bool(streaming.get("key", "")),
-        },
-        "recording": {
-            "path": recording.get("path", "./recordings/"),
-            "format": recording.get("format", "mkv"),
-            "quality": recording.get("quality", "high"),
-        },
+    proj: dict,
+    preset: str | None = None,
+    fps: int | None = None,
+    output_width: int | None = None,
+    output_height: int | None = None,
+    video_bitrate: int | None = None,
+    audio_bitrate: int | None = None,
+    encoder: str | None = None,
+) -> dict:
+    if preset is not None and preset in PRESETS:
+        proj["settings"].update(PRESETS[preset])
+    overrides = {
+        "fps": fps,
+        "output_width": output_width,
+        "output_height": output_height,
+        "video_bitrate": video_bitrate,
+        "audio_bitrate": audio_bitrate,
+        "encoder": encoder,
     }
+    for key, value in overrides.items():
+        if value is not None:
+            proj["settings"][key] = value
+    return proj["settings"]
 
 
-def list_encoding_presets() -> List[Dict[str, Any]]:
-    """List all available encoding presets."""
-    return [
-        {
-            "name": name,
-            "label": spec["preset_label"],
-            "encoder": spec["encoder"],
-            "video_bitrate": spec["video_bitrate"],
-            "audio_bitrate": spec["audio_bitrate"],
-        }
-        for name, spec in ENCODING_PRESETS.items()
-    ]
+def get_output_info(proj: dict) -> dict:
+    return {
+        "streaming": proj.get("streaming", {}),
+        "recording": proj.get("recording", {}),
+        "settings": proj.get("settings", {}),
+    }

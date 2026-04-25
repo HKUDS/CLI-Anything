@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-18"
+    "updated": "2026-04-24"
   },
   "clis": [
     {
@@ -140,8 +140,8 @@
     {
       "name": "obs-studio",
       "display_name": "OBS Studio",
-      "version": "1.0.0",
-      "description": "Create and manage streaming/recording scenes via command line",
+      "version": "1.1.0",
+      "description": "Create and manage streaming/recording scenes via command line, with native OBS scene-collection export",
       "requires": "obs-studio",
       "homepage": "https://obsproject.com",
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=obs-studio/agent-harness",

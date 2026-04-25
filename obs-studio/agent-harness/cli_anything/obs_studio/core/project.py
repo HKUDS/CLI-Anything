@@ -1,161 +1,72 @@
-"""OBS Studio CLI - Project/scene collection management."""
+"""Project-level operations for OBS Studio scene collections."""
+
+from __future__ import annotations
 
 import json
-import os
-import copy
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+from pathlib import Path
+
+from .session import Session, create_project
 
 
-PROJECT_VERSION = "1.0"
-
-
-def _default_project(name: str = "untitled") -> Dict[str, Any]:
-    """Return the default project structure."""
+def new_project(session: Session, name: str = "obs_project") -> dict:
+    state = session.new_project(name)
     return {
-        "version": PROJECT_VERSION,
-        "name": name,
-        "settings": {
-            "output_width": 1920,
-            "output_height": 1080,
-            "fps": 30,
-            "video_bitrate": 6000,
-            "audio_bitrate": 160,
-            "encoder": "x264",
-        },
-        "scenes": [
-            {
-                "id": 0,
-                "name": "Scene",
-                "sources": [],
-            }
-        ],
-        "transitions": [
-            {"name": "Cut", "type": "cut", "duration": 0},
-            {"name": "Fade", "type": "fade", "duration": 300},
-        ],
-        "active_scene": 0,
-        "audio_sources": [],
-        "streaming": {
-            "service": "twitch",
-            "server": "auto",
-            "key": "",
-        },
-        "recording": {
-            "path": "./recordings/",
-            "format": "mkv",
-            "quality": "high",
-        },
-        "metadata": {
-            "created": datetime.now().isoformat(),
-            "modified": datetime.now().isoformat(),
-            "software": "obs-cli 1.0",
-        },
+        "action": "new_project",
+        "name": state["name"],
+        "scene_count": len(state["scenes"]),
+        "active_scene": state["active_scene"],
     }
 
 
-def create_project(
-    name: str = "untitled",
-    output_width: int = 1920,
-    output_height: int = 1080,
-    fps: int = 30,
-    video_bitrate: int = 6000,
-    audio_bitrate: int = 160,
-    encoder: str = "x264",
-) -> Dict[str, Any]:
-    """Create a new OBS scene collection project."""
-    if output_width < 1 or output_height < 1:
-        raise ValueError(f"Resolution must be positive: {output_width}x{output_height}")
-    if fps < 1:
-        raise ValueError(f"FPS must be positive: {fps}")
-    if video_bitrate < 100:
-        raise ValueError(f"Video bitrate must be at least 100: {video_bitrate}")
-    if audio_bitrate < 32:
-        raise ValueError(f"Audio bitrate must be at least 32: {audio_bitrate}")
-
-    valid_encoders = ("x264", "x265", "nvenc", "qsv", "amd", "svt-av1")
-    if encoder not in valid_encoders:
-        raise ValueError(f"Invalid encoder: {encoder}. Valid: {', '.join(valid_encoders)}")
-
-    proj = _default_project(name)
-    proj["settings"].update({
-        "output_width": output_width,
-        "output_height": output_height,
-        "fps": fps,
-        "video_bitrate": video_bitrate,
-        "audio_bitrate": audio_bitrate,
-        "encoder": encoder,
-    })
-    return proj
-
-
-def open_project(path: str) -> Dict[str, Any]:
-    """Open an existing OBS scene collection file."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Project file not found: {path}")
-    with open(path, "r") as f:
-        project = json.load(f)
-    if "version" not in project or "scenes" not in project:
-        raise ValueError(f"Invalid OBS project file: {path}")
-    return project
-
-
-def save_project(project: Dict[str, Any], path: str) -> str:
-    """Save project to a JSON file."""
-    project["metadata"]["modified"] = datetime.now().isoformat()
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(project, f, indent=2, default=str)
+def save_project(session_or_proj, path: str | None = None) -> dict | str:
+    if isinstance(session_or_proj, Session):
+        saved = session_or_proj.save_project(path)
+        return {"action": "save_project", "path": saved}
+    proj = session_or_proj
+    if path is None:
+        raise ValueError("path is required for standalone save")
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(proj, indent=2), encoding="utf-8")
     return path
 
 
-def get_project_info(project: Dict[str, Any]) -> Dict[str, Any]:
-    """Get summary information about the project."""
-    settings = project.get("settings", {})
-    scenes = project.get("scenes", [])
-    transitions = project.get("transitions", [])
-    audio_sources = project.get("audio_sources", [])
-    streaming = project.get("streaming", {})
-    recording = project.get("recording", {})
+def open_project(path: str) -> dict:
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(path)
+    return json.loads(p.read_text(encoding="utf-8"))
 
-    total_sources = sum(len(s.get("sources", [])) for s in scenes)
 
-    active_idx = project.get("active_scene", 0)
-    active_name = scenes[active_idx]["name"] if active_idx < len(scenes) else "None"
-
+def get_project_info(proj: dict) -> dict:
+    total_sources = sum(len(s.get("sources", [])) for s in proj.get("scenes", []))
     return {
-        "name": project.get("name", "untitled"),
-        "version": project.get("version", "unknown"),
-        "settings": {
-            "resolution": f"{settings.get('output_width', 1920)}x{settings.get('output_height', 1080)}",
-            "fps": settings.get("fps", 30),
-            "encoder": settings.get("encoder", "x264"),
-            "video_bitrate": settings.get("video_bitrate", 6000),
-            "audio_bitrate": settings.get("audio_bitrate", 160),
-        },
+        "name": proj.get("name", ""),
         "counts": {
-            "scenes": len(scenes),
+            "scenes": len(proj.get("scenes", [])),
             "total_sources": total_sources,
-            "transitions": len(transitions),
-            "audio_sources": len(audio_sources),
+            "audio_sources": len(proj.get("audio_sources", [])),
+            "transitions": len(proj.get("transitions", [])),
         },
-        "active_scene": active_name,
-        "scenes": [
-            {
-                "id": s.get("id", i),
-                "name": s.get("name", f"Scene {i}"),
-                "source_count": len(s.get("sources", [])),
-            }
-            for i, s in enumerate(scenes)
-        ],
-        "streaming": {
-            "service": streaming.get("service", "twitch"),
-            "server": streaming.get("server", "auto"),
-        },
-        "recording": {
-            "path": recording.get("path", "./recordings/"),
-            "format": recording.get("format", "mkv"),
-            "quality": recording.get("quality", "high"),
-        },
-        "metadata": project.get("metadata", {}),
+        "settings": proj.get("settings", {}),
+        "streaming": proj.get("streaming", {}),
+        "recording": proj.get("recording", {}),
+    }
+
+
+def project_info(session: Session) -> dict:
+    if not session.is_open or session.state is None:
+        raise RuntimeError("No project is open")
+    state = session.state
+    return {
+        "name": state["name"],
+        "project_id": state["project_id"],
+        "project_path": session.project_path,
+        "scene_count": len(state["scenes"]),
+        "active_scene": state["active_scene"],
+        "transitions": len(state["transitions"]),
+        "audio_sources": len(state["audio_sources"]),
+        "settings": state["settings"],
+        "streaming": state["streaming"],
+        "recording": state["recording"],
     }

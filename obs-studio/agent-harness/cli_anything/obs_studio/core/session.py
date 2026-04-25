@@ -1,150 +1,143 @@
-"""OBS Studio CLI - Session management with undo/redo."""
+"""Session management for OBS Studio scene collection projects."""
 
-import json
-import os
+from __future__ import annotations
+
 import copy
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+import json
+import uuid
+from pathlib import Path
 
 
-def _locked_save_json(path, data, **dump_kwargs) -> None:
-    """Atomically write JSON with exclusive file locking."""
-    try:
-        f = open(path, "r+")
-    except FileNotFoundError:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        f = open(path, "w")
-    with f:
-        _locked = False
-        try:
-            import fcntl
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            _locked = True
-        except (ImportError, OSError):
-            pass
-        try:
-            f.seek(0)
-            f.truncate()
-            json.dump(data, f, **dump_kwargs)
-            f.flush()
-        finally:
-            if _locked:
-                import fcntl
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+DEFAULT_TRANSITIONS = [
+    {"name": "Cut", "type": "cut", "duration": 0},
+    {"name": "Fade", "type": "fade", "duration": 300},
+]
+
+
+def create_project(name: str = "obs_project", output_width: int = 1920, output_height: int = 1080, fps: int = 30) -> dict:
+    """Create a new blank OBS project state."""
+    return {
+        "version": "1.0",
+        "name": name,
+        "settings": {
+            "output_width": output_width,
+            "output_height": output_height,
+            "fps": fps,
+            "video_bitrate": 6000,
+            "audio_bitrate": 160,
+            "encoder": "x264",
+            "preset": "balanced",
+        },
+        "scenes": [
+            {
+                "id": 0,
+                "name": "Main Scene",
+                "sources": [],
+            }
+        ],
+        "transitions": copy.deepcopy(DEFAULT_TRANSITIONS),
+        "active_scene": 0,
+        "audio_sources": [],
+        "streaming": {"service": "", "server": "auto", "key": ""},
+        "recording": {"path": "./recordings/", "format": "mkv", "quality": "high"},
+        "history": [],
+        "project_id": str(uuid.uuid4()),
+    }
 
 
 class Session:
-    """Manages project state with undo/redo history."""
-
-    MAX_UNDO = 50
+    """Mutable in-memory project session with basic undo/redo."""
 
     def __init__(self):
-        self.project: Optional[Dict[str, Any]] = None
-        self.project_path: Optional[str] = None
-        self._undo_stack: List[Dict[str, Any]] = []
-        self._redo_stack: List[Dict[str, Any]] = []
-        self._modified: bool = False
+        self.state: dict | None = None
+        self.project_path: str | None = None
+        self._undo_stack: list[dict] = []
+        self._redo_stack: list[dict] = []
 
-    def has_project(self) -> bool:
-        return self.project is not None
+    @property
+    def is_open(self) -> bool:
+        return self.state is not None
 
-    def get_project(self) -> Dict[str, Any]:
-        if self.project is None:
-            raise RuntimeError("No project loaded. Use 'project new' or 'project open' first.")
-        return self.project
+    @property
+    def is_modified(self) -> bool:
+        return bool(self._undo_stack)
 
-    def set_project(self, project: Dict[str, Any], path: Optional[str] = None) -> None:
-        self.project = project
-        self.project_path = path
+    def new_project(self, name: str = "obs_project") -> dict:
+        self.state = create_project(name)
+        self.project_path = None
         self._undo_stack.clear()
         self._redo_stack.clear()
-        self._modified = False
+        return self.state
 
-    def snapshot(self, description: str = "") -> None:
-        """Save current state to undo stack before a mutation."""
-        if self.project is None:
-            return
-        state = {
-            "project": copy.deepcopy(self.project),
-            "description": description,
-            "timestamp": datetime.now().isoformat(),
-        }
-        self._undo_stack.append(state)
-        if len(self._undo_stack) > self.MAX_UNDO:
-            self._undo_stack.pop(0)
+    def open_project(self, path: str) -> dict:
+        project_path = Path(path)
+        if not project_path.exists():
+            raise FileNotFoundError(path)
+        self.state = json.loads(project_path.read_text(encoding="utf-8"))
+        self.project_path = str(project_path)
+        self._undo_stack.clear()
         self._redo_stack.clear()
-        self._modified = True
+        return self.state
 
-    def undo(self) -> Optional[str]:
-        """Undo the last operation. Returns description of undone action."""
-        if not self._undo_stack:
-            raise RuntimeError("Nothing to undo.")
-        if self.project is None:
-            raise RuntimeError("No project loaded.")
+    def save_project(self, path: str | None = None) -> str:
+        if self.state is None:
+            raise RuntimeError("No project is open")
+        target = path or self.project_path
+        if not target:
+            raise RuntimeError("No project path provided")
+        target_path = Path(target)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(json.dumps(self.state, indent=2), encoding="utf-8")
+        self.project_path = str(target_path)
+        return self.project_path
 
-        self._redo_stack.append({
-            "project": copy.deepcopy(self.project),
-            "description": "redo point",
-            "timestamp": datetime.now().isoformat(),
-        })
+    def checkpoint(self) -> None:
+        if self.state is None:
+            raise RuntimeError("No project is open")
+        self._undo_stack.append(copy.deepcopy(self.state))
+        self._redo_stack.clear()
 
-        state = self._undo_stack.pop()
-        self.project = state["project"]
-        self._modified = True
-        return state.get("description", "")
+    def undo(self) -> bool:
+        if not self._undo_stack or self.state is None:
+            return False
+        self._redo_stack.append(copy.deepcopy(self.state))
+        self.state = self._undo_stack.pop()
+        return True
 
-    def redo(self) -> Optional[str]:
-        """Redo the last undone operation."""
-        if not self._redo_stack:
-            raise RuntimeError("Nothing to redo.")
-        if self.project is None:
-            raise RuntimeError("No project loaded.")
+    def redo(self) -> bool:
+        if not self._redo_stack or self.state is None:
+            return False
+        self._undo_stack.append(copy.deepcopy(self.state))
+        self.state = self._redo_stack.pop()
+        return True
 
-        self._undo_stack.append({
-            "project": copy.deepcopy(self.project),
-            "description": "undo point",
-            "timestamp": datetime.now().isoformat(),
-        })
+    def set_project(self, proj: dict) -> None:
+        self.state = proj
+        self._undo_stack.clear()
+        self._redo_stack.clear()
 
-        state = self._redo_stack.pop()
-        self.project = state["project"]
-        self._modified = True
-        return state.get("description", "")
+    def get_project(self) -> dict:
+        if self.state is None:
+            raise RuntimeError("No project is open")
+        return self.state
 
-    def status(self) -> Dict[str, Any]:
-        """Get session status."""
+    def snapshot(self, label: str | None = None) -> None:
+        self.checkpoint()
+
+    def save_session(self) -> str:
+        if not self.project_path:
+            raise ValueError("No save path")
+        return self.save_project(self.project_path)
+
+    def status(self) -> dict:
+        scene_count = len(self.state["scenes"]) if self.state else 0
+        source_count = sum(len(scene["sources"]) for scene in self.state["scenes"]) if self.state else 0
         return {
-            "has_project": self.project is not None,
+            "project_open": self.is_open,
             "project_path": self.project_path,
-            "modified": self._modified,
-            "undo_count": len(self._undo_stack),
-            "redo_count": len(self._redo_stack),
-            "project_name": self.project.get("name", "untitled") if self.project else None,
+            "modified": self.is_modified,
+            "scene_count": scene_count,
+            "source_count": source_count,
+            "can_undo": bool(self._undo_stack),
+            "can_redo": bool(self._redo_stack),
         }
-
-    def save_session(self, path: Optional[str] = None) -> str:
-        """Save the session state to disk."""
-        if self.project is None:
-            raise RuntimeError("No project to save.")
-
-        save_path = path or self.project_path
-        if not save_path:
-            raise ValueError("No save path specified.")
-
-        self.project["metadata"]["modified"] = datetime.now().isoformat()
-        _locked_save_json(save_path, self.project, indent=2, sort_keys=True, default=str)
-
-        self.project_path = save_path
-        self._modified = False
-        return save_path
-
-    def list_history(self) -> List[Dict[str, str]]:
-        """List undo history."""
-        result = []
-        for i, state in enumerate(reversed(self._undo_stack)):
-            result.append({
-                "index": i,
-                "description": state.get("description", ""),
-                "timestamp": state.get("timestamp", ""),
-            })
-        return result
