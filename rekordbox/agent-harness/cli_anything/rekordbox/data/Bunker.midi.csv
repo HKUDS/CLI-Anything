@@ -1,0 +1,72 @@
+@file,1,Bunker
+#name,function,type,input,deck1,deck2,deck3,deck4,output,deck1,deck2,deck3,deck4,option,comment
+,,,,,,,,,,,,,,
+# === Browser ===,,,,,,,,,,,,,,
+Browse,Browse,Rotary,B040,,,,,,,,,,,Browse track list (relative encoder)
+Forward,Browse+Press,Button,9041,,,,,,,,,,,Library Forward (open folder)
+Back,Browse+Press+Shift,Button,9042,,,,,,,,,,,Library Back (close folder)
+Load,Load,Button,,9046,9047,,,,,,,,,Load track to Deck1 / Deck2
+Shift,Shift,Button,903F,0,1,,,,,,,,RO,Shift modifier
+,,,,,,,,,,,,,,
+# === Deck Transport ===,,,,,,,,,,,,,,
+PlayPause,PlayPause,Button,900B,0,1,,,900B,0,1,,,Fast;Priority=50,Play/Pause
+Cue,Cue,Button,900C,0,1,,,900C,0,1,,,Fast;Priority=50,Cue
+JumpToTrackStart,Cue+Shift,Button,9048,0,1,,,9048,0,1,,,Fast;Priority=50,Jump to track start
+,,,,,,,,,,,,,,
+# === Sync / Master ===,,,,,,,,,,,,,,
+Sync,Sync,Button,9058,0,1,,,9058,0,1,,,Blink=600,Sync On/Off
+Master,Sync+LongPress,Button,905C,0,1,,,,,,,,,Master On/Off
+,,,,,,,,,,,,,,
+# === Tempo ===,,,,,,,,,,,,,,
+TempoSlider,TempoSlider,KnobSliderHiRes,B000,0,1,,,,,,,,Fast,Pitch slider 14-bit
+TempoRange,TempoRange,Button,9060,0,1,,,9060,0,1,,,,Tempo range cycle
+,,,,,,,,,,,,,,
+# === Mixer ===,,,,,,,,,,,,,,
+ChannelFader,ChannelFader,KnobSliderHiRes,B013,0,1,,,,,,,,,Channel volume fader 14-bit
+CrossFader,CrossFader,KnobSliderHiRes,B61F,,,,,,,,,,Fast,Crossfader 14-bit
+,,,,,,,,,,,,,,
+# === EQ ===,,,,,,,,,,,,,,
+EQHigh,EQHigh,KnobSliderHiRes,B007,0,1,,,,,,,,Fast,EQ High
+EQMid,EQMid,KnobSliderHiRes,B00B,0,1,,,,,,,,Fast,EQ Mid
+EQLow,EQLow,KnobSliderHiRes,B00F,0,1,,,,,,,,Fast,EQ Low
+ChannelFilter,ChannelFilter,KnobSliderHiRes,B017,0,1,,,,,,,,Fast,Color FX / Filter knob
+,,,,,,,,,,,,,,
+# === Headphone Cue ===,,,,,,,,,,,,,,
+HeadphoneCue,HeadphoneCue,Button,9054,0,1,,,9054,0,1,,,,Headphone CUE
+,,,,,,,,,,,,,,
+# === Hot Cues (8 per deck) ===,,,,,,,,,,,,,,
+PAD1_HotCue,PAD1_PadMode1,Pad,9000,7,9,,,9000,7,9,,,Fast,HOT CUE 1
+PAD2_HotCue,PAD2_PadMode1,Pad,9001,7,9,,,9001,7,9,,,Fast,HOT CUE 2
+PAD3_HotCue,PAD3_PadMode1,Pad,9002,7,9,,,9002,7,9,,,Fast,HOT CUE 3
+PAD4_HotCue,PAD4_PadMode1,Pad,9003,7,9,,,9003,7,9,,,Fast,HOT CUE 4
+PAD5_HotCue,PAD5_PadMode1,Pad,9004,7,9,,,9004,7,9,,,Fast,HOT CUE 5
+PAD6_HotCue,PAD6_PadMode1,Pad,9005,7,9,,,9005,7,9,,,Fast,HOT CUE 6
+PAD7_HotCue,PAD7_PadMode1,Pad,9006,7,9,,,9006,7,9,,,Fast,HOT CUE 7
+PAD8_HotCue,PAD8_PadMode1,Pad,9007,7,9,,,9007,7,9,,,Fast,HOT CUE 8
+HotCue,HotCueMode,Button,901B,0,1,,,901B,0,1,,,Fast,HOT CUE mode toggle
+,,,,,,,,,,,,,,
+# === Beat Loop ===,,,,,,,,,,,,,,
+BeatLoop,BeatLoopMode,Button,906D,0,1,,,906D,0,1,,,Fast,Beat Loop mode
+PAD1_BeatLoop,PAD1_PadMode2,Pad,9020,7,9,,,9020,7,9,,,Fast,Beat Loop 1/8
+PAD2_BeatLoop,PAD2_PadMode2,Pad,9021,7,9,,,9021,7,9,,,Fast,Beat Loop 1/4
+PAD3_BeatLoop,PAD3_PadMode2,Pad,9022,7,9,,,9022,7,9,,,Fast,Beat Loop 1/2
+PAD4_BeatLoop,PAD4_PadMode2,Pad,9023,7,9,,,9023,7,9,,,Fast,Beat Loop 1
+PAD5_BeatLoop,PAD5_PadMode2,Pad,9024,7,9,,,9024,7,9,,,Fast,Beat Loop 2
+PAD6_BeatLoop,PAD6_PadMode2,Pad,9025,7,9,,,9025,7,9,,,Fast,Beat Loop 4
+PAD7_BeatLoop,PAD7_PadMode2,Pad,9026,7,9,,,9026,7,9,,,Fast,Beat Loop 8
+PAD8_BeatLoop,PAD8_PadMode2,Pad,9027,7,9,,,9027,7,9,,,Fast,Beat Loop 16
+,,,,,,,,,,,,,,
+# === Beat Jump ===,,,,,,,,,,,,,,
+BeatJump,BeatJumpMode,Button,906E,0,1,,,906E,0,1,,,Fast,Beat Jump mode
+PAD1_BeatJump_back,PAD1_PadMode3,Pad,9010,7,9,,,9010,7,9,,,Fast,Beat Jump back 1
+PAD2_BeatJump_fwd,PAD2_PadMode3,Pad,9011,7,9,,,9011,7,9,,,Fast,Beat Jump forward 1
+,,,,,,,,,,,,,,
+# === Performance Pad Mode buttons ===,,,,,,,,,,,,,,
+PadMode1,PadMode1,Button,901E,0,1,,,901E,0,1,,,Fast,HOT CUE pad mode select
+PadMode2,PadMode2,Button,901F,0,1,,,901F,0,1,,,Fast,BEAT LOOP pad mode
+PadMode3,PadMode3,Button,9020,0,1,,,9020,0,1,,,Fast,BEAT JUMP pad mode
+PadMode4,PadMode4,Button,9021,0,1,,,9021,0,1,,,Fast,SAMPLER pad mode
+,,,,,,,,,,,,,,
+# === Quantize / Slip ===,,,,,,,,,,,,,,
+Slip,Slip,Button,902B,0,1,,,902B,0,1,,,Fast,SLIP mode
+QuantizeOnOff,Quantize,Button,902C,0,1,,,902C,0,1,,,,QUANTIZE on/off

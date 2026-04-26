@@ -19,6 +19,7 @@
 # Step 3: Allow cli-anything-plugin entirely
 !/cli-anything-plugin/
 !/codex-skill/
+!/skills/
 
 # Step 4: Allow each software dir (top level only)
 !/gimp/
@@ -35,6 +36,7 @@
 !/ableton/
 !/serum/
 !/vital/
+!/rekordbox/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -65,6 +67,8 @@
 /serum/.*
 /vital/*
 /vital/.*
+/rekordbox/*
+/rekordbox/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -81,6 +85,7 @@
 !/ableton/agent-harness/
 !/serum/agent-harness/
 !/vital/agent-harness/
+!/rekordbox/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
