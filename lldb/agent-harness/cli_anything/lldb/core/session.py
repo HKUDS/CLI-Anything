@@ -199,6 +199,13 @@ class LLDBSession:
             raise RuntimeError(f"Interrupt failed: {error}")
         return self._process_info()
 
+    def interrupt_async(self) -> Dict[str, Any]:
+        self._require_process()
+        error = self.process.SendAsyncInterrupt()
+        if error is not None and not error.Success():
+            raise RuntimeError(f"Async interrupt failed: {error}")
+        return {"status": "interrupt_requested"}
+
     def backtrace(self, limit: int = 50) -> Dict[str, Any]:
         thread = self._current_thread()
         frames = []

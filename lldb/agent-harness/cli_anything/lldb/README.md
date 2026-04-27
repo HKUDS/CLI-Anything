@@ -117,6 +117,22 @@ Variables support expandable child references for structs/classes/arrays, and
 `setVariable` can update stopped-frame locals or child values when LLDB allows
 the assignment.
 
+For long-running GUI targets, DAP `continue` responds before the blocking LLDB
+`SBProcess.Continue()` call completes, then waits on a background thread for the
+next stop. DAP `pause` uses `SBProcess.SendAsyncInterrupt()` so the adapter stays
+responsive while the debuggee is running. If `setBreakpoints` or
+`setFunctionBreakpoints` arrives during an active continue, the adapter first
+requests an async interrupt, waits for the continue thread to observe a stopped
+state, and only then mutates LLDB breakpoints. If the process does not stop in
+time, the request fails clearly instead of hanging the DAP loop.
+
+`launch` and `attach` accept the non-standard boolean argument
+`autoContinueInternalBreakpoints`. When enabled, the adapter auto-continues
+known internal JIT/startup breakpoint stops such as NVIDIA
+`__jit_debug_register_code` / `jit-debug-register` and Windows
+`Exception 0x80000003` at ``ntdll.dll`DbgBreakPoint``, while writing a DAP
+`output` event explaining the auto-continue.
+
 The persistent session daemon now speaks a localhost JSON socket protocol and
 stores its session token in an owner-scoped state file. `memory find` scans in
 64 KiB chunks and caps each request at 1 MiB.

@@ -12,6 +12,7 @@ import io
 import subprocess
 import sys
 import stat
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -199,7 +200,96 @@ class TestDAPProtocol:
         assert response["success"] is True
         assert event["event"] == "stopped"
         assert event["body"]["reason"] == "pause"
-        fake_session.interrupt.assert_called_once()
+        fake_session.interrupt_async.assert_called_once()
+
+    def test_set_breakpoints_interrupts_active_continue_before_mutation(self):
+        from cli_anything.lldb.dap import LLDBDebugAdapter
+
+        fake_session = MagicMock()
+        fake_session.breakpoint_set.return_value = {
+            "id": 7,
+            "resolved": True,
+            "locations": 1,
+            "location_details": [{"file": "C:/tmp/main.c", "line": 12}],
+        }
+        adapter = LLDBDebugAdapter(session_factory=lambda: fake_session)
+        adapter._ensure_session()
+        adapter._mutation_stop_timeout = 1.0
+        with adapter._continue_state:
+            adapter._continue_active = True
+
+        release = threading.Timer(0.01, adapter._mark_continue_inactive)
+        release.start()
+        try:
+            body, post_send = adapter._handle_setBreakpoints(
+                {
+                    "source": {"path": "C:/tmp/main.c"},
+                    "breakpoints": [{"line": 12}],
+                }
+            )
+        finally:
+            release.join()
+
+        assert post_send is None
+        assert body["breakpoints"][0]["verified"] is True
+        fake_session.interrupt_async.assert_called_once()
+        fake_session.breakpoint_set.assert_called_once()
+
+    def test_set_breakpoints_reports_timeout_if_running_target_will_not_stop(self):
+        from cli_anything.lldb.dap import LLDBDebugAdapter
+
+        fake_session = MagicMock()
+        adapter = LLDBDebugAdapter(session_factory=lambda: fake_session)
+        adapter._ensure_session()
+        adapter._mutation_stop_timeout = 0.01
+        with adapter._continue_state:
+            adapter._continue_active = True
+
+        try:
+            with pytest.raises(RuntimeError, match="Timed out waiting for debuggee to stop"):
+                adapter._handle_setBreakpoints(
+                    {
+                        "source": {"path": "C:/tmp/main.c"},
+                        "breakpoints": [{"line": 12}],
+                    }
+                )
+        finally:
+            adapter._mark_continue_inactive()
+
+        fake_session.interrupt_async.assert_called_once()
+        fake_session.breakpoint_set.assert_not_called()
+
+    def test_auto_continue_internal_breakpoint_emits_output_and_resumes(self):
+        from cli_anything.lldb.dap import LLDBDebugAdapter, read_message
+
+        fake_session = MagicMock()
+        fake_session.process_info.return_value = {
+            "state": "stopped",
+            "selected_thread_id": 99,
+            "stop": {
+                "reason": "breakpoint",
+                "description": "frame #0: nvgpucomp64.dll`__jit_debug_register_code",
+                "hit_breakpoint_ids": [],
+            },
+            "exit_status": 0,
+        }
+        out = io.BytesIO()
+        adapter = LLDBDebugAdapter(session_factory=lambda: fake_session)
+        adapter._out = out
+        adapter._auto_continue_internal_breakpoints = True
+        adapter._start_continue_thread = MagicMock()
+
+        adapter._emit_execution_event(default_reason="breakpoint")
+        out.seek(0)
+        output_event = read_message(out)
+        continued_event = read_message(out)
+        stopped_event = read_message(out)
+
+        assert output_event["event"] == "output"
+        assert "auto-continued internal breakpoint" in output_event["body"]["output"]
+        assert continued_event["event"] == "continued"
+        assert stopped_event is None
+        adapter._start_continue_thread.assert_called_once()
 
     def test_stack_trace_reports_total_frames(self):
         from cli_anything.lldb.dap import LLDBDebugAdapter, read_message
@@ -572,6 +662,20 @@ class TestSessionLifecycle:
 
         process.Stop.assert_called_once()
         assert payload["pid"] == 123
+
+    def test_interrupt_async_requests_async_interrupt(self):
+        from cli_anything.lldb.core.session import LLDBSession
+
+        session = self._make_session()
+        process = MagicMock()
+        process.IsValid.return_value = True
+        process.SendAsyncInterrupt.return_value = MagicMock(Success=lambda: True)
+        session.process = process
+
+        payload = LLDBSession.interrupt_async(session)
+
+        process.SendAsyncInterrupt.assert_called_once()
+        assert payload == {"status": "interrupt_requested"}
 
     def test_session_status_reports_target_and_process(self):
         from cli_anything.lldb.core.session import LLDBSession

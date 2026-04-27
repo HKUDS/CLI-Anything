@@ -73,6 +73,19 @@ DAP variables can expose child references for structs/classes/arrays. Use
 `setVariable` only while stopped; LLDB may reject writes to optimized-out or
 read-only values.
 
+For long-running GUI debuggees, DAP `continue` is non-blocking from the client's
+point of view: the adapter sends the response and `continued` event first, then
+waits for LLDB on a background thread. DAP `pause` uses LLDB async interrupt.
+If an agent needs to change breakpoints while the debuggee is running, the
+adapter interrupts first and waits for a stopped state before mutating LLDB
+breakpoints; if the target does not stop in time, retry after an explicit
+`pause`/`stopped` cycle.
+
+For GUI apps that stop on debugger-internal startup or shader-JIT breakpoints,
+`launch` and `attach` accept the non-standard boolean argument
+`autoContinueInternalBreakpoints`. Enable it only when those internal stops are
+noise for the task; the adapter emits an `output` event before auto-continuing.
+
 ## Command Groups
 
 ### target
@@ -133,6 +146,8 @@ cli-anything-lldb --json core load --path /path/to/core
 - Use REPL when a human-like interactive shell is more convenient, not because persistence requires it.
 - Unresolved CLI breakpoints fail by default; pass `--allow-pending` only when a future module/symbol load is expected.
 - DAP unresolved breakpoints use protocol semantics: `verified: false` until resolved.
+- DAP `continue` is non-blocking for long-running GUI processes, and DAP `pause` uses async interrupt.
+- DAP breakpoint changes during an active continue first interrupt and wait for a stopped state before mutating LLDB.
 - `memory find` uses a chunked scan capped at 1 MiB per call.
 - Call `target create` before process or core commands.
 - Expect structured errors: `{"error": "...", "type": "..."}`

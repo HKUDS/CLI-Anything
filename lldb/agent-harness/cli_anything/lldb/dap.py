@@ -8,6 +8,7 @@ import json
 import os
 import shlex
 import sys
+import threading
 from pathlib import Path
 from typing import Any, BinaryIO, Callable
 
@@ -80,6 +81,13 @@ class LLDBDebugAdapter:
         self._variable_refs: dict[int, dict[str, Any]] = {}
         self._next_ref = 1
         self._log_file = Path(log_file).expanduser() if log_file else None
+        self._protocol_lock = threading.Lock()
+        self._lldb_api_lock = threading.RLock()
+        self._continue_state = threading.Condition()
+        self._continue_active = False
+        self._auto_continue_internal_breakpoints = False
+        self._pause_requested = False
+        self._mutation_stop_timeout = 10.0
 
     def run(self, instream: BinaryIO | None = None, outstream: BinaryIO | None = None) -> int:
         instream = instream or sys.stdin.buffer
@@ -157,6 +165,7 @@ class LLDBDebugAdapter:
             "stop_at_entry": bool(args.get("stopOnEntry", False)),
             "suppress_stdio": True,
         }
+        self._auto_continue_internal_breakpoints = bool(args.get("autoContinueInternalBreakpoints", False))
         self._pending_attach = None
         return {}, None
 
@@ -174,6 +183,7 @@ class LLDBDebugAdapter:
             "name": str(name) if name else None,
             "wait_for": bool(args.get("waitFor", False)),
         }
+        self._auto_continue_internal_breakpoints = bool(args.get("autoContinueInternalBreakpoints", False))
         self._pending_launch = None
         return {}, None
 
@@ -220,51 +230,55 @@ class LLDBDebugAdapter:
         if not path:
             raise RuntimeError("setBreakpoints requires source.path")
 
+        self._ensure_stopped_for_target_mutation("setBreakpoints")
         session = self._ensure_session()
         source_key = str(Path(path))
-        for bp_id in self._source_breakpoints.get(source_key, []):
-            try:
-                session.breakpoint_delete(bp_id)
-            except Exception:
-                pass
+        with self._lldb_api_lock:
+            for bp_id in self._source_breakpoints.get(source_key, []):
+                try:
+                    session.breakpoint_delete(bp_id)
+                except Exception:
+                    pass
 
-        dap_breakpoints = []
-        created_ids = []
-        for item in args.get("breakpoints") or []:
-            line = int(item.get("line"))
-            payload = session.breakpoint_set(
-                file=source_key,
-                line=line,
-                condition=item.get("condition"),
-                allow_pending=True,
-            )
-            created_ids.append(payload["id"])
-            dap_breakpoints.append(self._to_dap_breakpoint(payload, source_key, requested_line=line))
+            dap_breakpoints = []
+            created_ids = []
+            for item in args.get("breakpoints") or []:
+                line = int(item.get("line"))
+                payload = session.breakpoint_set(
+                    file=source_key,
+                    line=line,
+                    condition=item.get("condition"),
+                    allow_pending=True,
+                )
+                created_ids.append(payload["id"])
+                dap_breakpoints.append(self._to_dap_breakpoint(payload, source_key, requested_line=line))
 
         self._source_breakpoints[source_key] = created_ids
         return {"breakpoints": dap_breakpoints}, None
 
     def _handle_setFunctionBreakpoints(self, args: dict[str, Any]):
+        self._ensure_stopped_for_target_mutation("setFunctionBreakpoints")
         session = self._ensure_session()
-        for bp_id in self._function_breakpoints:
-            try:
-                session.breakpoint_delete(bp_id)
-            except Exception:
-                pass
+        with self._lldb_api_lock:
+            for bp_id in self._function_breakpoints:
+                try:
+                    session.breakpoint_delete(bp_id)
+                except Exception:
+                    pass
 
-        self._function_breakpoints = []
-        result = []
-        for item in args.get("breakpoints") or []:
-            name = item.get("name")
-            if not name:
-                continue
-            payload = session.breakpoint_set(
-                function=str(name),
-                condition=item.get("condition"),
-                allow_pending=True,
-            )
-            self._function_breakpoints.append(payload["id"])
-            result.append(self._to_dap_breakpoint(payload))
+            self._function_breakpoints = []
+            result = []
+            for item in args.get("breakpoints") or []:
+                name = item.get("name")
+                if not name:
+                    continue
+                payload = session.breakpoint_set(
+                    function=str(name),
+                    condition=item.get("condition"),
+                    allow_pending=True,
+                )
+                self._function_breakpoints.append(payload["id"])
+                result.append(self._to_dap_breakpoint(payload))
         return {"breakpoints": result}, None
 
     def _handle_threads(self, _args: dict[str, Any]):
@@ -357,16 +371,20 @@ class LLDBDebugAdapter:
         def post_send():
             self._reset_refs_for_resume()
             self._send_continued_event()
-            self._ensure_session().continue_exec()
-            self._emit_breakpoint_updates()
-            self._emit_execution_event(default_reason="breakpoint")
+            self._start_continue_thread(
+                name="cli-anything-lldb-dap-continue",
+                default_reason="breakpoint",
+            )
 
         return {"allThreadsContinued": True}, post_send
 
     def _handle_pause(self, _args: dict[str, Any]):
         def post_send():
-            self._ensure_session().interrupt()
-            self._emit_execution_event(default_reason="pause")
+            self._pause_requested = True
+            self._request_async_interrupt()
+            if not self._is_continue_active():
+                with self._lldb_api_lock:
+                    self._emit_execution_event(default_reason="pause")
 
         return {}, post_send
 
@@ -448,10 +466,71 @@ class LLDBDebugAdapter:
         def post_send():
             self._reset_refs_for_resume()
             self._send_continued_event()
-            step_fn()
-            self._emit_execution_event(default_reason="step")
+            with self._lldb_api_lock:
+                step_fn()
+                self._emit_execution_event(default_reason="step")
 
         return post_send
+
+    def _start_continue_thread(self, *, name: str, default_reason: str):
+        with self._continue_state:
+            if self._continue_active:
+                self._log("continue requested while a continue operation is already active")
+                return
+            self._continue_active = True
+        threading.Thread(
+            target=self._continue_until_stop,
+            kwargs={"default_reason": default_reason},
+            name=name,
+            daemon=True,
+        ).start()
+
+    def _continue_until_stop(self, *, default_reason: str):
+        try:
+            self._ensure_session().continue_exec()
+        except Exception as exc:
+            self._log(f"continue failed: {exc}")
+            self._send_event("output", {"category": "stderr", "output": f"continue failed: {exc}\n"})
+            self._send_event("terminated")
+            return
+        finally:
+            self._mark_continue_inactive()
+
+        with self._lldb_api_lock:
+            self._emit_breakpoint_updates()
+            self._emit_execution_event(default_reason=default_reason)
+
+    def _mark_continue_inactive(self):
+        with self._continue_state:
+            self._continue_active = False
+            self._continue_state.notify_all()
+
+    def _is_continue_active(self) -> bool:
+        with self._continue_state:
+            return self._continue_active
+
+    def _ensure_stopped_for_target_mutation(self, operation: str):
+        if not self._is_continue_active():
+            return
+        self._log(f"{operation}: interrupting running debuggee before target mutation")
+        self._request_async_interrupt()
+        with self._continue_state:
+            stopped = self._continue_state.wait_for(
+                lambda: not self._continue_active,
+                timeout=self._mutation_stop_timeout,
+            )
+        if not stopped:
+            raise RuntimeError(
+                f"Timed out waiting for debuggee to stop before {operation}. "
+                "Send a pause request and retry after the stopped event."
+            )
+
+    def _request_async_interrupt(self):
+        session = self._ensure_session()
+        interrupt = getattr(session, "interrupt_async", None)
+        if interrupt is not None:
+            return interrupt()
+        return session.interrupt()
 
     def _emit_execution_event(self, default_reason: str | None = None):
         info = self._ensure_session().process_info()
@@ -471,6 +550,9 @@ class LLDBDebugAdapter:
         reason = "entry" if default_reason == "entry" else (stop.get("reason") or default_reason or "pause")
         if reason in {"signal", "crashed"}:
             reason = "exception"
+        if self._pause_requested:
+            self._pause_requested = False
+            reason = "pause"
         body = {
             "reason": reason,
             "threadId": info.get("selected_thread_id"),
@@ -482,7 +564,37 @@ class LLDBDebugAdapter:
         if stop.get("description"):
             body["description"] = stop["description"]
             body["text"] = stop["description"]
+        if self._should_auto_continue_internal_stop(body):
+            self._send_event(
+                "output",
+                {
+                    "category": "console",
+                    "output": f"auto-continued internal breakpoint: {self._summarize_stop(body)}\n",
+                },
+            )
+            self._send_continued_event(info.get("selected_thread_id"))
+            self._start_continue_thread(
+                name="cli-anything-lldb-dap-auto-continue",
+                default_reason=default_reason or "breakpoint",
+            )
+            return
         self._send_event("stopped", body)
+
+    def _should_auto_continue_internal_stop(self, body: dict[str, Any]) -> bool:
+        if not self._auto_continue_internal_breakpoints:
+            return False
+        if body.get("reason") == "pause":
+            return False
+        text = str(body.get("description") or body.get("text") or "")
+        if "jit-debug-register" in text or "__jit_debug_register_code" in text:
+            return True
+        if "Exception 0x80000003" in text and "ntdll.dll`DbgBreakPoint" in text:
+            return True
+        return False
+
+    def _summarize_stop(self, body: dict[str, Any]) -> str:
+        text = str(body.get("description") or body.get("text") or body.get("reason") or "unknown")
+        return text.splitlines()[0] if text else "unknown"
 
     def _send_continued_event(self, thread_id: int | None = None):
         body: dict[str, Any] = {"allThreadsContinued": True}
@@ -616,24 +728,26 @@ class LLDBDebugAdapter:
         success: bool = True,
         message: str | None = None,
     ):
-        payload: dict[str, Any] = {
-            "seq": self._next_seq(),
-            "type": "response",
-            "request_seq": request_seq,
-            "success": success,
-            "command": command,
-        }
-        if body is not None:
-            payload["body"] = body
-        if message:
-            payload["message"] = message
-        self._write(payload)
+        with self._protocol_lock:
+            payload: dict[str, Any] = {
+                "seq": self._next_seq(),
+                "type": "response",
+                "request_seq": request_seq,
+                "success": success,
+                "command": command,
+            }
+            if body is not None:
+                payload["body"] = body
+            if message:
+                payload["message"] = message
+            self._write(payload)
 
     def _send_event(self, event: str, body: dict[str, Any] | None = None):
-        payload: dict[str, Any] = {"seq": self._next_seq(), "type": "event", "event": event}
-        if body is not None:
-            payload["body"] = body
-        self._write(payload)
+        with self._protocol_lock:
+            payload: dict[str, Any] = {"seq": self._next_seq(), "type": "event", "event": event}
+            if body is not None:
+                payload["body"] = body
+            self._write(payload)
 
     def _next_seq(self) -> int:
         seq = self._seq

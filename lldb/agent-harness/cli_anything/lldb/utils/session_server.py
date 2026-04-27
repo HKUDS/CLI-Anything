@@ -38,6 +38,7 @@ _ALLOWED_SESSION_METHODS = {
     "step_out",
     "continue_exec",
     "interrupt",
+    "interrupt_async",
     "backtrace",
     "locals",
     "local_values",
