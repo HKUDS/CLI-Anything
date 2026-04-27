@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-04-16"
+    "updated": "2026-04-28"
   },
   "clis": [
     {
@@ -970,6 +970,25 @@
         {
           "name": "haorui-harry",
           "url": "https://github.com/haorui-harry"
+        }
+      ]
+    },
+    {
+      "name": "paperclip",
+      "display_name": "Paperclip",
+      "version": "1.0.0",
+      "description": "AI agent company orchestration platform — manage agents, issues, projects, approvals, routines, and heartbeats via a stateful CLI REPL or one-shot commands",
+      "requires": "Paperclip server (https://github.com/paperclipai/paperclip)",
+      "homepage": "https://github.com/paperclipai/paperclip",
+      "source_url": "https://github.com/paperclipai/paperclip",
+      "install_cmd": "pip install git+https://github.com/paperclipai/paperclip.git#subdirectory=cli-anything/agent-harness",
+      "entry_point": "cli-anything-paperclip",
+      "skill_md": "https://raw.githubusercontent.com/paperclipai/paperclip/main/cli-anything/agent-harness/skills/cli-anything-paperclip/SKILL.md",
+      "category": "ai-agents",
+      "contributors": [
+        {
+          "name": "xiaokaizhou",
+          "url": "https://github.com/xiaokaizhou"
         }
       ]
     }
