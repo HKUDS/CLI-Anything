@@ -25,6 +25,25 @@
       ]
     },
     {
+      "name": "nslogger",
+      "display_name": "NSLogger",
+      "version": "0.1.0",
+      "description": "Capture, parse, filter, export, and mirror NSLogger iOS/macOS logs from the CLI",
+      "requires": "macOS for native Bonjour live capture; Python 3.10+",
+      "homepage": "https://github.com/fpillet/NSLogger",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nslogger/agent-harness",
+      "entry_point": "cli-anything-nslogger",
+      "skill_md": "skills/cli-anything-nslogger/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "bazinga8023",
+          "url": "https://github.com/bazinga8023"
+        }
+      ]
+    },
+    {
       "name": "anygen",
       "display_name": "AnyGen",
       "version": "1.0.0",
