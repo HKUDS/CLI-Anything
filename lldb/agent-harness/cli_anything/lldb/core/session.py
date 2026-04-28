@@ -580,14 +580,18 @@ class LLDBSession:
 
     def _stop_info(self, thread) -> Dict[str, Any]:
         if thread is None or not thread.IsValid():
-            return {"reason": None, "description": None, "hit_breakpoint_ids": []}
+            return {"reason": None, "description": None, "hit_breakpoint_ids": [], "frame": None}
 
         reason = thread.GetStopReason()
         reason_name = self._stop_reason_name(reason)
+        frame = self._thread_frame_summary(thread)
         return {
             "reason": reason_name,
             "description": self._thread_stop_description(thread),
             "hit_breakpoint_ids": self._hit_breakpoint_ids(thread) if reason_name == "breakpoint" else [],
+            "frame": frame,
+            "module": frame.get("module") if frame else None,
+            "function": frame.get("function") if frame else None,
         }
 
     def _stop_reason_name(self, reason: int) -> str | None:
@@ -611,6 +615,24 @@ class LLDBSession:
         thread.GetStatus(stream)
         text = stream.GetData().strip()
         return text or None
+
+    def _thread_frame_summary(self, thread) -> Dict[str, Any] | None:
+        frame = thread.GetSelectedFrame()
+        if not frame or not frame.IsValid():
+            if thread.GetNumFrames() <= 0:
+                return None
+            frame = thread.GetFrameAtIndex(0)
+        line_entry = frame.GetLineEntry()
+        module = frame.GetModule()
+        module_path = self._filespec_path(module.GetFileSpec()) if module and module.IsValid() else None
+        return {
+            "function": frame.GetFunctionName(),
+            "module": os.path.basename(module_path) if module_path else None,
+            "module_path": module_path,
+            "file": str(line_entry.GetFileSpec()) if line_entry.IsValid() else None,
+            "line": line_entry.GetLine() if line_entry.IsValid() else None,
+            "address": hex(frame.GetPC()),
+        }
 
     def _hit_breakpoint_ids(self, thread) -> List[int]:
         ids = []

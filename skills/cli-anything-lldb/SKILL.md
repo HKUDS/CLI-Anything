@@ -53,12 +53,14 @@ instead of shelling out separate CLI commands:
 
 ```bash
 cli-anything-lldb-dap
+cli-anything-lldb-dap --profile /path/to/stop-rules.json
 ```
 
 or:
 
 ```bash
 cli-anything-lldb dap
+cli-anything-lldb dap --profile /path/to/stop-rules.json
 ```
 
 The DAP server speaks stdio `Content-Length` frames and must have exclusive
@@ -85,6 +87,18 @@ For GUI apps that stop on debugger-internal startup or shader-JIT breakpoints,
 `launch` and `attach` accept the non-standard boolean argument
 `autoContinueInternalBreakpoints`. Enable it only when those internal stops are
 noise for the task; the adapter emits an `output` event before auto-continuing.
+For target-specific noise, prefer structured stop rules through inline
+`stopRules` or an external `stopRuleProfile`/`--profile` JSON file. Rules can
+match by `reason`, `module`, `function`, and/or `regex`, then either `stop` with
+clear `cliAnythingStop.origin` metadata or `continue` automatically. Use
+profiles for apps such as C4D so their NVIDIA shader-JIT/startup traps live
+outside the generic adapter.
+
+DAP `stopped` events include `body.cliAnythingStop.origin`: `manualPause` for a
+client pause request, `internalTrap` for a matched internal rule, and `debuggee`
+for ordinary program stops. Existing `cli-anything-lldb-dap` processes do not
+hot-load new code or profile contents; restart the adapter and re-attach or
+re-launch before expecting new rules to apply.
 
 ## Command Groups
 
@@ -148,6 +162,7 @@ cli-anything-lldb --json core load --path /path/to/core
 - DAP unresolved breakpoints use protocol semantics: `verified: false` until resolved.
 - DAP `continue` is non-blocking for long-running GUI processes, and DAP `pause` uses async interrupt.
 - DAP breakpoint changes during an active continue first interrupt and wait for a stopped state before mutating LLDB.
+- Use DAP stop-rule profiles for app-specific internal traps; restart and re-attach/re-launch after profile changes.
 - `memory find` uses a chunked scan capped at 1 MiB per call.
 - Call `target create` before process or core commands.
 - Expect structured errors: `{"error": "...", "type": "..."}`

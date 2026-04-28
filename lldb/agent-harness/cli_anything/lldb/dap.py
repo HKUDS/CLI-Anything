@@ -6,9 +6,11 @@ import argparse
 import base64
 import json
 import os
+import re
 import shlex
 import sys
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Callable
 
@@ -65,10 +67,123 @@ def _raise_protocol_error(message: str):
     raise DAPProtocolError(message)
 
 
+@dataclass(frozen=True)
+class StopRule:
+    """Structured rule used to classify or auto-continue debugger stops."""
+
+    name: str
+    action: str = "stop"
+    origin: str = "internalTrap"
+    reason: str | None = None
+    module: str | None = None
+    function: str | None = None
+    regex: str | None = None
+    source: str | None = None
+
+    @classmethod
+    def from_mapping(cls, raw: dict[str, Any], *, source: str) -> "StopRule":
+        if not isinstance(raw, dict):
+            raise RuntimeError("stopRules entries must be objects")
+        name = str(raw.get("name") or raw.get("id") or "unnamed-stop-rule")
+        action = str(raw.get("action") or "stop")
+        if action not in {"stop", "continue"}:
+            raise RuntimeError(f"Unsupported stop rule action for {name}: {action}")
+        regex = raw.get("regex")
+        if regex is not None:
+            try:
+                re.compile(str(regex))
+            except re.error as exc:
+                raise RuntimeError(f"Invalid stop rule regex for {name}: {exc}") from exc
+        if not any(raw.get(key) is not None for key in ("reason", "module", "function", "regex")):
+            raise RuntimeError(f"Stop rule {name} must include reason, module, function, or regex")
+        return cls(
+            name=name,
+            action=action,
+            origin=str(raw.get("origin") or "internalTrap"),
+            reason=str(raw["reason"]) if raw.get("reason") is not None else None,
+            module=str(raw["module"]) if raw.get("module") is not None else None,
+            function=str(raw["function"]) if raw.get("function") is not None else None,
+            regex=str(regex) if regex is not None else None,
+            source=source,
+        )
+
+    def matches(self, stop_context: dict[str, Any]) -> bool:
+        if self.reason and not _stop_field_matches(self.reason, [stop_context.get("reason"), stop_context.get("lldbReason")]):
+            return False
+        if self.module and not _stop_field_matches(
+            self.module,
+            [stop_context.get("module"), stop_context.get("modulePath")],
+            allow_basename=True,
+        ):
+            return False
+        if self.function and not _stop_field_matches(
+            self.function,
+            [stop_context.get("function")],
+            allow_symbol_suffix=True,
+        ):
+            return False
+        if self.regex and not re.search(self.regex, _stop_context_text(stop_context), re.IGNORECASE):
+            return False
+        return True
+
+    def to_dap(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "action": self.action,
+            "origin": self.origin,
+            "source": self.source,
+        }
+
+
+def _stop_field_matches(
+    expected: str,
+    values: list[Any],
+    *,
+    allow_basename: bool = False,
+    allow_symbol_suffix: bool = False,
+) -> bool:
+    expected_norm = expected.casefold()
+    for value in values:
+        if value is None:
+            continue
+        text = str(value)
+        candidates = [text.casefold()]
+        if allow_basename:
+            candidates.append(Path(text).name.casefold())
+        for candidate in candidates:
+            if candidate == expected_norm:
+                return True
+            if allow_symbol_suffix and (
+                candidate.endswith(f"::{expected_norm}") or candidate.endswith(f"`{expected_norm}")
+            ):
+                return True
+    return False
+
+
+def _stop_context_text(stop_context: dict[str, Any]) -> str:
+    fields = [
+        stop_context.get("reason"),
+        stop_context.get("lldbReason"),
+        stop_context.get("description"),
+        stop_context.get("module"),
+        stop_context.get("modulePath"),
+        stop_context.get("function"),
+    ]
+    frame = stop_context.get("frame")
+    if isinstance(frame, dict):
+        fields.extend(frame.get(key) for key in ("module", "module_path", "function", "file", "address"))
+    return "\n".join(str(field) for field in fields if field)
+
+
 class LLDBDebugAdapter:
     """Single-session stdio DAP adapter for LLDB."""
 
-    def __init__(self, session_factory: Callable[[], LLDBSession] = LLDBSession, log_file: str | None = None):
+    def __init__(
+        self,
+        session_factory: Callable[[], LLDBSession] = LLDBSession,
+        log_file: str | None = None,
+        profile_file: str | None = None,
+    ):
         self._session_factory = session_factory
         self._session: LLDBSession | None = None
         self._out: BinaryIO | None = None
@@ -86,8 +201,16 @@ class LLDBDebugAdapter:
         self._continue_state = threading.Condition()
         self._continue_active = False
         self._auto_continue_internal_breakpoints = False
+        self._base_auto_continue_internal_breakpoints = False
+        self._base_stop_rules: list[StopRule] = []
+        self._active_stop_rules: list[StopRule] = []
         self._pause_requested = False
         self._mutation_stop_timeout = 10.0
+        if profile_file:
+            self._base_stop_rules, self._base_auto_continue_internal_breakpoints = self._load_stop_profile_file(
+                profile_file
+            )
+            self._active_stop_rules = list(self._base_stop_rules)
 
     def run(self, instream: BinaryIO | None = None, outstream: BinaryIO | None = None) -> int:
         instream = instream or sys.stdin.buffer
@@ -165,7 +288,7 @@ class LLDBDebugAdapter:
             "stop_at_entry": bool(args.get("stopOnEntry", False)),
             "suppress_stdio": True,
         }
-        self._auto_continue_internal_breakpoints = bool(args.get("autoContinueInternalBreakpoints", False))
+        self._configure_stop_rules(args)
         self._pending_attach = None
         return {}, None
 
@@ -183,7 +306,7 @@ class LLDBDebugAdapter:
             "name": str(name) if name else None,
             "wait_for": bool(args.get("waitFor", False)),
         }
-        self._auto_continue_internal_breakpoints = bool(args.get("autoContinueInternalBreakpoints", False))
+        self._configure_stop_rules(args)
         self._pending_launch = None
         return {}, None
 
@@ -532,6 +655,67 @@ class LLDBDebugAdapter:
             return interrupt()
         return session.interrupt()
 
+    def _configure_stop_rules(self, args: dict[str, Any]):
+        rules = list(self._base_stop_rules)
+        auto_continue = self._base_auto_continue_internal_breakpoints or bool(
+            args.get("autoContinueInternalBreakpoints", False)
+        )
+        profile_path = args.get("stopRuleProfile") or args.get("stopProfile") or args.get("profile")
+        if profile_path:
+            profile_rules, profile_auto_continue = self._load_stop_profile_file(str(profile_path))
+            rules.extend(profile_rules)
+            auto_continue = auto_continue or profile_auto_continue
+        inline_rules = args.get("stopRules")
+        if inline_rules:
+            rules.extend(self._coerce_stop_rules(inline_rules, source="dap-arguments"))
+        if auto_continue:
+            rules.extend(self._builtin_internal_stop_rules())
+        self._auto_continue_internal_breakpoints = auto_continue
+        self._active_stop_rules = rules
+
+    def _load_stop_profile_file(self, profile_file: str) -> tuple[list[StopRule], bool]:
+        profile_path = Path(profile_file).expanduser().resolve()
+        try:
+            payload = json.loads(profile_path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise RuntimeError(f"Failed to read stop rule profile {profile_path}: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Invalid stop rule profile JSON {profile_path}: {exc}") from exc
+
+        auto_continue = False
+        if isinstance(payload, list):
+            rules_payload = payload
+        elif isinstance(payload, dict):
+            auto_continue = bool(payload.get("autoContinueInternalBreakpoints", False))
+            rules_payload = payload.get("stopRules", [])
+        else:
+            raise RuntimeError("Stop rule profile must be a JSON object or array")
+        return self._coerce_stop_rules(rules_payload, source=str(profile_path)), auto_continue
+
+    def _coerce_stop_rules(self, raw_rules: Any, *, source: str) -> list[StopRule]:
+        if not isinstance(raw_rules, list):
+            raise RuntimeError("stopRules must be a list")
+        return [StopRule.from_mapping(raw_rule, source=source) for raw_rule in raw_rules]
+
+    def _builtin_internal_stop_rules(self) -> list[StopRule]:
+        return [
+            StopRule(
+                name="nvidia-shader-jit-debug-register",
+                action="continue",
+                origin="internalTrap",
+                reason="breakpoint",
+                regex=r"(__jit_debug_register_code|jit-debug-register)",
+                source="builtin:autoContinueInternalBreakpoints",
+            ),
+            StopRule(
+                name="windows-debugger-startup-breakpoint",
+                action="continue",
+                origin="internalTrap",
+                regex=r"(Exception 0x80000003|ntdll\.dll`DbgBreakPoint|DbgBreakPoint)",
+                source="builtin:autoContinueInternalBreakpoints",
+            ),
+        ]
+
     def _emit_execution_event(self, default_reason: str | None = None):
         info = self._ensure_session().process_info()
         state = info.get("state")
@@ -547,29 +731,62 @@ class LLDBDebugAdapter:
             return
 
         stop = info.get("stop") or {}
-        reason = "entry" if default_reason == "entry" else (stop.get("reason") or default_reason or "pause")
+        lldb_reason = stop.get("reason")
+        reason = "entry" if default_reason == "entry" else (lldb_reason or default_reason or "pause")
         if reason in {"signal", "crashed"}:
             reason = "exception"
+        stop_origin = "debuggee"
         if self._pause_requested:
             self._pause_requested = False
             reason = "pause"
+            stop_origin = "manualPause"
+
+        frame = stop.get("frame") if isinstance(stop.get("frame"), dict) else {}
+        stop_context = {
+            "reason": reason,
+            "lldbReason": lldb_reason,
+            "description": stop.get("description"),
+            "module": stop.get("module") or frame.get("module"),
+            "modulePath": frame.get("module_path"),
+            "function": stop.get("function") or frame.get("function"),
+            "frame": frame,
+        }
+        matched_rule = None if stop_origin == "manualPause" else self._match_stop_rule(stop_context)
+        if matched_rule is not None:
+            stop_origin = matched_rule.origin
+
         body = {
             "reason": reason,
             "threadId": info.get("selected_thread_id"),
             "allThreadsStopped": True,
+            "cliAnythingStop": {
+                "origin": stop_origin,
+                "lldbReason": lldb_reason,
+                "module": stop_context["module"],
+                "modulePath": stop_context["modulePath"],
+                "function": stop_context["function"],
+                "description": stop_context["description"],
+            },
         }
+        if frame:
+            body["cliAnythingStop"]["frame"] = frame
+        if matched_rule is not None:
+            body["cliAnythingStop"]["matchedRule"] = matched_rule.to_dap()
         hit_ids = stop.get("hit_breakpoint_ids") or []
         if hit_ids:
             body["hitBreakpointIds"] = hit_ids
         if stop.get("description"):
             body["description"] = stop["description"]
             body["text"] = stop["description"]
-        if self._should_auto_continue_internal_stop(body):
+        if matched_rule is not None and matched_rule.action == "continue":
             self._send_event(
                 "output",
                 {
                     "category": "console",
-                    "output": f"auto-continued internal breakpoint: {self._summarize_stop(body)}\n",
+                    "output": (
+                        f"auto-continued stop rule {matched_rule.name}: "
+                        f"{self._summarize_stop(body)}\n"
+                    ),
                 },
             )
             self._send_continued_event(info.get("selected_thread_id"))
@@ -580,17 +797,11 @@ class LLDBDebugAdapter:
             return
         self._send_event("stopped", body)
 
-    def _should_auto_continue_internal_stop(self, body: dict[str, Any]) -> bool:
-        if not self._auto_continue_internal_breakpoints:
-            return False
-        if body.get("reason") == "pause":
-            return False
-        text = str(body.get("description") or body.get("text") or "")
-        if "jit-debug-register" in text or "__jit_debug_register_code" in text:
-            return True
-        if "Exception 0x80000003" in text and "ntdll.dll`DbgBreakPoint" in text:
-            return True
-        return False
+    def _match_stop_rule(self, stop_context: dict[str, Any]) -> StopRule | None:
+        for rule in self._active_stop_rules:
+            if rule.matches(stop_context):
+                return rule
+        return None
 
     def _summarize_stop(self, body: dict[str, Any]) -> str:
         text = str(body.get("description") or body.get("text") or body.get("reason") or "unknown")
@@ -771,8 +982,9 @@ class LLDBDebugAdapter:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run cli-anything-lldb Debug Adapter Protocol server")
     parser.add_argument("--log-file", default=None, help="Optional file for adapter diagnostics")
+    parser.add_argument("--profile", default=None, help="Optional stop-rule profile JSON loaded at adapter startup")
     args = parser.parse_args(argv)
-    adapter = LLDBDebugAdapter(log_file=args.log_file)
+    adapter = LLDBDebugAdapter(log_file=args.log_file, profile_file=args.profile)
     return adapter.run()
 
 

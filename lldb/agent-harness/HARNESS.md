@@ -79,6 +79,16 @@ Variable references are adapter-local and reset on resume. This keeps stopped
 frame state honest for AI agents and avoids reusing stale LLDB `SBValue`
 objects after execution continues.
 
+Long-running GUI targets can provide DAP stop-rule profiles either with
+`cli-anything-lldb-dap --profile PATH`, `cli-anything-lldb dap --profile PATH`,
+or launch/attach arguments such as `stopRuleProfile` and inline `stopRules`.
+Rules match structured stop context (`reason`, `module`, `function`, `regex`)
+and either classify the stop or auto-continue it. Stopped events expose
+`body.cliAnythingStop.origin` so clients can distinguish manual pauses,
+debugger-internal traps, and ordinary debuggee stops. Profiles are loaded by the
+current adapter process only; running DAP sessions must restart and re-attach or
+re-launch before new code/profile contents take effect.
+
 ## Patterns
 
 1. **Lazy import of LLDB**:
@@ -97,6 +107,10 @@ objects after execution continues.
 7. **Secure persistent daemon**:
    CLI session auth state is written under a per-user directory with restrictive
    permissions and RPC dispatch uses an explicit method allowlist.
+8. **Structured stop classification**:
+   DAP stop handling uses profile-driven rules instead of ad hoc substring
+   checks, while preserving `autoContinueInternalBreakpoints` as a compatibility
+   shortcut for common NVIDIA/Windows internal traps.
 
 ## Dependency Model
 

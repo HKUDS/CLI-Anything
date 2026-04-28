@@ -46,6 +46,9 @@
 - Validate DAP breakpoint mutation during an active continue requests async interrupt and waits for stopped state
 - Validate DAP breakpoint mutation reports a clear timeout when the target does not stop
 - Validate DAP auto-continues known internal JIT/startup breakpoint stops when explicitly enabled
+- Validate structured DAP stop rules can match by module/function/reason/regex and classify internal traps
+- Validate external DAP stop-rule profile files inject target-specific auto-continue rules
+- Validate DAP stopped events distinguish manual pauses, internal traps, and ordinary debuggee stops
 - Validate DAP transcript response/event ordering for initialize, launch, breakpoint setup, and configuration completion
 - Validate DAP `modules` and `exceptionInfo` response shapes
 - Validate DAP `readMemory` base64 encoding and expandable variable references
@@ -160,9 +163,9 @@ python -m pytest cli_anything/lldb/tests -q
 
 ### Result summary
 
-- `test_core.py`: 44 passed
+- `test_core.py`: 46 passed
 - `test_full_e2e.py`: 7 passed, 2 warnings from LLDB SWIG bindings
-- combined default run: 51 passed, 2 warnings from LLDB SWIG bindings
+- combined default run: 53 passed, 2 warnings from LLDB SWIG bindings
 - skip situation: 0 skipped in the current local run; older runs could skip the optional core-load negative-path scenario when `LLDB_TEST_CORE` was unset, but the fixture now creates a local placeholder core path for that negative-path test
 
 ### Notes
@@ -183,3 +186,4 @@ python -m pytest cli_anything/lldb/tests -q
 - Added DAP `loadedSources` and `readMemory` coverage while keeping the harness at version 1.0.0
 - Added DAP variable child expansion, `setVariable`, `modules`, `exceptionInfo`, and transcript ordering coverage while keeping the harness at version 1.0.0
 - Added non-blocking DAP continue, async pause, guarded running-state breakpoint mutation, and internal breakpoint auto-continue coverage
+- Added DAP structured stop-rule profile coverage and `cliAnythingStop` stopped-event metadata for manual pause vs internal trap classification

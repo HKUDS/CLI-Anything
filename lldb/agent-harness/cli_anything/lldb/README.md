@@ -91,12 +91,14 @@ Run the formal stdio DAP server with:
 
 ```bash
 cli-anything-lldb-dap
+cli-anything-lldb-dap --profile /path/to/stop-rules.json
 ```
 
 or through the CLI convenience command:
 
 ```bash
 cli-anything-lldb dap
+cli-anything-lldb dap --profile /path/to/stop-rules.json
 ```
 
 The DAP server owns one in-process `LLDBSession` and writes only DAP frames to
@@ -126,12 +128,43 @@ requests an async interrupt, waits for the continue thread to observe a stopped
 state, and only then mutates LLDB breakpoints. If the process does not stop in
 time, the request fails clearly instead of hanging the DAP loop.
 
-`launch` and `attach` accept the non-standard boolean argument
-`autoContinueInternalBreakpoints`. When enabled, the adapter auto-continues
-known internal JIT/startup breakpoint stops such as NVIDIA
-`__jit_debug_register_code` / `jit-debug-register` and Windows
-`Exception 0x80000003` at ``ntdll.dll`DbgBreakPoint``, while writing a DAP
-`output` event explaining the auto-continue.
+`launch` and `attach` accept non-standard stop-rule controls for noisy GUI
+debuggees:
+
+- `autoContinueInternalBreakpoints`: compatibility boolean that enables built-in
+  rules for NVIDIA `__jit_debug_register_code` / `jit-debug-register` and
+  Windows `Exception 0x80000003` at ``ntdll.dll`DbgBreakPoint``.
+- `stopRules`: inline structured rules with optional `name`, `action`
+  (`stop` or `continue`), `origin`, `reason`, `module`, `function`, and `regex`.
+  Each rule must include at least one matcher, so a profile cannot accidentally
+  classify every stop.
+- `stopRuleProfile` / `stopProfile` / `profile`: external JSON profile path
+  loaded for that launch/attach request.
+
+The DAP process also accepts `--profile` to load a base profile at adapter
+startup. Profiles are JSON objects such as:
+
+```json
+{
+  "autoContinueInternalBreakpoints": true,
+  "stopRules": [
+    {
+      "name": "c4d-nvidia-jit",
+      "action": "continue",
+      "origin": "internalTrap",
+      "module": "nvgpucomp64.dll",
+      "function": "__jit_debug_register_code"
+    }
+  ]
+}
+```
+
+Every DAP `stopped` event includes `body.cliAnythingStop` with
+`origin` (`manualPause`, `internalTrap`, or `debuggee`), LLDB stop reason,
+module/function/frame metadata, and the matched rule when applicable. Running
+`cli-anything-lldb-dap` processes do not hot-load code or profile changes;
+restart the adapter and re-attach/re-launch the target for new rules to take
+effect.
 
 The persistent session daemon now speaks a localhost JSON socket protocol and
 stores its session token in an owner-scoped state file. `memory find` scans in

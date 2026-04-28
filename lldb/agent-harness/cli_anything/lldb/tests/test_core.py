@@ -200,6 +200,7 @@ class TestDAPProtocol:
         assert response["success"] is True
         assert event["event"] == "stopped"
         assert event["body"]["reason"] == "pause"
+        assert event["body"]["cliAnythingStop"]["origin"] == "manualPause"
         fake_session.interrupt_async.assert_called_once()
 
     def test_set_breakpoints_interrupts_active_continue_before_mutation(self):
@@ -276,7 +277,7 @@ class TestDAPProtocol:
         out = io.BytesIO()
         adapter = LLDBDebugAdapter(session_factory=lambda: fake_session)
         adapter._out = out
-        adapter._auto_continue_internal_breakpoints = True
+        adapter._configure_stop_rules({"autoContinueInternalBreakpoints": True})
         adapter._start_continue_thread = MagicMock()
 
         adapter._emit_execution_event(default_reason="breakpoint")
@@ -286,10 +287,110 @@ class TestDAPProtocol:
         stopped_event = read_message(out)
 
         assert output_event["event"] == "output"
-        assert "auto-continued internal breakpoint" in output_event["body"]["output"]
+        assert "auto-continued stop rule nvidia-shader-jit-debug-register" in output_event["body"]["output"]
         assert continued_event["event"] == "continued"
         assert stopped_event is None
         adapter._start_continue_thread.assert_called_once()
+
+    def test_stop_rule_profile_can_auto_continue_structured_internal_stop(self, tmp_path: Path):
+        from cli_anything.lldb.dap import LLDBDebugAdapter, read_message
+
+        profile = tmp_path / "c4d-stop-rules.json"
+        profile.write_text(
+            json.dumps(
+                {
+                    "stopRules": [
+                        {
+                            "name": "c4d-nvidia-jit",
+                            "action": "continue",
+                            "origin": "internalTrap",
+                            "module": "nvgpucomp64.dll",
+                            "function": "__jit_debug_register_code",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        fake_session = MagicMock()
+        fake_session.process_info.return_value = {
+            "state": "stopped",
+            "selected_thread_id": 99,
+            "stop": {
+                "reason": "breakpoint",
+                "description": "driver JIT registration",
+                "hit_breakpoint_ids": [],
+                "frame": {
+                    "module": "nvgpucomp64.dll",
+                    "module_path": "C:/Windows/System32/DriverStore/nvgpucomp64.dll",
+                    "function": "__jit_debug_register_code",
+                },
+            },
+            "exit_status": 0,
+        }
+        out = io.BytesIO()
+        adapter = LLDBDebugAdapter(session_factory=lambda: fake_session, profile_file=str(profile))
+        adapter._out = out
+        adapter._configure_stop_rules({})
+        adapter._start_continue_thread = MagicMock()
+
+        adapter._emit_execution_event(default_reason="breakpoint")
+        out.seek(0)
+        output_event = read_message(out)
+        continued_event = read_message(out)
+        stopped_event = read_message(out)
+
+        assert "auto-continued stop rule c4d-nvidia-jit" in output_event["body"]["output"]
+        assert continued_event["event"] == "continued"
+        assert stopped_event is None
+        adapter._start_continue_thread.assert_called_once()
+
+    def test_structured_stop_rule_marks_internal_trap_without_continuing(self):
+        from cli_anything.lldb.dap import LLDBDebugAdapter, read_message
+
+        fake_session = MagicMock()
+        fake_session.process_info.return_value = {
+            "state": "stopped",
+            "selected_thread_id": 99,
+            "stop": {
+                "reason": "exception",
+                "description": "Exception 0x80000003 at ntdll.dll`DbgBreakPoint",
+                "hit_breakpoint_ids": [],
+                "module": "ntdll.dll",
+                "function": "DbgBreakPoint",
+            },
+            "exit_status": 0,
+        }
+        out = io.BytesIO()
+        adapter = LLDBDebugAdapter(session_factory=lambda: fake_session)
+        adapter._out = out
+        adapter._configure_stop_rules(
+            {
+                "stopRules": [
+                    {
+                        "name": "windows-startup-trap",
+                        "action": "stop",
+                        "origin": "internalTrap",
+                        "reason": "exception",
+                        "module": "ntdll.dll",
+                        "regex": "DbgBreakPoint",
+                    }
+                ]
+            }
+        )
+        adapter._start_continue_thread = MagicMock()
+
+        adapter._emit_execution_event(default_reason="breakpoint")
+        out.seek(0)
+        stopped_event = read_message(out)
+
+        assert stopped_event["event"] == "stopped"
+        stop = stopped_event["body"]["cliAnythingStop"]
+        assert stop["origin"] == "internalTrap"
+        assert stop["module"] == "ntdll.dll"
+        assert stop["function"] == "DbgBreakPoint"
+        assert stop["matchedRule"]["name"] == "windows-startup-trap"
+        adapter._start_continue_thread.assert_not_called()
 
     def test_stack_trace_reports_total_frames(self):
         from cli_anything.lldb.dap import LLDBDebugAdapter, read_message

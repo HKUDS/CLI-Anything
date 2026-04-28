@@ -29,6 +29,7 @@ This is implemented in `utils/lldb_backend.py`.
 
 All core operations return plain dictionaries:
 - process info (`pid`, `state`, `num_threads`)
+- stop info (`reason`, `description`, `module`, `function`, `frame`)
 - frame info (`function`, `file`, `line`, `address`)
 - breakpoints (`id`, `locations`, `condition`)
 - expression result (`type`, `value`, `summary`, `error`)

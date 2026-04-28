@@ -583,11 +583,18 @@ def core_load(ctx, core_path: str):
 
 
 @cli.command("dap")
-def dap_server():
+@click.option("--log-file", default=None, type=click.Path(dir_okay=False), help="Optional file for adapter diagnostics.")
+@click.option("--profile", default=None, type=click.Path(exists=True, dir_okay=False), help="Stop-rule profile JSON.")
+def dap_server(log_file: str | None, profile: str | None):
     """Run a stdio Debug Adapter Protocol server."""
     from cli_anything.lldb.dap import main as dap_main
 
-    dap_main([])
+    args = []
+    if log_file:
+        args.extend(["--log-file", log_file])
+    if profile:
+        args.extend(["--profile", profile])
+    dap_main(args)
 
 
 # ===========================================================================
