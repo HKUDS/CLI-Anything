@@ -784,6 +784,20 @@
       ]
     },
     {
+      "name": "calibre",
+      "display_name": "calibre",
+      "version": "1.0.0",
+      "description": "Ebook library management, metadata editing, export, and format conversion via calibredb/ebook-meta/ebook-convert",
+      "requires": "calibre installed (calibredb, ebook-convert, ebook-meta on PATH)",
+      "homepage": "https://calibre-ebook.com",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=calibre/agent-harness",
+      "entry_point": "cli-anything-calibre",
+      "skill_md": "calibre/agent-harness/cli_anything/calibre/skills/SKILL.md",
+      "category": "office",
+      "contributor": "CLI-Anything-Team",
+      "contributor_url": "https://github.com/HKUDS/CLI-Anything"
+    },
+    {
       "name": "cloudcompare",
       "display_name": "CloudCompare",
       "version": "1.0.0",

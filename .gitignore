@@ -75,6 +75,7 @@
 !/rms/
 !/renderdoc/
 !/cloudcompare/
+!/calibre
 !/openscreen/
 !/QGIS/
 !/n8n/
@@ -82,6 +83,7 @@
 !/unrealinsights/
 !/nsight-graphics/
 !/lldb/
+
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
