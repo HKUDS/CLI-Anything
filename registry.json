@@ -991,6 +991,25 @@
               "url": "https://github.com/collectivewinca"
             }
           ]
+        },
+        {
+          "name": "hacker-feeds-cli",
+          "display_name": "Hacker Feeds CLI",
+          "version": "1.0.0",
+          "description": "CLI for GitHub Trending, Hacker News, Reddit, Product Hunt & V2EX feeds",
+          "requires": "Python 3.10+, Node.js (hf CLI)",
+          "homepage": "https://github.com/collectivewinca/hacker-feeds-cli",
+          "source_url": "https://github.com/collectivewinca/hacker-feeds-cli",
+          "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git#subdirectory=cli_anything",
+          "entry_point": "cli-anything-hacker-feeds-cli",
+          "skill_md": "https://github.com/collectivewinca/hacker-feeds-cli/blob/main/cli_anything/hacker_feeds_cli/skills/SKILL.md",
+          "category": "search",
+          "contributors": [
+            {
+              "name": "collectivewinca",
+              "url": "https://github.com/collectivewinca"
+            }
+          ]
         }
   ]
 }
