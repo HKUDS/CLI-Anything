@@ -80,6 +80,7 @@
 !/n8n/
 !/obsidian/
 !/unrealinsights/
+!/firefly-iii/
 !/nsight-graphics/
 !/lldb/
 
@@ -219,6 +220,7 @@
 !/safari/
 !/safari/agent-harness/
 !/unrealinsights/agent-harness/
+!/firefly-iii/agent-harness/
 !/nsight-graphics/agent-harness/
 !/lldb/agent-harness/
 
