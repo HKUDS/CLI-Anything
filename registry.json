@@ -954,24 +954,62 @@
         }
       ]
     },
-    {
-      "name": "openclaw-macro",
-      "display_name": "OpenClaw Macro System",
-      "version": "1.0.0",
-      "description": "Layered CLI that converts GUI workflows into parameterized, agent-callable macros — with backend routing across native APIs, file transforms, accessibility controls, and compiled GUI replay",
-      "requires": null,
-      "homepage": "https://github.com/HKUDS/CLI-Anything",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openclaw-skill/agent-harness",
-      "entry_point": "cli-anything-openclaw",
-      "skill_md": "openclaw-skill/agent-harness/cli_anything/openclaw/skills/SKILL.md",
-      "category": "automation",
-      "contributors": [
         {
-          "name": "haorui-harry",
-          "url": "https://github.com/haorui-harry"
+          "name": "openclaw-macro",
+          "display_name": "OpenClaw Macro System",
+          "version": "1.0.0",
+          "description": "Layered CLI that converts GUI workflows into parameterized, agent-callable macros — with backend routing across native APIs, file transforms, accessibility controls, and compiled GUI replay",
+          "requires": null,
+          "homepage": "https://github.com/HKUDS/CLI-Anything",
+          "source_url": null,
+          "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openclaw-skill/agent-harness",
+          "entry_point": "cli-anything-openclaw",
+          "skill_md": "openclaw-skill/agent-harness/cli_anything/openclaw/skills/SKILL.md",
+          "category": "automation",
+          "contributors": [
+            {
+              "name": "haorui-harry",
+              "url": "https://github.com/haorui-harry"
+            }
+          ]
+        },
+        {
+          "name": "ve-twini",
+          "display_name": "VE Twini",
+          "version": "1.0.0",
+          "description": "Unified Twitter/X CLI bridging bird (GraphQL API) and opencli (browser automation)",
+          "requires": "Python 3.10+, bird (Twitter API), opencli",
+          "homepage": "https://github.com/collectivewinca/ve-twini",
+          "source_url": "https://github.com/collectivewinca/ve-twini",
+          "install_cmd": "pip install git+https://github.com/collectivewinca/ve-twini.git#subdirectory=agent-harness",
+          "entry_point": "cli-anything-ve-twini",
+          "skill_md": "https://github.com/collectivewinca/ve-twini/blob/main/agent-harness/cli_anything/ve_twini/skills/SKILL.md",
+          "category": "social",
+          "contributors": [
+            {
+              "name": "collectivewinca",
+              "url": "https://github.com/collectivewinca"
+            }
+          ]
+        },
+        {
+          "name": "hacker-feeds-cli",
+          "display_name": "Hacker Feeds CLI",
+          "version": "1.0.0",
+          "description": "CLI for GitHub Trending, Hacker News, Reddit, Product Hunt & V2EX feeds",
+          "requires": "Python 3.10+, Node.js (hf CLI)",
+          "homepage": "https://github.com/collectivewinca/hacker-feeds-cli",
+          "source_url": "https://github.com/collectivewinca/hacker-feeds-cli",
+          "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git#subdirectory=cli_anything",
+          "entry_point": "cli-anything-hacker-feeds-cli",
+          "skill_md": "https://github.com/collectivewinca/hacker-feeds-cli/blob/main/cli_anything/hacker_feeds_cli/skills/SKILL.md",
+          "category": "search",
+          "contributors": [
+            {
+              "name": "collectivewinca",
+              "url": "https://github.com/collectivewinca"
+            }
+          ]
         }
-      ]
-    }
   ]
 }
