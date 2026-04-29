@@ -241,9 +241,17 @@ Run: `npx @apireno/domshell --version` (first run downloads the package)
 - Ensure Chrome is running
 - Install DOMShell extension from Chrome Web Store
 - Check that DOMShell is enabled in Chrome
+- Verify `DOMSHELL_TOKEN` matches the token used by the running DOMShell server
 
 ### Commands hang on first use
 First `npx` call downloads DOMShell package (10-50 MB). Subsequent calls are faster. Use `--daemon` mode for persistent connection.
+
+If the server is unreachable or auth token is wrong, MCP calls now fail with timeout instead of hanging forever.
+Set timeout (seconds) via:
+
+```bash
+export CLI_ANYTHING_BROWSER_MCP_TIMEOUT=20
+```
 
 ## Architecture
 

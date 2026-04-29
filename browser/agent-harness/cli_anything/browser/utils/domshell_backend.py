@@ -16,7 +16,7 @@ import asyncio
 import os
 import subprocess
 import shutil
-from typing import Any, Optional
+from typing import Any, Awaitable, Optional
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -26,6 +26,11 @@ from mcp.client.stdio import stdio_client
 #   DOMSHELL_TOKEN  — auth token (required, must match the running server)
 #   DOMSHELL_PORT   — MCP HTTP port of the running server (default: 3001)
 DEFAULT_SERVER_CMD = "npx"
+DEFAULT_TOOL_TIMEOUT_SECONDS = 20.0
+
+
+class MCPToolTimeoutError(RuntimeError):
+    """Raised when a DOMShell MCP operation exceeds configured timeout."""
 
 
 def _build_server_args() -> list[str]:
@@ -44,6 +49,32 @@ def _build_server_args() -> list[str]:
         "--port", port,
         "--token", token,
     ]
+
+
+def _get_tool_timeout_seconds() -> float:
+    """Read MCP tool timeout (seconds) from env with safe bounds."""
+    raw = os.environ.get(
+        "CLI_ANYTHING_BROWSER_MCP_TIMEOUT",
+        str(DEFAULT_TOOL_TIMEOUT_SECONDS),
+    )
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TOOL_TIMEOUT_SECONDS
+    return max(1.0, parsed)
+
+
+async def _await_with_timeout(coro: Awaitable[Any], operation: str) -> Any:
+    """Await an MCP operation with timeout and actionable error text."""
+    timeout_seconds = _get_tool_timeout_seconds()
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout_seconds)
+    except asyncio.TimeoutError as e:
+        raise MCPToolTimeoutError(
+            "DOMShell MCP request timed out after "
+            f"{timeout_seconds:.1f}s during {operation}. "
+            "Verify DOMSHELL_TOKEN and that the DOMShell server is reachable."
+        ) from e
 
 # Daemon mode: persistent MCP connection
 _daemon_session: Optional[ClientSession] = None
@@ -133,9 +164,16 @@ async def _call_tool(
     if use_daemon and _daemon_session is not None:
         # Use persistent daemon connection
         try:
-            result = await _daemon_session.call_tool(tool_name, arguments)
+            result = await _await_with_timeout(
+                _daemon_session.call_tool(tool_name, arguments),
+                f"{tool_name} (daemon)",
+            )
             return result
-        except Exception as e:
+        except MCPToolTimeoutError:
+            # Do not auto-retry this tool call, but reset daemon for future recovery.
+            await _stop_daemon()
+            raise
+        except Exception:
             # Daemon died, fall back to spawning new server
             await _stop_daemon()
 
@@ -148,9 +186,22 @@ async def _call_tool(
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
+                await _await_with_timeout(session.initialize(), "session initialize")
+                result = await _await_with_timeout(
+                    session.call_tool(tool_name, arguments),
+                    tool_name,
+                )
                 return result
+    except RuntimeError as e:
+        # Pass through MCPToolTimeoutError unchanged so callers can recover;
+        # but wrap other RuntimeErrors with actionable context below.
+        if isinstance(e, MCPToolTimeoutError):
+            raise
+        raise RuntimeError(
+            f"DOMShell MCP call failed: {e}\n"
+            f"Ensure Chrome is running with DOMShell extension installed.\n"
+            f"Chrome Web Store: https://chromewebstore.google.com/detail/domshell"
+        ) from e
     except Exception as e:
         raise RuntimeError(
             f"DOMShell MCP call failed: {e}\n"
@@ -188,7 +239,7 @@ async def _start_daemon() -> bool:
         _daemon_read, _daemon_write = await _daemon_client_context.__aenter__()
         _daemon_session = ClientSession(_daemon_read, _daemon_write)
         await _daemon_session.__aenter__()
-        await _daemon_session.initialize()
+        await _await_with_timeout(_daemon_session.initialize(), "daemon initialize")
         return True
     except Exception as e:
         _daemon_session = None
@@ -199,18 +250,28 @@ async def _start_daemon() -> bool:
 
 
 async def _stop_daemon() -> None:
-    """Stop persistent daemon mode."""
+    """Stop persistent daemon mode.
+
+    Cleanup is bounded to avoid hanging if the daemon transport is wedged.
+    """
     global _daemon_session, _daemon_read, _daemon_write, _daemon_client_context
 
     if _daemon_session is None:
         return
 
+    cleanup_timeout = float(os.environ.get("DOMSHELL_DAEMON_STOP_TIMEOUT", "5.0"))
     try:
-        await _daemon_session.__aexit__(None, None, None)
+        await asyncio.wait_for(
+            _daemon_session.__aexit__(None, None, None),
+            timeout=cleanup_timeout,
+        )
         if _daemon_client_context:
-            await _daemon_client_context.__aexit__(None, None, None)
-    except Exception:
-        pass  # Ignore cleanup errors
+            await asyncio.wait_for(
+                _daemon_client_context.__aexit__(None, None, None),
+                timeout=cleanup_timeout,
+            )
+    except (Exception, asyncio.TimeoutError):
+        pass  # Ignore cleanup errors; we're discarding the session anyway
     finally:
         _daemon_session = None
         _daemon_read = None
@@ -395,8 +456,19 @@ def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
     async def _focus_and_type():
         global _daemon_session
         if use_daemon and _daemon_session is not None:
-            await _daemon_session.call_tool("domshell_focus", {"name": path})
-            return await _daemon_session.call_tool("domshell_type", {"text": text})
+            try:
+                await _await_with_timeout(
+                    _daemon_session.call_tool("domshell_focus", {"name": path}),
+                    "domshell_focus (daemon)",
+                )
+                return await _await_with_timeout(
+                    _daemon_session.call_tool("domshell_type", {"text": text}),
+                    "domshell_type (daemon)",
+                )
+            except MCPToolTimeoutError:
+                # Reset daemon so subsequent commands can reconnect cleanly.
+                await _stop_daemon()
+                raise
 
         server_params = StdioServerParameters(
             command=DEFAULT_SERVER_CMD,
@@ -404,9 +476,15 @@ def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()
-                await session.call_tool("domshell_focus", {"name": path})
-                return await session.call_tool("domshell_type", {"text": text})
+                await _await_with_timeout(session.initialize(), "session initialize")
+                await _await_with_timeout(
+                    session.call_tool("domshell_focus", {"name": path}),
+                    "domshell_focus",
+                )
+                return await _await_with_timeout(
+                    session.call_tool("domshell_type", {"text": text}),
+                    "domshell_type",
+                )
 
     return asyncio.run(_focus_and_type())
 
