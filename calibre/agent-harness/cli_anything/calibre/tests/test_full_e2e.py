@@ -199,6 +199,21 @@ class TestLibraryOperations(CalibreTestMixin, unittest.TestCase):
         self.assertIn("title", book)
         print(f"\n  list_books[0]: {book}")
 
+    def test_list_books_custom_fields(self):
+        """list_books with explicit fields returns exactly those fields per book."""
+        from cli_anything.calibre.core.library import list_books
+        requested = ["id", "title", "tags"]
+        books = list_books(self.lib_dir, fields=requested)
+        self.assertGreater(len(books), 0)
+        book = books[0]
+        # Requested fields must be present
+        for field in requested:
+            self.assertIn(field, book, f"Missing field: {field}")
+        # Non-requested fields must be absent
+        for field in ("authors", "series", "rating"):
+            self.assertNotIn(field, book, f"Unexpected field: {field}")
+        print(f"\n  list_books(fields={requested})[0]: {book}")
+
     def test_search_books(self):
         from cli_anything.calibre.core.library import search_books
         ids = search_books(self.lib_dir, "title:Foundation")

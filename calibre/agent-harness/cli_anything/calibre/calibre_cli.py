@@ -264,15 +264,20 @@ def books_list(ctx, search, sort, limit, fields):
         if not book_list:
             click.echo("  No books found.")
         else:
-            click.echo(f"  {'ID':<5} {'Title':<40} {'Authors':<30} {'Formats'}")
-            click.echo(f"  {'─'*5} {'─'*40} {'─'*30} {'─'*20}")
+            # Determine columns from actual returned fields (id is always first)
+            actual_fields = list(book_list[0].keys())
+            non_id_fields = [f for f in actual_fields if f != "id"]
+
+            # Build header dynamically
+            header = f"  {'ID':<5} " + " ".join(f"{f.capitalize():<30}" for f in non_id_fields)
+            sep = f"  {'─'*5} " + " ".join(f"{'─'*30}" for _ in non_id_fields)
+            click.echo(header)
+            click.echo(sep)
             for b in book_list:
-                click.echo(
-                    f"  {b.get('id', ''):<5} "
-                    f"{str(b.get('title', ''))[:40]:<40} "
-                    f"{str(b.get('authors', ''))[:30]:<30} "
-                    f"{b.get('formats', '')}"
+                row = f"  {b.get('id', ''):<5} " + " ".join(
+                    f"{str(b.get(f, ''))[:30]:<30}" for f in non_id_fields
                 )
+                click.echo(row)
 
 
 @books.command("search")
