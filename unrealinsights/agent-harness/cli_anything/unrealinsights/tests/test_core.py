@@ -367,6 +367,12 @@ class TestExportCore:
             counter="*" if exporter == "counter-values" else None,
         )
         assert command.startswith(expected)
+        if exporter == "counter-values":
+            assert "-counter=*" in command
+            assert '-counter="' not in command
+        if exporter in ("timing-events", "timer-stats", "timer-callees"):
+            assert "-threads=GameThread" in command
+            assert "-timers=*" in command
 
     def test_build_rsp_exec_command(self, tmp_path):
         from cli_anything.unrealinsights.core.export import build_rsp_exec_command
@@ -411,6 +417,69 @@ class TestExportCore:
         assert f'"{resolved}"' not in command
         assert resolved in command
 
+    @patch("cli_anything.unrealinsights.core.export.backend.parse_unreal_log")
+    @patch("cli_anything.unrealinsights.core.export.backend.run_process")
+    def test_execute_export_classifies_no_output(self, mock_run, mock_log, tmp_path):
+        from cli_anything.unrealinsights.core.export import execute_export
+
+        mock_run.return_value = {
+            "command": "UnrealInsights.exe",
+            "waited": True,
+            "timed_out": False,
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "pid": None,
+        }
+        mock_log.return_value = {
+            "path": str(tmp_path / "export.log"),
+            "exists": True,
+            "warnings": [],
+            "errors": [],
+            "tail": [],
+        }
+
+        result = execute_export(
+            "C:/UE/UnrealInsights.exe",
+            "C:/trace.utrace",
+            "counter-values",
+            str(tmp_path / "counter_values.csv"),
+        )
+        assert result["output_status"] == "no_output"
+        assert result["succeeded"] is False
+        assert "without materializing" in result["status_message"]
+
+    @patch("cli_anything.unrealinsights.core.export.backend.parse_unreal_log")
+    @patch("cli_anything.unrealinsights.core.export.backend.run_process")
+    def test_execute_export_classifies_exporter_error(self, mock_run, mock_log, tmp_path):
+        from cli_anything.unrealinsights.core.export import execute_export
+
+        mock_run.return_value = {
+            "command": "UnrealInsights.exe",
+            "waited": True,
+            "timed_out": False,
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "pid": None,
+        }
+        mock_log.return_value = {
+            "path": str(tmp_path / "export.log"),
+            "exists": True,
+            "warnings": [],
+            "errors": ["TimingInsights: Error: Export failed."],
+            "tail": [],
+        }
+
+        result = execute_export(
+            "C:/UE/UnrealInsights.exe",
+            "C:/trace.utrace",
+            "threads",
+            str(tmp_path / "threads.csv"),
+        )
+        assert result["output_status"] == "exporter_error"
+        assert result["status_message"] == "TimingInsights: Error: Export failed."
+
     def test_expected_outputs_from_rsp(self, tmp_path):
         from cli_anything.unrealinsights.core.export import expected_outputs_from_rsp
 
@@ -429,12 +498,253 @@ class TestExportCore:
         assert str((tmp_path / "threads.csv").resolve()) in outputs
         assert str((tmp_path / "timers.csv").resolve()) in outputs
 
+    def test_normalize_response_file_lines_unquotes_filename_without_spaces(self, tmp_path):
+        from cli_anything.unrealinsights.core.export import normalize_response_file_lines
+
+        output = tmp_path / "threads.csv"
+        lines = [f'TimingInsights.ExportThreads "{output}"']
+        normalized = normalize_response_file_lines(lines, insights_version="5.5.4")
+        assert normalized[0] == f"TimingInsights.ExportThreads {output.resolve()}"
+
+    def test_normalized_response_file_path_writes_temp_file(self, tmp_path):
+        from cli_anything.unrealinsights.core.export import normalized_response_file_path
+
+        output = tmp_path / "threads.csv"
+        rsp = tmp_path / "exports.rsp"
+        rsp.write_text(f'TimingInsights.ExportThreads "{output}"\n', encoding="utf-8")
+        normalized_path = normalized_response_file_path(str(rsp), insights_version="5.5.4")
+        assert normalized_path != str(rsp.resolve())
+        assert f"TimingInsights.ExportThreads {output.resolve()}" in Path(normalized_path).read_text(encoding="utf-8")
+        Path(normalized_path).unlink()
+
     def test_collect_materialized_outputs_placeholder(self, tmp_path):
         from cli_anything.unrealinsights.core.export import collect_materialized_outputs
 
         (tmp_path / "stats_GameThread.csv").write_text("ok", encoding="utf-8")
         outputs = collect_materialized_outputs(str(tmp_path / "stats_{region}.csv"))
         assert str((tmp_path / "stats_GameThread.csv").resolve()) in outputs
+
+
+class TestStoreCore:
+    def test_list_trace_files_includes_ucache_and_live_flag(self, tmp_path):
+        from cli_anything.unrealinsights.core.store import list_trace_files
+
+        trace_dir = tmp_path / "Store" / "001"
+        trace_dir.mkdir(parents=True)
+        trace = trace_dir / "session.ucache"
+        trace.write_text("trace", encoding="utf-8")
+
+        result = list_trace_files(str(tmp_path / "Store"), live_window_seconds=3600)
+        assert result["trace_count"] == 1
+        assert result["traces"][0]["extension"] == ".ucache"
+        assert result["traces"][0]["is_live_candidate"] is True
+
+    def test_latest_trace_file(self, tmp_path):
+        from cli_anything.unrealinsights.core.store import latest_trace_file
+
+        store = tmp_path / "Store"
+        store.mkdir()
+        old_trace = store / "old.utrace"
+        new_trace = store / "new.utrace"
+        old_trace.write_text("old", encoding="utf-8")
+        new_trace.write_text("new", encoding="utf-8")
+        os.utime(old_trace, (1, 1))
+
+        result = latest_trace_file(str(store))
+        assert result["latest"]["path"] == str(new_trace.resolve())
+
+    @patch("cli_anything.unrealinsights.core.store.backend.resolve_trace_server_exe")
+    def test_trace_store_info(self, mock_resolve, tmp_path, monkeypatch):
+        from cli_anything.unrealinsights.core.store import trace_store_info
+
+        trace_root = tmp_path / "Trace"
+        store = trace_root / "Store"
+        store.mkdir(parents=True)
+        monkeypatch.setenv("UNREAL_TRACE_ROOT", str(trace_root))
+        mock_resolve.return_value = {"available": False, "path": None, "error": "missing"}
+
+        result = trace_store_info()
+        assert result["store_dir"] == str(store)
+        assert result["store_exists"] is True
+
+
+class TestLiveCore:
+    @patch("cli_anything.unrealinsights.core.live.subprocess.run")
+    def test_list_unreal_processes_windows_json(self, mock_run):
+        from cli_anything.unrealinsights.core.live import list_unreal_processes
+
+        mock_run.return_value = type(
+            "Result",
+            (),
+            {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    [
+                        {
+                            "Name": "UnrealEditor.exe",
+                            "ProcessId": 100,
+                            "ExecutablePath": "C:/UE/UnrealEditor.exe",
+                            "CommandLine": "UnrealEditor.exe C:/Game.uproject",
+                            "CreationDate": "now",
+                        },
+                        {
+                            "Name": "UnrealInsights.exe",
+                            "ProcessId": 200,
+                            "ExecutablePath": "C:/UE/UnrealInsights.exe",
+                            "CommandLine": "UnrealInsights.exe",
+                            "CreationDate": "now",
+                        },
+                    ]
+                ),
+            },
+        )()
+
+        with patch("cli_anything.unrealinsights.core.live.os.name", "nt"):
+            result = list_unreal_processes()
+        assert result["process_count"] == 2
+        assert {process["role"] for process in result["processes"]} == {"editor", "insights"}
+
+    def test_live_exec_requires_backend(self, monkeypatch):
+        from cli_anything.unrealinsights.core.live import execute_live_command
+
+        monkeypatch.delenv("UNREALINSIGHTS_LIVE_EXEC", raising=False)
+        with pytest.raises(RuntimeError, match="Live control backend unavailable"):
+            execute_live_command(100, "Trace.Status", backend_command=None)
+
+    @patch("cli_anything.unrealinsights.core.live.backend.run_process")
+    def test_live_exec_uses_template(self, mock_run, monkeypatch):
+        from cli_anything.unrealinsights.core.live import execute_live_command
+
+        monkeypatch.delenv("UNREALINSIGHTS_LIVE_EXEC", raising=False)
+        mock_run.return_value = {
+            "command": ["sender"],
+            "waited": True,
+            "timed_out": False,
+            "exit_code": 0,
+            "stdout": "ok",
+            "stderr": "",
+            "pid": None,
+        }
+
+        result = execute_live_command(100, "Trace.Status", backend_command='sender --pid {pid} --cmd "{cmd}"')
+        assert result["succeeded"] is True
+        assert result["live_command"] == "Trace.Status"
+
+
+class TestGuiCore:
+    def test_build_gui_command_has_no_headless_flags(self, tmp_path):
+        from cli_anything.unrealinsights.core.gui import build_gui_command
+
+        exe = tmp_path / "UnrealInsights.exe"
+        trace = tmp_path / "session.utrace"
+        exe.write_text("x", encoding="utf-8")
+        trace.write_text("x", encoding="utf-8")
+        command = build_gui_command(str(exe), str(trace))
+        assert "-NoUI" not in command
+        assert "-AutoQuit" not in command
+        assert any(arg.startswith("-OpenTraceFile=") for arg in command)
+
+    @patch("cli_anything.unrealinsights.core.gui.backend.run_process")
+    def test_open_gui_keeps_running(self, mock_run, tmp_path):
+        from cli_anything.unrealinsights.core.gui import open_gui
+
+        exe = tmp_path / "UnrealInsights.exe"
+        exe.write_text("x", encoding="utf-8")
+        mock_run.return_value = {
+            "command": [str(exe)],
+            "waited": False,
+            "timed_out": False,
+            "exit_code": None,
+            "stdout": None,
+            "stderr": None,
+            "pid": 321,
+        }
+        result = open_gui(str(exe))
+        assert result["pid"] == 321
+        assert result["kept_running"] is True
+
+
+class TestAnalyzeCore:
+    def test_summarize_exports_from_synthetic_csv(self, tmp_path):
+        from cli_anything.unrealinsights.core.analyze import summarize_exports
+
+        (tmp_path / "timer_stats.csv").write_text(
+            "\n".join(
+                [
+                    "Timer Name,Thread,Total Time,Count",
+                    "Tick,GameThread,12.5,3",
+                    "WaitForTasks,RenderThread,20.0,2",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "counter_values.csv").write_text(
+            "\n".join(
+                [
+                    "Counter,Value",
+                    "FrameTime,33.3",
+                    "FrameTime,16.6",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = summarize_exports(str(tmp_path), limit=2)
+        assert result["succeeded"] is True
+        assert result["summary"]["top_timers"][0]["name"] == "WaitForTasks"
+        assert result["summary"]["focus_threads"]["GameThread"][0]["name"] == "Tick"
+        assert result["summary"]["counter_peaks"][0]["name"] == "FrameTime"
+        diagnostics = result["summary"]["diagnostics"]
+        assert diagnostics["primary_hotspot"]["name"] == "WaitForTasks"
+        assert diagnostics["wait_pressure"] == "present"
+        assert diagnostics["counter_anomaly_count"] == 1
+
+    def test_summarize_exports_reports_export_status(self, tmp_path):
+        from cli_anything.unrealinsights.core.analyze import summarize_exports
+
+        (tmp_path / "timer_stats.csv").write_text("Timer Name,Total Time\nTick,1.0\n", encoding="utf-8")
+        result = summarize_exports(
+            str(tmp_path),
+            export_results=[
+                {
+                    "exporter": "timer-stats",
+                    "output_status": "ok",
+                    "succeeded": True,
+                    "output_files": [str(tmp_path / "timer_stats.csv")],
+                    "status_message": "ok",
+                    "log_path": "timer_stats.log",
+                },
+                {
+                    "exporter": "counter-values",
+                    "output_status": "no_output",
+                    "succeeded": False,
+                    "output_files": [],
+                    "status_message": "no data",
+                    "log_path": "counter_values.log",
+                },
+            ],
+        )
+        assert result["export_status"][1]["status"] == "no_output"
+        assert result["summary"]["diagnostics"]["export_status_counts"]["ok"] == 1
+        assert result["summary"]["diagnostics"]["export_status_counts"]["no_output"] == 1
+
+    @patch("cli_anything.unrealinsights.core.analyze.execute_export")
+    def test_analyze_summary_runs_export_bundle(self, mock_export, tmp_path):
+        from cli_anything.unrealinsights.core.analyze import analyze_summary
+
+        def _fake_export(_exe, _trace, exporter, output_path, **_kwargs):
+            if exporter == "timer-stats":
+                Path(output_path).write_text("Timer Name,Total Time\nTick,1.0\n", encoding="utf-8")
+            elif exporter == "counter-values":
+                Path(output_path).write_text("Counter,Value\nFrameTime,16.0\n", encoding="utf-8")
+            else:
+                Path(output_path).write_text("Name\nx\n", encoding="utf-8")
+            return {"exporter": exporter, "output_files": [output_path], "succeeded": True}
+
+        mock_export.side_effect = _fake_export
+        result = analyze_summary("C:/UE/UnrealInsights.exe", "C:/trace.utrace", str(tmp_path))
+        assert result["succeeded"] is True
+        assert mock_export.call_count == 5
 
 
 class TestCLIHelp:
@@ -450,7 +760,7 @@ class TestCLIHelp:
         from cli_anything.unrealinsights.unrealinsights_cli import cli
 
         runner = CliRunner()
-        for group in ("backend", "trace", "capture", "export", "batch"):
+        for group in ("backend", "trace", "store", "capture", "live", "gui", "export", "batch", "analyze"):
             result = runner.invoke(cli, [group, "--help"])
             assert result.exit_code == 0, f"{group} help failed"
 
@@ -593,6 +903,57 @@ class TestCLIJsonErrors:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["snapshot_exists"] is True
+
+    @patch("cli_anything.unrealinsights.unrealinsights_cli.trace_store_info")
+    def test_store_info_json(self, mock_store_info):
+        from cli_anything.unrealinsights.unrealinsights_cli import cli
+
+        mock_store_info.return_value = {
+            "trace_root": "C:/Trace",
+            "trace_root_exists": True,
+            "store_dir": "C:/Trace/Store",
+            "store_exists": True,
+            "trace_file_count": 0,
+            "trace_server": {"available": False, "error": "missing"},
+            "watch_folders": ["C:/Trace/Store"],
+            "server_logs": [],
+        }
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "store", "info"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["store_exists"] is True
+
+    def test_live_exec_json_backend_unavailable(self, monkeypatch):
+        from cli_anything.unrealinsights.unrealinsights_cli import cli
+
+        monkeypatch.delenv("UNREALINSIGHTS_LIVE_EXEC", raising=False)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "live", "exec", "--pid", "1234", "Trace.Status"])
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert "Live control backend unavailable" in data["error"]
+
+    @patch("cli_anything.unrealinsights.unrealinsights_cli.gui_status")
+    def test_gui_status_json(self, mock_gui_status):
+        from cli_anything.unrealinsights.unrealinsights_cli import cli
+
+        mock_gui_status.return_value = {"running": False, "process_count": 0, "processes": []}
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "gui", "status"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["running"] is False
+
+    def test_analyze_summary_skip_export_json(self, tmp_path):
+        from cli_anything.unrealinsights.unrealinsights_cli import cli
+
+        (tmp_path / "timer_stats.csv").write_text("Timer Name,Total Time\nTick,1.0\n", encoding="utf-8")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "analyze", "summary", "--skip-export", "--out", str(tmp_path)])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["summary"]["top_timers"][0]["name"] == "Tick"
 
 
 class TestREPLSessionState:
