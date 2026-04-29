@@ -12,7 +12,7 @@ All heavy lifting is done by the **actual Calibre binaries**:
 
 | Task | Tool | Command Pattern |
 |------|------|----------------|
-| Library operations | `calibredb` | `calibredb <cmd> --library-path <lib>` |
+| Library operations | `calibredb` | `calibredb --with-library <lib> <cmd>` |
 | Format conversion | `ebook-convert` | `ebook-convert input.epub output.mobi` |
 | File metadata | `ebook-meta` | `ebook-meta book.epub --field value` |
 

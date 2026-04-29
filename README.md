@@ -873,7 +873,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td>E-book Library Management</td>
 <td><code>cli-anything-calibre</code></td>
 <td>calibredb + ebook-convert + ebook-meta</td>
-<td align="center">✅ <a href="calibre/agent-harness/">38</a></td>
+<td align="center">✅ <a href="calibre/agent-harness/">58</a></td>
 </tr>
 <tr>
 <td align="center"><strong>📝 <a href="mubu/agent-harness/">Mubu</a></strong></td>

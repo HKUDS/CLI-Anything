@@ -13,7 +13,7 @@ wrapping the real Calibre tools (`calibredb`, `ebook-convert`, `ebook-meta`).
 
 | File | Tests Planned | Description |
 |------|--------------|-------------|
-| `test_core.py` | 30 | Unit tests: synthetic data, no external deps, no Calibre needed |
+| `test_core.py` | 38 | Unit tests: synthetic data, no external deps, no Calibre needed |
 | `test_full_e2e.py` | 20 | E2E tests: real Calibre library operations + subprocess CLI tests |
 
 ---
@@ -42,7 +42,7 @@ wrapping the real Calibre tools (`calibredb`, `ebook-convert`, `ebook-meta`).
 | `test_parse_opf_bad_xml` | Handles malformed XML without crashing |
 | `test_settable_fields_set` | SETTABLE_FIELDS contains all expected fields |
 | `test_parse_opf_multiple_authors` | Multiple dc:creator elements parsed as list |
-| `test_parse_opf_no_namespace` | Handles OPF without explicit namespace declarations |
+| `test_parse_opf_no_tags` | Handles OPF without dc:subject/tag elements |
 
 ### `core/custom.py` — 5 tests
 

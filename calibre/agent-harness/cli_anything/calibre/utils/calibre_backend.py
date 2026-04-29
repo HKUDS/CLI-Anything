@@ -82,7 +82,7 @@ def run_calibredb(
     timeout: int = 120,
 ) -> dict[str, Any]:
     """
-    Run calibredb with the given args and optional --library-path.
+    Run calibredb with the given args and optional --with-library.
 
     Returns dict with stdout, stderr, returncode.
     Raises RuntimeError on non-zero exit.

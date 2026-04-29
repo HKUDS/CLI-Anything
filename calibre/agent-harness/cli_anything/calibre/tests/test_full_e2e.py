@@ -141,10 +141,9 @@ class CalibreTestMixin:
     def setUpClass(cls):
         calibredb = shutil.which("calibredb")
         if not calibredb:
-            raise RuntimeError(
-                "calibredb not found in PATH.\n"
-                "Calibre is a hard dependency — install it:\n"
-                "  sudo apt-get install calibre"
+            raise unittest.SkipTest(
+                "calibredb not found in PATH. Install Calibre to run E2E tests "
+                "(e.g. `sudo apt-get install calibre`)."
             )
 
         cls.tmp_root = tempfile.mkdtemp(prefix="cli-anything-calibre-test-")
@@ -394,7 +393,7 @@ class TestCLISubprocess(unittest.TestCase):
     def setUpClass(cls):
         calibredb = shutil.which("calibredb")
         if not calibredb:
-            raise RuntimeError(
+            raise unittest.SkipTest(
                 "calibredb not found. Calibre is required for E2E tests."
             )
         cls.tmp = tempfile.mkdtemp(prefix="cli-anything-calibre-subprocess-")
