@@ -37,6 +37,40 @@ cli-hub update gimp
 cli-hub uninstall gimp
 ```
 
+## Preview Viewer
+
+`cli-hub` also includes the generic preview consumer for preview-capable
+harnesses.
+
+Use this split:
+
+- `cli-anything-<software> preview ...` creates or updates preview state
+- `cli-hub previews ...` inspects or opens that existing preview state
+
+Canonical viewer commands:
+
+```bash
+# Inspect an existing preview bundle or live session
+cli-hub previews inspect /path/to/bundle-or-session
+
+# Render HTML for a bundle or live session
+cli-hub previews html /path/to/bundle-or-session -o page.html
+
+# Watch a live session over localhost
+cli-hub previews watch /path/to/session --open --poll-ms 1500
+
+# Open a bundle or live session directly in a browser
+cli-hub previews open /path/to/bundle-or-session
+```
+
+For live sessions, `cli-hub previews` reads:
+
+- `session.json` for the current head
+- `trajectory.json` for the command-to-preview history
+- the current bundle manifest and artifacts
+
+This command group never renders or publishes previews by itself.
+
 ## What gets installed
 
 Each CLI harness is a standalone Python package that wraps a real application (GIMP, Blender, etc.) with a stateful command-line interface. Every harness supports:
@@ -54,6 +88,8 @@ cli-hub is designed to be agent-friendly. AI coding agents can:
 2. `cli-hub search <keyword>` or `cli-hub list --json` to discover tools
 3. `cli-hub install <name>` to install what they need
 4. Use `--json` output for structured data parsing
+5. For preview-capable harnesses, call `cli-anything-<software> preview ... --json`
+   first, then inspect returned bundle/session paths with `cli-hub previews ...`
 
 ## Available categories
 
@@ -70,7 +106,7 @@ cli-hub search blender --json
 
 ## Analytics
 
-cli-hub sends anonymous install/uninstall events to help track adoption (via [Umami](https://umami.is)). No personal data is collected.
+cli-hub sends anonymous usage events to help track adoption. The default provider is [PostHog](https://posthog.com), while the legacy Umami path remains available via `CLI_HUB_ANALYTICS_PROVIDER=umami`. No personal data is collected.
 
 Opt out:
 

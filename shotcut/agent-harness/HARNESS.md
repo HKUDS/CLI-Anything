@@ -205,7 +205,7 @@ agent-harness/
 │   │   └── session.py      # Stateful session, undo/redo
 │   ├── utils/              # Shared utilities
 │   │   ├── __init__.py
-│   │   ├── mlt_xml.py      # MLT XML parsing/generation (lxml)
+│   │   ├── mlt_xml.py      # MLT XML parsing/generation
 │   │   └── time.py         # Timecode ↔ frame conversion
 │   └── tests/              # Test suites
 │       ├── test_core.py    # Unit tests (65 tests, synthetic)

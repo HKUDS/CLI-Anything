@@ -10,6 +10,7 @@ import shutil
 from typing import Dict, Any, List, Optional
 
 from cli_anything.inkscape.core.document import project_to_svg, save_svg
+from cli_anything.inkscape.core.text import layout_text_lines, text_anchor_x
 from cli_anything.inkscape.utils.svg_utils import serialize_svg
 
 # Export presets
@@ -264,18 +265,21 @@ def _render_object(draw, obj: Dict[str, Any], sx: float, sy: float) -> None:
                 draw.polygon(points, fill=fill, outline=stroke, width=stroke_w)
 
     elif obj_type == "text":
-        x = float(obj.get("x", 0)) * sx
+        anchor_x = text_anchor_x(obj) * sx
         y = float(obj.get("y", 50)) * sy
-        text = obj.get("text", "")
         text_fill = fill or "#000000"
         font_size = int(float(obj.get("font_size", 24)) * sy)
+        line_height = float(obj.get("line_height", 1.2) or 1.2)
         try:
             from PIL import ImageFont
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                                        font_size)
         except (ImportError, OSError):
             font = None
-        draw.text((x, y), text, fill=text_fill, font=font)
+        for idx, line in enumerate(layout_text_lines(obj)):
+            x = _resolve_text_line_x(draw, line, anchor_x, obj, font, sx)
+            line_y = y + (idx * font_size * line_height)
+            draw.text((x, line_y), line, fill=text_fill, font=font)
 
     elif obj_type == "star" and "d" in obj:
         # Render star as polygon from path data
@@ -326,3 +330,22 @@ def _render_path_as_polygon(draw, d: str, fill, stroke, stroke_w: int,
     elif len(points) == 2:
         line_color = stroke or fill or "#000000"
         draw.line([points[0], points[1]], fill=line_color, width=stroke_w)
+
+
+def _resolve_text_line_x(draw, line: str, anchor_x: float, obj: Dict[str, Any], font, sx: float) -> float:
+    """Resolve actual line x-position for Pillow drawing."""
+    anchor = obj.get("text_anchor", "start")
+    if anchor == "start":
+        return anchor_x
+
+    try:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        width = bbox[2] - bbox[0]
+    except Exception:
+        width = len(line) * max(1.0, float(obj.get("font_size", 24)) * 0.58 * sx)
+
+    if anchor == "middle":
+        return anchor_x - (width / 2.0)
+    if anchor == "end":
+        return anchor_x - width
+    return anchor_x

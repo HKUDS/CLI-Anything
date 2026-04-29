@@ -54,6 +54,40 @@ python3 -m cli.blender_cli --json scene new -o scene.json
 python3 -m cli.blender_cli --json --project scene.json object list
 ```
 
+## Preview and Live Preview
+
+Blender exposes real preview bundles through the `preview` command group.
+
+```bash
+# Capture a real preview bundle
+cli-anything-blender --json --project scene.blend-cli.json preview capture --recipe quick
+
+# Query the latest bundle
+cli-anything-blender --json --project scene.blend-cli.json preview latest --recipe quick
+
+# Start a poll-mode live preview session
+cli-anything-blender --json --project scene.blend-cli.json preview live start --recipe quick --mode poll --source-poll-ms 500
+
+# Query current live-session state
+cli-anything-blender --json --project scene.blend-cli.json preview live status --recipe quick
+```
+
+The default `quick` recipe produces real Blender-rendered `hero.png` and
+`workbench.png` artifacts. Live sessions persist:
+
+- `session.json`
+- immutable bundle directories
+- `trajectory.json`
+
+Inspect or open published preview state with:
+
+```bash
+cli-hub previews inspect /path/to/bundle-or-session
+cli-hub previews html /path/to/bundle-or-session -o page.html
+cli-hub previews watch /path/to/session --open
+cli-hub previews open /path/to/bundle-or-session
+```
+
 ## Interactive REPL
 
 ```bash

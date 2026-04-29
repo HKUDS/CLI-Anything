@@ -1,8 +1,6 @@
 """Project management operations."""
 
-import os
 from typing import Optional
-from lxml import etree
 
 from ..utils import mlt_xml
 from .session import Session
@@ -62,6 +60,23 @@ PROFILES = {
 }
 
 
+def _get_bin_ids(root):
+    main_bin = mlt_xml.find_element_by_id(root, "main_bin")
+    if main_bin is None:
+        return set()
+    return {entry.get("producer", "") for entry in main_bin.findall("entry")}
+
+
+def _get_media_producers(root):
+    bin_ids = _get_bin_ids(root)
+    return [
+        p for p in mlt_xml.get_all_producers(root)
+        if mlt_xml.get_property(p, "mlt_service") not in ("color", "colour")
+        and mlt_xml.get_property(p, "resource") not in ("0", "")
+        and not (p.tag == "chain" and p.get("id", "") not in bin_ids)
+    ]
+
+
 def new_project(session: Session, profile_name: str = "hd1080p30") -> dict:
     """Create a new blank project.
 
@@ -104,21 +119,12 @@ def open_project(session: Session, path: str) -> dict:
     except RuntimeError:
         track_count = 0
 
-    # Count producers
-    producers = mlt_xml.get_all_producers(session.root)
-    # Filter out internal producers (black, etc.)
-    media_producers = [
-        p for p in producers
-        if mlt_xml.get_property(p, "mlt_service") not in ("color", "colour")
-        and mlt_xml.get_property(p, "resource") not in ("0", "")
-    ]
-
     return {
         "action": "open_project",
         "path": session.project_path,
         "profile": profile,
         "track_count": track_count,
-        "media_clip_count": len(media_producers),
+        "media_clip_count": len(_get_media_producers(session.root)),
     }
 
 
@@ -147,21 +153,16 @@ def project_info(session: Session) -> dict:
     profile = session.get_profile()
     root = session.root
 
-    # Producers
-    all_producers = mlt_xml.get_all_producers(root)
     media_producers = []
-    for p in all_producers:
-        service = mlt_xml.get_property(p, "mlt_service")
-        resource = mlt_xml.get_property(p, "resource", "")
-        if service not in ("color", "colour") and resource not in ("0", ""):
-            media_producers.append({
-                "id": p.get("id"),
-                "resource": resource,
-                "caption": mlt_xml.get_property(p, "shotcut:caption", ""),
-                "in": p.get("in", ""),
-                "out": p.get("out", ""),
-                "service": service or "avformat",
-            })
+    for p in _get_media_producers(root):
+        media_producers.append({
+            "id": p.get("id"),
+            "resource": mlt_xml.get_property(p, "resource", ""),
+            "caption": mlt_xml.get_property(p, "shotcut:caption", ""),
+            "in": p.get("in", ""),
+            "out": p.get("out", ""),
+            "service": mlt_xml.get_property(p, "mlt_service") or "avformat",
+        })
 
     # Tracks
     tracks_info = []
@@ -193,7 +194,8 @@ def project_info(session: Session) -> dict:
                     track_data["type"] = "video"
 
                 entries = mlt_xml.get_playlist_entries(playlist)
-                track_data["clip_count"] = sum(1 for e in entries if e["type"] == "entry")
+                from .timeline import real_clip_entries
+                track_data["clip_count"] = len(real_clip_entries(entries, root))
                 track_data["blank_count"] = sum(1 for e in entries if e["type"] == "blank")
             else:
                 track_data["type"] = "unknown"

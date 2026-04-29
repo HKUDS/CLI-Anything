@@ -35,6 +35,7 @@ from cli_anything.openscreen.core import project as proj_mod
 from cli_anything.openscreen.core import timeline as tl_mod
 from cli_anything.openscreen.core import export as export_mod
 from cli_anything.openscreen.core import media as media_mod
+from cli_anything.openscreen.core import preview as preview_mod
 from cli_anything.openscreen.utils import ffmpeg_backend
 
 
@@ -61,6 +62,8 @@ def _resolve_cli(name: str):
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
+
+JPEG_MAGIC_PREFIX = b"\xff\xd8\xff"
 
 @pytest.fixture(scope="module")
 def test_video():
@@ -96,6 +99,20 @@ def session(test_video):
     s = Session()
     s.new_project(test_video)
     return s
+
+
+def _artifact_path(manifest, artifact_id):
+    for artifact in manifest["artifacts"]:
+        if artifact["artifact_id"] == artifact_id:
+            return os.path.join(manifest["_bundle_dir"], artifact["path"])
+    raise KeyError(f"Artifact not found: {artifact_id}")
+
+
+def _assert_jpeg(path):
+    assert os.path.isfile(path), f"Missing JPEG artifact: {path}"
+    with open(path, "rb") as fh:
+        assert fh.read(3) == JPEG_MAGIC_PREFIX, f"Invalid JPEG header: {path}"
+    assert os.path.getsize(path) > 0, f"Empty JPEG artifact: {path}"
 
 
 # ── Media Tests ───────────────────────────────────────────────────────────
@@ -255,15 +272,49 @@ class TestExportE2E:
                 export_mod.render(s, os.path.join(tmp_dir, "out.mp4"))
 
 
+class TestPreviewE2E:
+    def test_capture_preview_bundle(self, session):
+        tl_mod.add_zoom_region(session, 800, 2400, depth=2, focus_x=0.65, focus_y=0.35)
+        tl_mod.add_speed_region(session, 2500, 3800, speed=1.5)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_path = os.path.join(tmp_dir, "preview.openscreen")
+            proj_mod.save_project(session, project_path)
+
+            manifest = preview_mod.capture(session, root_dir=tmp_dir, force=True)
+            assert manifest["software"] == "openscreen"
+            assert manifest["bundle_kind"] == "capture"
+            assert manifest["status"] in ("ok", "partial")
+
+            clip_path = _artifact_path(manifest, "clip")
+            hero_path = _artifact_path(manifest, "frame_03")
+            probe = media_mod.probe(clip_path)
+
+            assert os.path.isfile(clip_path)
+            assert os.path.getsize(clip_path) > 0
+            assert probe["width"] > 0
+            assert probe["height"] > 0
+            assert probe["duration"] > 0
+            _assert_jpeg(hero_path)
+
+            latest = preview_mod.latest(project_path=project_path, recipe="quick", root_dir=tmp_dir)
+            assert latest["bundle_id"] == manifest["bundle_id"]
+
+            print(f"\n  Openscreen preview bundle: {manifest['_bundle_dir']}")
+            print(f"  Openscreen preview clip: {clip_path}")
+            print(f"  Openscreen preview hero: {hero_path}")
+
+
 # ── CLI Subprocess Tests ──────────────────────────────────────────────────
 
 class TestCLISubprocess:
     CLI_BASE = _resolve_cli("cli-anything-openscreen")
 
-    def _run(self, args, check=True):
+    def _run(self, args, check=True, timeout=30):
         return subprocess.run(
             self.CLI_BASE + args,
             capture_output=True, text=True,
+            timeout=timeout,
             check=check,
         )
 
@@ -400,3 +451,74 @@ class TestCLISubprocess:
             data = json.loads(result.stdout)
             assert "project_open" in data
             assert "undo_available" in data
+
+    def test_cli_preview_capture(self, test_video):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            proj_path = os.path.join(tmp_dir, "preview.openscreen")
+
+            result = self._run(
+                ["project", "new", "-v", test_video, "-o", proj_path],
+                check=False,
+                timeout=60,
+            )
+            assert result.returncode == 0
+
+            self._run(
+                [
+                    "--project",
+                    proj_path,
+                    "zoom",
+                    "add",
+                    "--start",
+                    "700",
+                    "--end",
+                    "2200",
+                    "--depth",
+                    "2",
+                ],
+                check=False,
+                timeout=60,
+            )
+
+            result = self._run(
+                [
+                    "--json",
+                    "--project",
+                    proj_path,
+                    "preview",
+                    "capture",
+                    "--root-dir",
+                    tmp_dir,
+                ],
+                check=False,
+                timeout=180,
+            )
+            assert result.returncode == 0, result.stderr
+
+            manifest = json.loads(result.stdout)
+            assert manifest["software"] == "openscreen"
+            clip_path = _artifact_path(manifest, "clip")
+            hero_path = _artifact_path(manifest, "frame_03")
+            assert os.path.isfile(clip_path)
+            _assert_jpeg(hero_path)
+
+            latest = self._run(
+                [
+                    "--json",
+                    "preview",
+                    "latest",
+                    "--recipe",
+                    "quick",
+                    "--root-dir",
+                    tmp_dir,
+                ],
+                check=False,
+                timeout=60,
+            )
+            assert latest.returncode == 0, latest.stderr
+            latest_manifest = json.loads(latest.stdout)
+            assert latest_manifest["bundle_id"] == manifest["bundle_id"]
+
+            print(f"\n  Openscreen preview bundle: {manifest['_bundle_dir']}")
+            print(f"  Openscreen preview clip: {clip_path}")
+            print(f"  Openscreen preview hero: {hero_path}")

@@ -501,6 +501,35 @@ class TestRealWorldWorkflows:
         render(proj, out, preset="png", overwrite=True)
         assert os.path.exists(out)
 
+    def test_draw_ops_overlay_workflow(self, tmp_dir, sample_image):
+        """Render non-destructive draw operations on top of an image layer."""
+        proj = create_project(width=300, height=200)
+        add_from_file(proj, sample_image, name="Background")
+        overlay = add_layer(proj, name="Overlay", layer_type="image")
+        overlay.setdefault("draw_ops", []).append({
+            "type": "rect",
+            "x1": 10,
+            "y1": 10,
+            "x2": 290,
+            "y2": 60,
+            "fill": "#111111cc",
+            "outline": "#ffffff",
+            "width": 2,
+        })
+        overlay["draw_ops"].append({
+            "type": "text",
+            "x": 20,
+            "y": 20,
+            "text": "Overlay Title",
+            "font": "Arial",
+            "size": 24,
+            "color": "#ffffff",
+        })
+
+        out = os.path.join(tmp_dir, "draw_ops_overlay.png")
+        render(proj, out, preset="png", overwrite=True)
+        assert os.path.exists(out)
+
     def test_batch_filter_workflow(self, tmp_dir, sample_image):
         """Apply multiple artistic filters in sequence."""
         proj = create_project(width=300, height=200)

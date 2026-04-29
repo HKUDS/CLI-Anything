@@ -22,7 +22,8 @@ Fixes #<!-- issue number -->
 <!-- If this PR adds a new software CLI inside the monorepo, ALL items below must be checked. -->
 
 - [ ] `<SOFTWARE>.md` SOP document exists at `<software>/agent-harness/<SOFTWARE>.md`
-- [ ] `SKILL.md` exists inside the Python package (`cli_anything/<software>/SKILL.md`)
+- [ ] Canonical `SKILL.md` exists at `skills/cli-anything-<software>/SKILL.md`
+- [ ] Packaged compatibility `SKILL.md` exists at `cli_anything/<software>/skills/SKILL.md`
 - [ ] Unit tests at `cli_anything/<software>/tests/test_core.py` are present and pass without backend
 - [ ] E2E tests at `cli_anything/<software>/tests/test_full_e2e.py` are present
 - [ ] `README.md` includes the new software (with link to harness directory)

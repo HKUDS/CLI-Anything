@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="cli-anything-hub",
-    version="0.2.0",
+    version="0.3.0",
     description="Package manager for CLI-Anything — browse, install, and manage 40+ agent-native CLI interfaces for GUI applications",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

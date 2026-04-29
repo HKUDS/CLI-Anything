@@ -15,7 +15,7 @@ Adding a new CLI harness is the most impactful contribution. You can either add 
 Place your code under `<software>/agent-harness/` and ensure the following:
 
 1. **`<SOFTWARE>.md`** — the SOP document exists at `<software>/agent-harness/<SOFTWARE>.md` describing the harness architecture.
-2. **`SKILL.md`** — the AI-discoverable skill definition exists inside the Python package at `cli_anything/<software>/SKILL.md`.
+2. **`SKILL.md`** — the canonical AI-discoverable skill definition exists at `skills/cli-anything-<software>/SKILL.md`, and the packaged compatibility copy exists at `cli_anything/<software>/skills/SKILL.md`.
 3. **Tests** — unit tests (`test_core.py`, passable without backend) and E2E tests (`test_full_e2e.py`) are present and passing.
 4. **`README.md`** — the project README includes the new software with a link to its harness directory.
 5. **`registry.json`** — add an entry for the new software (see [Registry fields](#registry-fields) below).
@@ -67,7 +67,7 @@ Include an entry in `registry.json` as part of your PR. Each field is described 
 | `source_url` | Yes | For standalone repos: URL to your repo (e.g. `"https://github.com/user/repo"`). For in-repo harnesses: `null` (the hub auto-links to `<name>/agent-harness/`). |
 | `install_cmd` | Yes | Full pip install command. PyPI: `"pip install cli-anything-my-software"`. In-repo: `"pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=my-software/agent-harness"`. |
 | `entry_point` | Yes | CLI command name (e.g. `"cli-anything-my-software"`). |
-| `skill_md` | Yes | Path to SKILL.md. For standalone repos: full URL (e.g. `"https://github.com/user/repo/blob/main/.../SKILL.md"`). For in-repo: relative path (e.g. `"my-software/agent-harness/cli_anything/my_software/skills/SKILL.md"`). Set to `null` if not yet available. |
+| `skill_md` | Yes | Path to canonical SKILL.md. For standalone repos: full URL (e.g. `"https://github.com/user/repo/blob/main/.../SKILL.md"`). For in-repo: relative path under the repo-root `skills/` tree (e.g. `"skills/cli-anything-my-software/SKILL.md"`). Set to `null` if not yet available. |
 | `category` | Yes | One of the existing categories (check `registry.json` for examples). |
 | `contributors` | Yes | Array of `{"name": "...", "url": "..."}` objects listing all contributors. |
 
@@ -84,7 +84,7 @@ Include an entry in `registry.json` as part of your PR. Each field is described 
   "source_url": null,
   "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=my-software/agent-harness",
   "entry_point": "cli-anything-my-software",
-  "skill_md": "my-software/agent-harness/cli_anything/my_software/skills/SKILL.md",
+  "skill_md": "skills/cli-anything-my-software/SKILL.md",
   "category": "category-name",
   "contributors": [
     {"name": "your-github-username", "url": "https://github.com/your-github-username"}

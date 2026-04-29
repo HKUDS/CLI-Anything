@@ -6,11 +6,10 @@ Sessions persist to disk as JSON so they survive process restarts.
 
 import json
 import os
-import copy
 import time
 from pathlib import Path
 from typing import Optional
-from lxml import etree
+import xml.etree.ElementTree as ET
 
 from ..utils import mlt_xml
 
@@ -47,16 +46,38 @@ MAX_UNDO_DEPTH = 50
 
 
 class Session:
-    """Represents a stateful CLI editing session."""
+    """Represents a stateful CLI editing session.
+
+    Single-session architecture: there is always exactly one Session per process.
+    - CLI one-shot mode: cli() creates one Session, runs one command, exits.
+    - REPL mode: the REPL loop holds one Session. Running `new` or `open`
+      replaces the current project inside that session — the old project is
+      discarded. There is no way to have multiple concurrent sessions in one
+      process, so cached node references (main_bin, main_tractor, _track_playlists,
+      etc.) never become stale due to a different session's edits.
+
+    This means global state like mlt_xml._parent_map (which tracks element
+    parentage for the current tree) is inherently single-session and does not
+    need per-session isolation.
+    """
 
     def __init__(self, session_id: Optional[str] = None):
         self.session_id = session_id or f"session_{int(time.time())}"
         self.project_path: Optional[str] = None
-        self.root: Optional[etree._Element] = None
-        self._undo_stack: list[bytes] = []  # Serialized XML snapshots
+        self.root: Optional[ET.Element] = None
+        self._undo_stack: list[bytes] = []
         self._redo_stack: list[bytes] = []
         self._modified = False
         self._metadata: dict = {}
+        self.main_bin: Optional[ET.Element] = None
+        self.main_tractor: Optional[ET.Element] = None
+        self._track_playlists: list[ET.Element] = []
+        self._bin_chains: dict[str, ET.Element] = {}
+        self._timeline_insert_idx: int = 0
+        self._bin_insert_idx: int = 0
+        self._clip_id_counter: int = 0
+        self._clip_ids: dict[str, str] = {}
+        self._clip_resources: dict[str, str] = {}
 
     @property
     def is_open(self) -> bool:
@@ -70,7 +91,7 @@ class Session:
         """Capture current state for undo."""
         if self.root is None:
             return b""
-        return etree.tostring(self.root, xml_declaration=True, encoding="utf-8")
+        return ET.tostring(self.root, xml_declaration=True, encoding="utf-8")
 
     def _push_undo(self) -> None:
         """Save current state to undo stack before a mutation."""
@@ -82,9 +103,6 @@ class Session:
             self._redo_stack.clear()
 
     def checkpoint(self) -> None:
-        """Create a checkpoint before performing a mutation.
-        Call this before any operation that changes the project.
-        """
         self._push_undo()
         self._modified = True
 
@@ -92,11 +110,12 @@ class Session:
         """Undo the last operation. Returns True if successful."""
         if not self._undo_stack:
             return False
-        # Save current state to redo
         self._redo_stack.append(self._snapshot())
-        # Restore previous state
         prev = self._undo_stack.pop()
-        self.root = etree.fromstring(prev)
+        mlt_xml._clear_parent_map()
+        self.root = ET.fromstring(prev)
+        mlt_xml._register_tree(self.root)
+        self._resolve_refs()
         self._modified = bool(self._undo_stack)
         return True
 
@@ -106,9 +125,41 @@ class Session:
             return False
         self._undo_stack.append(self._snapshot())
         nxt = self._redo_stack.pop()
-        self.root = etree.fromstring(nxt)
+        mlt_xml._clear_parent_map()
+        self.root = ET.fromstring(nxt)
+        mlt_xml._register_tree(self.root)
+        self._resolve_refs()
         self._modified = True
         return True
+
+    def _resolve_refs(self) -> None:
+        self.main_bin = mlt_xml.find_element_by_id(self.root, "main_bin")
+        self.main_tractor = mlt_xml.get_main_tractor(self.root)
+        self._track_playlists = []
+        if self.main_tractor is not None:
+            for track in mlt_xml.get_tractor_tracks(self.main_tractor):
+                pid = track.get("producer")
+                pl = mlt_xml.find_element_by_id(self.root, pid) if pid else None
+                self._track_playlists.append(pl)
+        self._bin_chains = {}
+        self._clip_ids = {}
+        self._clip_resources = {}
+        self._clip_id_counter = 0
+        if self.main_bin is not None:
+            for entry in self.main_bin.findall("entry"):
+                chain_id = entry.get("producer")
+                if chain_id:
+                    chain = mlt_xml.find_element_by_id(self.root, chain_id)
+                    if chain is not None:
+                        resource = mlt_xml.get_property(chain, "resource")
+                        if resource:
+                            clip_id = f"clip{self._clip_id_counter}"
+                            self._clip_id_counter += 1
+                            self._bin_chains[clip_id] = chain
+                            self._clip_ids[clip_id] = resource
+                            self._clip_resources[resource] = clip_id
+        self._timeline_insert_idx = mlt_xml.find_insert_index_for_timeline_chain(self.root)
+        self._bin_insert_idx = mlt_xml._find_insert_index_for_bin_chain(self.root)
 
     def new_project(self, profile: Optional[dict] = None) -> None:
         """Create a new blank project."""
@@ -121,6 +172,7 @@ class Session:
                 "progressive": "1", "colorspace": "709",
             }
         self.root = mlt_xml.create_blank_project(profile)
+        self._resolve_refs()
         self.project_path = None
         self._undo_stack.clear()
         self._redo_stack.clear()
@@ -132,6 +184,7 @@ class Session:
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Project file not found: {path}")
         self.root = mlt_xml.parse_mlt(path)
+        self._resolve_refs()
         self.project_path = path
         self._undo_stack.clear()
         self._redo_stack.clear()
@@ -159,7 +212,7 @@ class Session:
             return {}
         return dict(prof.attrib)
 
-    def get_main_tractor(self) -> etree._Element:
+    def get_main_tractor(self) -> ET.Element:
         """Get the main timeline tractor."""
         if self.root is None:
             raise RuntimeError("No project is open")

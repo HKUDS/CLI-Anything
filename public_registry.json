@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-04-15"
+    "updated": "2026-04-18"
   },
   "clis": [
     {
@@ -15,10 +15,11 @@
       "homepage": "https://github.com/larksuite/cli",
       "source_url": "https://github.com/larksuite/cli",
       "package_manager": "npm",
-      "npm_package": "@anthropic-ai/feishu-cli",
-      "install_cmd": "npm install -g @anthropic-ai/feishu-cli",
-      "npx_cmd": "npx @anthropic-ai/feishu-cli",
-      "entry_point": "feishu",
+      "npm_package": "@larksuite/cli",
+      "install_cmd": "npm install -g @larksuite/cli",
+      "npx_cmd": "npx @larksuite/cli",
+      "skill_md": "npx skills add larksuite/cli -y -g",
+      "entry_point": "lark-cli",
       "contributors": [
         {
           "name": "larksuite",
@@ -39,6 +40,7 @@
       "npm_package": "minimax-cli",
       "install_cmd": "npm install -g minimax-cli",
       "npx_cmd": "npx minimax-cli",
+      "skill_md": "https://platform.minimax.io/docs/token-plan/minimax-cli",
       "entry_point": "minimax-cli",
       "contributors": [
         {
@@ -60,6 +62,7 @@
       "npm_package": "@wecom/cli",
       "install_cmd": "npm install -g @wecom/cli",
       "npx_cmd": "npx @wecom/cli",
+      "skill_md": "npx skills add WeComTeam/wecom-cli -y -g",
       "entry_point": "wecom-cli",
       "contributors": [
         {
@@ -81,6 +84,7 @@
       "npm_package": "contentful-cli",
       "install_cmd": "npm install -g contentful-cli",
       "npx_cmd": "npx contentful-cli",
+      "skill_md": "https://github.com/contentful/contentful-cli/tree/main/docs",
       "entry_point": "contentful",
       "contributors": [
         {
@@ -102,6 +106,7 @@
       "npm_package": "sanity",
       "install_cmd": "npm install -g sanity",
       "npx_cmd": "npx sanity@latest",
+      "skill_md": "https://www.sanity.io/docs/apis-and-sdks/cli",
       "entry_point": "sanity",
       "contributors": [
         {
@@ -123,6 +128,7 @@
       "npm_package": "@shopify/cli",
       "install_cmd": "npm install -g @shopify/cli",
       "npx_cmd": "npx @shopify/cli@latest",
+      "skill_md": "https://github.com/Shopify/cli/blob/main/packages/cli/README.md#commands",
       "entry_point": "shopify",
       "contributors": [
         {
@@ -144,6 +150,7 @@
       "npm_package": "@sentry/cli",
       "install_cmd": "npm install -g @sentry/cli",
       "npx_cmd": "npx @sentry/cli",
+      "skill_md": "https://docs.sentry.io/cli/",
       "entry_point": "sentry-cli",
       "contributors": [
         {
@@ -166,11 +173,126 @@
       "install_cmd": "brew install --cask 1password-cli",
       "uninstall_cmd": "brew uninstall --cask 1password-cli",
       "update_cmd": "brew upgrade --cask 1password-cli",
+      "skill_md": "https://developer.1password.com/docs/cli/get-started/",
       "entry_point": "op",
       "contributors": [
         {
           "name": "1Password",
           "url": "https://1password.com"
+        }
+      ]
+    },
+    {
+      "name": "android-cli",
+      "display_name": "Android CLI",
+      "version": "0.7",
+      "description": "Official Android terminal interface for SDK setup, project creation, emulator/device management, app run/deploy workflows, docs access, and skill management for any agent",
+      "category": "mobile",
+      "requires": "Preview release; Linux x86_64, macOS arm64, or Windows x86_64. Android SDK / JDK requirements depend on the workflow you run.",
+      "homepage": "https://developer.android.com/tools/agents/android-cli",
+      "docs_url": "https://android-developers.googleblog.com/2026/04/build-android-apps-3x-faster-using-any-agent.html",
+      "source_url": null,
+      "package_manager": "bundled",
+      "install_strategy": "bundled",
+      "install_notes": "Install Android CLI from the official archive page: Linux `curl -fsSL https://dl.google.com/android/cli/latest/linux_x86_64/install.sh | bash`; macOS `curl -fsSL https://dl.google.com/android/cli/latest/darwin_arm64/install.sh | bash`; Windows `curl.exe -fsSL https://dl.google.com/android/cli/latest/windows_x86_64/install.cmd -o \"%TEMP%\\i.cmd\" && \"%TEMP%\\i.cmd\"`.",
+      "uninstall_notes": "Remove the Android CLI binary from your PATH or rerun the official installer cleanup flow for your platform.",
+      "update_notes": "Run `android update` to fetch the latest Android CLI capabilities, or reinstall from the official archive page if needed.",
+      "skill_md": "https://developer.android.com/tools/agents/android-skills",
+      "entry_point": "android",
+      "detect_cmd": "android",
+      "contributors": [
+        {
+          "name": "Android Developers",
+          "url": "https://developer.android.com"
+        }
+      ]
+    },
+    {
+      "name": "generate-veo-video",
+      "display_name": "Generate Veo Video",
+      "version": "0.2.5",
+      "description": "CLI for generating videos with Google Veo 3.1 via Vertex AI/Gemini — text-to-video, image-to-video, reference images, frame morphing, and video extension",
+      "category": "ai",
+      "requires": "Python >= 3.10, uv, GOOGLE_CLOUD_PROJECT env var (GEMINI_API_KEY optional)",
+      "homepage": "https://github.com/charles-forsyth/generate-veo-video",
+      "source_url": "https://github.com/charles-forsyth/generate-veo-video",
+      "package_manager": "uv",
+      "install_cmd": "uv tool install git+https://github.com/charles-forsyth/generate-veo-video.git",
+      "uninstall_cmd": "uv tool uninstall generate-veo-video",
+      "update_cmd": "uv tool upgrade generate-veo-video",
+      "skill_md": "https://github.com/charles-forsyth/generate-veo-video",
+      "entry_point": "generate-veo",
+      "contributors": [
+        {
+          "name": "charles-forsyth",
+          "url": "https://github.com/charles-forsyth"
+        }
+      ]
+    },
+    {
+      "name": "suno",
+      "display_name": "Suno CLI",
+      "version": "latest",
+      "description": "CLI for generating music with Suno AI from lyrics and style prompts, with batch generation, status polling, downloads, and automatic MP3 tagging",
+      "category": "music",
+      "requires": "Python 3 and a Suno API key from sunoapi.org",
+      "homepage": "https://github.com/slauger/suno-cli",
+      "source_url": "https://github.com/slauger/suno-cli",
+      "package_manager": "pip",
+      "install_strategy": "command",
+      "install_cmd": "python3 -m pip install git+https://github.com/slauger/suno-cli.git",
+      "uninstall_cmd": "python3 -m pip uninstall -y suno-cli",
+      "update_cmd": "python3 -m pip install --upgrade --force-reinstall git+https://github.com/slauger/suno-cli.git",
+      "skill_md": "https://github.com/slauger/suno-cli/blob/main/docs/USAGE.md",
+      "entry_point": "suno",
+      "contributors": [
+        {
+          "name": "slauger",
+          "url": "https://github.com/slauger"
+        }
+      ]
+    },
+    {
+      "name": "elevenlabs",
+      "display_name": "ElevenLabs CLI",
+      "version": "latest",
+      "description": "Official ElevenLabs CLI for managing voice agents as code with local configs, templates, auth, push/pull sync, tests, widgets, and branch-aware workflows",
+      "category": "audio",
+      "requires": "Node.js and npm, ELEVENLABS_API_KEY or interactive login",
+      "homepage": "https://github.com/elevenlabs/cli",
+      "source_url": "https://github.com/elevenlabs/cli",
+      "package_manager": "npm",
+      "npm_package": "@elevenlabs/cli",
+      "install_cmd": "npm install -g @elevenlabs/cli",
+      "npx_cmd": "npx @elevenlabs/cli@latest",
+      "skill_md": "https://github.com/elevenlabs/cli",
+      "entry_point": "elevenlabs",
+      "contributors": [
+        {
+          "name": "ElevenLabs",
+          "url": "https://github.com/elevenlabs"
+        }
+      ]
+    },
+    {
+      "name": "jimeng",
+      "display_name": "Jimeng / Dreamina CLI",
+      "version": "latest",
+      "description": "Official ByteDance AI image and video generation CLI — text-to-image, text-to-video, image-to-video, digital human, and intelligent canvas; domestic brand is Jimeng (即梦), international brand is Dreamina",
+      "category": "ai",
+      "requires": "Jimeng / Dreamina account and API key",
+      "homepage": "https://jimeng.jianying.com/",
+      "docs_url": "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg",
+      "source_url": null,
+      "package_manager": "script",
+      "install_strategy": "command",
+      "install_cmd": "curl -s https://jimeng.jianying.com/cli | bash",
+      "skill_md": "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg",
+      "entry_point": "dreamina",
+      "contributors": [
+        {
+          "name": "ByteDance",
+          "url": "https://www.bytedance.com"
         }
       ]
     },
@@ -188,12 +310,33 @@
       "install_notes": "Bundled within the Obsidian 1.12+ installer. Enable Command line interface in Obsidian settings and follow the registration prompt so `obsidian` is added to PATH.",
       "uninstall_notes": "Disable Command line interface from Obsidian settings or remove/update the Obsidian installer to stop using the bundled CLI.",
       "update_notes": "Update the Obsidian installer to a newer 1.12+ release to update the bundled CLI.",
+      "skill_md": "https://obsidian.md/help/cli",
       "entry_point": "obsidian",
       "detect_cmd": "obsidian",
       "contributors": [
         {
           "name": "Obsidian",
           "url": "https://obsidian.md"
+        }
+      ]
+    },
+    {
+      "name": "py4csr",
+      "display_name": "TraceCSR / Py4CSR CLI",
+      "version": "latest",
+      "description": "GxP-compliant agent harness for CDISC Clinical Study Report (CSR) and Tables/Figures/Listings (TFL) generation",
+      "category": "data-science",
+      "requires": "Python >= 3.10",
+      "homepage": "https://github.com/yanmingyu92/py4csr",
+      "source_url": "https://github.com/yanmingyu92/py4csr",
+      "skill_md": "https://github.com/yanmingyu92/py4csr",
+      "package_manager": "pip",
+      "install_cmd": "pip install py4csr",
+      "entry_point": "tracecsr",
+      "contributors": [
+        {
+          "name": "yanmingyu92",
+          "url": "https://github.com/yanmingyu92"
         }
       ]
     }

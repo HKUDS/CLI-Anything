@@ -258,6 +258,21 @@
       flex-shrink: 0;
     }
 
+    .nav-link-stars {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.9rem;
+      padding: 0.14rem 0.52rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text);
+      font-size: 0.73rem;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+
     .theme-toggle {
       width: 42px;
       padding: 0;
@@ -854,7 +869,7 @@
       top: 16px;
       z-index: 6;
       margin: 1.15rem;
-      padding: 1rem;
+      padding: 0.75rem;
       border-radius: var(--radius-lg);
       border: 1px solid var(--border);
       background: linear-gradient(180deg, rgba(14, 18, 26, 0.94), rgba(20, 26, 36, 0.84));
@@ -1334,12 +1349,13 @@
     }
 
     .card-command-block {
-      padding: 0.9rem;
+      padding: 0.9rem 0.9rem 0.9rem 0.9rem;
       border-radius: 18px;
       border: 1px solid var(--border);
       background:
         linear-gradient(180deg, rgba(93, 168, 255, 0.07), rgba(255,255,255,0.02)),
         rgba(0,0,0,0.14);
+      position: relative;
     }
 
     .card--public .card-command-block {
@@ -1365,15 +1381,32 @@
       font-size: 0.8rem;
       color: var(--text);
       white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      line-height: 1.6;
+      overflow-wrap: break-word;
+      word-break: normal;
+      line-height: 1.45;
+      padding-top: 0.1rem;
+    }
+
+    .card-command-comment {
+      display: block;
+      color: var(--text-tertiary);
+      font-style: italic;
+      margin-bottom: 0.24rem;
+      padding-right: 5.2rem;
+    }
+
+    .card-command-line {
+      display: block;
+    }
+
+    .card-command-line + .card-command-comment {
+      margin-top: 0.42rem;
     }
 
     .card-command-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 0.7rem;
+      position: absolute;
+      top: 0.96rem;
+      right: 0.9rem;
     }
 
     .card-install-note {
@@ -1454,8 +1487,8 @@
       backdrop-filter: blur(18px);
       box-shadow: var(--shadow-md);
       display: grid;
-      grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr);
-      gap: 0.9rem;
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
     }
 
     .footer-band,
@@ -1463,89 +1496,135 @@
       border-radius: var(--radius-lg);
       border: 1px solid var(--border);
       background: rgba(255,255,255,0.03);
-      padding: 1rem 1.05rem;
+      padding: 0.72rem 0.85rem;
     }
 
     .footer-band {
       display: flex;
       flex-direction: column;
-      gap: 0.6rem;
+      gap: 0.38rem;
     }
 
     .footer-label {
       color: var(--text-tertiary);
-      font-size: 0.74rem;
+      font-size: 0.68rem;
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
 
     .footer-copy {
       color: var(--text-secondary);
-      font-size: 0.95rem;
+      font-size: 0.88rem;
+      line-height: 1.38;
     }
 
     .footer-copy a,
-    .footer-brand a,
-    .footer-analytics-link {
+    .footer-brand a {
       color: var(--text);
       text-decoration: none;
     }
 
     .footer-copy a:hover,
-    .footer-brand a:hover,
-    .footer-analytics-link:hover {
+    .footer-brand a:hover {
       text-decoration: underline;
     }
 
     .footer-brand {
       color: var(--text-tertiary);
-      font-size: 0.86rem;
+      font-size: 0.78rem;
+      line-height: 1.3;
     }
 
     .footer-stats {
       display: flex;
-      flex-direction: column;
       justify-content: center;
-      gap: 0.55rem;
+      width: min(860px, 100%);
+      margin: 0 auto;
+      padding: 0.5rem 0.72rem;
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,0.03);
     }
 
-    .footer-analytics-link {
+    .footer-analytics-board {
       display: flex;
       align-items: center;
+      justify-content: center;
       flex-wrap: wrap;
-      gap: 0.55rem;
+      gap: 0.32rem 0.7rem;
+      min-width: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      font-size: 0.74rem;
+      line-height: 1.35;
+      color: var(--text-tertiary);
+    }
+
+    .analytics-kicker,
+    .analytics-row,
+    .analytics-key,
+    .metric-cell,
+    .metric-pair {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .analytics-kicker {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+    }
+
+    .analytics-row {
+      gap: 0.42rem;
+    }
+
+    .analytics-key {
+      font-size: 0.68rem;
+      color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .analytics-title {
+      font-weight: 600;
       color: var(--text-secondary);
-      font-size: 0.9rem;
     }
 
-    .footer-analytics-link svg {
-      width: 15px;
-      height: 15px;
+    .metric-cell {
+      gap: 0.22rem;
+    }
+
+    .metric-label {
       color: var(--text-tertiary);
     }
 
-    .stat-dot {
-      width: 0.45rem;
-      height: 0.45rem;
-      border-radius: 999px;
-      display: inline-block;
-      flex-shrink: 0;
+    .metric-value,
+    .metric-pair strong {
+      font-size: 0.84rem;
+      line-height: 1;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.018em;
+      white-space: nowrap;
     }
 
-    .dot-total {
-      background: var(--text);
-    }
-
-    .dot-human {
-      background: var(--green);
-    }
-
-    .dot-agent {
-      background: var(--amber);
-    }
-
-    .analytics-sep {
+    .metric-pair {
+      gap: 0.18rem;
       color: var(--text-tertiary);
+    }
+
+    .metric-pair .human-value,
+    .metric-pair .agent-value {
+      color: var(--text);
+    }
+
+    .analytics-divider {
+      width: 1px;
+      height: 0.9rem;
+      background: var(--border);
+      flex: 0 0 auto;
     }
 
     .sr-only {
@@ -1663,6 +1742,8 @@
       .grid {
         grid-template-columns: 1fr;
       }
+
+      .footer-analytics-board { justify-content: flex-start; }
     }
 
     @media (max-width: 640px) {
@@ -1736,18 +1817,17 @@
         padding-left: 0.9rem;
         padding-right: 0.9rem;
       }
+
+      .footer-stats {
+        padding: 0.5rem 0.68rem;
+      }
+
+      .analytics-divider { display: none; }
     }
   </style>
-  <!-- Umami Analytics — hkuds.github.io -->
-  <script defer src="https://cloud.umami.is/script.js" data-website-id="07082d05-efd3-4f85-a7a1-b426b0e8bfaa"></script>
-  <!-- Umami Analytics — clianything.cc -->
-  <script defer src="https://cloud.umami.is/script.js" data-website-id="a076c661-bed1-405c-a522-813794e688b4"></script>
+  <!-- Analytics provider is configured in the footer script. -->
 </head>
 <body>
-  <noscript>
-    <img src="https://cloud.umami.is/api/send?type=event&amp;payload=%7B%22website%22%3A%2207082d05-efd3-4f85-a7a1-b426b0e8bfaa%22%2C%22name%22%3A%22noscript-visit%22%7D" style="position:absolute;left:-9999px" alt="" width="1" height="1">
-  </noscript>
-
   <div class="page-shell">
     <nav class="nav">
       <a class="nav-brand" href="#">
@@ -1758,12 +1838,13 @@
         </span>
       </a>
       <div class="nav-links">
-        <a class="nav-link" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">
+        <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything/blob/main/skills/cli-hub-meta-skill/SKILL.md" target="_blank">
           SKILL.md
         </a>
         <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
           <svg viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
           GitHub
+          <span class="nav-link-stars" data-github-stars aria-label="GitHub star count">--</span>
         </a>
         <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contribute</a>
         <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
@@ -1779,7 +1860,7 @@
         <h1><em>CLI</em> tools for <span>software, APIs, and autonomous agents.</span></h1>
         <p class="hero-lead"><strong>Any software. Any codebase. Any Web API.</strong> Install an orchestration hub that can discover, explain, install, update, and remove CLIs across first-party harnesses and public ecosystems.</p>
         <div class="hero-actions">
-          <a class="btn-primary" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">Get Agent SKILL</a>
+          <a class="btn-primary" href="https://github.com/HKUDS/CLI-Anything/blob/main/skills/cli-hub-meta-skill/SKILL.md" target="_blank">Get Agent SKILL</a>
           <a class="btn-secondary" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
             <svg viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
             Star on GitHub
@@ -1810,6 +1891,11 @@
         <section class="rail-panel">
           <h3>Empower your agent</h3>
           <p>Install the meta-skill once, then let the agent choose the right CLI from the registry.</p>
+          <div class="install-row">
+            <span class="chip-label">npx skills</span>
+            <code>npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y</code>
+            <button class="copy-btn" onclick="copyCmd(this, 'npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y')">Copy</button>
+          </div>
           <div class="install-row">
             <span class="chip-label">OpenClaw</span>
             <code>openclaw skills install cli-anything-hub</code>
@@ -1948,13 +2034,17 @@
                     <span class="control-kicker">Sort mode</span>
                   </div>
                   <button class="sort-trigger" id="sort-trigger-public" type="button" aria-haspopup="listbox" aria-expanded="false">
-                    <span class="sort-current" id="sort-current-public">Name</span>
+                    <span class="sort-current" id="sort-current-public">Last updated</span>
                     <span class="sort-chevron">
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </span>
                   </button>
                   <div class="sort-menu" id="sort-menu-public" role="listbox" hidden>
-                    <button class="sort-option" type="button" data-deck="public" data-value="name" role="option" aria-selected="true">
+                    <button class="sort-option" type="button" data-deck="public" data-value="updated" role="option" aria-selected="true">
+                      <span><strong>Last updated</strong><span>Put the freshest public CLIs first.</span></span>
+                      <span class="sort-option-mark">✓</span>
+                    </button>
+                    <button class="sort-option" type="button" data-deck="public" data-value="name" role="option" aria-selected="false">
                       <span><strong>Name</strong><span>Alphabetical list for known public tools.</span></span>
                       <span class="sort-option-mark">✓</span>
                     </button>
@@ -1991,18 +2081,21 @@
         <div class="footer-brand">Powered by <a href="https://github.com/HKUDS/CLI-Anything" target="_blank">CLI-Anything</a></div>
       </div>
       <div class="footer-stats">
-        <div class="footer-label">Traffic Snapshot</div>
-        <a class="footer-analytics-link" href="https://cloud.umami.is/share/mnilRgKH0oo7SJTs" target="_blank">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span class="stat-dot dot-total"></span>
-          <span id="stat-total">&mdash;</span> visits
-          <span class="analytics-sep">&middot;</span>
-          <span class="stat-dot dot-human"></span>
-          <span id="stat-human">&mdash;</span> human
-          <span class="analytics-sep">&middot;</span>
-          <span class="stat-dot dot-agent"></span>
-          <span id="stat-agent">&mdash;</span> AI agent
-        </a>
+        <div class="footer-analytics-board" aria-label="Traffic snapshot">
+          <span class="analytics-kicker">Traffic</span>
+          <span class="analytics-key">Human/Agent</span>
+          <span class="analytics-row">
+            <span class="analytics-title">Page</span>
+            <strong id="stat-total" class="metric-value">...</strong>
+            <span class="metric-pair"><strong id="stat-human" class="human-value">...</strong>/<strong id="stat-agent" class="agent-value">...</strong></span>
+          </span>
+          <span class="analytics-divider" aria-hidden="true"></span>
+          <span class="analytics-row">
+            <span class="analytics-title">CLI</span>
+            <strong id="stat-cli-total" class="metric-value">...</strong>
+            <span class="metric-pair"><strong id="stat-cli-human" class="human-value">...</strong>/<strong id="stat-cli-agent" class="agent-value">...</strong></span>
+          </span>
+        </div>
       </div>
     </footer>
   </div>
@@ -2034,6 +2127,8 @@
     });
 
     const REPO = 'https://github.com/HKUDS/CLI-Anything';
+    const GITHUB_REPO_API = 'https://api.github.com/repos/HKUDS/CLI-Anything';
+    const REPO_SKILLS_SOURCE = 'HKUDS/CLI-Anything';
     const REGISTRY_URLS = [
       '../../registry.json',
       'https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/registry.json'
@@ -2059,7 +2154,7 @@
 
     const deckState = {
       harness: { filter: 'all', sort: 'updated', query: '' },
-      public: { filter: 'all', sort: 'name', query: '' },
+      public: { filter: 'all', sort: 'updated', query: '' },
     };
 
     async function fetchJson(urls) {
@@ -2072,6 +2167,34 @@
         }
       }
       return null;
+    }
+
+    function formatCompactCount(value) {
+      return new Intl.NumberFormat('en', {
+        notation: 'compact',
+        maximumFractionDigits: value >= 10000 ? 0 : 1,
+      }).format(value);
+    }
+
+    async function loadGitHubStars() {
+      try {
+        const resp = await fetch(GITHUB_REPO_API, {
+          headers: { Accept: 'application/vnd.github+json' }
+        });
+        if (!resp.ok) return;
+
+        const repo = await resp.json();
+        const stars = repo.stargazers_count;
+        if (typeof stars !== 'number') return;
+
+        document.querySelectorAll('[data-github-stars]').forEach((el) => {
+          el.textContent = formatCompactCount(stars);
+          el.setAttribute('aria-label', stars.toLocaleString('en-US') + ' GitHub stars');
+          el.title = stars.toLocaleString('en-US') + ' GitHub stars';
+        });
+      } catch (_) {
+        // Keep fallback placeholder when GitHub API is unavailable.
+      }
     }
 
     async function loadRegistries() {
@@ -2089,6 +2212,7 @@
 
         if (publicData && publicData.clis) {
           publicClis = publicData.clis;
+          if (dates) publicClis.forEach((c) => { c.last_modified = dates[c.name]; });
         }
 
         const totalClis = harnessClis.length + publicClis.length;
@@ -2287,6 +2411,45 @@
       grid.innerHTML = (deck === 'harness' ? filtered.map(renderHarnessCard) : filtered.map(renderPublicCard)).join('');
     }
 
+    function repoSkillId(skillPath) {
+      if (!skillPath || skillPath.startsWith('http')) return '';
+      const match = skillPath.match(/^skills\/([^/]+)\/SKILL\.md$/);
+      return match ? match[1] : '';
+    }
+
+    function normalizeNpxSkillsCmd(cmd) {
+      if (!cmd) return '';
+      const trimmed = cmd.trim();
+      if (!trimmed.startsWith('npx skills add ')) return '';
+      return trimmed
+        .replace(/\s+-g\b/g, '')
+        .replace(/\s+-y\b/g, '')
+        .trim() + ' -g -y';
+    }
+
+    function harnessSkillCmd(c) {
+      const skillId = repoSkillId(c.skill_md);
+      return skillId ? 'npx skills add ' + REPO_SKILLS_SOURCE + ' --skill ' + skillId + ' -g -y' : '';
+    }
+
+    function publicSkillCmd(c) {
+      return normalizeNpxSkillsCmd(c.skill_md);
+    }
+
+    function renderCommandStack(steps, sourceLabel) {
+      const display = steps.map((step) =>
+        '<span class="card-command-comment"># ' + esc(step.label.toLowerCase()) + '</span><span class="card-command-line">' + esc(step.cmd) + '</span>'
+      ).join('');
+      const copyText = steps.map((step) =>
+        '# ' + step.label.toLowerCase() + '\n' + step.cmd
+      ).join('\n');
+      return '<div class="card-command-block">' +
+        '<div class="card-command-label"><span>Install Commands</span><span>' + esc(sourceLabel) + '</span></div>' +
+        '<div class="card-command">' + display + '</div>' +
+        '<div class="card-command-actions"><button class="card-copy-btn" onclick=\'copyCmd(this, ' + JSON.stringify(copyText) + ')\'>Copy</button></div>' +
+      '</div>';
+    }
+
     function renderHarnessCard(c) {
       const requiresHtml = c.requires
         ? '<div class="card-requires"><strong>Requires</strong> ' + esc(c.requires) + '</div>'
@@ -2310,6 +2473,12 @@
         : '';
       const dateHtml = c.last_modified ? '<div class="card-date">Updated ' + esc(c.last_modified) + '</div>' : '';
       const linksHtml = sourceLink + (skillLink ? skillLink : '');
+      const installSteps = [
+        { label: 'step 1 · install cli', cmd: 'cli-hub install ' + c.name, badge: 'CLI-Hub' }
+      ];
+      const skillCmd = harnessSkillCmd(c);
+      if (skillCmd) installSteps.push({ label: 'step 2 · install skill', cmd: skillCmd, badge: 'npx skills' });
+      const installBlock = renderCommandStack(installSteps, 'CLI-Hub');
 
       return `
         <article class="card card--harness">
@@ -2326,16 +2495,7 @@
             ${dateHtml}
             ${requiresHtml}
           </div>
-          <div class="card-command-block">
-            <div class="card-command-label">
-              <span>Install via CLI-Hub</span>
-              <span>PyPI</span>
-            </div>
-            <div class="card-command">pip install cli-anything-hub\ncli-hub install ${esc(c.name)}</div>
-            <div class="card-command-actions">
-              <button class="card-copy-btn" onclick="copyCmd(this, 'pip install cli-anything-hub && cli-hub install ${esc(c.name)}')">Copy</button>
-            </div>
-          </div>
+          ${installBlock}
           <div class="card-footer">
             <div class="card-links">${linksHtml}</div>
             ${contributorHtml}
@@ -2356,6 +2516,7 @@
 
     function renderPublicCard(c) {
       const isBundled = (c.install_strategy || c.package_manager) === 'bundled';
+      const dateHtml = c.last_modified ? '<div class="card-date">Updated ' + esc(c.last_modified) + '</div>' : '';
       const requiresHtml = c.requires
         ? '<div class="card-requires"><strong>Requires</strong> ' + esc(c.requires) + '</div>'
         : '';
@@ -2374,13 +2535,14 @@
         ? '<div class="card-npx">Direct command: <code>' + esc(directCmd) + '</code></div>'
         : '';
       const installNotesHtml = c.install_notes ? '<div class="card-npx">' + esc(c.install_notes) + '</div>' : '';
+      const installSteps = isBundled
+        ? []
+        : [{ label: 'step 1 · install cli', cmd: 'cli-hub install ' + c.name, badge: 'CLI-Hub' }];
+      const skillCmd = publicSkillCmd(c);
+      if (skillCmd) installSteps.push({ label: 'step 2 · install skill', cmd: skillCmd, badge: 'npx skills' });
       const installBlock = isBundled
         ? '<div class="card-install-note">Bundled with the upstream application. Install or update the parent app and enable its CLI integration.</div>'
-        : '<div class="card-command-block">' +
-            '<div class="card-command-label"><span>Install via CLI-Hub</span><span>Source aware</span></div>' +
-            '<div class="card-command">pip install cli-anything-hub\ncli-hub install ' + esc(c.name) + '</div>' +
-            '<div class="card-command-actions"><button class="card-copy-btn" onclick="copyCmd(this, \'pip install cli-anything-hub && cli-hub install ' + esc(c.name) + '\')">Copy</button></div>' +
-          '</div>';
+        : renderCommandStack(installSteps, 'Source aware');
 
       return `
         <article class="card card--public">
@@ -2394,6 +2556,7 @@
           <div class="card-title">${titleHtml}</div>
           <div class="card-desc">${esc(c.description)}</div>
           <div class="card-submeta">
+            ${dateHtml}
             ${requiresHtml}
             ${directCmdHtml}
             ${installNotesHtml}
@@ -2439,67 +2602,279 @@
     loadRegistries().then(updateDeckPosition);
 
     (function() {
-      const AI_UA_PATTERNS = [
-        /claude/i, /anthropic/i, /openai/i, /gpt/i, /chatgpt/i,
-        /bingbot/i, /googlebot/i, /baiduspider/i, /yandexbot/i,
-        /slurp/i, /duckduckbot/i, /facebookexternalhit/i,
-        /twitterbot/i, /linkedinbot/i, /whatsapp/i, /telegrambot/i,
-        /applebot/i, /semrushbot/i, /ahrefsbot/i, /dotbot/i,
-        /petalbot/i, /mj12bot/i, /bytespider/i,
-        /headless/i, /phantom/i, /selenium/i, /puppeteer/i, /playwright/i,
-        /crawl/i, /spider/i, /bot\\b/i, /scraper/i,
-        /python-requests/i, /axios/i, /node-fetch/i, /go-http/i, /curl/i, /wget/i,
-        /ccbot/i, /gptbot/i, /perplexity/i, /cohere/i,
+      const ANALYTICS_PROVIDER = 'posthog';
+      const ANALYTICS_SITE = 'clianything.cc';
+      const COUNTED_HOSTS = new Set(['clianything.cc', 'www.clianything.cc']);
+      // Fixed Umami baseline from remote main. Runtime PostHog counts are
+      // queried live and added to this.
+      const UMAMI_BASELINE_STATS = {
+        human: 7689, agent: 13434,
+        cli_hub_human: 3237, cli_hub_agent: 13124,
+      };
+      const ANALYTICS_TEST_RUN = new URLSearchParams(location.search).get('analytics_test_run') || '';
+      const POSTHOG_CONFIG = {
+        projectToken: 'phc_ovP8d5bmjpn8YZnTo7pb6rE3TikcAMgmNVt75o3Ywejz',
+        apiHost: 'https://us.i.posthog.com',
+        defaults: '2026-01-30',
+        personProfiles: 'identified_only',
+      };
+      const UMAMI_CONFIG = {
+        sendUrl: 'https://cloud.umami.is/api/send',
+        websiteId: 'a076c661-bed1-405c-a522-813794e688b4',
+      };
+      const OFFICIAL_AGENT_UA_RULES = [
+        { id: 'openai-oai-searchbot', category: 'official_ai_agent', regex: /\bOAI-SearchBot\b/i },
+        { id: 'openai-gptbot', category: 'official_ai_agent', regex: /\bGPTBot\b/i },
+        { id: 'openai-chatgpt-user', category: 'official_ai_agent', regex: /\bChatGPT-User\b/i },
+        { id: 'anthropic-claudebot', category: 'official_ai_agent', regex: /\bClaudeBot\b/i },
+        { id: 'anthropic-claude-user', category: 'official_ai_agent', regex: /\bClaude-User\b/i },
+        { id: 'anthropic-claude-searchbot', category: 'official_ai_agent', regex: /\bClaude-SearchBot\b/i },
+        { id: 'perplexity-bot', category: 'official_ai_agent', regex: /\bPerplexityBot\b/i },
+        { id: 'perplexity-user', category: 'official_ai_agent', regex: /\bPerplexity-User\b/i },
+        { id: 'google-vertex-bot', category: 'official_ai_agent', regex: /\bGoogle-CloudVertexBot\b/i },
       ];
-
-      const ua = navigator.userAgent || '';
-      const isKnownAgent = AI_UA_PATTERNS.some((p) => p.test(ua));
-      const isWebdriver = navigator.webdriver === true;
+      const AGENT_TOOL_UA_RULES = [
+        { id: 'claude-code', category: 'agent_tool', regex: /\bclaude(?:[ -]?code)\b/i },
+        { id: 'codex', category: 'agent_tool', regex: /\bcodex\b/i },
+        { id: 'cursor', category: 'agent_tool', regex: /\bcursor\b/i },
+        { id: 'cline', category: 'agent_tool', regex: /\bcline\b/i },
+        { id: 'aider', category: 'agent_tool', regex: /\baider\b/i },
+        { id: 'continue', category: 'agent_tool', regex: /\bcontinue\b/i },
+        { id: 'openhands', category: 'agent_tool', regex: /\bopenhands\b/i },
+        { id: 'openclaw', category: 'agent_tool', regex: /\bopenclaw\b/i },
+        { id: 'nanobot', category: 'agent_tool', regex: /\bnanobot\b/i },
+        { id: 'browser-use', category: 'agent_tool', regex: /\bbrowser[- ]use\b/i },
+        { id: 'stagehand', category: 'agent_tool', regex: /\bstagehand\b/i },
+      ];
+      const AUTOMATION_UA_RULES = [
+        { id: 'headless-browser', category: 'automation_runtime', regex: /\bHeadlessChrome\b|\bHeadless\b/i },
+        { id: 'playwright', category: 'automation_runtime', regex: /\bPlaywright\b/i },
+        { id: 'puppeteer', category: 'automation_runtime', regex: /\bPuppeteer\b/i },
+        { id: 'selenium', category: 'automation_runtime', regex: /\bSelenium\b/i },
+        { id: 'phantomjs', category: 'automation_runtime', regex: /\bPhantomJS\b|\bPhantom\b/i },
+      ];
+      const SCRIPTED_CLIENT_UA_RULES = [
+        { id: 'python-requests', category: 'scripted_client', regex: /\bpython-requests\b/i },
+        { id: 'python-httpx', category: 'scripted_client', regex: /\bpython-httpx\b/i },
+        { id: 'axios', category: 'scripted_client', regex: /\baxios\b/i },
+        { id: 'node-fetch', category: 'scripted_client', regex: /\bnode-fetch\b/i },
+        { id: 'undici', category: 'scripted_client', regex: /\bundici\b/i },
+        { id: 'go-http-client', category: 'scripted_client', regex: /\bGo-http-client\b/i },
+        { id: 'curl', category: 'scripted_client', regex: /\bcurl\b/i },
+        { id: 'wget', category: 'scripted_client', regex: /\bwget\b/i },
+      ];
+      const CATEGORY_PRIORITY = ['official_ai_agent', 'agent_tool', 'automation_runtime', 'scripted_client'];
       let humanConfirmed = false;
+      let posthogReady = false;
+      const pendingPosthogEvents = [];
 
-      const UMAMI_SEND = 'https://cloud.umami.is/api/send';
-      const DUAL_WEBSITE_IDS = [
-        '07082d05-efd3-4f85-a7a1-b426b0e8bfaa',
-        'a076c661-bed1-405c-a522-813794e688b4',
-      ];
+      function isTrackedHost() {
+        return COUNTED_HOSTS.has(location.hostname);
+      }
 
-      function trackBoth(eventName, eventData) {
-        DUAL_WEBSITE_IDS.forEach((wid) => {
-          const payload = {
-            type: 'event',
-            payload: {
-              website: wid,
-              hostname: location.hostname,
-              url: location.pathname,
-              name: eventName,
-              data: eventData || {},
-            },
-          };
-          fetch(UMAMI_SEND, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            keepalive: true,
-          }).catch(() => {});
+      function applyVisitorStats(stats) {
+        const formatK = (val) => {
+          const n = Number(val) || 0;
+          if (!n) return '0K';
+          return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+        };
+        document.getElementById('stat-total').textContent = formatK(stats.total);
+        document.getElementById('stat-human').textContent = formatK(stats.human);
+        document.getElementById('stat-agent').textContent = formatK(stats.agent);
+        document.getElementById('stat-cli-total').textContent = formatK(stats.cli_hub_total);
+        document.getElementById('stat-cli-human').textContent = formatK(stats.cli_hub_human);
+        document.getElementById('stat-cli-agent').textContent = formatK(stats.cli_hub_agent);
+      }
+
+      function readUaBrands() {
+        const brands = navigator.userAgentData && Array.isArray(navigator.userAgentData.brands)
+          ? navigator.userAgentData.brands
+          : [];
+        return brands.map((brand) => brand.brand).join(' ');
+      }
+
+      function collectRuleSignals(ua, rules, signals) {
+        rules.forEach((rule) => {
+          if (rule.regex.test(ua)) {
+            signals.push(rule);
+          }
         });
       }
 
-      if (isKnownAgent || isWebdriver) {
-        trackBoth('visit-agent', { ua: ua.slice(0, 200) });
+      function collectRuntimeSignals(brands, signals) {
+        if (navigator.webdriver === true) {
+          signals.push({ id: 'webdriver', category: 'automation_runtime' });
+        }
+        if (/HeadlessChrome/i.test(brands)) {
+          signals.push({ id: 'ua-brand-headlesschrome', category: 'automation_runtime' });
+        }
+        if ('__playwright__binding__' in window || '__pwManual' in window) {
+          signals.push({ id: 'playwright-runtime', category: 'automation_runtime' });
+        }
+        if ('Cypress' in window) {
+          signals.push({ id: 'cypress-runtime', category: 'automation_runtime' });
+        }
+        if ('_phantom' in window || 'callPhantom' in window) {
+          signals.push({ id: 'phantom-runtime', category: 'automation_runtime' });
+        }
+        if ('domAutomation' in window || 'domAutomationController' in window) {
+          signals.push({ id: 'dom-automation', category: 'automation_runtime' });
+        }
       }
 
-      window.addEventListener('load', () => {
-        setTimeout(() => {
-          if (isKnownAgent || isWebdriver) {
-            trackBoth('visit-agent', { ua: ua.slice(0, 200) });
-          }
-        }, 500);
-      });
+      function classifyVisitor() {
+        const ua = navigator.userAgent || '';
+        const brands = readUaBrands();
+        const signals = [];
+        collectRuleSignals(ua, OFFICIAL_AGENT_UA_RULES, signals);
+        collectRuleSignals(ua, AGENT_TOOL_UA_RULES, signals);
+        collectRuleSignals(ua, AUTOMATION_UA_RULES, signals);
+        collectRuleSignals(ua, SCRIPTED_CLIENT_UA_RULES, signals);
+        collectRuntimeSignals(brands, signals);
 
-      function onHumanInteraction() {
-        if (humanConfirmed) return;
+        const seen = new Set();
+        const uniqueSignals = signals.filter((signal) => {
+          if (seen.has(signal.id)) return false;
+          seen.add(signal.id);
+          return true;
+        }).sort((left, right) => CATEGORY_PRIORITY.indexOf(left.category) - CATEGORY_PRIORITY.indexOf(right.category));
+
+        const primary = uniqueSignals[0] || null;
+        const isAgent = uniqueSignals.length > 0;
+        return {
+          ua,
+          brands,
+          webdriver: navigator.webdriver === true,
+          isAgent,
+          isAutomation: !!primary && (primary.category === 'automation_runtime' || primary.category === 'scripted_client'),
+          trafficType: isAgent ? 'agent' : 'human',
+          reason: primary ? primary.id : 'human',
+          category: primary ? primary.category : 'human',
+          signals: uniqueSignals.map((signal) => signal.id),
+        };
+      }
+
+      const visitor = classifyVisitor();
+
+      function analyticsContext(eventData) {
+        const base = {
+          source: 'web',
+          site: ANALYTICS_SITE,
+          host: location.hostname,
+          visitor_type: visitor.trafficType,
+          is_agent: visitor.isAgent,
+          is_automation: visitor.isAutomation,
+          agent_category: visitor.category,
+          agent_reason: visitor.reason,
+          agent_signals: visitor.signals.slice(0, 12),
+          ua: visitor.ua.slice(0, 200),
+          ua_brands: visitor.brands.slice(0, 200),
+          webdriver: visitor.webdriver,
+        };
+        if (ANALYTICS_TEST_RUN) {
+          base.test_run = ANALYTICS_TEST_RUN;
+        }
+        return { ...base, ...eventData };
+      }
+
+      function initPosthog() {
+        if (!isTrackedHost()) return;
+        !function(t,e){var o,n,p,r;e.__SV||(window.posthog&&window.posthog.__loaded)||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split('.');2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement('script')).type='text/javascript',p.crossOrigin='anonymous',p.async=!0,p.src=s.api_host.replace('.i.posthog.com','-assets.i.posthog.com')+'/static/array.js',(r=t.getElementsByTagName('script')[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a='posthog',u.people=u.people||[],u.toString=function(t){var e='posthog';return'posthog'!==a&&(e+='.'+a),t||(e+=' (stub)'),e},u.people.toString=function(){return u.toString(1)+'.people (stub)'},o='init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug'.split(' '),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+        window.posthog.init(POSTHOG_CONFIG.projectToken, {
+          api_host: POSTHOG_CONFIG.apiHost,
+          defaults: POSTHOG_CONFIG.defaults,
+          person_profiles: POSTHOG_CONFIG.personProfiles,
+          opt_out_useragent_filter: true,
+          loaded: function(posthog) {
+            posthogReady = true;
+            while (pendingPosthogEvents.length) {
+              const queued = pendingPosthogEvents.shift();
+              posthog.capture(queued.eventName, analyticsContext(queued.eventData));
+            }
+          },
+        });
+      }
+
+      function initUmami() {
+        if (!isTrackedHost()) return;
+        const script = document.createElement('script');
+        script.defer = true;
+        script.src = 'https://cloud.umami.is/script.js';
+        script.dataset.websiteId = UMAMI_CONFIG.websiteId;
+        document.head.appendChild(script);
+      }
+
+      function trackWithPosthog(eventName, eventData) {
+        if (!isTrackedHost() || !window.posthog) return;
+        if (!posthogReady || typeof window.posthog.capture !== 'function') {
+          pendingPosthogEvents.push({ eventName, eventData });
+          return;
+        }
+        window.posthog.capture(eventName, analyticsContext(eventData));
+      }
+
+      function trackWithUmami(eventName, eventData) {
+        if (!isTrackedHost()) return;
+        const payload = {
+          type: 'event',
+          payload: {
+            website: UMAMI_CONFIG.websiteId,
+            hostname: ANALYTICS_SITE,
+            url: location.pathname,
+            name: eventName,
+            data: analyticsContext(eventData),
+          },
+        };
+        fetch(UMAMI_CONFIG.sendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true,
+        }).catch(() => {});
+      }
+
+      function trackAnalyticsEvent(eventName, eventData) {
+        if (ANALYTICS_PROVIDER === 'umami') {
+          trackWithUmami(eventName, eventData);
+          return;
+        }
+        trackWithPosthog(eventName, eventData);
+      }
+
+      if (ANALYTICS_PROVIDER === 'umami') {
+        initUmami();
+      } else {
+        initPosthog();
+      }
+
+      if (ANALYTICS_TEST_RUN) {
+        window.__CLI_ANYTHING_ANALYTICS__ = {
+          visitor: {
+            isAgent: visitor.isAgent,
+            isAutomation: visitor.isAutomation,
+            trafficType: visitor.trafficType,
+            category: visitor.category,
+            reason: visitor.reason,
+            signals: visitor.signals.slice(),
+            webdriver: visitor.webdriver,
+            ua: visitor.ua,
+          },
+        };
+      }
+
+      if (isTrackedHost() && visitor.isAgent) {
+        trackAnalyticsEvent('visit-agent', {
+          classification_source: 'initial-load',
+        });
+      }
+
+      function onHumanInteraction(event) {
+        if (humanConfirmed || !isTrackedHost() || visitor.trafficType !== 'human') return;
         humanConfirmed = true;
-        trackBoth('visit-human');
+        trackAnalyticsEvent('visit-human', {
+          classification_source: 'user-interaction',
+          interaction: event.type,
+        });
         ['mousemove', 'touchstart', 'scroll', 'keydown', 'click'].forEach((evt) => {
           document.removeEventListener(evt, onHumanInteraction);
         });
@@ -2509,50 +2884,99 @@
         document.addEventListener(evt, onHumanInteraction, { once: false, passive: true });
       });
 
-      const UMAMI_API = 'https://api.umami.is/v1';
-      const UMAMI_KEY = 'api_idAebMhzn6z0hsUQT7BSxRuCK2GUZvRY';
-      const WEBSITE_IDS = [
-        '07082d05-efd3-4f85-a7a1-b426b0e8bfaa',
-        'a076c661-bed1-405c-a522-813794e688b4',
-      ];
-      const headers = { Accept: 'application/json', 'x-umami-api-key': UMAMI_KEY };
+      // ── Live analytics via Cloudflare Worker proxy ──
+      // Runtime stats are fetched once per page load and rendered as compact
+      // site page-view and CLI-Hub usage counters split by human/agent.
+      const ANALYTICS_PROXY_URL = 'https://analytics.clianything.cc/';
+      const ZERO_STATS = {
+        human: 0, agent: 0,
+        cli_hub_human: 0, cli_hub_agent: 0,
+      };
 
-      async function loadVisitorStats() {
+      function normalizeStats(stats) {
+        const out = {};
+        for (const key of Object.keys(ZERO_STATS)) {
+          out[key] = Number(stats && stats[key]) || 0;
+        }
+        return out;
+      }
+
+      async function fetchWorkerStats() {
+        const response = await fetch(ANALYTICS_PROXY_URL + 'stats');
+        if (!response.ok) throw new Error('analytics stats http ' + response.status);
+        const data = await response.json();
+        return normalizeStats(data.stats || data);
+      }
+
+      async function fetchPosthogTotals() {
+        const hogql = (
+          "select " +
+          "countIf(event = 'visit-human' and properties.source = 'web' and properties.site = 'clianything.cc') as human, " +
+          "countIf(event = 'visit-agent' and properties.source = 'web' and properties.site = 'clianything.cc') as agent, " +
+          "countIf(event = 'cli-hub call' and properties.source = 'cli' and properties.channel = 'cli-hub' and properties.is_agent = false) as cli_hub_human, " +
+          "countIf(event = 'cli-hub call' and properties.source = 'cli' and properties.channel = 'cli-hub' and properties.is_agent = true) as cli_hub_agent " +
+          "from events"
+        );
+        const response = await fetch(ANALYTICS_PROXY_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: { kind: 'HogQLQuery', query: hogql } }),
+        });
+        if (!response.ok) throw new Error('posthog query http ' + response.status);
+        const data = await response.json();
+        const row = (data.results && data.results[0]) || [0, 0, 0, 0];
+        return {
+          human: Number(row[0]) || 0,
+          agent: Number(row[1]) || 0,
+          cli_hub_human: Number(row[2]) || 0,
+          cli_hub_agent: Number(row[3]) || 0,
+        };
+      }
+
+      async function fetchVisitorStats() {
         try {
-          const now = Date.now();
-          let totalVisits = 0;
-          let humanCount = 0;
-          const fetches = WEBSITE_IDS.flatMap((id) => [
-            fetch(UMAMI_API + '/websites/' + id + '/stats?startAt=0&endAt=' + now, { headers }),
-            fetch(UMAMI_API + '/websites/' + id + '/events/series?startAt=0&endAt=' + now + '&unit=year&timezone=UTC', { headers })
-          ]);
-          const [statsResp1, eventsResp1, statsResp2, eventsResp2] = await Promise.all(fetches);
-
-          for (const resp of [statsResp1, statsResp2]) {
-            if (resp.ok) {
-              const stats = await resp.json();
-              totalVisits += stats.visits ?? 0;
-            }
-          }
-
-          for (const resp of [eventsResp1, eventsResp2]) {
-            if (resp.ok) {
-              const events = await resp.json();
-              events.forEach((e) => {
-                if (e.x === 'visit-human') humanCount += e.y || 0;
-              });
-            }
-          }
-
-          document.getElementById('stat-total').textContent = totalVisits.toLocaleString();
-          document.getElementById('stat-human').textContent = humanCount.toLocaleString();
-          document.getElementById('stat-agent').textContent = Math.max(0, totalVisits - humanCount).toLocaleString();
-        } catch (_) {
-          // Leave fallback dashes.
+          return await fetchWorkerStats();
+        } catch {
+          const posthog = await fetchPosthogTotals();
+          return sumStats(UMAMI_BASELINE_STATS, posthog);
         }
       }
 
+      function sumStats(a, b) {
+        const out = {};
+        for (const key of Object.keys(ZERO_STATS)) out[key] = (a[key] || 0) + (b[key] || 0);
+        return out;
+      }
+
+      function withDerivedTotals(s) {
+        // cli-hub call is emitted once per invocation, so action events like
+        // install/launch must not be added here or usage would be double-counted.
+        return {
+          ...s,
+          total: s.human + s.agent,
+          cli_hub_total: s.cli_hub_human + s.cli_hub_agent,
+        };
+      }
+
+      function hasAnyStats(s) {
+        return Object.keys(ZERO_STATS).some((key) => (s[key] || 0) > 0);
+      }
+
+      async function refreshVisitorStats() {
+        const stats = await fetchVisitorStats();
+        if (!hasAnyStats(stats)) return false;
+        applyVisitorStats(withDerivedTotals(stats));
+        return true;
+      }
+
+      async function loadVisitorStats() {
+        await refreshVisitorStats().catch(() => false);
+      }
+
       loadVisitorStats();
+      if (typeof loadGitHubStars === 'function') {
+        loadGitHubStars();
+      }
     })();
   </script>
 </body>

@@ -1,0 +1,63 @@
+name: export_file
+version: "1.0"
+description: >
+  Export a file from the target application using its native CLI.
+  Demonstrates the native_api backend with a run_command action.
+  Replace the command with your actual application's export command.
+tags: [export, native_api, example]
+
+parameters:
+  output:
+    type: string
+    required: true
+    description: Destination file path for the export.
+    example: /tmp/exported.txt
+  input:
+    type: string
+    required: false
+    default: ""
+    description: Source file to export from (optional, app-dependent).
+  format:
+    type: string
+    required: false
+    default: plain
+    description: Output format.
+    enum: [plain, json, csv]
+
+preconditions:
+  - file_exists: /bin/echo    # sanity check: a real macro would check the app binary
+
+steps:
+  - id: step_export
+    backend: native_api
+    action: run_command
+    params:
+      # Replace this with your real export command, e.g.:
+      # command: [inkscape, --export-filename, "${output}", "${input}"]
+      command: [echo, "Exported to ${output} (format=${format})"]
+      capture_stdout: true
+    timeout_ms: 30000
+    on_failure: fail
+
+  - id: step_write_output
+    backend: file_transform
+    action: text_replace
+    params:
+      input_file: /dev/null
+      output_file: ${output}
+      find: ""
+      replace: ""
+    on_failure: skip  # Writing the marker file is best-effort
+
+postconditions: []
+
+outputs:
+  - name: exported_file
+    path: ${output}
+    description: Path where the export was written.
+
+agent_hints:
+  danger_level: safe
+  side_effects: [creates_file]
+  reversible: true
+  estimated_duration_ms: 2000

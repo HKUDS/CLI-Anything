@@ -22,6 +22,14 @@ def _format_display_name(name: str) -> str:
     return name.replace("_", " ").replace("-", " ").title()
 
 
+def _canonical_skill_name(harness_path: Path, software_name: str) -> str:
+    """Return the repo-root canonical skill id for a harness."""
+    software_dir = software_name
+    if harness_path.name == "agent-harness" and harness_path.parent.name:
+        software_dir = harness_path.parent.name
+    return f"cli-anything-{software_dir.replace('_', '-')}"
+
+
 @dataclass
 class CommandInfo:
     """Information about a CLI command."""
@@ -114,8 +122,13 @@ def extract_cli_metadata(harness_path: str) -> SkillMetadata:
     examples = generate_examples(software_name, command_groups)
 
     # Build skill name and description
-    skill_name = f"cli-anything-{software_name}"
-    skill_description = f"Command-line interface for {_format_display_name(software_name)} - {skill_intro[:100]}..."
+    skill_name = _canonical_skill_name(harness_path, software_name)
+    if skill_intro:
+        intro_snippet = skill_intro[:100]
+        suffix = "..." if len(skill_intro) > 100 else ""
+        skill_description = f"Command-line interface for {_format_display_name(software_name)} - {intro_snippet}{suffix}"
+    else:
+        skill_description = f"Command-line interface for {_format_display_name(software_name)}"
 
     return SkillMetadata(
         skill_name=skill_name,
@@ -159,14 +172,16 @@ def extract_system_package(content: str) -> Optional[str]:
     patterns = [
         r"`apt install ([\w\-]+)`",
         r"`brew install ([\w\-]+)`",
-        r"apt-get install ([\w\-]+)",
+        r"`apt-get install ([\w\-]+)`",
     ]
 
     for pattern in patterns:
         match = re.search(pattern, content)
         if match:
             package = match.group(1)
-            if "apt" in pattern:
+            if "apt-get" in pattern:
+                return f"apt-get install {package}"
+            elif "apt" in pattern:
                 return f"apt install {package}"
             elif "brew" in pattern:
                 return f"brew install {package}"
@@ -465,7 +480,8 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
 
     Args:
         harness_path: Path to the agent-harness directory
-        output_path: Optional output path for SKILL.md (default: cli_anything/<software>/skills/SKILL.md)
+        output_path: Optional output path for SKILL.md
+                     (default: skills/cli-anything-<software>/SKILL.md)
         template_path: Optional path to custom Jinja2 template
 
     Returns:
@@ -478,10 +494,11 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
     content = generate_skill_md(metadata, template_path)
 
     # Determine output path
+    harness_path_obj = Path(harness_path)
+    compatibility_path = harness_path_obj / "cli_anything" / metadata.software_name / "skills" / "SKILL.md"
     if output_path is None:
-        # Default to skills/ directory under harness_path
-        harness_path_obj = Path(harness_path)
-        output_path = harness_path_obj / "cli_anything" / metadata.software_name / "skills" / "SKILL.md"
+        repo_root = harness_path_obj.parent.parent
+        output_path = repo_root / "skills" / metadata.skill_name / "SKILL.md"
     else:
         output_path = Path(output_path)
 
@@ -490,6 +507,9 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
 
     # Write file
     output_path.write_text(content, encoding="utf-8")
+    if compatibility_path != output_path:
+        compatibility_path.parent.mkdir(parents=True, exist_ok=True)
+        compatibility_path.write_text(content, encoding="utf-8")
 
     return str(output_path)
 
@@ -507,7 +527,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-o", "--output",
-        help="Output path for SKILL.md (default: cli_anything/<software>/skills/SKILL.md)",
+        help="Output path for SKILL.md (default: skills/cli-anything-<software>/SKILL.md)",
         default=None
     )
     parser.add_argument(

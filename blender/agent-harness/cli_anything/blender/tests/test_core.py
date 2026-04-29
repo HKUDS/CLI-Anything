@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+from pathlib import Path
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -37,6 +38,8 @@ from cli_anything.blender.core.render import (
     set_render_settings, get_render_settings, list_render_presets,
     render_scene, RENDER_PRESETS, VALID_ENGINES,
 )
+from cli_anything.blender.core import preview as preview_mod
+from cli_anything.blender.utils import blender_backend
 from cli_anything.blender.core.session import Session
 
 
@@ -263,6 +266,25 @@ class TestObjects:
         add_object(proj)
         set_object_property(proj, 0, "visible", "false")
         assert proj["objects"][0]["visible"] is False
+
+    def test_set_property_parent(self):
+        proj = self._make_scene()
+        parent = add_object(proj, name="Parent")
+        add_object(proj, name="Child")
+        set_object_property(proj, 1, "parent", 0)
+        assert proj["objects"][1]["parent"] == parent["id"]
+
+    def test_set_property_parent_invalid_index(self):
+        proj = self._make_scene()
+        add_object(proj, name="Child")
+        with pytest.raises(IndexError, match="Parent index 2 out of range"):
+            set_object_property(proj, 0, "parent", 2)
+
+    def test_set_property_parent_self(self):
+        proj = self._make_scene()
+        add_object(proj, name="Solo")
+        with pytest.raises(ValueError, match="cannot be its own parent"):
+            set_object_property(proj, 0, "parent", 0)
 
     def test_set_property_invalid(self):
         proj = self._make_scene()
@@ -1033,3 +1055,291 @@ class TestSession:
 
         sess.undo()
         assert len(sess.get_project()["objects"][0]["modifiers"]) == 0
+
+
+class TestPreview:
+    @staticmethod
+    def _fake_bundle(tmp_path, bundle_id):
+        bundle_dir = tmp_path / bundle_id
+        artifacts_dir = bundle_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        for artifact_id in ("hero", "workbench"):
+            (artifacts_dir / f"{artifact_id}.png").write_bytes(b"\x89PNG\r\n\x1a\npreview")
+        summary_path = bundle_dir / "summary.json"
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "headline": "Blender quick preview",
+                    "facts": {"views": 2, "engine": "EEVEE"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        manifest_path = bundle_dir / "manifest.json"
+        manifest_path.write_text(json.dumps({"bundle_id": bundle_id, "status": "ok"}), encoding="utf-8")
+        return {
+            "bundle_id": bundle_id,
+            "status": "ok",
+            "_bundle_dir": str(bundle_dir),
+            "_manifest_path": str(manifest_path),
+            "_summary_path": str(summary_path),
+            "cached": False,
+        }
+
+    def test_list_recipes(self):
+        recipes = preview_mod.list_recipes()
+        assert recipes
+        assert recipes[0]["name"] == "quick"
+
+    def test_capture_bundle(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="PreviewScene")
+        sess.set_project(proj, str(tmp_path / "scene.json"))
+
+        call_count = {"value": 0}
+
+        def fake_render(script_content, output_path, timeout=300):
+            call_count["value"] += 1
+            Path(output_path).write_bytes(b"\x89PNG\r\n\x1a\npreview")
+            return {
+                "output": output_path,
+                "method": "blender-headless",
+                "file_size": os.path.getsize(output_path),
+            }
+
+        monkeypatch.setattr(blender_backend, "render_scene_headless", fake_render)
+
+        manifest = preview_mod.capture(sess, root_dir=str(tmp_path))
+        assert manifest["software"] == "blender"
+        assert manifest["recipe"] == "quick"
+        assert manifest["status"] == "partial"
+        assert call_count["value"] == 2
+        assert any(item["role"] == "hero" for item in manifest["artifacts"])
+        assert any(item["artifact_id"] == "workbench" for item in manifest["artifacts"])
+
+    def test_latest_bundle(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="PreviewScene")
+        sess.set_project(proj)
+
+        def fake_render(script_content, output_path, timeout=300):
+            Path(output_path).write_bytes(b"\x89PNG\r\n\x1a\npreview")
+            return {"output": output_path, "method": "blender-headless"}
+
+        monkeypatch.setattr(blender_backend, "render_scene_headless", fake_render)
+
+        created = preview_mod.capture(sess, root_dir=str(tmp_path))
+        latest = preview_mod.latest(root_dir=str(tmp_path))
+        assert latest["bundle_id"] == created["bundle_id"]
+
+    def test_live_start_publishes_session(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="LivePreviewScene")
+        project_path = tmp_path / "live-demo.json"
+        save_scene(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        def fake_capture(*args, **kwargs):
+            return dict(bundle_manifest)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        live = preview_mod.live_start(
+            sess,
+            root_dir=str(tmp_path),
+            refresh_hint_ms=900,
+            live_mode="poll",
+            source_poll_ms=420,
+        )
+        assert live["protocol_version"] == preview_mod.LIVE_PROTOCOL_VERSION
+        assert live["current_bundle_id"] == "bundle-a"
+        assert live["refresh_hint_ms"] == 900
+        assert live["live_mode"] == "poll"
+        assert live["source_poll_ms"] == 420
+        assert live["source_state"]["project_path"] == str(project_path)
+        assert live["source_state"]["last_rendered_fingerprint"].startswith("sha256:")
+        assert Path(live["_session_path"]).is_file()
+        assert Path(live["_trajectory_path"]).is_file()
+        assert (Path(live["_session_dir"]) / "current" / "manifest.json").is_file()
+        trajectory = json.loads(Path(live["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert trajectory["step_count"] == 1
+        assert trajectory["steps"][0]["bundle_id"] == "bundle-a"
+        assert live["trajectory_step_count"] == 1
+
+    def test_live_push_updates_history(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="LivePreviewScene")
+        project_path = tmp_path / "live-demo.json"
+        save_scene(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_a = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+        bundle_b = self._fake_bundle(tmp_path / "bundles", "bundle-b")
+        manifests = [dict(bundle_a), dict(bundle_b)]
+
+        def fake_capture(*args, **kwargs):
+            return manifests.pop(0)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        started = preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        pushed = preview_mod.live_push(sess, root_dir=str(tmp_path))
+        assert started["current_bundle_id"] == "bundle-a"
+        assert pushed["current_bundle_id"] == "bundle-b"
+        assert pushed["history"][0]["bundle_id"] == "bundle-b"
+        assert pushed["history"][1]["bundle_id"] == "bundle-a"
+        trajectory = json.loads(Path(pushed["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert trajectory["step_count"] == 2
+        assert [step["bundle_id"] for step in trajectory["steps"]] == ["bundle-a", "bundle-b"]
+        assert pushed["current_step_id"] == "step-0002"
+
+    def test_live_status_includes_trajectory_summary(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="LivePreviewScene")
+        project_path = tmp_path / "live-demo.json"
+        save_scene(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        monkeypatch.setattr(preview_mod, "capture", lambda *args, **kwargs: dict(bundle_manifest))
+
+        preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        status = preview_mod.live_status(sess, root_dir=str(tmp_path))
+        summary = status["trajectory_summary"]
+        assert summary["step_count"] == 1
+        assert summary["latest_bundle_id"] == "bundle-a"
+        assert summary["latest_publish_reason"] == "live-start"
+        assert summary["recent_steps"][0]["step_id"] == "step-0001"
+
+    def test_live_push_appends_trajectory_even_when_bundle_is_reused(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="LivePreviewScene")
+        project_path = tmp_path / "live-demo.json"
+        save_scene(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+        bundle_manifest["created_at"] = "2025-01-01T00:00:00Z"
+        publish_times = [
+            "2026-04-23T10:00:00Z",
+            "2026-04-23T10:05:00Z",
+        ]
+
+        def fake_capture(*args, **kwargs):
+            return dict(bundle_manifest)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+        monkeypatch.setattr(preview_mod, "_now_iso", lambda: publish_times.pop(0))
+
+        preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        pushed = preview_mod.live_push(sess, root_dir=str(tmp_path))
+        trajectory = json.loads(Path(pushed["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert len(pushed["history"]) == 1
+        assert trajectory["step_count"] == 2
+        assert [step["step_id"] for step in trajectory["steps"]] == ["step-0001", "step-0002"]
+        assert all(step["bundle_id"] == "bundle-a" for step in trajectory["steps"])
+        assert [step["command_finished_at"] for step in trajectory["steps"]] == [
+            "2026-04-23T10:00:00Z",
+            "2026-04-23T10:05:00Z",
+        ]
+        assert all(step["created_at"] == "2025-01-01T00:00:00Z" for step in trajectory["steps"])
+
+    def test_live_stop_marks_session_stopped(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="LivePreviewScene")
+        project_path = tmp_path / "live-demo.json"
+        save_scene(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        def fake_capture(*args, **kwargs):
+            return dict(bundle_manifest)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        stopped = preview_mod.live_stop(sess, root_dir=str(tmp_path))
+        assert stopped["status"] == "stopped"
+        assert "stopped_at" in stopped
+
+    def test_live_session_name_is_stable_for_same_project_path(self, tmp_path):
+        project_path = tmp_path / "stable-demo.json"
+        proj = create_scene(name="StablePreviewScene")
+        save_scene(proj, str(project_path))
+
+        session_a = Session()
+        session_a.set_project(proj, str(project_path))
+
+        session_b = Session()
+        session_b.set_project(open_scene(str(project_path)), str(project_path))
+
+        name_a = preview_mod._live_session_name(session_a, "quick")
+        name_b = preview_mod._live_session_name(session_b, "quick")
+        assert name_a == name_b
+
+    def test_project_fingerprint_is_stable_across_sessions_for_saved_project(self, tmp_path):
+        project_path = tmp_path / "stable-project.json"
+        proj = create_scene(name="StablePreviewScene")
+        save_scene(proj, str(project_path))
+
+        session_a = Session()
+        session_a.set_project(proj, str(project_path))
+
+        session_b = Session()
+        session_b.set_project(open_scene(str(project_path)), str(project_path))
+
+        assert preview_mod._project_fingerprint(session_a) == preview_mod._project_fingerprint(session_b)
+
+    def test_poll_live_session_once_captures_after_source_change(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="PollingPreviewScene")
+        project_path = tmp_path / "polling-demo.json"
+        save_scene(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_a = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+        bundle_b = self._fake_bundle(tmp_path / "bundles", "bundle-b")
+        manifests = [dict(bundle_a), dict(bundle_b)]
+
+        def fake_capture(*args, **kwargs):
+            return manifests.pop(0)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        started = preview_mod.live_start(
+            sess,
+            root_dir=str(tmp_path),
+            live_mode="poll",
+            source_poll_ms=500,
+        )
+        started_session_dir = Path(started["_session_dir"])
+
+        updated = open_scene(str(project_path))
+        add_object(updated, mesh_type="cube", name="ChangedCube")
+        save_scene(updated, str(project_path))
+
+        result = preview_mod.poll_live_session_once(str(started_session_dir))
+        payload = json.loads((started_session_dir / "session.json").read_text(encoding="utf-8"))
+        trajectory = json.loads((started_session_dir / "trajectory.json").read_text(encoding="utf-8"))
+        assert result["action"] == "captured"
+        assert result["bundle_id"] == "bundle-b"
+        assert payload["bundle_count"] >= 2
+        assert payload["source_state"]["last_publish_reason"] == "auto-poll"
+        assert trajectory["step_count"] == 2
+        assert trajectory["steps"][-1]["publish_reason"] == "auto-poll"
+
+    def test_poll_live_session_once_exits_for_manual_mode(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_scene(name="ManualPreviewScene")
+        project_path = tmp_path / "manual-demo.json"
+        save_scene(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        def fake_capture(*args, **kwargs):
+            return dict(bundle_manifest)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        started = preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        result = preview_mod.poll_live_session_once(started["_session_dir"])
+        assert result["action"] == "exit"
+        assert result["reason"] == "mode:manual"

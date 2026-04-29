@@ -36,7 +36,6 @@ setup(
     install_requires=[
         "click>=8.0.0",
         "prompt-toolkit>=3.0.0",
-        "lxml>=4.9.0",
     ],
     extras_require={
         "dev": [

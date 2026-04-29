@@ -128,6 +128,35 @@ Render the final polished video.
 | `export presets` | List available export presets |
 | `export render <output_path>` | Render project to video file |
 
+### preview
+
+Capture truthful review bundles from the current Openscreen project.
+
+| Command | Description |
+|---------|-------------|
+| `preview recipes` | List available preview recipes |
+| `preview capture --recipe quick` | Render a low-res preview bundle |
+| `preview latest [--recipe quick]` | Return the latest existing bundle |
+
+Current preview support is static rather than live. A `quick` bundle typically
+contains:
+
+- a low-res preview clip
+- sampled frames
+- a `hero` frame for quick inspection
+- `summary.json` with trim/zoom/speed facts
+
+Bundle capture also writes or updates a stable recipe-level `trajectory.json`
+beside the preview root so agents can reconstruct preview history over time.
+
+Viewer commands:
+
+```bash
+cli-hub previews inspect /path/to/bundle
+cli-hub previews html /path/to/bundle -o page.html
+cli-hub previews open /path/to/bundle
+```
+
 ### session
 
 Manage session state with undo/redo.
@@ -173,6 +202,9 @@ Manage session state with undo/redo.
 5. After `export render`, verify the output exists and probe it
 6. Times are in **milliseconds** for all region commands
 7. Coordinates (focus, crop, position) are **normalized 0-1**
+8. Use `preview capture --json` to validate zoom, trim, annotation, and timing visually
+9. Read returned bundle artifact paths from the JSON payload; images and clips live on disk
+10. Use `cli-hub previews ...` only to inspect/open existing bundles
 
 ## Version
 

@@ -7,6 +7,7 @@ on:
     paths:
       - '*/agent-harness/**'
       - 'registry.json'
+      - 'public_registry.json'
       - 'cli-hub/**'
       - 'docs/hub/**'
       - '.github/workflows/deploy-pages.yml'

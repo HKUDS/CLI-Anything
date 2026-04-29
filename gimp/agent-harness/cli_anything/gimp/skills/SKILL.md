@@ -19,7 +19,9 @@ pip install cli-anything-gimp
 
 **Prerequisites:**
 - Python 3.10+
-- gimp must be installed on your system
+- gimp is recommended for native batch rendering, but layered compositions can
+  still render through the built-in Pillow path when GIMP is unavailable or when
+  deferred `draw` operations are present
 
 
 ## Usage
@@ -79,7 +81,7 @@ Layer management commands.
 | `remove` | Remove a layer by index |
 | `duplicate` | Duplicate a layer |
 | `move` | Move a layer to a new position |
-| `set` | Set a layer property (name, opacity, visible, mode, offset_x, offset_y) |
+| `set` | Set a layer property (name, opacity, visible, mode, offset_x, offset_y); negative offsets are accepted naturally |
 | `flatten` | Flatten all visible layers |
 | `merge-down` | Merge a layer with the one below it |
 
@@ -132,7 +134,7 @@ Export/render commands.
 |---------|-------------|
 | `presets` | List export presets |
 | `preset-info` | Show preset details |
-| `render` | Render the project to an image file |
+| `render` | Render the project to an image file; deferred draw ops are applied at render time |
 
 
 ### Session
@@ -190,8 +192,24 @@ cli-anything-gimp
 Export the project to a final output format.
 
 ```bash
-cli-anything-gimp --project myproject.json export render output.pdf --overwrite
+cli-anything-gimp --project myproject.json export render output.png --overwrite
 ```
+
+### Layered Composition Workflow
+
+For overlay-heavy compositions:
+
+```bash
+cli-anything-gimp --project poster.gimp-cli.json layer set 0 offset_x -48
+cli-anything-gimp --project poster.gimp-cli.json layer set 0 offset_y 24
+cli-anything-gimp --project poster.gimp-cli.json draw text --layer 0 --text "Launch Night" --x 96 --y 120 --size 72 --color "#f6f1e8"
+cli-anything-gimp --project poster.gimp-cli.json export render output.png --overwrite
+```
+
+Notes:
+- `layer set` now accepts negative `offset_x` and `offset_y` values in both command mode and REPL mode.
+- `draw text` and `draw rect` are render-time operations. Treat the exported image, not only the project JSON, as the thing to review.
+- For projects with deferred draw ops, expect the Pillow render path to be the stable default even if GIMP is installed.
 
 
 ## State Management
@@ -226,6 +244,7 @@ When using this CLI programmatically:
 3. **Parse stderr** for error messages on failure
 4. **Use absolute paths** for all file operations
 5. **Verify outputs exist** after export operations
+6. **Review rendered outputs** after offset, draw, blend-mode, or filter changes instead of trusting saved project state alone
 
 ## More Information
 

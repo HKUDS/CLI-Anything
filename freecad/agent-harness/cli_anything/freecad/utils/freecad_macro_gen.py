@@ -48,53 +48,129 @@ def _gen_header() -> List[str]:
     ]
 
 
+_RENDERABLE_PRIMITIVES = {"box", "cylinder", "sphere", "cone", "torus"}
+
+
+def _emit_primitive(lines: List[str], part_type: str, name: str, props: Dict[str, Any]) -> bool:
+    """Append FreeCAD object creation lines for a supported primitive."""
+    if part_type == "box":
+        length = props.get("length", props.get("Length", 10.0))
+        width = props.get("width", props.get("Width", 10.0))
+        height = props.get("height", props.get("Height", 10.0))
+        lines.append(f"obj_{name} = doc.addObject('Part::Box', '{name}')")
+        lines.append(f"obj_{name}.Length = {length}")
+        lines.append(f"obj_{name}.Width = {width}")
+        lines.append(f"obj_{name}.Height = {height}")
+        return True
+
+    if part_type == "cylinder":
+        radius = props.get("radius", props.get("Radius", 5.0))
+        height = props.get("height", props.get("Height", 10.0))
+        lines.append(f"obj_{name} = doc.addObject('Part::Cylinder', '{name}')")
+        lines.append(f"obj_{name}.Radius = {radius}")
+        lines.append(f"obj_{name}.Height = {height}")
+        return True
+
+    if part_type == "sphere":
+        radius = props.get("radius", props.get("Radius", 5.0))
+        lines.append(f"obj_{name} = doc.addObject('Part::Sphere', '{name}')")
+        lines.append(f"obj_{name}.Radius = {radius}")
+        return True
+
+    if part_type == "cone":
+        radius1 = props.get("radius1", props.get("Radius1", 5.0))
+        radius2 = props.get("radius2", props.get("Radius2", 0.0))
+        height = props.get("height", props.get("Height", 10.0))
+        lines.append(f"obj_{name} = doc.addObject('Part::Cone', '{name}')")
+        lines.append(f"obj_{name}.Radius1 = {radius1}")
+        lines.append(f"obj_{name}.Radius2 = {radius2}")
+        lines.append(f"obj_{name}.Height = {height}")
+        return True
+
+    if part_type == "torus":
+        radius1 = props.get("radius1", props.get("Radius1", 10.0))
+        radius2 = props.get("radius2", props.get("Radius2", 2.0))
+        lines.append(f"obj_{name} = doc.addObject('Part::Torus', '{name}')")
+        lines.append(f"obj_{name}.Radius1 = {radius1}")
+        lines.append(f"obj_{name}.Radius2 = {radius2}")
+        return True
+
+    return False
+
+
+def _part_by_id(project: dict, part_id: Any) -> Optional[Dict[str, Any]]:
+    """Return the part payload matching *part_id*, if present."""
+    for part in project.get("parts", []):
+        if part.get("id") == part_id:
+            return part
+    return None
+
+
+def _mirrored_position(position: Any, plane: str) -> List[float]:
+    """Return a mirrored position vector for a simple plane reflection."""
+    if isinstance(position, (list, tuple)):
+        coords = [float(position[idx]) if len(position) > idx else 0.0 for idx in range(3)]
+    else:
+        coords = [
+            float(position.get("x", 0.0)),
+            float(position.get("y", 0.0)),
+            float(position.get("z", 0.0)),
+        ]
+    axis_index = {"YZ": 0, "XZ": 1, "XY": 2}.get(plane.upper())
+    if axis_index is not None:
+        coords[axis_index] *= -1.0
+    return coords
+
+
+def _mirror_render_spec(project: dict, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Resolve a mirrored part into a renderable primitive approximation."""
+    params = part.get("params", {})
+    original = _part_by_id(project, params.get("original_id"))
+    if not original:
+        return None
+    original_type = str(original.get("type", "")).lower()
+    if original_type not in _RENDERABLE_PRIMITIVES:
+        return None
+
+    placement = dict(original.get("placement") or {})
+    placement["position"] = _mirrored_position(
+        placement.get("position") or [0.0, 0.0, 0.0],
+        str(params.get("mirror_plane", "XZ")),
+    )
+    return {
+        "type": original_type,
+        "params": dict(original.get("params") or {}),
+        "placement": placement,
+    }
+
+
+def _render_spec_for_part(project: dict, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return the renderable primitive spec for *part*, if supported."""
+    part_type = str(part.get("type", "")).lower()
+    if part_type in _RENDERABLE_PRIMITIVES:
+        return {
+            "type": part_type,
+            "params": dict(part.get("params") or {}),
+            "placement": dict(part.get("placement") or {}),
+        }
+    if part_type == "mirror":
+        return _mirror_render_spec(project, part)
+    return None
+
+
 def _gen_parts(project: dict) -> List[str]:
     """Generate Part primitives (Box, Cylinder, Sphere, Cone, Torus)."""
     lines: List[str] = []
     parts = project.get("parts", [])
 
     for part in parts:
-        part_type = part.get("type", "box").lower()
+        part_type = str(part.get("type", "box")).lower()
         name = _safe_name(part.get("name", f"Part_{part_type}"))
-        props = part.get("params", part.get("properties", {}))
+        render_spec = _render_spec_for_part(project, part)
+        props = render_spec["params"] if render_spec else part.get("params", part.get("properties", {}))
 
-        if part_type == "box":
-            length = props.get("length", props.get("Length", 10.0))
-            width = props.get("width", props.get("Width", 10.0))
-            height = props.get("height", props.get("Height", 10.0))
-            lines.append(f"obj_{name} = doc.addObject('Part::Box', '{name}')")
-            lines.append(f"obj_{name}.Length = {length}")
-            lines.append(f"obj_{name}.Width = {width}")
-            lines.append(f"obj_{name}.Height = {height}")
-
-        elif part_type == "cylinder":
-            radius = props.get("radius", props.get("Radius", 5.0))
-            height = props.get("height", props.get("Height", 10.0))
-            lines.append(f"obj_{name} = doc.addObject('Part::Cylinder', '{name}')")
-            lines.append(f"obj_{name}.Radius = {radius}")
-            lines.append(f"obj_{name}.Height = {height}")
-
-        elif part_type == "sphere":
-            radius = props.get("radius", props.get("Radius", 5.0))
-            lines.append(f"obj_{name} = doc.addObject('Part::Sphere', '{name}')")
-            lines.append(f"obj_{name}.Radius = {radius}")
-
-        elif part_type == "cone":
-            radius1 = props.get("radius1", props.get("Radius1", 5.0))
-            radius2 = props.get("radius2", props.get("Radius2", 0.0))
-            height = props.get("height", props.get("Height", 10.0))
-            lines.append(f"obj_{name} = doc.addObject('Part::Cone', '{name}')")
-            lines.append(f"obj_{name}.Radius1 = {radius1}")
-            lines.append(f"obj_{name}.Radius2 = {radius2}")
-            lines.append(f"obj_{name}.Height = {height}")
-
-        elif part_type == "torus":
-            radius1 = props.get("radius1", props.get("Radius1", 10.0))
-            radius2 = props.get("radius2", props.get("Radius2", 2.0))
-            lines.append(f"obj_{name} = doc.addObject('Part::Torus', '{name}')")
-            lines.append(f"obj_{name}.Radius1 = {radius1}")
-            lines.append(f"obj_{name}.Radius2 = {radius2}")
-
+        if render_spec and _emit_primitive(lines, render_spec["type"], name, props):
+            pass
         else:
             lines.append(f"# WARNING: Unknown part type '{part_type}' for '{name}'")
 
@@ -134,8 +210,39 @@ def _gen_boolean_ops(project: dict) -> List[str]:
     return lines
 
 
+def _placement_expr(placement: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Return a FreeCAD placement expression for a stored placement payload."""
+    if not placement:
+        return None
+    position = placement.get("position") or [0.0, 0.0, 0.0]
+    rotation = placement.get("rotation") or [0.0, 0.0, 0.0]
+    x = float(position[0] if len(position) > 0 else 0.0)
+    y = float(position[1] if len(position) > 1 else 0.0)
+    z = float(position[2] if len(position) > 2 else 0.0)
+    rx = float(rotation[0] if len(rotation) > 0 else 0.0)
+    ry = float(rotation[1] if len(rotation) > 1 else 0.0)
+    rz = float(rotation[2] if len(rotation) > 2 else 0.0)
+    return (
+        "FreeCAD.Placement("
+        f"FreeCAD.Vector({x}, {y}, {z}), "
+        f"FreeCAD.Rotation({rz}, {ry}, {rx}))"
+    )
+
+
+def _dominant_axis(direction: Any) -> tuple[str, bool, bool]:
+    """Resolve a direction vector to the closest body-origin axis."""
+    if not isinstance(direction, (list, tuple)) or len(direction) != 3:
+        return ("X", False, False)
+    values = [float(component) for component in direction]
+    axis_index = max(range(3), key=lambda idx: abs(values[idx]))
+    axis_name = "XYZ"[axis_index]
+    reversed_axis = values[axis_index] < 0
+    off_axis = any(abs(value) > 1e-9 for idx, value in enumerate(values) if idx != axis_index)
+    return (axis_name, reversed_axis, off_axis)
+
+
 def _gen_bodies(project: dict) -> List[str]:
-    """Generate PartDesign bodies with features (Pad, Pocket, etc.)."""
+    """Generate PartDesign bodies with primitive and pattern features."""
     lines: List[str] = []
     bodies = project.get("bodies", [])
 
@@ -144,58 +251,181 @@ def _gen_bodies(project: dict) -> List[str]:
 
     lines.append("import PartDesign")
     lines.append("")
+    lines.extend(
+        [
+            "def _body_origin_ref(body_obj, role):",
+            "    for origin_obj in body_obj.Origin.OriginFeatures:",
+            "        if getattr(origin_obj, 'Role', None) == role:",
+            "            return origin_obj",
+            "    raise RuntimeError(f'Could not resolve body origin role: {role}')",
+            "",
+        ]
+    )
 
     for body in bodies:
         body_name = _safe_name(body.get("name", "Body"))
-        lines.append(
-            f"body_{body_name} = doc.addObject('PartDesign::Body', '{body_name}')"
-        )
+        body_var = f"body_{body_name}"
+        lines.append(f"{body_var} = doc.addObject('PartDesign::Body', '{body_name}')")
 
         features = body.get("features", [])
+        previous_var: Optional[str] = None
+        feature_counter = 0
+
+        def emit_pattern(
+            pattern_type: str,
+            pattern_payload: Dict[str, Any],
+            source_var: Optional[str],
+            suffix: Optional[str] = None,
+        ) -> Optional[str]:
+            nonlocal feature_counter
+            if source_var is None:
+                lines.append(f"# WARNING: Cannot add {pattern_type} without a previous body feature")
+                return None
+            feature_counter += 1
+            pattern_var = f"feat_{body_name}_{feature_counter}_{pattern_type}"
+            label = _safe_name(f"{pattern_type}_{feature_counter}")
+            if pattern_type == "linear_pattern":
+                axis, reversed_axis, off_axis = _dominant_axis(pattern_payload.get("direction"))
+                lines.append(
+                    f"{pattern_var} = {body_var}.newObject('PartDesign::LinearPattern', '{label}')"
+                )
+                lines.append(f"{pattern_var}.Originals = [{source_var}]")
+                lines.append(
+                    f"{pattern_var}.Direction = (_body_origin_ref({body_var}, '{axis}_Axis'), [''])"
+                )
+                lines.append(f"{pattern_var}.Length = {float(pattern_payload.get('length', 50.0))}")
+                lines.append(
+                    f"{pattern_var}.Occurrences = {int(pattern_payload.get('occurrences', 3))}"
+                )
+                if reversed_axis:
+                    lines.append(f"{pattern_var}.Reversed = True")
+                if off_axis:
+                    lines.append(
+                        f"# WARNING: Non-axis-aligned direction {pattern_payload.get('direction')} "
+                        f"collapsed to dominant {axis}-axis"
+                    )
+            elif pattern_type == "polar_pattern":
+                axis = str(pattern_payload.get("axis", "Z")).upper()
+                lines.append(
+                    f"{pattern_var} = {body_var}.newObject('PartDesign::PolarPattern', '{label}')"
+                )
+                lines.append(f"{pattern_var}.Originals = [{source_var}]")
+                lines.append(
+                    f"{pattern_var}.Axis = (_body_origin_ref({body_var}, '{axis}_Axis'), [''])"
+                )
+                lines.append(f"{pattern_var}.Angle = {float(pattern_payload.get('angle', 360.0))}")
+                lines.append(
+                    f"{pattern_var}.Occurrences = {int(pattern_payload.get('occurrences', 4))}"
+                )
+            elif pattern_type == "mirrored":
+                plane = str(pattern_payload.get("plane", "XY")).upper()
+                lines.append(
+                    f"{pattern_var} = {body_var}.newObject('PartDesign::Mirrored', '{label}')"
+                )
+                lines.append(f"{pattern_var}.Originals = [{source_var}]")
+                lines.append(
+                    f"{pattern_var}.MirrorPlane = (_body_origin_ref({body_var}, '{plane}_Plane'), [''])"
+                )
+            else:
+                lines.append(f"# WARNING: Unknown pattern type '{pattern_type}' in {suffix or 'feature'}")
+                return source_var
+            lines.append("")
+            return pattern_var
+
+        primitive_map = {
+            "additive_box": ("PartDesign::AdditiveBox", ("Length", "length"), ("Width", "width"), ("Height", "height")),
+            "additive_cylinder": ("PartDesign::AdditiveCylinder", ("Radius", "radius"), ("Height", "height")),
+            "additive_sphere": ("PartDesign::AdditiveSphere", ("Radius", "radius")),
+            "additive_cone": ("PartDesign::AdditiveCone", ("Radius1", "radius1"), ("Radius2", "radius2"), ("Height", "height")),
+            "additive_torus": ("PartDesign::AdditiveTorus", ("Radius1", "radius1"), ("Radius2", "radius2")),
+            "additive_wedge": ("PartDesign::AdditiveWedge", ("Xmin", "xmin"), ("Xmax", "xmax"), ("Ymin", "ymin"), ("Ymax", "ymax"), ("Zmin", "zmin"), ("Zmax", "zmax"), ("X2min", "x2min"), ("X2max", "x2max"), ("Z2min", "z2min"), ("Z2max", "z2max")),
+            "subtractive_box": ("PartDesign::SubtractiveBox", ("Length", "length"), ("Width", "width"), ("Height", "height")),
+            "subtractive_cylinder": ("PartDesign::SubtractiveCylinder", ("Radius", "radius"), ("Height", "height")),
+            "subtractive_sphere": ("PartDesign::SubtractiveSphere", ("Radius", "radius")),
+            "subtractive_cone": ("PartDesign::SubtractiveCone", ("Radius1", "radius1"), ("Radius2", "radius2"), ("Height", "height")),
+            "subtractive_torus": ("PartDesign::SubtractiveTorus", ("Radius1", "radius1"), ("Radius2", "radius2")),
+            "subtractive_wedge": ("PartDesign::SubtractiveWedge", ("Xmin", "xmin"), ("Xmax", "xmax"), ("Ymin", "ymin"), ("Ymax", "ymax"), ("Zmin", "zmin"), ("Zmax", "zmax"), ("X2min", "x2min"), ("X2max", "x2max"), ("Z2min", "z2min"), ("Z2max", "z2max")),
+        }
+
         for feat in features:
             feat_type = feat.get("type", "pad").lower()
             feat_name = _safe_name(feat.get("name", f"Feature_{feat_type}"))
             feat_props = feat.get("properties", {})
+            feature_counter += 1
+            feat_var = f"feat_{body_name}_{feature_counter}_{_safe_name(feat_type)}"
 
-            if feat_type == "pad":
+            if feat_type in primitive_map:
+                class_name, *prop_pairs = primitive_map[feat_type]
+                lines.append(f"{feat_var} = {body_var}.newObject('{class_name}', '{feat_name}')")
+                for prop_name, key in prop_pairs:
+                    value = feat.get(key, feat_props.get(key))
+                    if value is not None:
+                        lines.append(f"{feat_var}.{prop_name} = {float(value)}")
+                placement_expr = _placement_expr(feat.get("placement") or feat_props.get("placement"))
+                if placement_expr:
+                    lines.append(f"{feat_var}.Placement = {placement_expr}")
+                previous_var = feat_var
+
+            elif feat_type == "linear_pattern":
+                previous_var = emit_pattern("linear_pattern", feat, previous_var)
+
+            elif feat_type == "polar_pattern":
+                previous_var = emit_pattern("polar_pattern", feat, previous_var)
+
+            elif feat_type == "mirrored":
+                previous_var = emit_pattern("mirrored", feat, previous_var)
+
+            elif feat_type == "multi_transform":
+                transforms = feat.get("transformations", [])
+                if not transforms:
+                    lines.append(f"# WARNING: multi_transform '{feat_name}' has no transformations")
+                for transform_index, transform in enumerate(transforms):
+                    previous_var = emit_pattern(
+                        str(transform.get("type", "")).lower(),
+                        transform,
+                        previous_var,
+                        suffix=f"multi_transform[{transform_index}]",
+                    )
+
+            elif feat_type == "pad":
                 length = feat_props.get("length", feat_props.get("Length", 10.0))
                 lines.append(
-                    f"feat_{feat_name} = body_{body_name}.newObject("
-                    f"'PartDesign::Pad', '{feat_name}')"
+                    f"{feat_var} = {body_var}.newObject('PartDesign::Pad', '{feat_name}')"
                 )
-                lines.append(f"feat_{feat_name}.Length = {length}")
+                lines.append(f"{feat_var}.Length = {length}")
+                previous_var = feat_var
 
             elif feat_type == "pocket":
                 length = feat_props.get("length", feat_props.get("Length", 5.0))
                 lines.append(
-                    f"feat_{feat_name} = body_{body_name}.newObject("
-                    f"'PartDesign::Pocket', '{feat_name}')"
+                    f"{feat_var} = {body_var}.newObject('PartDesign::Pocket', '{feat_name}')"
                 )
-                lines.append(f"feat_{feat_name}.Length = {length}")
+                lines.append(f"{feat_var}.Length = {length}")
+                previous_var = feat_var
 
             elif feat_type == "revolution":
                 angle = feat_props.get("angle", feat_props.get("Angle", 360.0))
                 lines.append(
-                    f"feat_{feat_name} = body_{body_name}.newObject("
-                    f"'PartDesign::Revolution', '{feat_name}')"
+                    f"{feat_var} = {body_var}.newObject('PartDesign::Revolution', '{feat_name}')"
                 )
-                lines.append(f"feat_{feat_name}.Angle = {angle}")
+                lines.append(f"{feat_var}.Angle = {angle}")
+                previous_var = feat_var
 
             elif feat_type == "chamfer":
                 size = feat_props.get("size", feat_props.get("Size", 1.0))
                 lines.append(
-                    f"feat_{feat_name} = body_{body_name}.newObject("
-                    f"'PartDesign::Chamfer', '{feat_name}')"
+                    f"{feat_var} = {body_var}.newObject('PartDesign::Chamfer', '{feat_name}')"
                 )
-                lines.append(f"feat_{feat_name}.Size = {size}")
+                lines.append(f"{feat_var}.Size = {size}")
+                previous_var = feat_var
 
             elif feat_type == "fillet":
                 radius = feat_props.get("radius", feat_props.get("Radius", 1.0))
                 lines.append(
-                    f"feat_{feat_name} = body_{body_name}.newObject("
-                    f"'PartDesign::Fillet', '{feat_name}')"
+                    f"{feat_var} = {body_var}.newObject('PartDesign::Fillet', '{feat_name}')"
                 )
-                lines.append(f"feat_{feat_name}.Radius = {radius}")
+                lines.append(f"{feat_var}.Radius = {radius}")
+                previous_var = feat_var
 
             else:
                 lines.append(
@@ -215,7 +445,12 @@ def _gen_placements(project: dict) -> List[str]:
 
     for part in parts:
         name = _safe_name(part.get("name", ""))
-        placement = part.get("placement", {})
+        render_spec = _render_spec_for_part(project, part)
+        if render_spec is None:
+            lines.append(f"# WARNING: Skipping placement for unsupported part '{name}'")
+            lines.append("")
+            continue
+        placement = render_spec.get("placement", {})
 
         if not placement:
             continue

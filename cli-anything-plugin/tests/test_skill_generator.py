@@ -30,6 +30,7 @@ from skill_generator import (
     generate_skill_md_simple,
     generate_skill_file,
     extract_intro_from_readme,
+    extract_system_package,
     extract_version_from_setup,
     SkillMetadata,
     CommandInfo,
@@ -206,6 +207,35 @@ class TestExtractIntroFromReadme:
         assert "Line two" in intro
 
 
+
+# ─── extract_system_package Tests ─────────────────────
+
+
+class TestExtractSystemPackage:
+    def test_apt_install(self):
+        content = "Install with `apt install mytool`."
+        result = extract_system_package(content)
+        assert result == "apt install mytool"
+
+    def test_brew_install(self):
+        content = "Install with `brew install mytool`."
+        result = extract_system_package(content)
+        assert result == "brew install mytool"
+
+    def test_apt_get_install_returns_apt_get_command(self):
+        # Regression: apt-get pattern contains "apt" as a substring, so the
+        # condition must check "apt-get" before "apt" to avoid returning the
+        # wrong command ("apt install" instead of "apt-get install").
+        content = "Install with `apt-get install mytool`."
+        result = extract_system_package(content)
+        assert result == "apt-get install mytool", (
+            f"Expected 'apt-get install mytool', got {result!r}"
+        )
+
+    def test_returns_none_when_no_match(self):
+        content = "No installation instructions here."
+        assert extract_system_package(content) is None
+
 # ─── generate_skill_md Tests ───────────────────────────────────────────
 
 
@@ -326,6 +356,9 @@ class TestEdgeCases:
         assert metadata.skill_intro == ""  # No README → empty intro
         assert metadata.version == "1.0.0"
         assert metadata.command_groups == []
+        # skill_description must not contain trailing " - ..." when intro is empty
+        assert " - " not in metadata.skill_description
+        assert not metadata.skill_description.endswith("...")
 
     def test_harness_with_system_package(self, tmp_path):
         """README with apt install instructions should extract system_package."""

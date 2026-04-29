@@ -1,0 +1,52 @@
+name: transform_json
+version: "1.0"
+description: >
+  Read a JSON file, set a nested key to a new value, and write it back.
+  Demonstrates the file_transform backend with json_set action.
+tags: [json, file_transform, example]
+
+parameters:
+  file:
+    type: string
+    required: true
+    description: Path to the JSON file to transform.
+    example: /tmp/config.json
+  key:
+    type: string
+    required: true
+    description: Dot-separated key path to set (e.g. settings.theme).
+    example: settings.theme
+  value:
+    type: string
+    required: true
+    description: Value to write at the key path.
+    example: dark
+
+preconditions:
+  - file_exists: ${file}
+
+steps:
+  - id: step_set_key
+    backend: file_transform
+    action: json_set
+    params:
+      input_file: ${file}
+      output_file: ${file}
+      path: ${key}
+      value: ${value}
+    timeout_ms: 10000
+    on_failure: fail
+
+postconditions:
+  - file_exists: ${file}
+
+outputs:
+  - name: modified_file
+    path: ${file}
+    description: Path to the modified JSON file.
+
+agent_hints:
+  danger_level: moderate
+  side_effects: [modifies_file]
+  reversible: false
+  estimated_duration_ms: 100

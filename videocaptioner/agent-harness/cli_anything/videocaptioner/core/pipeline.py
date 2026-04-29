@@ -64,12 +64,6 @@ def process(
         args += ["--target-language", target_language]
     if layout:
         args += ["--layout", layout]
-    if style:
-        args += ["--style", style]
-    if style_override:
-        args += ["--style-override", style_override]
-    if render_mode:
-        args += ["--render-mode", render_mode]
     if no_optimize:
         args.append("--no-optimize")
     if no_translate:

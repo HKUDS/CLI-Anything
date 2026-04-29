@@ -31,13 +31,38 @@ def _find_npm():
     return shutil.which("npm")
 
 
+def _find_uv():
+    """Find uv executable. Returns path or None."""
+    return shutil.which("uv")
+
+
+_UV_INSTALL_HINT = (
+    "uv is not installed. Install it first:\n"
+    "  macOS / Linux: curl -LsSf https://astral.sh/uv/install.sh | sh\n"
+    "  Windows:       powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n"
+    "  pip:           pip install uv\n"
+    "  brew:          brew install uv\n"
+    "  See also:      https://docs.astral.sh/uv/getting-started/installation/"
+)
+
+
+_SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
+
+
 def _run_command(cmd):
-    """Run a command string without invoking a shell."""
+    """Run a command string.
+
+    Uses shell=True when the command contains shell operators (pipes, &&, etc.)
+    so that script-type installs like ``curl … | bash`` work correctly.
+    Commands come from the trusted registry, not from user input.
+    """
+    use_shell = any(c in cmd for c in _SHELL_METACHARACTERS)
     try:
         return subprocess.run(
-            shlex.split(cmd),
+            cmd if use_shell else shlex.split(cmd),
             capture_output=True,
             text=True,
+            shell=use_shell,
         )
     except FileNotFoundError as exc:
         missing = exc.filename or shlex.split(cmd)[0]
@@ -69,6 +94,8 @@ def _install_strategy(cli):
         return "pip"
     if cli.get("npm_package") or cli.get("package_manager") == "npm":
         return "npm"
+    if cli.get("package_manager") == "uv":
+        return "uv"
     if cli.get("package_manager") == "bundled":
         return "bundled"
     return "command"
@@ -170,6 +197,42 @@ def _pip_update(cli):
     return False, f"Update failed:\n{result.stderr}"
 
 
+# ── uv operations (public CLIs) ──
+
+
+def _uv_install(cli):
+    if _find_uv() is None:
+        return False, _UV_INSTALL_HINT
+    result = _run_command(cli["install_cmd"])
+    if result.returncode == 0:
+        return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
+    return False, f"uv install failed:\n{result.stderr or result.stdout}"
+
+
+def _uv_uninstall(cli):
+    if _find_uv() is None:
+        return False, _UV_INSTALL_HINT
+    uninstall_cmd = cli.get("uninstall_cmd")
+    if not uninstall_cmd:
+        return False, f"No uninstall command is defined for {cli['display_name']}."
+    result = _run_command(uninstall_cmd)
+    if result.returncode == 0:
+        return True, f"Uninstalled {cli['display_name']}"
+    return False, f"uv uninstall failed:\n{result.stderr or result.stdout}"
+
+
+def _uv_update(cli):
+    if _find_uv() is None:
+        return False, _UV_INSTALL_HINT
+    update_cmd = cli.get("update_cmd")
+    if not update_cmd:
+        return False, f"No update command is defined for {cli['display_name']}."
+    result = _run_command(update_cmd)
+    if result.returncode == 0:
+        return True, f"Updated {cli['display_name']}"
+    return False, f"uv update failed:\n{result.stderr or result.stdout}"
+
+
 # ── npm operations (public CLIs) ──
 
 
@@ -223,6 +286,7 @@ def _perform_action(cli, action):
     actions = {
         "pip": {"install": _pip_install, "uninstall": _pip_uninstall, "update": _pip_update},
         "npm": {"install": _npm_install, "uninstall": _npm_uninstall, "update": _npm_update},
+        "uv": {"install": _uv_install, "uninstall": _uv_uninstall, "update": _uv_update},
         "command": {"install": _generic_install, "uninstall": _generic_uninstall, "update": _generic_update},
         "bundled": {"install": _bundled_install, "uninstall": _bundled_uninstall, "update": _bundled_update},
     }

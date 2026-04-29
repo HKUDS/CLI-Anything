@@ -33,11 +33,11 @@ cli-anything-inkscape --help
 # Start interactive REPL mode
 cli-anything-inkscape
 
-# Create a new project
-cli-anything-inkscape project new -o project.json
+# Create a new document
+cli-anything-inkscape document new -o project.json
 
 # Run with JSON output (for agent consumption)
-cli-anything-inkscape --json project info -p project.json
+cli-anything-inkscape --json document info -p project.json
 ```
 
 ### REPL Mode
@@ -47,6 +47,13 @@ When invoked without a subcommand, the CLI enters an interactive REPL session:
 ```bash
 cli-anything-inkscape
 # Enter commands interactively with tab-completion and history
+```
+
+You can also start the REPL with a nonexistent project path. The CLI now seeds a
+new in-memory document instead of failing immediately:
+
+```bash
+cli-anything-inkscape --project /abs/path/new-title.inkscape-cli.json
 ```
 
 
@@ -94,8 +101,8 @@ Text management commands.
 
 | Command | Description |
 |---------|-------------|
-| `add` | Add a text element |
-| `set` | Set a text property (text, font-family, font-size, fill, etc.) |
+| `add` | Add a text element; supports `--box-width`, `--box-height`, and `--line-height` for wrapped layouts |
+| `set` | Set a text property (text, font-family, font-size, fill, box-width, box-height, line-height, etc.) |
 | `list` | List all text objects |
 
 
@@ -203,9 +210,9 @@ Session management commands.
 Create a new inkscape project file.
 
 ```bash
-cli-anything-inkscape project new -o myproject.json
+cli-anything-inkscape document new -o myproject.json
 # Or with JSON output for programmatic use
-cli-anything-inkscape --json project new -o myproject.json
+cli-anything-inkscape --json document new -o myproject.json
 ```
 
 
@@ -226,8 +233,28 @@ cli-anything-inkscape
 Export the project to a final output format.
 
 ```bash
-cli-anything-inkscape --project myproject.json export render output.pdf --overwrite
+cli-anything-inkscape --project myproject.json export pdf output.pdf --overwrite
 ```
+
+### Wrapped Text Layout
+
+For title cards, chips, and portrait-safe panels, prefer wrapped text boxes
+instead of manually inserting line breaks:
+
+```bash
+cli-anything-inkscape --project title.json text add \
+  --text "Real capture + Veo cold open + Gemini score + thumbnail plate" \
+  --x 180 --y 470 --font-size 118 \
+  --box-width 1180 --box-height 260 --line-height 1.05
+
+cli-anything-inkscape --project title.json text set 0 box-width 980
+cli-anything-inkscape --project title.json text set 0 line-height 1.15
+```
+
+Notes:
+- `box-width` wraps long copy into multiple exported SVG `tspan` lines.
+- `box-height` lets long copy fail safely instead of running off-canvas.
+- Use wrapped text boxes for long-copy graphics before resorting to manual line breaking.
 
 
 ## State Management
@@ -262,6 +289,7 @@ When using this CLI programmatically:
 3. **Parse stderr** for error messages on failure
 4. **Use absolute paths** for all file operations
 5. **Verify outputs exist** after export operations
+6. **Prefer wrapped text boxes** for headlines and variable-length copy so layouts remain stable across edits
 
 ## More Information
 

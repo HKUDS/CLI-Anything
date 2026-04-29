@@ -1,10 +1,11 @@
 """Compositing: blend modes, picture-in-picture, and layer compositing."""
 
 from typing import Optional
-from lxml import etree
+import xml.etree.ElementTree as ET
 
 from ..utils import mlt_xml
 from .session import Session
+from .timeline import real_clip_entries
 
 
 # Available blend modes for the cairo blend transition
@@ -60,9 +61,14 @@ def set_track_blend_mode(session: Session, track_index: int,
 
     # Find the compositing transition for this track
     comp_trans = _find_compositing_transition(tractor, track_index)
-    if comp_trans is None:
+    if comp_trans is not None:
+        cur_service = mlt_xml.get_property(comp_trans, "mlt_service", "")
+        if cur_service == "qtblend":
+            mlt_xml.set_property(comp_trans, "mlt_service", "frei0r.cairoblend")
+            mlt_xml.set_property(comp_trans, "disable", "0")
+    else:
         # Create one if it doesn't exist
-        comp_trans = etree.SubElement(tractor, "transition")
+        comp_trans = ET.SubElement(tractor, "transition")
         comp_trans.set("id", mlt_xml.new_id("transition"))
         mlt_xml.set_property(comp_trans, "a_track", "0")
         mlt_xml.set_property(comp_trans, "b_track", str(track_index))
@@ -126,9 +132,9 @@ def set_track_opacity(session: Session, track_index: int,
 
     # Create new opacity filter
     filt = mlt_xml.add_filter_to_element(playlist, "brightness",
-                                          {"alpha": str(opacity),
-                                           "level": "1",
-                                           "shotcut:filter": "opacity"})
+                                          shotcut_filter="opacity",
+                                          properties={"alpha": str(opacity),
+                                                      "level": "1"})
 
     return {"action": "set_track_opacity", "track_index": track_index,
             "opacity": opacity}
@@ -166,8 +172,7 @@ def pip_position(session: Session, track_index: int, clip_index: int,
     if playlist is None:
         raise RuntimeError("Track playlist not found")
 
-    entries = mlt_xml.get_playlist_entries(playlist)
-    clip_entries = [e for e in entries if e["type"] == "entry"]
+    clip_entries = real_clip_entries(mlt_xml.get_playlist_entries(playlist), session.root)
     if clip_index < 0 or clip_index >= len(clip_entries):
         raise IndexError(f"Clip index {clip_index} out of range")
 
@@ -190,19 +195,20 @@ def pip_position(session: Session, track_index: int, clip_index: int,
 
     # Create new affine filter
     mlt_xml.add_filter_to_element(producer, "affine",
-                                   {"transition.geometry": geometry,
-                                    "background": "color:#00000000"})
+                                   shotcut_filter="affine",
+                                   properties={"transition.geometry": geometry,
+                                               "background": "color:#00000000"})
 
     return {"action": "pip_position", "track_index": track_index,
             "clip_index": clip_index, "geometry": geometry}
 
 
-def _find_compositing_transition(tractor: etree._Element,
-                                  track_index: int) -> Optional[etree._Element]:
+def _find_compositing_transition(tractor: ET.Element,
+                                  track_index: int) -> Optional[ET.Element]:
     """Find the compositing transition for a specific track."""
     for trans in tractor.findall("transition"):
         service = mlt_xml.get_property(trans, "mlt_service", "")
         b_track = mlt_xml.get_property(trans, "b_track", "")
-        if service == "frei0r.cairoblend" and b_track == str(track_index):
+        if service in ("frei0r.cairoblend", "qtblend") and b_track == str(track_index):
             return trans
     return None

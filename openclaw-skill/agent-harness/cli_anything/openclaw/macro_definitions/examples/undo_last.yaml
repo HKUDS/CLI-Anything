@@ -1,0 +1,37 @@
+name: undo_last
+version: "1.0"
+description: >
+  Trigger an undo operation in the target application using a keyboard shortcut
+  (Ctrl+Z). This macro demonstrates the semantic_ui backend.
+  On Linux, requires xdotool. On macOS/Windows, adapt to your platform.
+tags: [undo, semantic_ui, example]
+
+parameters:
+  app_name:
+    type: string
+    required: false
+    default: ""
+    description: Name of the target application process (used to verify it is running).
+    example: inkscape
+
+preconditions:
+  - always: true   # process check is optional in this example
+
+steps:
+  - id: step_undo
+    backend: semantic_ui
+    action: shortcut
+    params:
+      keys: ctrl+z
+    timeout_ms: 5000
+    on_failure: fail
+
+postconditions: []
+
+outputs: []
+
+agent_hints:
+  danger_level: safe
+  side_effects: [modifies_app_state]
+  reversible: true   # can be redone with ctrl+y
+  estimated_duration_ms: 500

@@ -324,13 +324,20 @@ def layer_move(index, to):
     output({"moved": index, "to": to}, f"Moved layer {index} to position {to}")
 
 
-@layer.command("set")
+@layer.command("set", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+@click.pass_context
 @click.argument("index", type=int)
 @click.argument("prop")
-@click.argument("value")
+@click.argument("value", required=False)
 @handle_error
-def layer_set(index, prop, value):
+def layer_set(ctx, index, prop, value):
     """Set a layer property (name, opacity, visible, mode, offset_x, offset_y)."""
+    if value is None:
+        if not ctx.args:
+            raise ValueError("Missing layer property value")
+        value = ctx.args[0]
+    elif ctx.args:
+        value = " ".join([value] + ctx.args)
     sess = get_session()
     sess.snapshot(f"Set layer {index} {prop}={value}")
     layer_mod.set_layer_property(sess.get_project(), index, prop, value)
@@ -674,7 +681,7 @@ def draw():
 @click.option("--color", default="#000000", help="Text color (hex)")
 @handle_error
 def draw_text(layer_index, text, x, y, font, size, color):
-    """Draw text on a layer (by converting it to a text layer)."""
+    """Draw text on a layer as a persisted draw operation."""
     sess = get_session()
     sess.snapshot(f"Draw text on layer {layer_index}")
     proj = sess.get_project()
@@ -682,14 +689,16 @@ def draw_text(layer_index, text, x, y, font, size, color):
     if layer_index < 0 or layer_index >= len(layers):
         raise IndexError(f"Layer index {layer_index} out of range")
     layer = layers[layer_index]
-    layer["type"] = "text"
-    layer["text"] = text
-    layer["font"] = font
-    layer["font_size"] = size
-    layer["color"] = color
-    layer["offset_x"] = x
-    layer["offset_y"] = y
-    output({"layer": layer_index, "text": text}, f"Set text on layer {layer_index}")
+    layer.setdefault("draw_ops", []).append({
+        "type": "text",
+        "text": text,
+        "x": x,
+        "y": y,
+        "font": font,
+        "size": size,
+        "color": color,
+    })
+    output({"layer": layer_index, "text": text}, f"Drew text on layer {layer_index}")
 
 
 @draw.command("rect")

@@ -15,10 +15,12 @@ import os
 import struct
 import subprocess
 import sys
+import time
 from copy import deepcopy
 from typing import List
 
 import pytest
+from PIL import Image, ImageChops
 
 # ---------------------------------------------------------------------------
 # Imports from the harness under test
@@ -34,6 +36,7 @@ from cli_anything.freecad.core.parts import (
     list_parts,
     get_part,
     boolean_op,
+    mirror_part,
     transform_part,
 )
 from cli_anything.freecad.core.sketch import (
@@ -47,13 +50,18 @@ from cli_anything.freecad.core.sketch import (
     list_sketches,
 )
 from cli_anything.freecad.core.body import (
+    additive_box,
+    additive_cone,
+    additive_cylinder,
     create_body,
     pad,
     pocket,
     fillet,
     chamfer,
+    linear_pattern,
     revolution,
     list_bodies,
+    polar_pattern,
 )
 from cli_anything.freecad.core.materials import (
     create_material,
@@ -61,6 +69,8 @@ from cli_anything.freecad.core.materials import (
     list_materials,
 )
 from cli_anything.freecad.core.export import export_project, get_export_info
+from cli_anything.freecad.core import preview as preview_mod
+from cli_anything.freecad.core.session import Session
 from cli_anything.freecad.utils.freecad_macro_gen import generate_macro
 
 
@@ -76,6 +86,65 @@ def _has_freecad() -> bool:
         return True
     except (RuntimeError, Exception):
         return False
+
+
+def _has_freecad_preview() -> bool:
+    """Return True if a GUI-capable FreeCAD executable appears to be available."""
+    try:
+        from cli_anything.freecad.utils.freecad_backend import find_freecad
+        path = find_freecad(gui_required=True)
+        return "cmd" not in os.path.basename(path).lower()
+    except (RuntimeError, Exception):
+        return False
+
+
+def _has_ffmpeg() -> bool:
+    import shutil
+
+    return shutil.which("ffmpeg") is not None
+
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _artifact_path(manifest, artifact_id):
+    for artifact in manifest["artifacts"]:
+        if artifact["artifact_id"] == artifact_id:
+            return os.path.join(manifest["_bundle_dir"], artifact["path"])
+    raise KeyError(f"Artifact not found: {artifact_id}")
+
+
+def _assert_png(path):
+    assert os.path.isfile(path), f"Missing PNG artifact: {path}"
+    with open(path, "rb") as fh:
+        assert fh.read(8) == PNG_MAGIC, f"Invalid PNG header: {path}"
+    assert os.path.getsize(path) > 0, f"Empty PNG artifact: {path}"
+
+
+def _assert_png_not_blank(path):
+    _assert_png(path)
+    image = Image.open(path).convert("L")
+    extrema = image.getextrema()
+    assert extrema != (255, 255), f"PNG artifact is fully white: {path}"
+
+
+def _assert_images_differ(path_a, path_b):
+    image_a = Image.open(path_a).convert("RGB")
+    image_b = Image.open(path_b).convert("RGB")
+    diff = ImageChops.difference(image_a, image_b)
+    assert diff.getbbox() is not None, f"Images are identical: {path_a} vs {path_b}"
+
+
+def _wait_for_live_bundle_count(session_path, expected_count, timeout_s=30.0):
+    deadline = time.time() + timeout_s
+    latest = None
+    while time.time() < deadline:
+        with open(session_path, "r", encoding="utf-8") as fh:
+            latest = json.load(fh)
+        if latest.get("bundle_count", 0) >= expected_count:
+            return latest
+        time.sleep(0.5)
+    raise AssertionError(f"Timed out waiting for bundle_count >= {expected_count}: {latest}")
 
 
 def _resolve_cli(name: str) -> List[str]:
@@ -255,6 +324,60 @@ class TestIntermediateFiles:
             f.write(macro)
 
         print(f"\n  Macro: {macro_path} ({len(macro):,} chars, {macro.count(chr(10))} lines)")
+
+    def test_macro_generation_body_primitives_and_patterns(self, tmp_path):
+        """Generate a macro containing body primitive placements and pattern features."""
+        proj = create_document(name="MacroBodyTower")
+        create_body(proj, name="TowerBody")
+        additive_box(
+            proj,
+            0,
+            length=36,
+            width=36,
+            height=18,
+            position=[0, 0, 0],
+        )
+        additive_box(
+            proj,
+            0,
+            length=8,
+            width=6,
+            height=4,
+            position=[22, 0, 8],
+        )
+        polar_pattern(proj, 0, axis="Z", angle=360, occurrences=4)
+        additive_cylinder(proj, 0, radius=2.0, height=16, position=[0, 0, 18])
+        linear_pattern(proj, 0, direction=[0, 0, 1], length=48, occurrences=3)
+        additive_cone(proj, 0, radius1=3, radius2=0.6, height=10, position=[0, 0, 70])
+
+        macro = generate_macro(proj, str(tmp_path / "tower.step"))
+        ast.parse(macro)
+
+        assert "PartDesign::AdditiveBox" in macro
+        assert "PartDesign::PolarPattern" in macro
+        assert "PartDesign::LinearPattern" in macro
+        assert "Placement = FreeCAD.Placement" in macro
+        assert "_body_origin_ref" in macro
+
+    def test_macro_generation_mirror_part_rendering(self, tmp_path):
+        """Generate a macro that reconstructs mirrored primitive parts for preview/export."""
+        proj = create_document(name="MirrorPreview")
+        add_part(
+            proj,
+            "cylinder",
+            name="LeftWheel",
+            params={"radius": 12, "height": 6},
+            position=[24, -20, 12],
+            rotation=[90, 0, 0],
+        )
+        mirror_part(proj, 0, plane="XZ", name="RightWheel")
+
+        macro = generate_macro(proj, str(tmp_path / "mirror.step"))
+        ast.parse(macro)
+
+        assert "obj_RightWheel = doc.addObject('Part::Cylinder', 'RightWheel')" in macro
+        assert "Unknown part type 'mirror'" not in macro
+        assert "obj_RightWheel.Placement = FreeCAD.Placement(FreeCAD.Vector(24.0, 20.0, 12.0)" in macro
 
     def test_save_load_roundtrip(self, tmp_path):
         """Save a project, reload it, verify contents are identical."""
@@ -510,6 +633,80 @@ class TestFreeCADBackend:
 
         print(f"\n  FCStd: {output} ({size:,} bytes)")
 
+    @pytest.mark.skipif(not _has_freecad_preview(), reason="GUI-capable FreeCAD not installed")
+    def test_preview_capture_bundle(self, tmp_path):
+        proj = create_document(name="PreviewPart")
+        add_part(proj, "box", name="MainBlock", params={"length": 30, "width": 20, "height": 12})
+        add_part(
+            proj,
+            "cylinder",
+            name="SideBoss",
+            params={"radius": 4, "height": 14},
+            position=[18, 0, 0],
+        )
+
+        project_path = str(tmp_path / "preview.json")
+        save_document(proj, project_path)
+
+        sess = Session()
+        sess.set_project(proj, path=project_path)
+
+        manifest = preview_mod.capture(sess, root_dir=str(tmp_path), force=True)
+        assert manifest["software"] == "freecad"
+        assert manifest["bundle_kind"] == "capture"
+        assert manifest["status"] in ("ok", "partial")
+
+        hero_path = _artifact_path(manifest, "hero")
+        front_path = _artifact_path(manifest, "front")
+        top_path = _artifact_path(manifest, "top")
+        right_path = _artifact_path(manifest, "right")
+        _assert_png(hero_path)
+        _assert_png(front_path)
+        _assert_png(top_path)
+        _assert_png(right_path)
+
+        latest = preview_mod.latest(project_path=project_path, recipe="quick", root_dir=str(tmp_path))
+        assert latest["bundle_id"] == manifest["bundle_id"]
+
+        print(f"\n  FreeCAD preview bundle: {manifest['_bundle_dir']}")
+        print(f"  FreeCAD preview hero: {hero_path}")
+        print(f"  FreeCAD preview front: {front_path}")
+        print(f"  FreeCAD preview top: {top_path}")
+        print(f"  FreeCAD preview right: {right_path}")
+
+    @pytest.mark.skipif(not _has_freecad_preview(), reason="GUI-capable FreeCAD not installed")
+    def test_preview_capture_bundle_body_patterns(self, tmp_path):
+        proj = create_document(name="PreviewBodyTower")
+        create_body(proj, name="TowerBody")
+        additive_box(proj, 0, length=34, width=34, height=18, position=[0, 0, 0])
+        additive_box(proj, 0, length=8, width=6, height=4, position=[21, 0, 7])
+        polar_pattern(proj, 0, axis="Z", angle=360, occurrences=4)
+        additive_box(proj, 0, length=30, width=30, height=16, position=[0, 0, 18])
+        additive_box(proj, 0, length=7, width=5, height=3, position=[18.5, 0, 24])
+        polar_pattern(proj, 0, axis="Z", angle=360, occurrences=4)
+        additive_cylinder(proj, 0, radius=2.2, height=18, position=[0, 0, 34])
+        additive_cone(proj, 0, radius1=2.5, radius2=0.4, height=10, position=[0, 0, 52])
+
+        project_path = str(tmp_path / "preview_body.json")
+        save_document(proj, project_path)
+
+        sess = Session()
+        sess.set_project(proj, path=project_path)
+
+        manifest = preview_mod.capture(sess, root_dir=str(tmp_path), force=True)
+        assert manifest["software"] == "freecad"
+        assert manifest["bundle_kind"] == "capture"
+        assert manifest["status"] in ("ok", "partial")
+
+        hero_path = _artifact_path(manifest, "hero")
+        front_path = _artifact_path(manifest, "front")
+        _assert_png_not_blank(hero_path)
+        _assert_png_not_blank(front_path)
+
+        print(f"\n  FreeCAD body preview bundle: {manifest['_bundle_dir']}")
+        print(f"  FreeCAD body preview hero: {hero_path}")
+        print(f"  FreeCAD body preview front: {front_path}")
+
 
 # =========================================================================
 # 3. CLI subprocess tests
@@ -523,14 +720,14 @@ class TestCLISubprocess:
         """Resolve the CLI command once for all tests."""
         self.cli = _resolve_cli("cli-anything-freecad")
 
-    def _run(self, *args: str, **kwargs) -> subprocess.CompletedProcess:
+    def _run(self, *args: str, timeout: int = 30, **kwargs) -> subprocess.CompletedProcess:
         """Run a CLI command and return the result."""
         cmd = self.cli + list(args)
         return subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
             **kwargs,
         )
 
@@ -609,6 +806,79 @@ class TestCLISubprocess:
 
         print(f"\n  part list: {len(parts)} parts ({names})")
 
+    def test_part_align_and_bounds_json(self, tmp_path):
+        """Create parts, align one to another, and verify bbox output."""
+        proj_file = str(tmp_path / "part_align.json")
+
+        self._run("--json", "document", "new", "--name", "AlignTest", "-o", proj_file)
+        self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "part",
+            "add",
+            "box",
+            "--name",
+            "Base",
+            "-P",
+            "length=20",
+            "-P",
+            "width=10",
+            "-P",
+            "height=6",
+        )
+        self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "part",
+            "add",
+            "box",
+            "--name",
+            "Cap",
+            "-P",
+            "length=8",
+            "-P",
+            "width=6",
+            "-P",
+            "height=4",
+            "-pos",
+            "100,50,20",
+        )
+
+        aligned = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "part",
+            "align",
+            "1",
+            "0",
+            "--x",
+            "min",
+            "--to-x",
+            "max",
+            "--y",
+            "center",
+            "--to-y",
+            "center",
+            "--z",
+            "min",
+            "--to-z",
+            "max",
+        )
+        assert aligned.returncode == 0, aligned.stderr
+        align_payload = json.loads(aligned.stdout)
+        assert align_payload["placement"]["position"] == [20.0, 2.0, 6.0]
+
+        bounds = self._run("--json", "-p", proj_file, "part", "bounds", "1")
+        assert bounds.returncode == 0, bounds.stderr
+        bounds_payload = json.loads(bounds.stdout)
+        world = bounds_payload["world_bounding_box"]
+        assert world["min"]["x"] == pytest.approx(20.0)
+        assert world["center"]["y"] == pytest.approx(5.0)
+        assert world["min"]["z"] == pytest.approx(6.0)
+
     def test_full_workflow_subprocess(self, tmp_path):
         """Full subprocess workflow: create -> box -> cylinder -> boolean cut -> list."""
         proj_file = str(tmp_path / "workflow.json")
@@ -657,3 +927,304 @@ class TestCLISubprocess:
         print(f"\n  Workflow complete: {len(parts)} parts")
         for p in parts:
             print(f"    {p['name']}: type={p['type']}, visible={p.get('visible', '?')}")
+
+    @pytest.mark.skipif(not _has_freecad_preview(), reason="GUI-capable FreeCAD not installed")
+    def test_preview_capture_subprocess(self, tmp_path):
+        proj_file = str(tmp_path / "preview_cli.json")
+
+        proj = create_document(name="PreviewCLI")
+        add_part(proj, "box", name="Body", params={"length": 24, "width": 18, "height": 10})
+        save_document(proj, proj_file)
+
+        result = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "preview",
+            "capture",
+            "--root-dir",
+            str(tmp_path),
+            timeout=240,
+        )
+        assert result.returncode == 0, result.stderr
+
+        manifest = json.loads(result.stdout)
+        assert manifest["software"] == "freecad"
+        hero_path = _artifact_path(manifest, "hero")
+        _assert_png(hero_path)
+
+        latest = self._run(
+            "--json",
+            "preview",
+            "latest",
+            "--recipe",
+            "quick",
+            "--root-dir",
+            str(tmp_path),
+            timeout=60,
+        )
+        assert latest.returncode == 0, latest.stderr
+        latest_manifest = json.loads(latest.stdout)
+        assert latest_manifest["bundle_id"] == manifest["bundle_id"]
+
+        print(f"\n  FreeCAD preview bundle: {manifest['_bundle_dir']}")
+        print(f"  FreeCAD preview hero: {hero_path}")
+
+    @pytest.mark.skipif(not _has_freecad_preview(), reason="GUI-capable FreeCAD not installed")
+    def test_motion_render_frames_subprocess(self, tmp_path):
+        proj_file = str(tmp_path / "motion_frames.json")
+        frames_dir = str(tmp_path / "motion-frames")
+
+        created = self._run(
+            "--json",
+            "document",
+            "new",
+            "--name",
+            "MotionFrames",
+            "-o",
+            proj_file,
+        )
+        assert created.returncode == 0, created.stderr
+
+        added = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "part",
+            "add",
+            "box",
+            "--name",
+            "Mover",
+            "-P",
+            "length=20",
+            "-P",
+            "width=12",
+            "-P",
+            "height=8",
+        )
+        assert added.returncode == 0, added.stderr
+
+        motion_new = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "motion",
+            "new",
+            "--name",
+            "Drive",
+            "--duration",
+            "1.0",
+            "--fps",
+            "4",
+            "--camera",
+            "hero",
+            "--width",
+            "640",
+            "--height",
+            "480",
+        )
+        assert motion_new.returncode == 0, motion_new.stderr
+
+        k0 = self._run("--json", "-p", proj_file, "motion", "keyframe", "0", "part", "0", "0.0")
+        assert k0.returncode == 0, k0.stderr
+
+        k1 = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "motion",
+            "keyframe",
+            "0",
+            "part",
+            "0",
+            "1.0",
+            "--position",
+            "35,0,0",
+            "--rotation",
+            "0,0,45",
+        )
+        assert k1.returncode == 0, k1.stderr
+
+        rendered = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "motion",
+            "render-frames",
+            "0",
+            frames_dir,
+            "--overwrite",
+            timeout=240,
+        )
+        assert rendered.returncode == 0, rendered.stderr
+        payload = json.loads(rendered.stdout)
+        assert payload["frame_count"] == 5
+        assert payload["method"] == "freecad-gui-sequence"
+
+        sequence_path = payload["sequence_path"]
+        assert os.path.isfile(sequence_path)
+        with open(sequence_path, "r", encoding="utf-8") as fh:
+            sequence = json.load(fh)
+        assert sequence["frame_count"] == 5
+
+        first_frame = os.path.join(payload["output_dir"], sequence["frames"][0]["path"])
+        last_frame = os.path.join(payload["output_dir"], sequence["frames"][-1]["path"])
+        _assert_png_not_blank(first_frame)
+        _assert_png_not_blank(last_frame)
+        _assert_images_differ(first_frame, last_frame)
+
+    @pytest.mark.skipif(not (_has_freecad_preview() and _has_ffmpeg()), reason="GUI-capable FreeCAD and ffmpeg required")
+    def test_motion_render_video_subprocess(self, tmp_path):
+        proj_file = str(tmp_path / "motion_video.json")
+        frames_dir = str(tmp_path / "motion-video-frames")
+        video_path = str(tmp_path / "motion.mp4")
+
+        proj = create_document(name="MotionVideo")
+        add_part(proj, "box", name="Mover", params={"length": 20, "width": 12, "height": 8})
+        save_document(proj, proj_file)
+
+        assert self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "motion",
+            "new",
+            "--name",
+            "Drive",
+            "--duration",
+            "1.0",
+            "--fps",
+            "4",
+            "--camera",
+            "hero",
+            "--width",
+            "640",
+            "--height",
+            "480",
+        ).returncode == 0
+
+        assert self._run(
+            "--json", "-p", proj_file, "motion", "keyframe", "0", "part", "0", "0.0"
+        ).returncode == 0
+        assert self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "motion",
+            "keyframe",
+            "0",
+            "part",
+            "0",
+            "1.0",
+            "--position",
+            "35,0,0",
+            "--rotation",
+            "0,0,90",
+        ).returncode == 0
+
+        rendered = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "motion",
+            "render-video",
+            "0",
+            video_path,
+            "--overwrite",
+            "--frames-dir",
+            frames_dir,
+            timeout=300,
+        )
+        assert rendered.returncode == 0, rendered.stderr
+        payload = json.loads(rendered.stdout)
+        assert payload["format"] == "mp4"
+        assert os.path.isfile(video_path)
+        assert os.path.getsize(video_path) > 0
+        assert payload["frame_count"] == 5
+        assert payload["frames_dir"] == os.path.abspath(frames_dir)
+        assert os.path.isfile(payload["sequence_path"])
+
+    @pytest.mark.skipif(not _has_freecad_preview(), reason="GUI-capable FreeCAD not installed")
+    def test_preview_live_poll_auto_refresh(self, tmp_path):
+        proj_file = str(tmp_path / "preview_live_poll.json")
+        live_root = str(tmp_path / "live-root")
+
+        proj = create_document(name="PreviewLiveCLI")
+        add_part(proj, "box", name="BaseBody", params={"length": 24, "width": 18, "height": 10})
+        save_document(proj, proj_file)
+
+        started = self._run(
+            "--json",
+            "-p",
+            proj_file,
+            "preview",
+            "live",
+            "start",
+            "--recipe",
+            "quick",
+            "--mode",
+            "poll",
+            "--source-poll-ms",
+            "500",
+            "--poll-ms",
+            "700",
+            "--root-dir",
+            live_root,
+            timeout=240,
+        )
+        assert started.returncode == 0, started.stderr
+        started_payload = json.loads(started.stdout)
+        session_path = started_payload["_session_path"]
+        assert started_payload["bundle_count"] == 1
+        assert started_payload["live_mode"] == "poll"
+
+        try:
+            changed = self._run(
+                "--json",
+                "-p",
+                proj_file,
+                "part",
+                "add",
+                "cylinder",
+                "--name",
+                "SideBoss",
+                "-P",
+                "radius=4",
+                "-P",
+                "height=14",
+                "-pos",
+                "18,0,0",
+                timeout=60,
+            )
+            assert changed.returncode == 0, changed.stderr
+
+            session_payload = _wait_for_live_bundle_count(session_path, 2, timeout_s=30.0)
+            assert session_payload["bundle_count"] >= 2
+            assert session_payload["source_state"]["last_publish_reason"] == "auto-poll"
+            assert session_payload["poller"]["running"] is True
+
+            current_manifest_path = session_payload["current_manifest_path"]
+            assert os.path.isfile(current_manifest_path)
+            with open(current_manifest_path, "r", encoding="utf-8") as fh:
+                current_manifest = json.load(fh)
+            current_manifest["_bundle_dir"] = os.path.dirname(current_manifest_path)
+            hero_path = _artifact_path(current_manifest, "hero")
+            _assert_png(hero_path)
+
+            print(f"\n  FreeCAD poll session: {os.path.dirname(session_path)}")
+            print(f"  FreeCAD live hero: {hero_path}")
+        finally:
+            stopped = self._run(
+                "--json",
+                "-p",
+                proj_file,
+                "preview",
+                "live",
+                "stop",
+                "--recipe",
+                "quick",
+                "--root-dir",
+                live_root,
+                timeout=60,
+            )
+            assert stopped.returncode == 0, stopped.stderr

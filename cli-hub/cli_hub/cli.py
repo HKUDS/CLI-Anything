@@ -1,11 +1,50 @@
 """cli-hub — CLI entry point."""
 
+import os
+import shutil
+import sys
+import json as json_mod
+from pathlib import Path
+
 import click
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_all_clis, get_cli, search_clis, list_categories
 from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli
-from cli_hub.analytics import track_install, track_uninstall, track_visit, track_first_run, _detect_is_agent
+from cli_hub.analytics import (
+    detect_invocation_context,
+    track_first_run,
+    track_install,
+    track_launch,
+    track_uninstall,
+    track_visit,
+)
+from cli_hub.preview import (
+    inspect_bundle,
+    inspect_session,
+    is_live_session_ref,
+    load_session,
+    open_in_browser,
+    render_html,
+    render_inspect_text,
+    render_live_html,
+    render_session_text,
+    start_static_server,
+)
+
+
+def _invocation_command(ctx, version):
+    """Return a compact label for the current invocation."""
+    argv = sys.argv[1:]
+    if version:
+        return "--version"
+    if ctx.invoked_subcommand:
+        return ctx.invoked_subcommand
+    if any(arg in ("--help", "-h") for arg in argv):
+        return "--help"
+    if argv:
+        return argv[0]
+    return "root"
 
 
 @click.group(invoke_without_command=True)
@@ -14,7 +53,7 @@ from cli_hub.analytics import track_install, track_uninstall, track_visit, track
 def main(ctx, version):
     """cli-hub — Download and manage CLI-Anything harnesses and public CLIs."""
     track_first_run()
-    track_visit(is_agent=_detect_is_agent())
+    track_visit(command=_invocation_command(ctx, version), detection=detect_invocation_context())
     if version:
         click.echo(f"cli-hub {__version__}")
         return
@@ -43,6 +82,7 @@ def install(name):
         click.secho(f"✓ {msg}", fg="green")
         if cli:
             click.echo(f"  Run it with: {cli['entry_point']}")
+            click.echo(f"  Or launch:   cli-hub launch {cli['name']}")
             if cli.get("_source") == "public" and cli.get("npx_cmd"):
                 click.echo(f"  Or use npx:  {cli['npx_cmd']}")
     else:
@@ -201,5 +241,130 @@ def info(name):
     click.echo()
 
 
+@main.command()
+@click.argument("name")
+@click.argument("args", nargs=-1)
+def launch(name, args):
+    """Launch an installed CLI, passing through any extra arguments."""
+    cli = get_cli(name)
+    if not cli:
+        click.secho(f"CLI '{name}' not found in registry.", fg="red", err=True)
+        raise SystemExit(1)
+
+    entry = cli["entry_point"]
+    if not shutil.which(entry):
+        click.secho(
+            f"'{entry}' not found on PATH. Install it first: cli-hub install {name}",
+            fg="red",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    track_launch(name)
+    os.execvp(entry, [entry] + list(args))
+
+
+@main.group(name="previews", invoke_without_command=True)
+@click.pass_context
+def previews(ctx):
+    """Inspect existing preview bundles or live sessions; this command does not publish previews."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@previews.command("inspect")
+@click.argument("preview_ref")
+@click.option("--json", "as_json", is_flag=True, help="Output preview metadata as JSON.")
+def preview_inspect(preview_ref, as_json):
+    """Inspect a preview bundle or live session."""
+    if is_live_session_ref(preview_ref):
+        payload = inspect_session(preview_ref)
+        if as_json:
+            click.echo(json_mod.dumps(payload, indent=2))
+            return
+        click.echo(render_session_text(preview_ref), nl=False)
+        return
+    if as_json:
+        click.echo(json_mod.dumps(inspect_bundle(preview_ref), indent=2))
+        return
+    click.echo(render_inspect_text(preview_ref), nl=False)
+
+
+@previews.command("html")
+@click.argument("preview_ref")
+@click.option("--output", "-o", "output_path", default=None, help="Output HTML path.")
+@click.option("--poll-ms", default=1500, show_default=True, help="Polling interval for live session pages.")
+def preview_html(preview_ref, output_path, poll_ms):
+    """Render HTML for a preview bundle or live session."""
+    if is_live_session_ref(preview_ref):
+        session_dir, _session = load_session(preview_ref)
+        if output_path is None:
+            output_path = os.path.join(session_dir, "live.html")
+        rendered = render_live_html(preview_ref, output_path, poll_ms=poll_ms)
+        click.echo(rendered)
+        return
+    if output_path is None:
+        payload = inspect_bundle(preview_ref)
+        output_path = os.path.join(payload["bundle_dir"], "preview.html")
+    rendered = render_html(preview_ref, output_path)
+    click.echo(rendered)
+
+
+def _serve_live_session(session_ref, poll_ms, auto_open, port):
+    session_dir, session = load_session(session_ref)
+    output_path = Path(session_dir) / "live.html"
+    render_live_html(session_ref, str(output_path), poll_ms=poll_ms)
+    server, base_url = start_static_server(str(session_dir), port=port)
+    live_url = f"{base_url}/live.html"
+    click.echo(f"Live preview URL: {live_url}")
+    if auto_open:
+        launched = open_in_browser(live_url)
+        if launched.get("launched"):
+            click.echo(f"Opened in {launched['browser']}: pid {launched['pid']}")
+        else:
+            click.echo(
+                "Browser launch unavailable. Open this manually:\n"
+                f"  {live_url}\n"
+                f"  Suggested command: {session.get('watch_command') or f'cli-hub previews watch {session_dir} --open'}"
+            )
+    click.echo("Press Ctrl-C to stop the live preview server.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        click.echo("\nStopped live preview server.")
+    finally:
+        server.server_close()
+
+
+@previews.command("watch")
+@click.argument("session_ref")
+@click.option("--poll-ms", default=1500, show_default=True, help="Polling interval for the live page.")
+@click.option("--port", default=0, show_default=True, help="Preferred localhost port. Use 0 for auto.")
+@click.option("--open/--no-open", "auto_open", default=False, help="Open a separate browser window.")
+def preview_watch(session_ref, poll_ms, port, auto_open):
+    """Serve and watch a live preview session."""
+    _serve_live_session(session_ref, poll_ms=poll_ms, auto_open=auto_open, port=port)
+
+
+@previews.command("open")
+@click.argument("preview_ref")
+@click.option("--output", "-o", "output_path", default=None, help="Override the generated HTML path.")
+@click.option("--poll-ms", default=1500, show_default=True, help="Polling interval when opening a live session.")
+@click.option("--port", default=0, show_default=True, help="Preferred localhost port for live sessions.")
+def preview_open(preview_ref, output_path, poll_ms, port):
+    """Open a preview bundle or live session in a browser window."""
+    if is_live_session_ref(preview_ref):
+        _serve_live_session(preview_ref, poll_ms=poll_ms, auto_open=True, port=port)
+        return
+    if output_path is None:
+        payload = inspect_bundle(preview_ref)
+        output_path = os.path.join(payload["bundle_dir"], "preview.html")
+    rendered = render_html(preview_ref, output_path)
+    launched = open_in_browser(Path(rendered).resolve().as_uri())
+    click.echo(rendered)
+    if launched.get("launched"):
+        click.echo(f"Opened in {launched['browser']}: pid {launched['pid']}")
+    else:
+        click.echo(f"Open this file manually: {rendered}")
 if __name__ == "__main__":
     main()

@@ -79,7 +79,7 @@ designed for humans, without needing a display or mouse.
      from cli_anything.<software>.utils.repl_skin import ReplSkin
 
      skin = ReplSkin("<software>", version="1.0.0")
-     skin.print_banner()          # Branded startup box (auto-detects skills/SKILL.md)
+     skin.print_banner()          # Branded startup box (prefers repo-root skills/, falls back to package)
      pt_session = skin.create_prompt_session()  # prompt_toolkit with history + styling
      line = skin.get_input(pt_session, project_name="my_project", modified=True)
      skin.help(commands_dict)     # Formatted help listing
@@ -92,8 +92,10 @@ designed for humans, without needing a display or mouse.
      skin.progress(3, 10, "...")  # Progress bar
      skin.print_goodbye()         # Styled exit message
      ```
-   - ReplSkin auto-detects `skills/SKILL.md` inside the package directory and displays
-     it in the banner. AI agents can read the skill file at the displayed absolute path.
+   - ReplSkin prefers the repo-root canonical `skills/cli-anything-<software>/SKILL.md`
+     when running inside this monorepo, and falls back to the packaged
+     `cli_anything/<software>/skills/SKILL.md` copy when installed elsewhere.
+     AI agents can read the skill file at the displayed absolute path.
    - Make REPL the default behavior: use `invoke_without_command=True` on the main
      Click group, and invoke the `repl` command when no subcommand is given:
      ```python
@@ -257,8 +259,10 @@ automatically, or customize via the Jinja2 template at `templates/SKILL.md.templ
 See [`guides/skill-generation.md`](guides/skill-generation.md) for the full generation
 process, template customization options, and manual generation commands.
 
-**Output Location:** SKILL.md lives inside the Python package at
-`cli_anything/<software>/skills/SKILL.md` so it is installed with `pip install`.
+**Output Location:** The canonical skill lives at
+`skills/cli-anything-<software>/SKILL.md`. A compatibility copy is also written to
+`cli_anything/<software>/skills/SKILL.md` so installed harnesses still ship a
+local skill file.
 
 **Key Principles:**
 
@@ -267,12 +271,17 @@ process, template customization options, and manual generation commands.
 - Document `--json` flag usage for machine-readable output
 - List all command groups with brief descriptions
 - Provide realistic examples that demonstrate common workflows
+- If the harness supports previews, document the producer surface
+  (`cli-anything-<software> preview ...`) and the consumer surface
+  (`cli-hub previews ...`) separately in both `README.md` and `SKILL.md`
+- If the harness supports live preview, explain what `preview live status --json`
+  returns and how agents should use it as a cheap introspection call
 
 **Skill Path in CLI Banner:**
 
-ReplSkin auto-detects `skills/SKILL.md` inside the package directory and displays
-the absolute path in the startup banner. AI agents can read the skill file at the
-displayed path to learn the CLI's full capabilities.
+ReplSkin prefers the repo-root canonical skill path and falls back to the
+packaged `skills/SKILL.md` copy. AI agents can read the displayed path to learn
+the CLI's full capabilities.
 
 **Package Data:** Ensure `setup.py` includes the skill file so it ships with pip:
 
@@ -491,6 +500,32 @@ These are non-negotiable. Every harness MUST follow all of them.
 - **Be idempotent where possible** — Running the same command twice should be safe.
 - **Provide introspection** — `info`, `list`, `status` commands are critical for agents
   to understand current state before acting.
+- **Preview meaningful intermediate state** — Harnesses that can expose useful
+  visual checkpoints SHOULD implement a `preview` command group with at least
+  `preview recipes`, `preview capture`, and `preview latest`. Diff-oriented
+  tools SHOULD also expose `preview diff`.
+- **Keep producer and viewer roles separate** — Harnesses publish preview state
+  through `cli-anything-<software> preview ...`. `cli-hub previews ...` is the
+  read-only consumer for inspect/html/watch/open and should not be treated as a
+  render path.
+- **Use the shared preview bundle protocol** — Preview-capable harnesses SHOULD
+  emit `preview-bundle/v1` bundles as described in `docs/PREVIEW_PROTOCOL.md`.
+  The bundle is the contract; the renderer remains the real software.
+- **Live preview should separate head vs history** — When a harness supports
+  `preview live ...`, it SHOULD persist:
+  - `session.json` as the mutable current head
+  - immutable bundle directories for each capture
+  - `trajectory.json` as the append-only command-to-preview history
+- **Do not treat `_bundle_dir` as the permanent build identity** — It is only a
+  single snapshot path. Stable live replay should anchor on `session_dir` plus
+  `trajectory.json`.
+- **Make `preview live status --json` agent-cheap** — Live-preview harnesses
+  SHOULD include a compact `trajectory_summary` in `preview live status --json`
+  so agents do not need to read `trajectory.json` just to understand the latest
+  command-to-bundle mapping.
+- **Do not screen-scrape GUI windows for previews** — Preview artifacts must be
+  produced by the real backend or by native inspection/export paths operating
+  on real project/capture state.
 - **JSON output mode** — Every command MUST support `--json` for machine parsing.
 - **Use the unified REPL skin** — Copy `cli-anything-plugin/repl_skin.py` to
   `utils/repl_skin.py` and use `ReplSkin` for banner, prompt, help, and messages.
@@ -514,6 +549,125 @@ These are non-negotiable. Every harness MUST follow all of them.
   how to install the software dependency, install the CLI, run tests, and basic usage.
 - **Every `cli_anything/<software>/tests/` directory MUST contain a `TEST.md`**
   documenting test coverage, realistic workflows tested, and full test results output.
+
+### Preview & Live Preview Norms
+
+Preview support is optional at the harness level, but once a harness exposes
+meaningful intermediate visual or inspection state it MUST follow a consistent
+contract so agents and humans can reason about it across software.
+
+See [`guides/preview-methodology.md`](guides/preview-methodology.md) for the
+detailed design guide and documentation checklist.
+
+#### Producer vs consumer roles
+
+Keep these roles separate:
+
+- **Producer** — `cli-anything-<software> preview ...`
+  - talks to the real backend
+  - owns preview recipes, source fingerprinting, and live-session publishing
+  - creates bundles, sessions, and trajectories
+- **Consumer** — `cli-hub previews ...`
+  - reads already-published preview state
+  - provides `inspect`, `html`, `watch`, and `open`
+  - never renders, replays, or synthesizes preview artifacts
+
+Harness help text, README examples, and SKILL examples MUST not present
+`cli-hub previews ...` as a render path. Agents should think in two steps:
+publish with the software CLI, inspect with `cli-hub`.
+
+#### Three-layer persistence model
+
+Preview-capable harnesses SHOULD treat preview state as three separate objects:
+
+- **`bundle_dir`** — an immutable preview snapshot implementing
+  `preview-bundle/v1`
+- **`session.json`** — the mutable current head for a live preview stream
+- **`trajectory.json`** — the append-only permanent command-to-preview history
+
+Do not use `_bundle_dir` as the long-lived identity of a project. It is a
+single snapshot path and may change whenever the source fingerprint changes or a
+new bundle is forced. Stable live replay should anchor on `session_dir` plus
+`trajectory.json`.
+
+#### Recommended CLI surface
+
+If a harness has meaningful previewable state, it SHOULD expose at least:
+
+- `preview recipes`
+- `preview capture`
+- `preview latest`
+
+Add the following when the software semantics justify them:
+
+- `preview diff`
+- `preview live start`
+- `preview live push`
+- `preview live status`
+- `preview live stop`
+- an internal or hidden poll monitor when poll-first refresh is supported
+
+Recommended semantics:
+
+- `preview capture` renders or exports a fresh bundle unless cache reuse is valid
+- `preview latest` returns the newest existing bundle and does not render a new one
+- `preview diff` publishes an immutable comparison bundle
+- `preview live start` creates a live session and publishes an initial bundle
+- `preview live push` adds a new bundle to an existing live session
+- `preview live status` is a read-only status probe
+- `preview live stop` stops further publishing without deleting prior history
+
+#### Agent-facing JSON contract
+
+All preview commands MUST support `--json`.
+
+At minimum, machine-readable preview results SHOULD expose:
+
+- stable paths such as `_bundle_dir`, `_manifest_path`, and `summary_path`
+- artifact metadata and relative artifact paths
+- session metadata when live mode is involved
+- trajectory references when history exists
+
+`preview live status --json` is especially important because agents call it as a
+cheap introspection step between mutations. It SHOULD return:
+
+- whether a live session exists and whether it is active
+- `session_dir`, `session_path`, and current bundle identifiers or paths
+- current publish reason and latest command metadata when available
+- a compact `trajectory_summary` with the latest command-to-bundle mapping
+- viewer hints such as inspect/html/watch/open commands when the harness emits them
+
+The goal is to let an agent understand current live state without rereading the
+entire `trajectory.json` file.
+
+#### Documentation requirements for preview-capable harnesses
+
+Preview-capable harnesses SHOULD document preview usage in both `README.md` and
+`SKILL.md`. Cover:
+
+- whether preview support exists at all
+- which modes exist: static, diff, live, poll
+- the producer commands agents should call
+- the consumer commands humans should call with `cli-hub previews ...`
+- whether the output is images, video, audio-derived stills, inspection JSON, or mixed artifacts
+- what makes the preview truthful for this software
+
+Use concrete examples that show both the publish step and the inspect/watch
+step.
+
+#### Truthfulness principle
+
+Preview artifacts MUST be honest views of the real project or capture state.
+
+- Prefer real backend render/export/inspection paths.
+- Use native offscreen export or replay when the software provides it.
+- Do not fake renders in Python.
+- Do not screen-scrape GUI windows just to create something image-like.
+- If a temporary camera, light, or helper rig must be injected, mark the bundle
+  status accordingly and explain the limitation in summary/context output.
+
+Truthful previews matter more than pretty previews. Agents need intermediate
+state they can trust when deciding what to do next.
 
 ## Directory Structure
 
@@ -585,6 +739,7 @@ based on the software you're building a harness for.
 | Guide | Read when... | Phase |
 |-------|-------------|-------|
 | [`session-locking.md`](guides/session-locking.md) | Implementing session save (all harnesses) | Phase 3 |
+| [`preview-methodology.md`](guides/preview-methodology.md) | Designing preview, live preview, and agent-facing preview flows | Phase 3, 6.5 |
 | [`skill-generation.md`](guides/skill-generation.md) | Generating the SKILL.md file | Phase 6.5 |
 | [`pypi-publishing.md`](guides/pypi-publishing.md) | Packaging and installing the CLI | Phase 7 |
 | [`mcp-backend.md`](guides/mcp-backend.md) | Software has an MCP server, no native CLI | Phase 3 |

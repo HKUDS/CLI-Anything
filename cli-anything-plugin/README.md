@@ -219,7 +219,8 @@ Generate AI-discoverable skill definition:
 - Extract CLI metadata using `skill_generator.py`
 - Generate SKILL.md with YAML frontmatter (name, description)
 - Include command groups, examples, and agent-specific guidance
-- Output to `cli_anything/<software>/skills/SKILL.md` (inside the Python package)
+- Output canonical skill to `skills/cli-anything-<software>/SKILL.md`
+- Refresh package-local compatibility copy at `cli_anything/<software>/skills/SKILL.md`
 
 **Output:** SKILL.md file for AI agent discovery
 
@@ -237,6 +238,10 @@ Package and install:
 ## Output Structure
 
 ```
+skills/
+└── cli-anything-<software>/
+    └── SKILL.md               # Canonical repo-root skill for npx skills discovery
+
 <software>/
 └── agent-harness/
     ├── <SOFTWARE>.md          # Software-specific SOP
@@ -253,8 +258,6 @@ Package and install:
             │   ├── session.py     # Undo/redo
             │   ├── export.py      # Rendering/export
             │   └── ...            # Domain-specific modules
-            ├── skills/            # AI-discoverable skill definition
-            │   └── SKILL.md       # Installed with the package via package_data
             ├── utils/             # Utilities
             │   ├── __init__.py
             │   ├── repl_skin.py   # Unified REPL skin (copy from plugin)
@@ -323,6 +326,7 @@ The cli-anything methodology has successfully built CLIs for:
 - YAML frontmatter with name and description for triggering
 - Command groups and usage examples
 - Agent-specific guidance for programmatic usage
+- Canonical repo-root `skills/` layout for `npx skills` discovery
 - Follows skill-creator methodology
 
 ### PyPI Distribution

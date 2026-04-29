@@ -67,7 +67,7 @@ def render(
     # --- GIMP-native rendering (preferred) ---
     try:
         from cli_anything.gimp.utils.gimp_backend import is_available, render_project
-        if is_available():
+        if is_available() and not _project_has_draw_ops(project):
             return render_project(
                 project, output_path,
                 preset=preset, overwrite=overwrite,
@@ -142,6 +142,7 @@ def _render_via_pillow(
             continue
 
         layer_img = _apply_filters(layer_img, layer.get("filters", []))
+        layer_img = _apply_draw_ops(layer_img, layer.get("draw_ops", []))
 
         if "_scale_x" in layer:
             new_w = max(1, round(layer_img.width * layer["_scale_x"]))
@@ -250,6 +251,66 @@ def _render_text_layer(layer, canvas_w, canvas_h):
 
     draw.text((0, 0), text, fill=color, font=font)
     return img
+
+
+def _apply_draw_ops(img, draw_ops):
+    """Apply stored draw operations onto a layer image."""
+    if not draw_ops:
+        return img
+
+    from PIL import ImageDraw, ImageFont
+
+    canvas = img.convert("RGBA")
+    draw = ImageDraw.Draw(canvas)
+
+    for op in draw_ops:
+        op_type = op.get("type")
+        if op_type == "rect":
+            fill = op.get("fill")
+            outline = op.get("outline")
+            line_width = max(1, int(op.get("width", 1)))
+            draw.rectangle(
+                [op.get("x1", 0), op.get("y1", 0), op.get("x2", 0), op.get("y2", 0)],
+                fill=fill,
+                outline=outline,
+                width=line_width,
+            )
+        elif op_type == "text":
+            font_size = int(op.get("size", 24))
+            font_name = op.get("font", "Arial")
+            font = _load_font(font_name, font_size)
+            draw.text(
+                (op.get("x", 0), op.get("y", 0)),
+                op.get("text", ""),
+                fill=op.get("color", "#000000"),
+                font=font,
+            )
+
+    return canvas
+
+
+def _load_font(font_name, font_size):
+    """Best-effort font loading for Pillow rendering."""
+    from PIL import ImageFont
+
+    candidate_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf",
+        "arial.ttf",
+        font_name,
+    ]
+    for candidate in candidate_paths:
+        try:
+            return ImageFont.truetype(candidate, font_size)
+        except (OSError, IOError):
+            continue
+    return ImageFont.load_default()
+
+
+def _project_has_draw_ops(project):
+    """Check whether any layer includes deferred draw operations."""
+    return any(layer.get("draw_ops") for layer in project.get("layers", []))
 
 
 def _apply_filters(img, filters):

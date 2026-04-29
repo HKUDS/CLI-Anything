@@ -18,6 +18,8 @@ import sys
 import os
 import json
 import shlex
+import shutil
+import subprocess
 import click
 from typing import Optional
 
@@ -32,6 +34,7 @@ from cli_anything.blender.core import modifiers as mod_mod
 from cli_anything.blender.core import lighting as light_mod
 from cli_anything.blender.core import animation as anim_mod
 from cli_anything.blender.core import render as render_mod
+from cli_anything.blender.core import preview as preview_mod
 
 # Global session state
 _session: Optional[Session] = None
@@ -58,6 +61,77 @@ def output(data, message: str = ""):
             _print_list(data)
         else:
             click.echo(str(data))
+
+
+def _spawn_live_viewer(session_dir: str, poll_ms: int) -> dict:
+    """Launch cli-hub live preview watcher when available."""
+    hub = shutil.which("cli-hub")
+    command = [
+        hub or "cli-hub",
+        "previews",
+        "watch",
+        session_dir,
+        "--open",
+        "--poll-ms",
+        str(int(poll_ms)),
+    ]
+    if hub is None:
+        return {
+            "launched": False,
+            "command": command,
+            "reason": "cli-hub not found on PATH",
+        }
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return {
+        "launched": True,
+        "pid": process.pid,
+        "command": command,
+    }
+
+
+def _spawn_live_poller(session_dir: str) -> dict:
+    """Launch the Blender live preview poller in the background."""
+    cli_path = shutil.which("cli-anything-blender")
+    if cli_path:
+        command = [cli_path, "preview", "live", "monitor", "--session-dir", session_dir]
+    else:
+        command = [
+            sys.executable,
+            "-m",
+            "cli_anything.blender.blender_cli",
+            "preview",
+            "live",
+            "monitor",
+            "--session-dir",
+            session_dir,
+        ]
+    log_path = os.path.join(session_dir, "poller.log")
+    log_fh = open(log_path, "ab")
+    process = subprocess.Popen(
+        command,
+        stdout=log_fh,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+        close_fds=True,
+    )
+    log_fh.close()
+    preview_mod.record_live_poller_spawn(
+        session_dir,
+        pid=process.pid,
+        command=command,
+        log_path=log_path,
+    )
+    return {
+        "launched": True,
+        "pid": process.pid,
+        "command": command,
+        "log_path": log_path,
+    }
 
 
 def _print_dict(d: dict, indent: int = 0):
@@ -813,6 +887,144 @@ def render_script(output_path, frame, animation):
     click.echo(script)
 
 
+@cli.group("preview")
+def preview_group():
+    """Preview bundle capture and inspection."""
+    pass
+
+
+@preview_group.group("live")
+def preview_live_group():
+    """Live preview session management."""
+    pass
+
+
+@preview_group.command("recipes")
+@handle_error
+def preview_recipes():
+    """List available preview recipes."""
+    output(preview_mod.list_recipes(), "Preview recipes:")
+
+
+@preview_group.command("capture")
+@click.option("--recipe", default="quick", help="Preview recipe name")
+@click.option("--force", is_flag=True, help="Bypass preview cache")
+@click.option("--root-dir", default=None, help="Override preview bundle root directory")
+@handle_error
+def preview_capture(recipe, force, root_dir):
+    """Capture a preview bundle for the active scene."""
+    sess = get_session()
+    result = preview_mod.capture(
+        sess,
+        recipe=recipe,
+        force=force,
+        root_dir=root_dir,
+        command=f"cli-anything-blender --project {sess.project_path or ''} preview capture --recipe {recipe}".strip(),
+    )
+    bundle_dir = result.get("_bundle_dir", result.get("bundle_dir", ""))
+    status = "Reused preview bundle" if result.get("cached") else "Created preview bundle"
+    output(result, f"{status}: {bundle_dir}")
+
+
+@preview_group.command("latest")
+@click.option("--recipe", default=None, help="Filter by recipe name")
+@click.option("--root-dir", default=None, help="Override preview bundle root directory")
+@handle_error
+def preview_latest(recipe, root_dir):
+    """Show the latest preview bundle manifest."""
+    sess = get_session()
+    result = preview_mod.latest(project_path=sess.project_path, recipe=recipe, root_dir=root_dir)
+    output(result, f"Latest preview bundle: {result.get('_bundle_dir', '')}")
+
+
+@preview_live_group.command("start")
+@click.option("--recipe", default="quick", help="Preview recipe name")
+@click.option("--force", is_flag=True, help="Bypass preview cache")
+@click.option("--root-dir", default=None, help="Override preview root directory")
+@click.option("--poll-ms", default=1500, show_default=True, help="Suggested viewer polling interval")
+@click.option("--mode", type=click.Choice(["poll", "manual"]), default="poll", show_default=True,
+              help="Live preview mode. Poll mode auto-captures when the project file changes.")
+@click.option("--source-poll-ms", default=500, show_default=True,
+              help="Polling interval for source project changes in poll mode.")
+@click.option("--open", "open_window", is_flag=True, help="Launch cli-hub live viewer in a separate window.")
+@handle_error
+def preview_live_start(recipe, force, root_dir, poll_ms, mode, source_poll_ms, open_window):
+    """Start a live preview session and publish the latest bundle."""
+    sess = get_session()
+    result = preview_mod.live_start(
+        sess,
+        recipe=recipe,
+        force=force,
+        root_dir=root_dir,
+        refresh_hint_ms=poll_ms,
+        live_mode=mode,
+        source_poll_ms=source_poll_ms,
+        command=(
+            f"cli-anything-blender --project {sess.project_path or ''} "
+            f"preview live start --recipe {recipe}"
+        ).strip(),
+    )
+    if result.get("live_mode") == "poll" and not result.get("poller", {}).get("running"):
+        result["poller"] = _spawn_live_poller(result["_session_dir"])
+    if open_window:
+        result["viewer"] = _spawn_live_viewer(result["_session_dir"], poll_ms)
+    output(result, f"Started live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("push")
+@click.option("--recipe", default="quick", help="Preview recipe name")
+@click.option("--force", is_flag=True, help="Bypass preview cache")
+@click.option("--root-dir", default=None, help="Override preview root directory")
+@click.option("--poll-ms", default=1500, show_default=True, help="Suggested viewer polling interval")
+@handle_error
+def preview_live_push(recipe, force, root_dir, poll_ms):
+    """Publish a fresh bundle into the live preview session."""
+    sess = get_session()
+    result = preview_mod.live_push(
+        sess,
+        recipe=recipe,
+        force=force,
+        root_dir=root_dir,
+        refresh_hint_ms=poll_ms,
+        command=(
+            f"cli-anything-blender --project {sess.project_path or ''} "
+            f"preview live push --recipe {recipe}"
+        ).strip(),
+    )
+    output(result, f"Updated live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("status")
+@click.option("--recipe", default="quick", help="Preview recipe name")
+@click.option("--root-dir", default=None, help="Override preview root directory")
+@handle_error
+def preview_live_status(recipe, root_dir):
+    """Show live preview session metadata."""
+    sess = get_session()
+    result = preview_mod.live_status(sess, recipe=recipe, root_dir=root_dir)
+    output(result, f"Live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("stop")
+@click.option("--recipe", default="quick", help="Preview recipe name")
+@click.option("--root-dir", default=None, help="Override preview root directory")
+@handle_error
+def preview_live_stop(recipe, root_dir):
+    """Stop the live preview session without deleting artifacts."""
+    sess = get_session()
+    result = preview_mod.live_stop(sess, recipe=recipe, root_dir=root_dir)
+    output(result, f"Stopped live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("monitor", hidden=True)
+@click.option("--session-dir", required=True, help="Live session directory to monitor.")
+@handle_error
+def preview_live_monitor(session_dir):
+    """Internal background poller for live preview sessions."""
+    result = preview_mod.run_live_poller(session_dir)
+    output(result, "")
+
+
 # ── Session Commands ────────────────────────────────────────────
 @cli.group()
 def session():
@@ -886,6 +1098,7 @@ def repl(project_path):
         "light":     "add|set|list",
         "animation": "keyframe|remove-keyframe|frame-range|fps|list-keyframes",
         "render":    "settings|info|presets|execute|script",
+        "preview":   "recipes|capture|latest|live start|push|status|stop",
         "session":   "status|undo|redo|history",
         "help":      "show this help",
         "quit":      "exit REPL",

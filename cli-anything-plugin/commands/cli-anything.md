@@ -73,7 +73,7 @@ This command implements the complete cli-anything methodology to build a product
 - Extracts CLI metadata using `skill_generator.py`
 - Generates SKILL.md with YAML frontmatter and Markdown body
 - Includes command groups, examples, and agent-specific guidance
-- Outputs to `cli_anything/<software>/skills/SKILL.md` inside the Python package
+- Outputs the canonical skill to `skills/cli-anything-<software>/SKILL.md` and refreshes the packaged compatibility copy at `cli_anything/<software>/skills/SKILL.md`
 - Makes the CLI discoverable and usable by AI agents
 
 ### Phase 7: PyPI Publishing and Installation
@@ -100,13 +100,19 @@ This command implements the complete cli-anything methodology to build a product
             │   ├── session.py
             │   ├── export.py
             │   └── ...
-            ├── skills/
-            │   └── SKILL.md       # AI-discoverable skill definition
             ├── utils/             # Utilities
             └── tests/
                 ├── TEST.md        # Test plan and results
                 ├── test_core.py   # Unit tests
                 └── test_full_e2e.py # E2E tests
+```
+
+Canonical repo-root skill output:
+
+```
+skills/
+└── cli-anything-<software>/
+    └── SKILL.md
 ```
 
 ## Example

@@ -322,6 +322,7 @@ def _add_gradient_to_defs(defs, grad: Dict[str, Any]) -> None:
 def _object_to_svg_element(obj: Dict[str, Any]):
     """Convert a JSON object dict to an SVG element."""
     import xml.etree.ElementTree as ET
+    from cli_anything.inkscape.core.text import layout_text_lines, text_anchor_x
 
     obj_type = obj.get("type", "")
     obj_id = obj.get("id", "")
@@ -377,11 +378,26 @@ def _object_to_svg_element(obj: Dict[str, Any]):
 
     elif obj_type == "text":
         tag = f"{{{SVG_NS}}}text"
-        for attr in ("x", "y"):
-            if attr in obj:
-                attribs[attr] = str(obj[attr])
+        anchor_x = text_anchor_x(obj)
+        attribs["x"] = str(anchor_x)
+        if "y" in obj:
+            attribs["y"] = str(obj["y"])
         elem = ET.Element(tag, attribs)
-        elem.text = obj.get("text", "")
+        lines = layout_text_lines(obj)
+        if len(lines) == 1:
+            elem.text = lines[0]
+            return elem
+        font_size = float(obj.get("font_size", 24) or 24)
+        line_height = float(obj.get("line_height", 1.2) or 1.2)
+        y = float(obj.get("y", 0))
+        for idx, line in enumerate(lines):
+            tspan_attribs = {"x": str(anchor_x)}
+            if idx == 0:
+                tspan_attribs["y"] = str(y)
+            else:
+                tspan_attribs["dy"] = str(font_size * line_height)
+            tspan = ET.SubElement(elem, f"{{{SVG_NS}}}tspan", tspan_attribs)
+            tspan.text = line
         return elem
 
     elif obj_type == "image":

@@ -1,0 +1,25 @@
+cli-anything-hub:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cli-hub/**"
+          - "docs/hub/**"
+          - "registry.json"
+          - "public_registry.json"
+          - "matrix_registry.json"
+
+cli-anything-skill:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cli-anything-plugin/**"
+          - "codex-skill/**"
+          - "cli-hub-meta-skill/**"
+          - "openclaw-skill/**"
+          - "skills/**"
+          - "**/SKILL.md"
+
+github-actions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/labeler.yml"
+          - ".github/scripts/pr-labeler.js"

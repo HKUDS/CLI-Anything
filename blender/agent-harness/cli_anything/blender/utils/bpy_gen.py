@@ -59,6 +59,10 @@ def generate_full_script(
     lines.extend(_gen_objects(project))
     lines.append("")
 
+    # Object parenting
+    lines.extend(_gen_object_parenting(project))
+    lines.append("")
+
     # Cameras
     lines.extend(_gen_cameras(project))
     lines.append("")
@@ -268,6 +272,43 @@ def _gen_objects(project: Dict[str, Any]) -> List[str]:
 
         lines.append("")
 
+    return lines
+
+
+def _gen_object_parenting(project: Dict[str, Any]) -> List[str]:
+    """Generate object parenting relationships after all objects exist."""
+    objects = project.get("objects", [])
+    if not objects:
+        return ["# ── Object Parenting ───────────────────────────────────────", "# (none)"]
+
+    id_to_name = {
+        obj.get("id", index): obj.get("name", f"Object_{index}")
+        for index, obj in enumerate(objects)
+    }
+    parent_pairs = []
+    for index, obj in enumerate(objects):
+        parent_id = obj.get("parent")
+        if parent_id is None:
+            continue
+        child_name = obj.get("name", f"Object_{index}")
+        parent_name = id_to_name.get(parent_id)
+        if not parent_name:
+            continue
+        parent_pairs.append((child_name, parent_name))
+
+    if not parent_pairs:
+        return ["# ── Object Parenting ───────────────────────────────────────", "# (none)"]
+
+    lines = ["# ── Object Parenting ───────────────────────────────────────"]
+    for child_name, parent_name in parent_pairs:
+        lines.extend([
+            f"child_obj = bpy.data.objects.get('{child_name}')",
+            f"parent_obj = bpy.data.objects.get('{parent_name}')",
+            "if child_obj and parent_obj:",
+            "    child_obj.parent = parent_obj",
+            "    child_obj.matrix_parent_inverse = parent_obj.matrix_world.inverted()",
+            "",
+        ])
     return lines
 
 

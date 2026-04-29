@@ -7,7 +7,7 @@ Usage:
     from cli_anything.<software>.utils.repl_skin import ReplSkin
 
     skin = ReplSkin("n8n", version="2.4.7")
-    skin.print_banner()  # auto-detects skills/SKILL.md inside the package
+    skin.print_banner()  # auto-detects repo-root or packaged SKILL.md
     prompt_text = skin.prompt(project_name="my_workflow", modified=True)
     skin.success("Workflow activated")
     skin.error("Connection failed")
@@ -22,6 +22,7 @@ import json
 import os
 import shutil
 import sys
+from pathlib import Path
 from typing import Any
 
 import click
@@ -63,6 +64,8 @@ _RED = "\033[38;5;196m"
 _BLUE = "\033[38;5;75m"
 _MAGENTA = "\033[38;5;176m"
 
+_SKILL_SOURCE_REPO = os.environ.get("CLI_ANYTHING_SKILL_REPO", "HKUDS/CLI-Anything")
+
 # ── Brand icon ────────────────────────────────────────────────────────
 
 # The cli-anything icon: a small colored diamond/chevron mark
@@ -95,6 +98,17 @@ def _visible_len(text: str) -> int:
     return len(_strip_ansi(text))
 
 
+def _display_home_path(path: str) -> str:
+    """Display a path relative to the home directory when possible."""
+    expanded = Path(path).expanduser().resolve()
+    home = Path.home().resolve()
+    try:
+        relative = expanded.relative_to(home)
+        return f"~/{relative.as_posix()}"
+    except ValueError:
+        return str(expanded)
+
+
 class ReplSkin:
     """Unified REPL skin for cli-anything CLIs.
 
@@ -112,27 +126,43 @@ class ReplSkin:
             history_file: Path for persistent command history.
                          Defaults to ~/.cli-anything-<software>/history
             skill_path: Path to the SKILL.md file for agent discovery.
-                        Auto-detected from the package's skills/ directory if not provided.
+                        Auto-detected from the repo-root skills/ tree when present,
+                        otherwise from the package's skills/ directory.
                         Displayed in banner for AI agents to know where to read skill info.
         """
         self.software = software.lower().replace("-", "_")
         self.display_name = software.replace("_", " ").title()
         self.version = version
+        self.skill_slug = self.software.replace("_", "-")
+        self.skill_id = f"cli-anything-{self.skill_slug}"
+        self.skill_install_cmd = (
+            f"npx skills add {_SKILL_SOURCE_REPO} --skill {self.skill_id} -g -y"
+        )
+        global_skill_root = Path(
+            os.environ.get("CLI_ANYTHING_GLOBAL_SKILLS_DIR", str(Path.home() / ".agents" / "skills"))
+        ).expanduser()
+        self.global_skill_path = str(global_skill_root / self.skill_id / "SKILL.md")
 
-        # Auto-detect skill path from package layout:
-        #   cli_anything/<software>/utils/repl_skin.py  (this file)
-        #   cli_anything/<software>/skills/SKILL.md     (target)
+        # Prefer repo-root canonical skills/<skill-id>/SKILL.md when running
+        # inside the CLI-Anything monorepo. Fall back to the packaged
+        # cli_anything/<software>/skills/SKILL.md for installed harnesses.
         if skill_path is None:
-            from pathlib import Path
-            _auto = Path(__file__).resolve().parent.parent / "skills" / "SKILL.md"
-            if _auto.is_file():
-                skill_path = str(_auto)
+            package_skill = Path(__file__).resolve().parent.parent / "skills" / "SKILL.md"
+            repo_skill = None
+            for parent in Path(__file__).resolve().parents:
+                candidate = parent / "skills" / self.skill_id / "SKILL.md"
+                if candidate.is_file():
+                    repo_skill = candidate
+                    break
+            if repo_skill and repo_skill.is_file():
+                skill_path = str(repo_skill)
+            elif package_skill.is_file():
+                skill_path = str(package_skill)
         self.skill_path = skill_path
         self.accent = _ACCENT_COLORS.get(self.software, _DEFAULT_ACCENT)
 
         # History file
         if history_file is None:
-            from pathlib import Path
             hist_dir = Path.home() / f".cli-anything-{self.software}"
             hist_dir.mkdir(parents=True, exist_ok=True)
             self.history_file = str(hist_dir / "history")
@@ -162,13 +192,33 @@ class ReplSkin:
 
     def print_banner(self):
         """Print the startup banner with branding."""
-        inner = 54
+        import textwrap
+
+        inner = 72
 
         def _box_line(content: str) -> str:
             """Wrap content in box drawing, padding to inner width."""
             pad = inner - _visible_len(content)
             vl = self._c(_DARK_GRAY, _V_LINE)
             return f"{vl}{content}{' ' * max(0, pad)}{vl}"
+
+        def _meta_lines(label: str, value: str) -> list[str]:
+            """Wrap a metadata line for the banner box."""
+            icon = self._c(_MAGENTA, "◇")
+            label_text = self._c(_DARK_GRAY, label)
+            prefix = f" {icon} {label_text} "
+            available = max(12, inner - _visible_len(prefix))
+            wrapped = textwrap.wrap(
+                value,
+                width=available,
+                break_long_words=True,
+                break_on_hyphens=False,
+            ) or [""]
+            lines = [f"{prefix}{self._c(_LIGHT_GRAY, wrapped[0])}"]
+            continuation_prefix = " " * _visible_len(prefix)
+            for chunk in wrapped[1:]:
+                lines.append(f"{continuation_prefix}{self._c(_LIGHT_GRAY, chunk)}")
+            return lines
 
         top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
         bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
@@ -184,19 +234,14 @@ class ReplSkin:
         tip = f" {self._c(_DARK_GRAY, '   Type help for commands, quit to exit')}"
         empty = ""
 
-        # Skill path for agent discovery
-        skill_line = None
-        if self.skill_path:
-            skill_icon = self._c(_MAGENTA, "◇")
-            skill_label = self._c(_DARK_GRAY, "   Skill:")
-            skill_path_display = self._c(_LIGHT_GRAY, self.skill_path)
-            skill_line = f" {skill_icon} {skill_label} {skill_path_display}"
-
+        meta_lines: list[str] = []
+        meta_lines.extend(_meta_lines("Install:", self.skill_install_cmd))
+        meta_lines.extend(_meta_lines("Global skill:", _display_home_path(self.global_skill_path)))
         print(top)
         print(_box_line(title))
         print(_box_line(ver))
-        if skill_line:
-            print(_box_line(skill_line))
+        for line in meta_lines:
+            print(_box_line(line))
         print(_box_line(empty))
         print(_box_line(tip))
         print(bot)

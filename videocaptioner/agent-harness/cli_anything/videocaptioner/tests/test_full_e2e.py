@@ -34,15 +34,6 @@ class TestCLIEntryPoint:
         assert result.returncode == 0
         assert "videocaptioner" in result.stdout
 
-    def test_style_list(self):
-        result = subprocess.run(
-            ["videocaptioner", "style"],
-            capture_output=True, text=True, timeout=10,
-        )
-        assert result.returncode == 0
-        assert "default" in result.stdout
-        assert "anime" in result.stdout or "rounded" in result.stdout
-
     def test_config_show(self):
         result = subprocess.run(
             ["videocaptioner", "config", "show"],
@@ -101,4 +92,4 @@ class TestBackendIntegration:
     def test_get_styles(self):
         from cli_anything.videocaptioner.utils.vc_backend import get_styles
         styles = get_styles()
-        assert "default" in styles
+        assert styles

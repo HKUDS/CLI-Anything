@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-31"
+    "updated": "2026-04-16"
   },
   "clis": [
     {
@@ -15,7 +15,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wiremock/agent-harness",
       "entry_point": "cli-anything-wiremock",
-      "skill_md": "wiremock/agent-harness/cli_anything/wiremock/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-wiremock/SKILL.md",
       "category": "testing",
       "contributors": [
         {
@@ -34,7 +34,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=anygen/agent-harness",
       "entry_point": "cli-anything-anygen",
-      "skill_md": "anygen/agent-harness/cli_anything/anygen/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-anygen/SKILL.md",
       "category": "generation",
       "contributors": [
         {
@@ -72,7 +72,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=audacity/agent-harness",
       "entry_point": "cli-anything-audacity",
-      "skill_md": "audacity/agent-harness/cli_anything/audacity/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-audacity/SKILL.md",
       "category": "audio",
       "contributors": [
         {
@@ -91,7 +91,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=blender/agent-harness",
       "entry_point": "cli-anything-blender",
-      "skill_md": "blender/agent-harness/cli_anything/blender/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-blender/SKILL.md",
       "category": "3d",
       "contributors": [
         {
@@ -110,7 +110,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=browser/agent-harness",
       "entry_point": "cli-anything-browser",
-      "skill_md": "browser/agent-harness/cli_anything/browser/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-browser/SKILL.md",
       "category": "web",
       "contributors": [
         {
@@ -148,7 +148,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=drawio/agent-harness",
       "entry_point": "cli-anything-drawio",
-      "skill_md": "drawio/agent-harness/cli_anything/drawio/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-drawio/SKILL.md",
       "category": "diagrams",
       "contributors": [
         {
@@ -167,7 +167,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=eth2-quickstart/agent-harness",
       "entry_point": "cli-anything-eth2-quickstart",
-      "skill_md": "eth2-quickstart/agent-harness/cli_anything/eth2_quickstart/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-eth2-quickstart/SKILL.md",
       "category": "devops",
       "contributors": [
         {
@@ -186,7 +186,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=gimp/agent-harness",
       "entry_point": "cli-anything-gimp",
-      "skill_md": "gimp/agent-harness/cli_anything/gimp/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-gimp/SKILL.md",
       "category": "image",
       "contributors": [
         {
@@ -205,7 +205,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=inkscape/agent-harness",
       "entry_point": "cli-anything-inkscape",
-      "skill_md": "inkscape/agent-harness/cli_anything/inkscape/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-inkscape/SKILL.md",
       "category": "image",
       "contributors": [
         {
@@ -224,7 +224,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=kdenlive/agent-harness",
       "entry_point": "cli-anything-kdenlive",
-      "skill_md": "kdenlive/agent-harness/cli_anything/kdenlive/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-kdenlive/SKILL.md",
       "category": "video",
       "contributors": [
         {
@@ -243,7 +243,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=krita/agent-harness",
       "entry_point": "cli-anything-krita",
-      "skill_md": "krita/agent-harness/cli_anything/krita/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-krita/SKILL.md",
       "category": "image",
       "contributors": [
         {
@@ -281,12 +281,31 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=libreoffice/agent-harness",
       "entry_point": "cli-anything-libreoffice",
-      "skill_md": "libreoffice/agent-harness/cli_anything/libreoffice/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-libreoffice/SKILL.md",
       "category": "office",
       "contributors": [
         {
           "name": "CLI-Anything-Team",
           "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
+      "name": "lldb",
+      "display_name": "LLDB",
+      "version": "0.1.0",
+      "description": "Stateful native debugging via the LLDB Python API with JSON-friendly inspection commands",
+      "requires": "LLDB installation with Python bindings available (for example LLVM.LLVM on Windows)",
+      "homepage": "https://lldb.llvm.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=lldb/agent-harness",
+      "entry_point": "cli-anything-lldb",
+      "skill_md": "lldb/agent-harness/cli_anything/lldb/skills/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
         }
       ]
     },
@@ -323,7 +342,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=mubu/agent-harness",
       "entry_point": "cli-anything-mubu",
-      "skill_md": "mubu/agent-harness/cli_anything/mubu/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-mubu/SKILL.md",
       "category": "office",
       "contributors": [
         {
@@ -361,7 +380,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=notebooklm/agent-harness",
       "entry_point": "cli-anything-notebooklm",
-      "skill_md": "notebooklm/agent-harness/cli_anything/notebooklm/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-notebooklm/SKILL.md",
       "category": "ai",
       "contributors": [
         {
@@ -380,7 +399,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ollama/agent-harness",
       "entry_point": "cli-anything-ollama",
-      "skill_md": "ollama/agent-harness/cli_anything/ollama/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-ollama/SKILL.md",
       "category": "ai",
       "contributors": [
         {
@@ -399,7 +418,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=obs-studio/agent-harness",
       "entry_point": "cli-anything-obs-studio",
-      "skill_md": "obs-studio/agent-harness/cli_anything/obs_studio/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-obs-studio/SKILL.md",
       "category": "streaming",
       "contributors": [
         {
@@ -418,7 +437,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=shotcut/agent-harness",
       "entry_point": "cli-anything-shotcut",
-      "skill_md": "shotcut/agent-harness/cli_anything/shotcut/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-shotcut/SKILL.md",
       "category": "video",
       "contributors": [
         {
@@ -437,7 +456,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openscreen/agent-harness",
       "entry_point": "cli-anything-openscreen",
-      "skill_md": "openscreen/agent-harness/cli_anything/openscreen/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-openscreen/SKILL.md",
       "category": "video",
       "contributors": [
         {
@@ -449,14 +468,14 @@
     {
       "name": "zoom",
       "display_name": "Zoom",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Meeting management via Zoom REST API (OAuth2)",
       "requires": "Zoom account + OAuth app credentials",
       "homepage": "https://zoom.us",
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=zoom/agent-harness",
       "entry_point": "cli-anything-zoom",
-      "skill_md": "zoom/agent-harness/cli_anything/zoom/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-zoom/SKILL.md",
       "category": "communication",
       "contributors": [
         {
@@ -475,7 +494,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=novita/agent-harness",
       "entry_point": "cli-anything-novita",
-      "skill_md": "novita/agent-harness/cli_anything/novita/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-novita/SKILL.md",
       "category": "ai",
       "contributors": [
         {
@@ -494,7 +513,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=seaclip/agent-harness",
       "entry_point": "cli-anything-seaclip",
-      "skill_md": "seaclip/agent-harness/cli_anything/seaclip/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-seaclip/SKILL.md",
       "category": "project-management",
       "contributors": [
         {
@@ -513,7 +532,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=pm2/agent-harness",
       "entry_point": "cli-anything-pm2",
-      "skill_md": "pm2/agent-harness/cli_anything/pm2/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-pm2/SKILL.md",
       "category": "devops",
       "contributors": [
         {
@@ -521,6 +540,20 @@
           "url": "https://github.com/t4tarzan"
         }
       ]
+    },
+    {
+      "name": "qgis",
+      "display_name": "QGIS",
+      "version": "1.0.0",
+      "description": "Geospatial project authoring, layout export, and processing via PyQGIS and qgis_process",
+      "requires": "QGIS with qgis_process on PATH, PyQGIS importable",
+      "homepage": "https://qgis.org",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=QGIS/agent-harness",
+      "entry_point": "cli-anything-qgis",
+      "skill_md": "QGIS/agent-harness/cli_anything/qgis/skills/SKILL.md",
+      "category": "scientific",
+      "contributor": "scially",
+      "contributor_url": "https://github.com/scially"
     },
     {
       "name": "chromadb",
@@ -532,7 +565,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=chromadb/agent-harness",
       "entry_point": "cli-anything-chromadb",
-      "skill_md": "chromadb/agent-harness/cli_anything/chromadb/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-chromadb/SKILL.md",
       "category": "database",
       "contributors": [
         {
@@ -551,7 +584,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=musescore/agent-harness",
       "entry_point": "cli-anything-musescore",
-      "skill_md": "musescore/agent-harness/cli_anything/musescore/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-musescore/SKILL.md",
       "category": "music",
       "contributors": [
         {
@@ -589,7 +622,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=freecad/agent-harness",
       "entry_point": "cli-anything-freecad",
-      "skill_md": "freecad/agent-harness/cli_anything/freecad/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-freecad/SKILL.md",
       "category": "3d",
       "contributors": [
         {
@@ -608,7 +641,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=iterm2/agent-harness",
       "entry_point": "cli-anything-iterm2",
-      "skill_md": "iterm2/agent-harness/cli_anything/iterm2_ctl/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-iterm2/SKILL.md",
       "category": "devops",
       "contributors": [
         {
@@ -627,7 +660,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=slay_the_spire_ii/agent-harness",
       "entry_point": "cli-anything-sts2",
-      "skill_md": "slay_the_spire_ii/agent-harness/cli_anything/slay_the_spire_ii/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-slay-the-spire-ii/SKILL.md",
       "category": "game",
       "contributors": [
         {
@@ -646,7 +679,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=rms/agent-harness",
       "entry_point": "cli-anything-rms",
-      "skill_md": "rms/agent-harness/cli_anything/rms/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-rms/SKILL.md",
       "category": "network",
       "contributors": [
         {
@@ -665,12 +698,50 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=renderdoc/agent-harness",
       "entry_point": "cli-anything-renderdoc",
-      "skill_md": "renderdoc/agent-harness/cli_anything/renderdoc/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-renderdoc/SKILL.md",
       "category": "graphics",
       "contributors": [
         {
           "name": "levishilf",
           "url": "https://github.com/levishilf"
+        }
+      ]
+    },
+    {
+      "name": "unrealinsights",
+      "display_name": "Unreal Insights",
+      "version": "0.1.0",
+      "description": "Windows-first Unreal trace capture, background session control, engine-matched UnrealInsights builds, and headless Timing Insights export workflows",
+      "requires": "Windows + Unreal Engine source or installed build with UnrealEditor and Unreal trace support",
+      "homepage": "https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-in-unreal-engine",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unrealinsights/agent-harness",
+      "entry_point": "cli-anything-unrealinsights",
+      "skill_md": "unrealinsights/agent-harness/cli_anything/unrealinsights/skills/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
+        }
+      ]
+    },
+    {
+      "name": "nsight-graphics",
+      "display_name": "Nsight Graphics CLI",
+      "version": "0.2.0",
+      "description": "Windows-first Nsight Graphics CLI for Graphics/OpenGL capture, GPU Trace summary, Generate C++ Capture, and ngfx-replay analysis",
+      "requires": "NVIDIA Nsight Graphics installation with ngfx.exe plus optional split capture/replay tools",
+      "homepage": "https://developer.nvidia.com/nsight-graphics",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nsight-graphics/agent-harness",
+      "entry_point": "cli-anything-nsight-graphics",
+      "skill_md": "skills/cli-anything-nsight-graphics/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
         }
       ]
     },
@@ -684,7 +755,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=videocaptioner/agent-harness",
       "entry_point": "cli-anything-videocaptioner",
-      "skill_md": "videocaptioner/agent-harness/cli_anything/videocaptioner/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-videocaptioner/SKILL.md",
       "category": "video",
       "contributors": [
         {
@@ -703,7 +774,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=intelwatch/agent-harness",
       "entry_point": "cli-anything-intelwatch",
-      "skill_md": "intelwatch/agent-harness/cli_anything/intelwatch/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-intelwatch/SKILL.md",
       "category": "osint",
       "contributors": [
         {
@@ -741,7 +812,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cloudcompare/agent-harness",
       "entry_point": "cli-anything-cloudcompare",
-      "skill_md": "cloudcompare/agent-harness/cli_anything/cloudcompare/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-cloudcompare/SKILL.md",
       "category": "graphics",
       "contributors": [
         {
@@ -760,7 +831,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=exa/agent-harness",
       "entry_point": "cli-anything-exa",
-      "skill_md": "exa/agent-harness/cli_anything/exa/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-exa/SKILL.md",
       "category": "search",
       "contributors": [
         {
@@ -779,12 +850,31 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=godot/agent-harness",
       "entry_point": "cli-anything-godot",
-      "skill_md": "godot/agent-harness/cli_anything/godot/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-godot/SKILL.md",
       "category": "gamedev",
       "contributors": [
         {
           "name": "omerarslan0",
           "url": "https://github.com/omerarslan0"
+        }
+      ]
+    },
+    {
+      "name": "sbox",
+      "display_name": "s&box",
+      "version": "1.0.0",
+      "description": "Game engine project management for s&box (Source 2): scenes, prefabs, materials, sounds, codegen, asset graph, project validation",
+      "requires": "s&box installed via Steam (sbox.game)",
+      "homepage": "https://sbox.game",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=sbox/agent-harness",
+      "entry_point": "cli-anything-sbox",
+      "skill_md": "skills/cli-anything-sbox/SKILL.md",
+      "category": "gamedev",
+      "contributors": [
+        {
+          "name": "KarandeepSWranch",
+          "url": "https://github.com/KarandeepSWranch"
         }
       ]
     },
@@ -798,7 +888,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=dify-workflow/agent-harness",
       "entry_point": "cli-anything-dify-workflow",
-      "skill_md": "dify-workflow/agent-harness/cli_anything/dify_workflow/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-dify-workflow/SKILL.md",
       "category": "ai",
       "contributors": [
         {
@@ -817,7 +907,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=n8n/agent-harness",
       "entry_point": "cli-anything-n8n",
-      "skill_md": "n8n/agent-harness/cli_anything/n8n/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-n8n/SKILL.md",
       "category": "automation",
       "contributors": [
         {
@@ -836,7 +926,7 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cloudanalyzer/agent-harness",
       "entry_point": "cli-anything-cloudanalyzer",
-      "skill_md": "cloudanalyzer/agent-harness/cli_anything/cloudanalyzer/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-cloudanalyzer/SKILL.md",
       "category": "graphics",
       "contributors": [
         {
@@ -855,12 +945,31 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=obsidian/agent-harness",
       "entry_point": "cli-anything-obsidian",
-      "skill_md": "obsidian/agent-harness/cli_anything/obsidian/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-obsidian/SKILL.md",
       "category": "knowledge",
       "contributors": [
         {
           "name": "dorukozgen",
           "url": "https://github.com/dorukozgen"
+        }
+      ]
+    },
+    {
+      "name": "unimol_tools",
+      "display_name": "Uni-Mol Tools",
+      "version": "1.0.0",
+      "description": "Molecular property prediction — train and predict with 5 task types (classification, regression, multiclass, multilabel) for drug discovery",
+      "requires": "PyTorch 1.12+, Uni-Mol Tools backend",
+      "homepage": "https://github.com/dptech-corp/Uni-Mol/tree/main/unimol_tools",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unimol_tools/agent-harness",
+      "entry_point": "cli-anything-unimol-tools",
+      "skill_md": "skills/cli-anything-unimol-tools/SKILL.md",
+      "category": "science",
+      "contributors": [
+        {
+          "name": "545487677",
+          "url": "https://github.com/545487677"
         }
       ]
     },
@@ -874,8 +983,46 @@
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=safari/agent-harness",
       "entry_point": "cli-anything-safari",
-      "skill_md": "safari/agent-harness/cli_anything/safari/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-safari/SKILL.md",
       "category": "web",
+      "contributors": [
+        {
+          "name": "achiya-automation",
+          "url": "https://github.com/achiya-automation"
+        }
+      ]
+    },
+    {
+      "name": "openclaw-macro",
+      "display_name": "OpenClaw Macro System",
+      "version": "1.0.0",
+      "description": "Layered CLI that converts GUI workflows into parameterized, agent-callable macros — with backend routing across native APIs, file transforms, accessibility controls, and compiled GUI replay",
+      "requires": null,
+      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openclaw-skill/agent-harness",
+      "entry_point": "cli-anything-openclaw",
+      "skill_md": "openclaw-skill/agent-harness/cli_anything/openclaw/skills/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "haorui-harry",
+          "url": "https://github.com/haorui-harry"
+        }
+      ]
+    },
+    {
+      "name": "quietshrink",
+      "display_name": "QuietShrink",
+      "version": "1.0.0",
+      "description": "Compress macOS screen recordings on Apple Silicon — 70-90% smaller files at visually lossless quality, hardware-encoded, computer stays silent",
+      "requires": "ffmpeg with hevc_videotoolbox + the quietshrink bash CLI (curl -fsSL https://raw.githubusercontent.com/achiya-automation/quietshrink/main/install.sh | bash)",
+      "homepage": "https://github.com/achiya-automation/quietshrink",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=quietshrink/agent-harness",
+      "entry_point": "cli-anything-quietshrink",
+      "skill_md": "skills/cli-anything-quietshrink/SKILL.md",
+      "category": "video",
       "contributors": [
         {
           "name": "achiya-automation",

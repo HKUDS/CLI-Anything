@@ -56,6 +56,32 @@ cli-anything-renderdoc -c frame.rdc resources read-buffer <resourceId> --format 
 cli-anything-renderdoc -c frame.rdc --json actions list
 ```
 
+## Preview Bundles
+
+RenderDoc exposes preview bundles for honest capture inspection and diffing.
+
+```bash
+# Capture a preview bundle
+cli-anything-renderdoc -c frame.rdc --json preview capture --recipe quick --event-id 42
+
+# Capture a diff preview bundle
+cli-anything-renderdoc -c frame.rdc --json preview diff 100 200
+
+# Return the latest existing bundle
+cli-anything-renderdoc -c frame.rdc --json preview latest --recipe quick
+```
+
+Preview bundles typically contain thumbnails, output-target images, and
+pipeline/action JSON. Diff bundles also contain `pipeline_diff.json`.
+
+Inspect or open them with:
+
+```bash
+cli-hub previews inspect /path/to/bundle
+cli-hub previews html /path/to/bundle -o page.html
+cli-hub previews open /path/to/bundle
+```
+
 ## Command Reference
 
 ### Global Options

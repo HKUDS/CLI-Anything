@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import pytest
+from click.testing import CliRunner
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -24,6 +25,7 @@ from cli_anything.gimp.core.canvas import (
     resize_canvas, scale_canvas, crop_canvas, set_mode, set_dpi, get_canvas_info,
 )
 from cli_anything.gimp.core.session import Session
+from cli_anything.gimp import gimp_cli
 
 
 # ── Project Tests ────────────────────────────────────────────────
@@ -206,6 +208,32 @@ class TestLayers:
         assert layer["type"] == "text"
         assert "text" in layer
         assert "font_size" in layer
+
+    def test_layer_can_store_draw_ops(self):
+        proj = self._make_project()
+        layer = add_layer(proj, name="Overlay", layer_type="image")
+        layer.setdefault("draw_ops", []).append({"type": "text", "text": "Hello"})
+        assert layer["type"] == "image"
+        assert layer["draw_ops"][0]["type"] == "text"
+
+
+class TestCliLayerSet:
+    def test_layer_set_accepts_negative_offsets(self, tmp_path):
+        proj = create_project()
+        add_layer(proj, name="Overlay")
+        project_path = tmp_path / "negative-offsets.gimp-cli.json"
+        save_project(proj, str(project_path))
+
+        gimp_cli._session = None
+        runner = CliRunner()
+        result = runner.invoke(
+            gimp_cli.cli,
+            ["--project", str(project_path), "layer", "set", "0", "offset_x", "-48"],
+        )
+        assert result.exit_code == 0, result.output
+
+        updated = open_project(str(project_path))
+        assert updated["layers"][0]["offset_x"] == -48
 
 
 # ── Filter Tests ─────────────────────────────────────────────────
