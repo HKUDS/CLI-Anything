@@ -43,6 +43,7 @@ _ACCENT_COLORS = {
     "blender":     "\033[38;5;208m",   # deep orange
     "inkscape":    "\033[38;5;39m",    # bright blue
     "audacity":    "\033[38;5;33m",    # navy blue
+    "calibre":     "\033[38;5;166m",   # warm brown-orange
     "libreoffice": "\033[38;5;40m",    # green
     "obs_studio":  "\033[38;5;55m",    # purple
     "kdenlive":    "\033[38;5;69m",    # slate blue
@@ -242,7 +243,6 @@ class ReplSkin:
         Returns:
             list of (style, text) tuples for prompt_toolkit.
         """
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
         tokens = []
 
         tokens.append(("class:icon", "◆ "))
@@ -516,6 +516,7 @@ _ANSI_256_TO_HEX = {
     "\033[38;5;69m":  "#5f87ff",  # kdenlive slate blue
     "\033[38;5;75m":  "#5fafff",  # default sky blue
     "\033[38;5;80m":  "#5fd7d7",  # brand cyan
+    "\033[38;5;166m": "#d75f00",  # calibre warm brown-orange
     "\033[38;5;208m": "#ff8700",  # blender deep orange
     "\033[38;5;214m": "#ffaf00",  # gimp warm orange
 }

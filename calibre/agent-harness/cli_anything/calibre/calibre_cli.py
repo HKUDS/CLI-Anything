@@ -93,9 +93,6 @@ def repl(ctx):
     skin = ReplSkin("calibre", version=__version__)
     skin.print_banner()
 
-    # Add calibre accent color
-    skin.accent = "\033[38;5;166m"  # warm brown-orange for calibre
-
     pt_session = skin.create_prompt_session()
 
     repl_commands = {
