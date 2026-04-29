@@ -200,9 +200,13 @@ def _override_value(
 
 def detect_tool_mode(binaries: dict[str, Optional[str]]) -> str:
     """Return compatibility mode for the discovered binaries."""
-    if binaries.get("ngfx_capture") or binaries.get("ngfx_replay"):
+    has_unified = bool(binaries.get("ngfx"))
+    has_split = bool(binaries.get("ngfx_capture") or binaries.get("ngfx_replay"))
+    if has_unified and has_split:
+        return "unified+split"
+    if has_split:
         return "split"
-    if binaries.get("ngfx"):
+    if has_unified:
         return "unified"
     return "missing"
 
@@ -474,7 +478,7 @@ def probe_installation(nsight_path: Optional[str] = None) -> dict[str, Any]:
         )
     if mode == "missing":
         warnings.append(INSTALL_INSTRUCTIONS)
-    if mode == "split" and not binaries.get("ngfx"):
+    if mode == "split":
         warnings.append(
             "Split capture/replay tools were found without ngfx.exe; launch, attach, "
             "GPU Trace, and C++ Capture helpers may be unavailable."

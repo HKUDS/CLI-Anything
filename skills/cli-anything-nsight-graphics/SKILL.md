@@ -1,7 +1,7 @@
 ---
 name: "cli-anything-nsight-graphics"
-description: Windows-first CLI harness for Nsight Graphics launch, frame capture, GPU Trace, and C++ Capture orchestration
-version: 0.1.0
+description: Windows-first CLI harness for Nsight Graphics capture, GPU Trace summary, and ngfx-replay analysis
+version: 0.2.0
 command: cli-anything-nsight-graphics
 install: pip install cli-anything-nsight-graphics
 requires:
@@ -23,8 +23,10 @@ Command-line orchestration of official NVIDIA Nsight Graphics activities.
 - Probe installed Nsight binaries and compatibility mode
 - Launch an application detached under Nsight
 - Attach Nsight to a running PID
-- Trigger Frame Debugger capture
+- Trigger Graphics Capture or OpenGL Frame Debugger capture
 - Trigger GPU Trace capture, auto-export, and summarize
+- Analyze existing `.ngfx-capture` files through `ngfx-replay`
+- Report clear compatibility diagnostics for `.ngfx-gputrace` inputs
 - Trigger Generate C++ Capture
 
 ## Commands
@@ -40,8 +42,8 @@ cli-anything-nsight-graphics --nsight-path "C:\Path\To\Nsight Graphics 2024.2\ho
 ### launch
 
 ```bash
-cli-anything-nsight-graphics launch detached --activity "Frame Debugger" --exe "C:\Path\To\App.exe"
-cli-anything-nsight-graphics launch attach --activity "Frame Debugger" --pid 12345
+cli-anything-nsight-graphics launch detached --activity "Graphics Capture" --exe "C:\Path\To\App.exe"
+cli-anything-nsight-graphics launch attach --activity "Graphics Capture" --pid 12345
 ```
 
 ### frame capture
@@ -66,6 +68,14 @@ cli-anything-nsight-graphics gpu-trace summarize ^
   --input-dir D:\traces
 ```
 
+### Replay analysis
+
+```bash
+cli-anything-nsight-graphics --json replay analyze ^
+  --capture-file D:\captures\frame.ngfx-capture ^
+  --output-dir D:\analysis
+```
+
 ### Generate C++ Capture
 
 ```bash
@@ -80,8 +90,21 @@ cli-anything-nsight-graphics --output-dir D:\cpp cpp capture ^
 - Use `doctor versions` to list detected installs when multiple Nsight Graphics versions exist.
 - Use `--nsight-path` to force a specific install directory or `ngfx.exe`.
 - Use `--json` for programmatic workflows.
-- Prefer `gpu-trace capture --auto-export --summarize` for one-step performance triage.
+- Prefer `gpu-trace capture --auto-export --summarize` for one-step performance
+  triage. The summary includes exported table inventory, metric inventory,
+  frame-budget classification, workload classification, throughput ranking,
+  bottleneck hints, and warnings for empty event/regime tables.
+- Use `replay analyze` when the input is an existing `.ngfx-capture` file. With
+  no analysis switches it exports metadata, logs, captured log errors, and a
+  replay performance report, then adds structured `analysis.highlights` /
+  `analysis.warnings`.
+- `ngfx-replay` documents its input as a Graphics Capture file. `.ngfx-gputrace`
+  inputs are accepted for clear diagnostics, but on Nsight Graphics 2026.1.0
+  they may report `Invalid file header`; use `gpu-trace summarize` for exported
+  GPU Trace table analysis.
+- `replay analyze` uses official `ngfx-replay` metadata/log/screenshot/perf-report
+  outputs; it is not a RenderDoc-style shader, pipeline, texture, or resource inspector.
 - Frame/GPU/C++ capture commands require a launch target through `--exe` or a
   preconfigured root-level `--project`.
-- V1 is orchestration-focused; it does not expose shader, pipeline, or resource
-  inspection commands.
+- If a global `cli-anything-nsight-graphics` command points at an old worktree,
+  reinstall from `nsight-graphics/agent-harness` with `python -m pip install -e .`.

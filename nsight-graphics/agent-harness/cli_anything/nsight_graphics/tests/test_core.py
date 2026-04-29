@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from cli_anything.nsight_graphics.core import cpp_capture, frame, gpu_trace, launch
+from cli_anything.nsight_graphics.core import cpp_capture, frame, gpu_trace, launch, replay
 from cli_anything.nsight_graphics.utils import nsight_graphics_backend as backend
 from cli_anything.nsight_graphics.utils.errors import handle_error
 from cli_anything.nsight_graphics.utils.output import output_json
@@ -25,7 +25,8 @@ General Options:
   --project arg                         Nsight project file to load
   --output-dir arg                      Output folder to export/write data to
   --activity arg                        Target activity to use, should be one of:
-                                          Frame Debugger
+                                          Graphics Capture
+                                          OpenGL Frame Debugger
                                           Generate C++ Capture
                                           GPU Trace Profiler
   --platform arg                        Target platform to use, should be one of:
@@ -37,7 +38,13 @@ General Options:
   --args arg                            Command-line arguments of launched application
   --env arg                             Environment variables of launched application
 
-Frame Debugger activity options:
+Graphics Capture activity options:
+  --frame-count arg                     Capture N frames
+  --hotkey-capture                      Wait for hotkey
+  --frame-index arg                     Capture frame index
+  --elapsed-time arg                    Wait in time (seconds) before capturing
+
+OpenGL Frame Debugger activity options:
   --wait-frames arg                     Wait in frames before capturing a frame
   --wait-seconds arg                    Wait in time (seconds) before capturing a frame
   --wait-hotkey                         Wait for hotkey
@@ -78,7 +85,7 @@ class TestOutputAndErrors:
 
 class TestBackendDiscovery:
     def test_default_windows_install_dirs_prefers_higher_version(self):
-        with patch("cli_anything.nsight_graphics.utils.backend.discovery._fixed_windows_drive_roots", return_value=["C:", "D:"]):
+        with patch("cli_anything.nsight_graphics.utils.nsight_graphics_backend._fixed_windows_drive_roots", return_value=["C:", "D:"]):
             result = backend._default_windows_install_dirs(
                 lambda pattern: {
                     "C:/Program Files/NVIDIA Corporation/Nsight Graphics */host/windows-desktop-nomad-x64": [
@@ -123,8 +130,16 @@ class TestBackendDiscovery:
 
     def test_detect_tool_mode(self):
         assert backend.detect_tool_mode({"ngfx": "a", "ngfx_capture": None, "ngfx_replay": None}) == "unified"
+        assert backend.detect_tool_mode({"ngfx": "a", "ngfx_capture": "b", "ngfx_replay": "c"}) == "unified+split"
         assert backend.detect_tool_mode({"ngfx": None, "ngfx_capture": "a", "ngfx_replay": None}) == "split"
         assert backend.detect_tool_mode({"ngfx": None, "ngfx_capture": None, "ngfx_replay": None}) == "missing"
+
+    def test_prepare_output_dir_creates_missing_directory(self, tmp_path):
+        output_dir = tmp_path / "new" / "capture-output"
+        assert not output_dir.exists()
+        resolved = backend.prepare_output_dir(str(output_dir))
+        assert resolved == str(output_dir.resolve())
+        assert output_dir.is_dir()
 
     def test_list_installations_reports_versions(self, tmp_path):
         install_dir = tmp_path / "Nsight Graphics 2025.1" / "host" / "windows-desktop-nomad-x64"
@@ -211,8 +226,8 @@ class TestBackendDiscovery:
         (c_dir / "ngfx.exe").write_text("", encoding="utf-8")
         (d_dir / "ngfx.exe").write_text("", encoding="utf-8")
 
-        with patch("cli_anything.nsight_graphics.utils.backend.discovery._fixed_windows_drive_roots", return_value=["C:", "D:"]), \
-             patch("cli_anything.nsight_graphics.utils.backend.discovery._read_registry_installations", return_value=[]):
+        with patch("cli_anything.nsight_graphics.utils.nsight_graphics_backend._fixed_windows_drive_roots", return_value=["C:", "D:"]), \
+             patch("cli_anything.nsight_graphics.utils.nsight_graphics_backend._read_registry_installations", return_value=[]):
             result = backend.list_installations(
                 env={},
                 which=lambda _: None,
@@ -232,25 +247,16 @@ class TestHelpParsing:
     def test_parse_unified_help_extracts_activities_and_options(self):
         result = backend.parse_unified_help(SAMPLE_HELP)
         assert result["activities"] == [
-            "Frame Debugger",
+            "Graphics Capture",
+            "OpenGL Frame Debugger",
             "Generate C++ Capture",
             "GPU Trace Profiler",
         ]
         assert result["platforms"] == ["Windows"]
         assert "--project" in result["general_options"]
-        assert "--wait-frames" in result["activity_options"]["Frame Debugger"]
+        assert "--frame-index" in result["activity_options"]["Graphics Capture"]
+        assert "--wait-frames" in result["activity_options"]["OpenGL Frame Debugger"]
         assert "--metric-set-id" in result["activity_options"]["GPU Trace Profiler"]
-
-    def test_resolve_activity_name_maps_legacy_frame_debugger_to_graphics_capture(self):
-        report = {
-            "supported_activities": [
-                "Graphics Capture",
-                "Generate C++ Capture",
-                "GPU Trace Profiler",
-            ]
-        }
-        assert backend.resolve_activity_name(report, "Frame Debugger") == "Graphics Capture"
-        assert backend.resolve_activity_name(report, "Graphics Capture") == "Graphics Capture"
 
 
 class TestCommandBuilders:
@@ -288,11 +294,17 @@ class TestCommandBuilders:
         assert "--capture-countdown-timer" in command
         assert command[command.index("--capture-countdown-timer") + 1] == "3000"
 
-    @patch("cli_anything.nsight_graphics.utils.backend.execution.subprocess.run")
-    def test_run_command_suppresses_graphics_capture_suggestion_dialog(self, run_mock):
-        run_mock.return_value = type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
-        backend.run_command(["C:/Nsight/ngfx.exe", "--help"])
-        assert run_mock.call_args.kwargs["env"]["NSIGHT_SUGGEST_GRAPHICS_CAPTURE"] == "0"
+    def test_build_replay_command_uses_capture_file_as_positional(self):
+        command = backend.build_replay_command(
+            {"ngfx_replay": "C:/Nsight/ngfx-replay.exe"},
+            capture_file="D:/captures/frame.ngfx-capture",
+            extra_args=["--metadata"],
+        )
+        assert command == [
+            "C:/Nsight/ngfx-replay.exe",
+            "--metadata",
+            "D:/captures/frame.ngfx-capture",
+        ]
 
     def test_diff_snapshots_reports_new_nonempty_files(self, tmp_path):
         before = backend.snapshot_files([str(tmp_path)])
@@ -303,12 +315,6 @@ class TestCommandBuilders:
         assert len(diff) == 1
         assert diff[0]["path"].endswith("capture.ngfx-capture")
         assert diff[0]["size"] > 0
-
-    def test_activity_artifact_roots_keeps_default_graphics_capture_location(self):
-        roots = backend.activity_artifact_roots("Graphics Capture", "D:/captures")
-        assert str(Path("D:/captures").resolve()) in roots
-        assert any(root.endswith("Documents\\NVIDIA Nsight Graphics") for root in roots)
-        assert any(root.endswith("Documents\\NVIDIA Nsight Graphics\\GraphicsCaptures") for root in roots)
 
     def test_gpu_trace_summary_from_export_dir(self, tmp_path):
         base = tmp_path / "BASE"
@@ -324,6 +330,8 @@ class TestCommandBuilders:
                     "TriageAC.sm__throughput.avg.pct_of_peak_sustained_elapsed\t23.6331",
                     "LTS.TriageAC.lts__throughput.avg.pct_of_peak_sustained_elapsed\t32.0437",
                     "FBSP.TriageAC.dramc__throughput.avg.pct_of_peak_sustained_elapsed\t19.5897",
+                    "PCI.TriageAC.pcie__throughput.avg.pct_of_peak_sustained_elapsed\t12.0",
+                    "SM_A.TriageAC.sm__inst_executed_realtime.sum\t123456",
                 ]
             ),
             encoding="utf-8",
@@ -336,15 +344,64 @@ class TestCommandBuilders:
             "        ReSTIRDI\t14.0627\n",
             encoding="utf-8",
         )
+        (base / "GPUTRACE_REGIMES.xls").write_text(
+            "flattened_event_name\tTriageAC.sm__throughput.avg.pct_of_peak_sustained_elapsed\n"
+            "Scene\t23.6331\n",
+            encoding="utf-8",
+        )
 
         summary = gpu_trace.summarize_export_dir(str(tmp_path), top_n=3)
         assert summary["frame_time_ms"] == pytest.approx(31.0446)
         assert summary["fps_estimate"] == pytest.approx(1000.0 / 31.0446)
         assert summary["metrics"]["draw_count"] == 309
         assert summary["metrics"]["dispatch_count"] == 2561
+        assert summary["tables"]["trace_frame"]["metric_count"] == 9
+        assert summary["tables"]["events"]["row_count"] == 4
+        assert summary["tables"]["regimes"]["row_count"] == 1
+        assert summary["metric_inventory"]["metric_count"] == 9
+        assert summary["metric_inventory"]["top_pct_of_peak_metrics"][0]["metric"].endswith(
+            "gr__cycles_active.avg.pct_of_peak_sustained_elapsed"
+        )
         assert summary["top_events"][0]["event"] == "Scene"
         assert summary["top_events"][1]["event"] == "DirectLighting"
+        assert summary["analysis"]["workload"]["classification"] == "compute_heavy"
+        assert summary["analysis"]["throughput"]["dominant_unit"]["name"] == "graphics_engine"
+        assert summary["analysis"]["event_summary"]["event_count"] == 3
+        assert any(item["id"] == "frame_budget_60fps" for item in summary["analysis"]["bottlenecks"])
         assert summary["highlights"]
+
+    def test_gpu_trace_summary_reports_empty_event_and_regime_tables(self, tmp_path):
+        base = tmp_path / "BASE"
+        base.mkdir()
+        (base / "FRAME.xls").write_text("GPU frame time\t1.5\n", encoding="utf-8")
+        (base / "GPUTRACE_FRAME.xls").write_text(
+            "\n".join(
+                [
+                    "FE_B.TriageAC.fe__draw_count.sum\t38",
+                    "FE_A.TriageAC.gr__dispatch_count.sum\t0",
+                    "FE_B.TriageAC.gr__cycles_active.avg.pct_of_peak_sustained_elapsed\t12.0",
+                    "TriageAC.sm__throughput.avg.pct_of_peak_sustained_elapsed\t3.0",
+                    "SM_B.TriageAC.l1tex__t_sector_hit_rate.pct\t96.0",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (base / "D3DPERF_EVENTS.xls").write_text("event_text\ttime_ms\n", encoding="utf-8")
+        (base / "GPUTRACE_REGIMES.xls").write_text(
+            "flattened_event_name\tFE_B.TriageAC.gr__cycles_active.avg.pct_of_peak_sustained_elapsed\n",
+            encoding="utf-8",
+        )
+
+        summary = gpu_trace.summarize_export_dir(str(tmp_path), top_n=2)
+
+        assert summary["tables"]["events"]["row_count"] == 0
+        assert summary["tables"]["regimes"]["present"] is True
+        assert summary["tables"]["regimes"]["row_count"] == 0
+        assert summary["analysis"]["event_summary"]["event_count"] == 0
+        assert summary["analysis"]["frame_budget"]["bucket"] == "within_60fps_budget"
+        assert summary["analysis"]["workload"]["classification"] == "mixed"
+        assert any("D3DPERF_EVENTS.xls contains no timed GPU event rows" in warning for warning in summary["analysis"]["warnings"])
+        assert any("GPUTRACE_REGIMES.xls contains headers" in warning for warning in summary["analysis"]["warnings"])
 
     def test_gpu_trace_summary_prefers_newest_complete_export_dir(self, tmp_path):
         old_export = tmp_path / "A_old_export"
@@ -403,49 +460,14 @@ class TestCoreModules:
     @patch("cli_anything.nsight_graphics.core.frame.backend.run_with_artifacts")
     @patch("cli_anything.nsight_graphics.core.frame.backend.build_unified_command")
     @patch("cli_anything.nsight_graphics.core.frame.backend.probe_installation")
-    def test_frame_capture_uses_unified_ngfx(self, probe_mock, build_mock, run_mock):
+    def test_frame_capture_uses_unified_ngfx(self, probe_mock, build_mock, run_mock, tmp_path):
         probe_mock.return_value = {
             "binaries": {"ngfx": "C:/Nsight/ngfx.exe", "ngfx_capture": None, "ngfx_replay": None},
-        }
-        build_mock.return_value = ["C:/Nsight/ngfx.exe", "--activity", "Frame Debugger"]
-        run_mock.return_value = {
-            "ok": True,
-            "returncode": 0,
-            "stdout": "",
-            "stderr": "",
-            "command": "ngfx",
-            "artifacts": [{"path": "D:/out/capture.ngfx-capture", "size": 10, "mtime_ns": 1}],
-        }
-
-        result = frame.capture_frame(
-            nsight_path=None,
-            project=None,
-            output_dir="D:/out",
-            hostname=None,
-            platform_name=None,
-            exe="C:/demo.exe",
-            working_dir=None,
-            args=(),
-            envs=(),
-            wait_seconds=None,
-            wait_frames=10,
-            wait_hotkey=False,
-            export_frame_perf_metrics=False,
-            export_range_perf_metrics=False,
-        )
-
-        assert build_mock.called
-        assert result["tool_mode"] == "unified"
-        assert result["activity"] == "Frame Debugger"
-        assert result["artifacts"]
-
-    @patch("cli_anything.nsight_graphics.core.frame.backend.run_with_artifacts")
-    @patch("cli_anything.nsight_graphics.core.frame.backend.build_unified_command")
-    @patch("cli_anything.nsight_graphics.core.frame.backend.probe_installation")
-    def test_frame_capture_maps_graphics_capture_options(self, probe_mock, build_mock, run_mock):
-        probe_mock.return_value = {
-            "binaries": {"ngfx": "C:/Nsight/ngfx.exe", "ngfx_capture": None, "ngfx_replay": None},
-            "supported_activities": ["Graphics Capture", "GPU Trace Profiler"],
+            "supported_activities": ["Graphics Capture", "OpenGL Frame Debugger"],
+            "activity_options": {
+                "Graphics Capture": ["--frame-count", "--frame-index", "--elapsed-time", "--hotkey-capture"],
+                "OpenGL Frame Debugger": ["--wait-frames", "--wait-seconds", "--wait-hotkey"],
+            },
         }
         build_mock.return_value = ["C:/Nsight/ngfx.exe", "--activity", "Graphics Capture"]
         run_mock.return_value = {
@@ -460,23 +482,71 @@ class TestCoreModules:
         result = frame.capture_frame(
             nsight_path=None,
             project=None,
-            output_dir="D:/out",
+            output_dir=str(tmp_path / "out"),
             hostname=None,
             platform_name=None,
             exe="C:/demo.exe",
             working_dir=None,
             args=(),
             envs=(),
-            wait_seconds=1,
-            wait_frames=None,
+            activity=None,
+            wait_seconds=None,
+            wait_frames=10,
             wait_hotkey=False,
             export_frame_perf_metrics=False,
             export_range_perf_metrics=False,
         )
 
+        assert build_mock.called
         assert build_mock.call_args.kwargs["activity"] == "Graphics Capture"
-        assert build_mock.call_args.kwargs["extra_args"] == ["--frame-count", "1", "--elapsed-time", "1"]
+        assert "--frame-index" in build_mock.call_args.kwargs["extra_args"]
+        assert result["tool_mode"] == "unified"
         assert result["activity"] == "Graphics Capture"
+        assert result["artifacts"]
+
+    @patch("cli_anything.nsight_graphics.core.frame.backend.run_with_artifacts")
+    @patch("cli_anything.nsight_graphics.core.frame.backend.build_unified_command")
+    @patch("cli_anything.nsight_graphics.core.frame.backend.probe_installation")
+    def test_frame_capture_allows_explicit_opengl_frame_debugger(self, probe_mock, build_mock, run_mock, tmp_path):
+        probe_mock.return_value = {
+            "binaries": {"ngfx": "C:/Nsight/ngfx.exe", "ngfx_capture": None, "ngfx_replay": None},
+            "supported_activities": ["Graphics Capture", "OpenGL Frame Debugger"],
+            "activity_options": {
+                "Graphics Capture": ["--frame-count", "--frame-index", "--elapsed-time", "--hotkey-capture"],
+                "OpenGL Frame Debugger": ["--wait-frames", "--wait-seconds", "--wait-hotkey"],
+            },
+        }
+        build_mock.return_value = ["C:/Nsight/ngfx.exe", "--activity", "OpenGL Frame Debugger"]
+        run_mock.return_value = {
+            "ok": True,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "command": "ngfx",
+            "artifacts": [],
+        }
+
+        result = frame.capture_frame(
+            nsight_path=None,
+            project=None,
+            output_dir=str(tmp_path / "out"),
+            hostname=None,
+            platform_name=None,
+            exe="C:/demo.exe",
+            working_dir=None,
+            args=(),
+            envs=(),
+            activity="OpenGL Frame Debugger",
+            wait_seconds=None,
+            wait_frames=10,
+            wait_hotkey=False,
+            export_frame_perf_metrics=False,
+            export_range_perf_metrics=False,
+        )
+
+        assert build_mock.call_args.kwargs["activity"] == "OpenGL Frame Debugger"
+        assert "--wait-frames" in build_mock.call_args.kwargs["extra_args"]
+        assert result["activity"] == "OpenGL Frame Debugger"
 
     @patch("cli_anything.nsight_graphics.core.frame.backend.probe_installation")
     def test_frame_capture_split_mode_rejects_perf_exports(self, probe_mock):
@@ -494,6 +564,7 @@ class TestCoreModules:
                 working_dir=None,
                 args=(),
                 envs=(),
+                activity=None,
                 wait_seconds=None,
                 wait_frames=1,
                 wait_hotkey=False,
@@ -562,7 +633,7 @@ class TestCoreModules:
     @patch("cli_anything.nsight_graphics.core.cpp_capture.backend.run_with_artifacts")
     @patch("cli_anything.nsight_graphics.core.cpp_capture.backend.build_unified_command")
     @patch("cli_anything.nsight_graphics.core.cpp_capture.backend.probe_installation")
-    def test_cpp_capture_sets_activity(self, probe_mock, build_mock, run_mock):
+    def test_cpp_capture_sets_activity(self, probe_mock, build_mock, run_mock, tmp_path):
         probe_mock.return_value = {
             "binaries": {"ngfx": "C:/Nsight/ngfx.exe", "ngfx_capture": None, "ngfx_replay": None},
         }
@@ -578,7 +649,7 @@ class TestCoreModules:
         result = cpp_capture.capture_cpp(
             nsight_path=None,
             project=None,
-            output_dir="D:/out",
+            output_dir=str(tmp_path / "out"),
             hostname=None,
             platform_name=None,
             exe="C:/demo.exe",
@@ -617,8 +688,12 @@ class TestCoreModules:
             "stdout": "",
             "stderr": "",
             "command": "ngfx",
-            "artifacts": [],
-            "artifact_count": 0,
+            "artifacts": [
+                {"path": str(base / "FRAME.xls"), "size": 1, "mtime_ns": 1},
+                {"path": str(base / "GPUTRACE_FRAME.xls"), "size": 1, "mtime_ns": 1},
+                {"path": str(base / "D3DPERF_EVENTS.xls"), "size": 1, "mtime_ns": 1},
+            ],
+            "artifact_count": 3,
         }
 
         result = gpu_trace.capture_trace(
@@ -650,6 +725,366 @@ class TestCoreModules:
         assert result["auto_export"] is True
         assert result["summary"]["frame_time_ms"] == pytest.approx(16.0)
         assert result["summary"]["top_events"][0]["event"] == "Scene"
+
+    @patch("cli_anything.nsight_graphics.core.gpu_trace.backend.run_with_artifacts")
+    @patch("cli_anything.nsight_graphics.core.gpu_trace.backend.build_unified_command")
+    @patch("cli_anything.nsight_graphics.core.gpu_trace.backend.probe_installation")
+    def test_gpu_trace_capture_summary_refuses_failed_capture(self, probe_mock, build_mock, run_mock, tmp_path):
+        probe_mock.return_value = {
+            "binaries": {"ngfx": "C:/Nsight/ngfx.exe", "ngfx_capture": None, "ngfx_replay": None},
+        }
+        build_mock.return_value = ["C:/Nsight/ngfx.exe", "--activity", "GPU Trace Profiler"]
+        run_mock.return_value = {
+            "ok": False,
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "capture failed",
+            "command": "ngfx",
+            "artifacts": [],
+            "artifact_count": 0,
+        }
+
+        with pytest.raises(RuntimeError, match="refusing to summarize stale"):
+            gpu_trace.capture_trace(
+                nsight_path=None,
+                project=None,
+                output_dir=str(tmp_path),
+                hostname=None,
+                platform_name=None,
+                exe="C:/demo.exe",
+                working_dir=None,
+                args=(),
+                envs=(),
+                start_after_frames=1,
+                start_after_submits=None,
+                start_after_ms=None,
+                start_after_hotkey=False,
+                max_duration_ms=None,
+                limit_to_frames=1,
+                limit_to_submits=None,
+                auto_export=False,
+                architecture=None,
+                metric_set_id=None,
+                multi_pass_metrics=False,
+                real_time_shader_profiler=False,
+                summarize=True,
+                summary_limit=5,
+            )
+
+    @patch("cli_anything.nsight_graphics.core.gpu_trace.backend.run_with_artifacts")
+    @patch("cli_anything.nsight_graphics.core.gpu_trace.backend.build_unified_command")
+    @patch("cli_anything.nsight_graphics.core.gpu_trace.backend.probe_installation")
+    def test_gpu_trace_capture_summary_requires_new_complete_export(self, probe_mock, build_mock, run_mock, tmp_path):
+        old_export = tmp_path / "old"
+        old_export.mkdir()
+        (old_export / "FRAME.xls").write_text("GPU frame time\t16.0\n", encoding="utf-8")
+        (old_export / "GPUTRACE_FRAME.xls").write_text("FE_B.TriageAC.fe__draw_count.sum\t1\n", encoding="utf-8")
+        (old_export / "D3DPERF_EVENTS.xls").write_text("event_text\ttime_ms\nOldPass\t1.0\n", encoding="utf-8")
+
+        probe_mock.return_value = {
+            "binaries": {"ngfx": "C:/Nsight/ngfx.exe", "ngfx_capture": None, "ngfx_replay": None},
+        }
+        build_mock.return_value = ["C:/Nsight/ngfx.exe", "--activity", "GPU Trace Profiler"]
+        run_mock.return_value = {
+            "ok": True,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "command": "ngfx",
+            "artifacts": [{"path": str(tmp_path / "capture.ngfx-gputrace"), "size": 1, "mtime_ns": 1}],
+            "artifact_count": 1,
+        }
+
+        with pytest.raises(RuntimeError, match="complete newly exported table set"):
+            gpu_trace.capture_trace(
+                nsight_path=None,
+                project=None,
+                output_dir=str(tmp_path),
+                hostname=None,
+                platform_name=None,
+                exe="C:/demo.exe",
+                working_dir=None,
+                args=(),
+                envs=(),
+                start_after_frames=1,
+                start_after_submits=None,
+                start_after_ms=None,
+                start_after_hotkey=False,
+                max_duration_ms=None,
+                limit_to_frames=1,
+                limit_to_submits=None,
+                auto_export=False,
+                architecture=None,
+                metric_set_id=None,
+                multi_pass_metrics=False,
+                real_time_shader_profiler=False,
+                summarize=True,
+                summary_limit=5,
+            )
+
+    @patch("cli_anything.nsight_graphics.core.replay.backend.run_command")
+    @patch("cli_anything.nsight_graphics.core.replay.backend.probe_installation")
+    def test_replay_analyze_exports_requested_metadata_logs_screenshot_and_perf(self, probe_mock, run_mock, tmp_path):
+        capture_file = tmp_path / "frame.ngfx-capture"
+        capture_file.write_text("capture", encoding="utf-8")
+
+        probe_mock.return_value = {
+            "version": "2026.1.0",
+            "tool_mode": "unified+split",
+            "compatibility_mode": "unified+split",
+            "binaries": {"ngfx_replay": "C:/Nsight/ngfx-replay.exe"},
+        }
+
+        def fake_run(command, timeout=120, cwd=None):
+            if "--metadata-screenshot" in command:
+                screenshot_path = Path(command[command.index("--metadata-screenshot") + 1])
+                screenshot_path.write_bytes(b"png")
+                stdout = ""
+            elif "--perf-report-dir" in command:
+                perf_dir = Path(command[command.index("--perf-report-dir") + 1])
+                perf_dir.mkdir(parents=True, exist_ok=True)
+                (perf_dir / "report.txt").write_text("perf", encoding="utf-8")
+                stdout = ""
+            elif "--metadata-functions" in command:
+                stdout = json.dumps(
+                    [
+                        {"function_name": "vkQueueSubmit", "sequence_id": 1, "thread_index": 0},
+                        {"function_name": "vkQueueSubmit", "sequence_id": 2, "thread_index": 0},
+                        {"function_name": "vkCreateImage", "sequence_id": 3, "thread_index": 1},
+                    ]
+                )
+            elif "--metadata-objects" in command:
+                stdout = json.dumps(
+                    [
+                        {"api": "Vulkan", "object_name": "Device_1", "type_name": "Device", "uid": 1},
+                        {"api": "Vulkan", "object_name": "Image_2", "type_name": "Image", "uid": 2},
+                        {"api": "Vulkan", "object_name": "Image_3", "type_name": "Image", "uid": 3},
+                    ]
+                )
+            elif "--metadata-logs-errors" in command:
+                stdout = "Captured error A\nCaptured error B\n"
+            elif "--metadata-logs" in command:
+                stdout = "Captured info A\n"
+            elif "--metadata" in command:
+                stdout = json.dumps(
+                    {
+                        "nsight_version": "2026.1.0",
+                        "captured_frame": "2",
+                        "primary_api": "Vulkan",
+                        "primary_gpu": "NVIDIA GeForce RTX 4070 Ti",
+                        "driver_vendor": "NVIDIA",
+                        "driver_version": "591.74",
+                        "graphics_apis": {"Vulkan": ["general"]},
+                    }
+                )
+            else:
+                stdout = f"{command[1]} output"
+            return {
+                "ok": True,
+                "returncode": 0,
+                "stdout": stdout,
+                "stderr": "",
+                "command": " ".join(command),
+            }
+
+        run_mock.side_effect = fake_run
+
+        result = replay.analyze_capture(
+            nsight_path=None,
+            capture_file=str(capture_file),
+            output_dir=str(tmp_path / "analysis"),
+            metadata=True,
+            logs=True,
+            screenshot=True,
+            perf_report=True,
+        )
+
+        assert result["ok"] is True
+        assert result["capture_type"] == "graphics_capture"
+        assert result["metadata"]["present"]["functions"] is True
+        assert result["metadata"]["present"]["objects"] is True
+        assert result["metadata"]["summary"]["primary_api"] == "Vulkan"
+        assert result["metadata"]["summary"]["primary_gpu"] == "NVIDIA GeForce RTX 4070 Ti"
+        assert result["metadata"]["functions"]["total"] == 3
+        assert result["metadata"]["functions"]["top_functions"][0] == {"name": "vkQueueSubmit", "count": 2}
+        assert result["metadata"]["objects"]["total"] == 3
+        assert result["metadata"]["objects"]["top_types"][0] == {"name": "Image", "count": 2}
+        assert result["logs"]["error_line_count"] == 2
+        assert result["logs"]["error_summary"] == ["Captured error A", "Captured error B"]
+        assert result["screenshot"]["present"] is True
+        assert result["perf_report"]["present"] is True
+        assert result["analysis"]["summary"]["object_count"] == 3
+        assert result["analysis"]["summary"]["function_event_count"] == 3
+        assert result["analysis"]["summary"]["log_error_count"] == 2
+        assert any("Captured log errors" in warning for warning in result["analysis"]["warnings"])
+        commands = [item["command"] for item in result["command_results"]]
+        assert any("--metadata-objects" in command for command in commands)
+        assert any("--metadata-logs" in command for command in commands)
+        assert any("--metadata-screenshot" in command for command in commands)
+        assert any("--perf-report-dir" in command for command in commands)
+
+    @patch("cli_anything.nsight_graphics.core.replay.backend.run_command")
+    @patch("cli_anything.nsight_graphics.core.replay.backend.probe_installation")
+    def test_replay_analyze_defaults_to_metadata_logs_and_perf(self, probe_mock, run_mock, tmp_path):
+        capture_file = tmp_path / "trace.ngfx-gputrace"
+        capture_file.write_text("trace", encoding="utf-8")
+        probe_mock.return_value = {
+            "version": "2026.1.0",
+            "tool_mode": "unified+split",
+            "compatibility_mode": "unified+split",
+            "binaries": {"ngfx_replay": "C:/Nsight/ngfx-replay.exe"},
+        }
+
+        def fake_run(command, timeout=120, cwd=None):
+            if "--perf-report-dir" in command:
+                perf_dir = Path(command[command.index("--perf-report-dir") + 1])
+                perf_dir.mkdir(parents=True, exist_ok=True)
+                (perf_dir / "report.txt").write_text("perf", encoding="utf-8")
+                stdout = ""
+            else:
+                stdout = "output"
+            return {
+                "ok": True,
+                "returncode": 0,
+                "stdout": stdout,
+                "stderr": "",
+                "command": " ".join(command),
+            }
+
+        run_mock.side_effect = fake_run
+
+        result = replay.analyze_capture(
+            nsight_path=None,
+            capture_file=str(capture_file),
+            output_dir=str(tmp_path / "analysis"),
+            metadata=False,
+            logs=False,
+            screenshot=False,
+            perf_report=False,
+        )
+
+        assert result["capture_type"] == "gpu_trace"
+        assert result["requested_outputs"] == {
+            "metadata": True,
+            "logs": True,
+            "screenshot": False,
+            "perf_report": True,
+        }
+        assert any(".ngfx-gputrace inputs may not produce metadata" in warning for warning in result["analysis"]["warnings"])
+
+    @patch("cli_anything.nsight_graphics.core.replay.backend.run_command")
+    @patch("cli_anything.nsight_graphics.core.replay.backend.probe_installation")
+    def test_replay_analyze_filters_no_error_log_marker(self, probe_mock, run_mock, tmp_path):
+        capture_file = tmp_path / "frame.ngfx-capture"
+        capture_file.write_text("capture", encoding="utf-8")
+        probe_mock.return_value = {
+            "version": "2026.1.0",
+            "tool_mode": "unified+split",
+            "compatibility_mode": "unified+split",
+            "binaries": {"ngfx_replay": "C:/Nsight/ngfx-replay.exe"},
+        }
+
+        def fake_run(command, timeout=120, cwd=None):
+            stdout = "No log messages found with severity >= 2\n" if "--metadata-logs-errors" in command else ""
+            return {
+                "ok": True,
+                "returncode": 0,
+                "stdout": stdout,
+                "stderr": "",
+                "command": " ".join(command),
+            }
+
+        run_mock.side_effect = fake_run
+
+        result = replay.analyze_capture(
+            nsight_path=None,
+            capture_file=str(capture_file),
+            output_dir=str(tmp_path / "analysis"),
+            metadata=False,
+            logs=True,
+            screenshot=False,
+            perf_report=False,
+        )
+
+        assert result["ok"] is True
+        assert result["logs"]["status"] == "no_errors"
+        assert result["logs"]["error_line_count"] == 0
+        assert result["logs"]["error_summary"] == []
+        assert result["logs"]["raw_error_summary"] == ["No log messages found with severity >= 2"]
+        assert any("no severity >= 2 errors" in item for item in result["analysis"]["highlights"])
+
+    @patch("cli_anything.nsight_graphics.core.replay.backend.run_command")
+    @patch("cli_anything.nsight_graphics.core.replay.backend.probe_installation")
+    def test_replay_analyze_reports_gputrace_replay_incompatibility(self, probe_mock, run_mock, tmp_path):
+        capture_file = tmp_path / "trace.ngfx-gputrace"
+        capture_file.write_text("trace", encoding="utf-8")
+        probe_mock.return_value = {
+            "version": "2026.1.0",
+            "tool_mode": "unified+split",
+            "compatibility_mode": "unified+split",
+            "binaries": {"ngfx_replay": "C:/Nsight/ngfx-replay.exe"},
+        }
+
+        def fake_run(command, timeout=120, cwd=None):
+            is_log_command = "--metadata-logs" in command or "--metadata-logs-errors" in command
+            return {
+                "ok": not is_log_command,
+                "returncode": 1 if is_log_command else 0,
+                "stdout": "ERROR: Invalid file header (trace.ngfx-gputrace)\n" if is_log_command else "",
+                "stderr": "",
+                "command": " ".join(command),
+            }
+
+        run_mock.side_effect = fake_run
+
+        result = replay.analyze_capture(
+            nsight_path=None,
+            capture_file=str(capture_file),
+            output_dir=str(tmp_path / "analysis"),
+            metadata=True,
+            logs=True,
+            screenshot=False,
+            perf_report=False,
+        )
+
+        assert result["ok"] is False
+        assert result["metadata"]["present"] == {"summary": False, "functions": False, "objects": False}
+        assert result["logs"]["error_line_count"] == 1
+        assert "Invalid file header" in result["logs"]["error_summary"][0]
+        assert any(".ngfx-gputrace inputs may not produce metadata" in warning for warning in result["analysis"]["warnings"])
+        assert any("Replay command failures" in warning for warning in result["analysis"]["warnings"])
+
+    @patch("cli_anything.nsight_graphics.core.replay.backend.probe_installation")
+    def test_replay_analyze_requires_ngfx_replay(self, probe_mock, tmp_path):
+        capture_file = tmp_path / "frame.ngfx-capture"
+        capture_file.write_text("capture", encoding="utf-8")
+        probe_mock.return_value = {
+            "binaries": {"ngfx_replay": None},
+        }
+        with pytest.raises(RuntimeError, match="ngfx-replay.exe is required"):
+            replay.analyze_capture(
+                nsight_path=None,
+                capture_file=str(capture_file),
+                output_dir=str(tmp_path / "analysis"),
+                metadata=True,
+                logs=False,
+                screenshot=False,
+                perf_report=False,
+            )
+
+    def test_replay_analyze_rejects_unknown_capture_extension(self, tmp_path):
+        capture_file = tmp_path / "frame.rdc"
+        capture_file.write_text("capture", encoding="utf-8")
+        with pytest.raises(ValueError, match="Unsupported Nsight capture file extension"):
+            replay.analyze_capture(
+                nsight_path=None,
+                capture_file=str(capture_file),
+                output_dir=str(tmp_path / "analysis"),
+                metadata=True,
+                logs=False,
+                screenshot=False,
+                perf_report=False,
+            )
 
 
 class TestCLIHelp:
@@ -690,6 +1125,7 @@ class TestCLIHelp:
             (["frame", "--help"], "capture"),
             (["gpu-trace", "--help"], "capture"),
             (["gpu-trace", "--help"], "summarize"),
+            (["replay", "--help"], "analyze"),
             (["cpp", "--help"], "capture"),
         ],
     )
@@ -701,6 +1137,42 @@ class TestCLIHelp:
         result = runner.invoke(cli, args)
         assert result.exit_code == 0
         assert needle in result.output
+
+    def test_replay_analyze_json_cli(self, tmp_path):
+        from click.testing import CliRunner
+        from cli_anything.nsight_graphics.nsight_graphics_cli import cli
+
+        capture_file = tmp_path / "frame.ngfx-capture"
+        capture_file.write_text("capture", encoding="utf-8")
+        runner = CliRunner()
+        with patch("cli_anything.nsight_graphics.nsight_graphics_cli.replay.analyze_capture") as analyze_mock:
+            analyze_mock.return_value = {
+                "ok": True,
+                "capture_file": str(capture_file),
+                "capture_type": "graphics_capture",
+                "output_dir": str(tmp_path / "analysis"),
+                "artifact_count": 1,
+            }
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "replay",
+                    "analyze",
+                    "--capture-file",
+                    str(capture_file),
+                    "--output-dir",
+                    str(tmp_path / "analysis"),
+                ],
+            )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["ok"] is True
+        analyze_mock.assert_called_once()
+        assert analyze_mock.call_args.kwargs["metadata"] is False
+        assert analyze_mock.call_args.kwargs["logs"] is False
+        assert analyze_mock.call_args.kwargs["perf_report"] is False
 
 
 class TestCLISubprocess:

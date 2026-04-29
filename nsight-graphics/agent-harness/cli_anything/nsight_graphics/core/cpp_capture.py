@@ -22,6 +22,7 @@ def capture_cpp(
     wait_hotkey: bool,
 ) -> dict:
     """Run Generate C++ Capture."""
+    output_dir = backend.prepare_output_dir(output_dir)
     report = backend.probe_installation(nsight_path=nsight_path)
     binaries = report["binaries"]
     backend.require_binary(binaries, "ngfx")

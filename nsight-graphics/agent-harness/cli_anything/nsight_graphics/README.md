@@ -7,12 +7,19 @@ terminal:
 
 - installation and capability probing
 - detached launch and PID attach
-- Frame Debugger capture
+- Graphics Capture / OpenGL Frame Debugger capture
 - GPU Trace capture, auto-export, and summary generation
+- replay analysis for existing `.ngfx-capture` files, plus explicit
+  `.ngfx-gputrace` compatibility diagnostics
 - Generate C++ Capture
 
-It does not provide RenderDoc-style offline inspection of shaders, pipeline
-state, textures, or resources.
+Replay analysis is based on official `ngfx-replay` metadata, logs,
+screenshot, and performance report outputs. `ngfx-replay` documents its input as
+a Graphics Capture file; on Nsight Graphics 2026.1.0, standalone
+`.ngfx-gputrace` files may report `Invalid file header` instead of metadata.
+Use `gpu-trace summarize` for GPU Trace exported table analysis. This harness
+does not provide RenderDoc-style offline inspection of shaders, pipeline state,
+textures, or resources.
 
 ## Installation
 
@@ -20,6 +27,9 @@ state, textures, or resources.
 cd nsight-graphics/agent-harness
 pip install -e .
 ```
+
+Use that editable install command whenever this repo moved or a previous
+`cli-anything-nsight-graphics` entry point points at an old worktree.
 
 ## Prerequisites
 
@@ -78,6 +88,10 @@ cli-anything-nsight-graphics --output-dir D:\captures frame capture ^
   --wait-frames 10
 ```
 
+Use `--activity "OpenGL Frame Debugger"` for OpenGL-specific frame debugger
+captures. On current Nsight Graphics builds, the default frame capture activity
+is `Graphics Capture`.
+
 ### Collect a GPU trace
 
 ```bash
@@ -101,6 +115,22 @@ parent output root that contains multiple exports. When multiple complete GPU
 Trace exports are present, the CLI summarizes the newest complete export
 directory so stale tables are not mixed into the result.
 
+### Analyze an existing capture
+
+```bash
+cli-anything-nsight-graphics --json replay analyze ^
+  --capture-file D:\captures\frame.ngfx-capture ^
+  --output-dir D:\analysis
+```
+
+By default, `replay analyze` exports metadata, captured logs, captured error
+logs, and a one-loop replay performance report. Add `--screenshot` to also
+export the embedded metadata screenshot, or pass explicit switches such as
+`--metadata --logs` to run only those analysis surfaces. The JSON response also
+includes structured `metadata.summary`, `metadata.functions`, `metadata.objects`,
+`logs.error_line_count`, and `analysis.highlights` / `analysis.warnings` fields
+so callers can triage without parsing artifact files themselves.
+
 ### Generate a C++ capture
 
 ```bash
@@ -119,7 +149,7 @@ cli-anything-nsight-graphics --output-dir D:\cpp cpp capture ^
 | `--debug` | Include traceback details in errors |
 | `--nsight-path` | Explicit install directory or executable to use when multiple Nsight versions are installed |
 | `--project` | Nsight Graphics project file |
-| `--output-dir` | Output directory for captures or exported artifacts |
+| `--output-dir` | Output directory for captures or exported artifacts; explicit directories are created before invoking Nsight |
 | `--hostname` | Remote host for Nsight launch/attach |
 | `--platform` | Target platform string passed to Nsight |
 
@@ -131,9 +161,10 @@ cli-anything-nsight-graphics --output-dir D:\cpp cpp capture ^
 | `doctor` | `versions` | List detected Nsight Graphics installs and show which one is selected |
 | `launch` | `detached` | Launch a target under Nsight without blocking the CLI |
 | `launch` | `attach` | Attach Nsight to a running PID |
-| `frame` | `capture` | Trigger a Frame Debugger capture |
+| `frame` | `capture` | Trigger a Graphics Capture or OpenGL Frame Debugger capture |
 | `gpu-trace` | `capture` | Trigger a GPU Trace capture and optionally summarize the exported result |
 | `gpu-trace` | `summarize` | Summarize an existing GPU Trace export directory |
+| `replay` | `analyze` | Analyze an existing `.ngfx-capture` with `ngfx-replay`; report clear compatibility diagnostics for `.ngfx-gputrace` |
 | `cpp` | `capture` | Trigger Generate C++ Capture |
 
 ## JSON Output
@@ -160,40 +191,60 @@ When `gpu-trace capture --summarize` is used, the result also includes:
 - `summary.frame_time_ms`
 - `summary.fps_estimate`
 - `summary.metrics`
+- `summary.tables`
+- `summary.metric_inventory`
 - `summary.top_events`
+- `summary.top_level_events`
+- `summary.analysis.frame_budget`
+- `summary.analysis.workload`
+- `summary.analysis.throughput`
+- `summary.analysis.bottlenecks`
+- `summary.analysis.recommendations`
+- `summary.analysis.warnings`
 - `summary.highlights`
+
+When `replay analyze` is used, the result includes:
+
+- `capture_file`
+- `capture_type`
+- `replay_executable`
+- `requested_outputs`
+- `command_results`
+- `metadata.present`
+- `metadata.summary`
+- `metadata.functions`
+- `metadata.objects`
+- `logs.status`
+- `logs.error_line_count`
+- `logs.error_summary`
+- `perf_report.present`
+- `screenshot.present`
+- `analysis.summary`
+- `analysis.highlights`
+- `analysis.warnings`
 
 ## Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
 | `NSIGHT_GRAPHICS_PATH` | Override executable discovery |
-| `NSIGHT_GRAPHICS_TEST_EXE` | Shared fallback E2E target executable |
-| `NSIGHT_GRAPHICS_TEST_ARGS` | Shared fallback E2E target arguments |
-| `NSIGHT_GRAPHICS_TEST_WORKDIR` | Shared fallback E2E working directory |
-| `NSIGHT_GRAPHICS_FRAME_TEST_EXE` | Optional frame-capture-specific executable override |
-| `NSIGHT_GRAPHICS_FRAME_TEST_ARGS` | Optional frame-capture-specific args override |
-| `NSIGHT_GRAPHICS_FRAME_TEST_WORKDIR` | Optional frame-capture-specific workdir override |
-| `NSIGHT_GRAPHICS_GPU_TRACE_TEST_EXE` | Optional GPU Trace-specific executable override |
-| `NSIGHT_GRAPHICS_GPU_TRACE_TEST_ARGS` | Optional GPU Trace-specific args override |
-| `NSIGHT_GRAPHICS_GPU_TRACE_TEST_WORKDIR` | Optional GPU Trace-specific workdir override |
-| `NSIGHT_GRAPHICS_CPP_TEST_EXE` | Optional C++ Capture-specific executable override |
-| `NSIGHT_GRAPHICS_CPP_TEST_ARGS` | Optional C++ Capture-specific args override |
-| `NSIGHT_GRAPHICS_CPP_TEST_WORKDIR` | Optional C++ Capture-specific workdir override |
+| `NSIGHT_GRAPHICS_TEST_EXE` | E2E target executable |
+| `NSIGHT_GRAPHICS_TEST_ARGS` | Optional E2E target arguments |
+| `NSIGHT_GRAPHICS_TEST_WORKDIR` | Optional E2E working directory |
+| `NSIGHT_GRAPHICS_TEST_CAPTURE_FILE` | Optional existing `.ngfx-capture` for replay E2E |
 
 ## E2E Test Prerequisites
 
 The E2E suite assumes:
 
 - Nsight Graphics is installed and discoverable
-- either `NSIGHT_GRAPHICS_TEST_EXE` or the activity-specific `NSIGHT_GRAPHICS_*_TEST_EXE`
-  overrides point to graphics workloads that Nsight can launch for that activity
-- optional args/workdir are provided if the chosen test target requires them
+- `NSIGHT_GRAPHICS_TEST_EXE` points to a graphics workload that Nsight can
+  launch or capture
+- `NSIGHT_GRAPHICS_TEST_CAPTURE_FILE` points to an existing capture when replay
+  analysis E2E should run
+- optional args/workdir are provided if the test target requires them
 
 Typical examples include `vkcube.exe`, game samples, or internal engine demos.
-Different activities may require different targets on newer Nsight builds, so
-the E2E suite accepts per-activity overrides instead of assuming one executable
-works for frame capture, GPU Trace, and C++ Capture.
 
 ## Multiple Installations
 
@@ -230,8 +281,13 @@ That gives you:
 
 - the `.ngfx-gputrace` artifact
 - exported `FRAME.xls`, `GPUTRACE_FRAME.xls`, and `D3DPERF_EVENTS.xls`
-- a parsed summary from the newest complete export directory, with frame time,
-  estimated FPS, selected counters, and top GPU events
+- a parsed summary from the newly exported complete table set, with frame time,
+  estimated FPS, selected counters, table inventory, metric inventory, top GPU
+  events, workload classification, throughput ranking, and warning fields for
+  empty event/regime tables
+
+If the capture command fails or does not create a complete new export table set,
+the CLI refuses to summarize old tables from the output root.
 
 ## Human + AI Workflow
 

@@ -11,9 +11,9 @@ Tests cover:
 
 import json
 import os
-import tempfile
+import stat
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, call, patch
 from click.testing import CliRunner
 
 from cli_anything.zoom.zoom_cli import cli
@@ -439,6 +439,67 @@ class TestBackend:
         loaded = load_tokens()
         assert loaded["access_token"] == "at_test"
         assert "saved_at" in loaded
+
+    def test_save_config_restricts_directory_and_file(self, mock_config):
+        """save_config should enforce 700 on dir and 600 on config file."""
+        from cli_anything.zoom.utils.zoom_backend import save_config
+
+        with patch("cli_anything.zoom.utils.zoom_backend._restrict_path") as mock_restrict:
+            save_config({"client_id": "abc", "client_secret": "xyz"})
+
+        assert (mock_config / "config.json").exists()
+        assert mock_restrict.call_args_list == [
+            call(mock_config, 0o700),
+            call(mock_config / "config.json", 0o600),
+        ]
+
+    def test_save_tokens_restricts_directory_and_file(self, mock_config):
+        """save_tokens should enforce 700 on dir and 600 on token file."""
+        from cli_anything.zoom.utils.zoom_backend import save_tokens
+
+        with patch("cli_anything.zoom.utils.zoom_backend._restrict_path") as mock_restrict:
+            save_tokens({"access_token": "at_test", "refresh_token": "rt_test"})
+
+        assert (mock_config / "tokens.json").exists()
+        assert mock_restrict.call_args_list == [
+            call(mock_config, 0o700),
+            call(mock_config / "tokens.json", 0o600),
+        ]
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX permission bits are not supported on Windows",
+    )
+    def test_get_config_dir_sets_posix_700_permissions(self, mock_config):
+        """get_config_dir should force 700 permissions on POSIX."""
+        from cli_anything.zoom.utils.zoom_backend import get_config_dir
+
+        mock_config.chmod(0o755)
+        config_dir = get_config_dir()
+        assert config_dir == mock_config
+        assert stat.S_IMODE(config_dir.stat().st_mode) == 0o700
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX permission bits are not supported on Windows",
+    )
+    def test_save_config_sets_posix_600_permissions(self, mock_config):
+        """save_config should force 600 on config.json on POSIX."""
+        from cli_anything.zoom.utils.zoom_backend import save_config
+
+        save_config({"client_id": "abc", "client_secret": "xyz"})
+        assert stat.S_IMODE((mock_config / "config.json").stat().st_mode) == 0o600
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX permission bits are not supported on Windows",
+    )
+    def test_save_tokens_sets_posix_600_permissions(self, mock_config):
+        """save_tokens should force 600 on tokens.json on POSIX."""
+        from cli_anything.zoom.utils.zoom_backend import save_tokens
+
+        save_tokens({"access_token": "at_test", "refresh_token": "rt_test"})
+        assert stat.S_IMODE((mock_config / "tokens.json").stat().st_mode) == 0o600
 
     def test_authorize_url(self):
         """get_authorize_url should build valid URL."""

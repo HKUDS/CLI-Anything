@@ -15,26 +15,13 @@ import pytest
 from cli_anything.nsight_graphics.utils.nsight_graphics_backend import probe_installation
 
 HARNESS_ROOT = str(Path(__file__).resolve().parents[3])
-DEFAULT_TEST_EXE = os.environ.get("NSIGHT_GRAPHICS_TEST_EXE", "").strip()
-DEFAULT_TEST_ARGS = os.environ.get("NSIGHT_GRAPHICS_TEST_ARGS", "").strip()
-DEFAULT_TEST_WORKDIR = os.environ.get("NSIGHT_GRAPHICS_TEST_WORKDIR", "").strip()
-
-FRAME_TEST_EXE = os.environ.get("NSIGHT_GRAPHICS_FRAME_TEST_EXE", "").strip() or DEFAULT_TEST_EXE
-FRAME_TEST_ARGS = os.environ.get("NSIGHT_GRAPHICS_FRAME_TEST_ARGS", "").strip() or DEFAULT_TEST_ARGS
-FRAME_TEST_WORKDIR = os.environ.get("NSIGHT_GRAPHICS_FRAME_TEST_WORKDIR", "").strip() or DEFAULT_TEST_WORKDIR
-
-GPU_TRACE_TEST_EXE = os.environ.get("NSIGHT_GRAPHICS_GPU_TRACE_TEST_EXE", "").strip() or DEFAULT_TEST_EXE
-GPU_TRACE_TEST_ARGS = os.environ.get("NSIGHT_GRAPHICS_GPU_TRACE_TEST_ARGS", "").strip() or DEFAULT_TEST_ARGS
-GPU_TRACE_TEST_WORKDIR = os.environ.get("NSIGHT_GRAPHICS_GPU_TRACE_TEST_WORKDIR", "").strip() or DEFAULT_TEST_WORKDIR
-
-CPP_TEST_EXE = os.environ.get("NSIGHT_GRAPHICS_CPP_TEST_EXE", "").strip() or DEFAULT_TEST_EXE
-CPP_TEST_ARGS = os.environ.get("NSIGHT_GRAPHICS_CPP_TEST_ARGS", "").strip() or DEFAULT_TEST_ARGS
-CPP_TEST_WORKDIR = os.environ.get("NSIGHT_GRAPHICS_CPP_TEST_WORKDIR", "").strip() or DEFAULT_TEST_WORKDIR
-
+TEST_EXE = os.environ.get("NSIGHT_GRAPHICS_TEST_EXE", "").strip()
+TEST_ARGS = os.environ.get("NSIGHT_GRAPHICS_TEST_ARGS", "").strip()
+TEST_WORKDIR = os.environ.get("NSIGHT_GRAPHICS_TEST_WORKDIR", "").strip()
+TEST_CAPTURE_FILE = os.environ.get("NSIGHT_GRAPHICS_TEST_CAPTURE_FILE", "").strip()
 HAS_NSIGHT = bool(probe_installation().get("ok"))
-HAS_FRAME_TEST_EXE = bool(FRAME_TEST_EXE and os.path.isfile(FRAME_TEST_EXE))
-HAS_GPU_TRACE_TEST_EXE = bool(GPU_TRACE_TEST_EXE and os.path.isfile(GPU_TRACE_TEST_EXE))
-HAS_CPP_TEST_EXE = bool(CPP_TEST_EXE and os.path.isfile(CPP_TEST_EXE))
+HAS_TEST_EXE = bool(TEST_EXE and os.path.isfile(TEST_EXE))
+HAS_TEST_CAPTURE_FILE = bool(TEST_CAPTURE_FILE and os.path.isfile(TEST_CAPTURE_FILE))
 
 
 def _resolve_cli(name: str) -> list[str]:
@@ -63,18 +50,8 @@ def _resolve_cli(name: str) -> list[str]:
 
 CLI_BASE = _resolve_cli("cli-anything-nsight-graphics")
 skip_no_nsight = pytest.mark.skipif(not HAS_NSIGHT, reason="Nsight Graphics not installed")
-skip_no_frame_target = pytest.mark.skipif(
-    not HAS_FRAME_TEST_EXE,
-    reason="NSIGHT_GRAPHICS_FRAME_TEST_EXE or NSIGHT_GRAPHICS_TEST_EXE not set or missing",
-)
-skip_no_gpu_trace_target = pytest.mark.skipif(
-    not HAS_GPU_TRACE_TEST_EXE,
-    reason="NSIGHT_GRAPHICS_GPU_TRACE_TEST_EXE or NSIGHT_GRAPHICS_TEST_EXE not set or missing",
-)
-skip_no_cpp_target = pytest.mark.skipif(
-    not HAS_CPP_TEST_EXE,
-    reason="NSIGHT_GRAPHICS_CPP_TEST_EXE or NSIGHT_GRAPHICS_TEST_EXE not set or missing",
-)
+skip_no_target = pytest.mark.skipif(not HAS_TEST_EXE, reason="NSIGHT_GRAPHICS_TEST_EXE not set or missing")
+skip_no_capture = pytest.mark.skipif(not HAS_TEST_CAPTURE_FILE, reason="NSIGHT_GRAPHICS_TEST_CAPTURE_FILE not set or missing")
 
 
 def _run_json(*args: str, timeout: int = 600) -> dict:
@@ -91,13 +68,13 @@ def _run_json(*args: str, timeout: int = 600) -> dict:
     return json.loads(result.stdout)
 
 
-def _target_args(exe_path: str, args_text: str, workdir: str) -> list[str]:
-    """Build repeated CLI args for a configured activity target."""
-    args = ["--exe", exe_path]
-    if workdir:
-        args.extend(["--dir", workdir])
-    if args_text:
-        for entry in shlex.split(args_text, posix=os.name != "nt"):
+def _target_args() -> list[str]:
+    """Build repeated CLI args for the configured test executable."""
+    args = ["--exe", TEST_EXE]
+    if TEST_WORKDIR:
+        args.extend(["--dir", TEST_WORKDIR])
+    if TEST_ARGS:
+        for entry in shlex.split(TEST_ARGS, posix=os.name != "nt"):
             args.extend(["--arg", entry])
     return args
 
@@ -107,56 +84,104 @@ class TestDoctorE2E:
     def test_doctor_info(self):
         data = _run_json("doctor", "info", timeout=60)
         assert data["ok"] is True
-        assert data["compatibility_mode"] in {"unified", "split"}
+        assert data["compatibility_mode"] in {"unified", "split", "unified+split"}
         assert data["resolved_executable"]
 
 
 @skip_no_nsight
+@skip_no_target
 class TestTargetedE2E:
-    @skip_no_frame_target
     def test_frame_capture(self, tmp_path):
         data = _run_json(
             "--output-dir",
             str(tmp_path),
             "frame",
             "capture",
-            *_target_args(FRAME_TEST_EXE, FRAME_TEST_ARGS, FRAME_TEST_WORKDIR),
+            *_target_args(),
             "--wait-seconds",
             "1",
         )
         assert data["ok"] is True
         assert data["artifacts"]
         assert any(Path(item["path"]).exists() and item["size"] > 0 for item in data["artifacts"])
+        capture_files = [Path(item["path"]) for item in data["artifacts"] if Path(item["path"]).suffix.lower() == ".ngfx-capture"]
+        if capture_files:
+            analysis = _run_json(
+                "replay",
+                "analyze",
+                "--capture-file",
+                str(capture_files[0]),
+                "--output-dir",
+                str(tmp_path / "frame_replay_analysis"),
+                "--metadata",
+                "--logs",
+                timeout=600,
+            )
+            assert analysis["ok"] is True
+            assert analysis["metadata"]["present"]["summary"] is True
+            assert analysis["analysis"]["summary"]["primary_api"]
+            assert analysis["analysis"]["summary"]["function_event_count"] > 0
 
-    @skip_no_gpu_trace_target
     def test_gpu_trace_capture(self, tmp_path):
         data = _run_json(
             "--output-dir",
             str(tmp_path),
             "gpu-trace",
             "capture",
-            *_target_args(GPU_TRACE_TEST_EXE, GPU_TRACE_TEST_ARGS, GPU_TRACE_TEST_WORKDIR),
+            *_target_args(),
             "--start-after-ms",
             "1000",
             "--limit-to-frames",
             "1",
             "--auto-export",
+            "--summarize",
         )
         assert data["ok"] is True
         assert data["artifacts"]
         assert any(Path(item["path"]).exists() and item["size"] > 0 for item in data["artifacts"])
+        assert data["summary"]["tables"]["trace_frame"]["metric_count"] > 0
+        assert "metric_inventory" in data["summary"]
+        assert data["summary"]["analysis"]["frame_budget"]["bucket"] in {
+            "within_60fps_budget",
+            "over_60fps_budget",
+            "over_30fps_budget",
+        }
 
-    @skip_no_cpp_target
     def test_cpp_capture(self, tmp_path):
         data = _run_json(
             "--output-dir",
             str(tmp_path),
             "cpp",
             "capture",
-            *_target_args(CPP_TEST_EXE, CPP_TEST_ARGS, CPP_TEST_WORKDIR),
+            *_target_args(),
             "--wait-seconds",
             "1",
         )
         assert data["ok"] is True
         assert data["artifacts"]
         assert any(Path(item["path"]).exists() and item["size"] > 0 for item in data["artifacts"])
+
+
+@skip_no_nsight
+@skip_no_capture
+class TestReplayE2E:
+    def test_replay_analyze_existing_capture(self, tmp_path):
+        data = _run_json(
+            "replay",
+            "analyze",
+            "--capture-file",
+            TEST_CAPTURE_FILE,
+            "--output-dir",
+            str(tmp_path),
+            "--metadata",
+            "--logs",
+            timeout=600,
+        )
+        assert data["ok"] is True
+        assert data["artifacts"]
+        assert any(Path(item["path"]).exists() and item["size"] > 0 for item in data["artifacts"])
+        assert data["metadata"]["present"]["summary"] is True
+        assert data["metadata"]["summary"]["primary_api"]
+        assert data["metadata"]["functions"]["total"] > 0
+        assert data["metadata"]["objects"]["total"] > 0
+        assert "log_error_count" in data["analysis"]["summary"]

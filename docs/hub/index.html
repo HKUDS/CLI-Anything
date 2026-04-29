@@ -1537,18 +1537,20 @@
     .footer {
       max-width: 1120px;
       margin: 0 auto;
-      padding: 2rem 1.5rem;
+      padding: 1.05rem 1.5rem 1rem;
       border-top: 1px solid var(--border-subtle);
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 0.75rem;
+      gap: 0.52rem 1rem;
     }
 
     .footer-left {
+      flex: 1 1 620px;
       font-size: 0.8rem;
       color: var(--text-tertiary);
+      line-height: 1.45;
     }
 
     .footer-left a {
@@ -1578,198 +1580,95 @@
       width: 100%;
       display: flex;
       justify-content: center;
-      padding-top: 1.1rem;
-      margin-top: 0.35rem;
+      padding-top: 0.45rem;
+      margin-top: 0.05rem;
+      border-top: 1px solid var(--border-subtle);
     }
 
     .analytics-report {
-      width: min(780px, 100%);
-      padding: 0.95rem 1.2rem 0.9rem;
+      width: min(860px, 100%);
+      min-height: 2rem;
+      padding: 0.36rem 0.62rem;
       border: 1px solid var(--border-subtle);
-      border-radius: 14px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.018), rgba(255,255,255,0));
+      border-radius: 8px;
+      background: rgba(255,255,255,0.014);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.32rem 0.7rem;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Inter, sans-serif;
-      transition: border-color 0.2s ease, background 0.2s ease;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.026);
+      transition: border-color 0.2s ease;
     }
 
     :root[data-theme="light"] .analytics-report {
-      background: linear-gradient(180deg, rgba(9,9,11,0.012), rgba(9,9,11,0));
+      background: rgba(9,9,11,0.018);
     }
 
     .analytics-report:hover {
       border-color: var(--border);
     }
 
-    .analytics-report-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      margin-bottom: 0.75rem;
-    }
-
-    .analytics-eyebrow {
+    .analytics-kicker,
+    .analytics-row,
+    .analytics-key,
+    .analytics-pair {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 0.66rem;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .analytics-kicker {
+      font-size: 0.65rem;
       font-weight: 600;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--text-tertiary);
     }
 
-    .analytics-eyebrow::before {
-      content: "";
-      width: 0.4rem;
-      height: 0.4rem;
-      border-radius: 999px;
-      background: var(--green);
-      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
-      animation: analyticsPulse 2.4s ease-in-out infinite;
-    }
-
-    @keyframes analyticsPulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.45; }
-    }
-
-    .analytics-legend {
-      display: inline-flex;
-      align-items: center;
-      gap: 1rem;
-      font-size: 0.7rem;
+    .analytics-row {
+      gap: 0.42rem;
+      font-size: 0.74rem;
       color: var(--text-tertiary);
-      letter-spacing: 0.01em;
     }
 
-    .analytics-legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.42rem;
+    .analytics-key {
+      font-size: 0.68rem;
+      color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums;
     }
 
-    .analytics-dot {
-      width: 0.42rem;
-      height: 0.42rem;
-      border-radius: 999px;
-      background: var(--text-tertiary);
-      flex-shrink: 0;
-    }
-
-    .analytics-dot.human { background: var(--green); }
-    .analytics-dot.agent { background: var(--accent); }
-
-    .analytics-report-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 1.5rem;
-    }
-
-    .analytics-stat {
-      display: flex;
-      flex-direction: column;
-      gap: 0.42rem;
-      min-width: 0;
-    }
-
-    .analytics-stat + .analytics-stat {
-      border-left: 1px solid var(--border-subtle);
-      padding-left: 1.5rem;
-    }
-
-    .analytics-stat-label {
-      font-size: 0.7rem;
-      font-weight: 500;
+    .analytics-title {
       color: var(--text-secondary);
-      letter-spacing: 0;
-      line-height: 1;
-    }
-
-    .analytics-stat-value {
-      display: block;
-      font-size: 1.55rem;
       font-weight: 600;
-      line-height: 1;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -0.04em;
-      white-space: nowrap;
     }
 
-    .analytics-bar {
-      position: relative;
-      display: flex;
-      width: 100%;
-      height: 2px;
-      border-radius: 999px;
+    .analytics-total,
+    .analytics-pair strong {
+      color: var(--text);
+      font-size: 0.84rem;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.018em;
+    }
+
+    .analytics-pair {
+      gap: 0.18rem;
+      color: var(--text-tertiary);
+    }
+
+    .analytics-pair .human-value,
+    .analytics-pair .agent-value {
+      color: var(--text);
+    }
+
+    .analytics-divider {
+      width: 1px;
+      height: 0.9rem;
       background: var(--border-subtle);
-      overflow: hidden;
-    }
-
-    .analytics-bar > span {
-      display: block;
-      height: 100%;
-      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .analytics-bar .bar-human {
-      background: var(--green);
-    }
-
-    .analytics-bar .bar-agent {
-      background: var(--accent);
-    }
-
-    .analytics-split {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.3rem 1.1rem;
-      margin: 0;
-    }
-
-    .analytics-split-item {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 0.42rem;
-      min-width: 0;
-    }
-
-    .analytics-split-item dt {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.34rem;
-      font-size: 0.68rem;
-      color: var(--text-tertiary);
-      letter-spacing: 0.01em;
-      line-height: 1;
-      margin: 0;
-    }
-
-    .analytics-split-item dd {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 0.34rem;
-      margin: 0;
-      min-width: 0;
-    }
-
-    .analytics-split-num {
-      font-size: 0.82rem;
-      font-weight: 500;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -0.02em;
-      line-height: 1;
-      white-space: nowrap;
-    }
-
-    .analytics-split-pct {
-      font-size: 0.68rem;
-      color: var(--text-tertiary);
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0;
-      line-height: 1;
+      flex: 0 0 auto;
     }
 
     /* ── Responsive ── */
@@ -1823,7 +1722,11 @@
       }
       .marketplace-prelude { padding: 0.75rem 1.25rem 0; }
       .nav { padding: 0.75rem 1.25rem; }
-      .footer { padding: 1.5rem 1.25rem; flex-direction: column; align-items: flex-start; }
+      .footer { padding: 1.1rem 1.25rem; align-items: flex-start; }
+      .footer-stats { justify-content: flex-start; }
+      .analytics-report {
+        justify-content: flex-start;
+      }
       .empower-row { flex-direction: column; }
       .empower-card { margin: 0 0 1rem; padding: 1.25rem; }
       .typing-shell { padding: 0.72rem 0.78rem 0.8rem; }
@@ -1833,25 +1736,6 @@
       .empower-self .cmd-grid { grid-template-columns: 1fr; }
       .deck-nav { padding: 1.25rem 1.25rem 0; }
       .deck-arrow-btn span { display: none; }
-      .analytics-report {
-        padding: 0.85rem 1rem 0.8rem;
-        border-radius: 12px;
-      }
-      .analytics-report-head {
-        gap: 0.75rem;
-        margin-bottom: 0.65rem;
-      }
-      .analytics-report-grid {
-        grid-template-columns: 1fr;
-        gap: 0.75rem;
-      }
-      .analytics-stat + .analytics-stat {
-        border-left: none;
-        border-top: 1px solid var(--border-subtle);
-        padding-left: 0;
-        padding-top: 0.75rem;
-      }
-      .analytics-stat-value { font-size: 1.4rem; }
     }
 
     @media (max-width: 1120px) {
@@ -2077,51 +1961,19 @@
     </div>
     <div class="footer-stats">
       <section class="analytics-report" aria-label="Traffic snapshot">
-        <header class="analytics-report-head">
-          <span class="analytics-eyebrow">Live traffic</span>
-          <span class="analytics-legend" aria-hidden="true">
-            <span class="analytics-legend-item"><span class="analytics-dot human"></span>Human</span>
-            <span class="analytics-legend-item"><span class="analytics-dot agent"></span>Agent</span>
-          </span>
-        </header>
-        <div class="analytics-report-grid">
-          <article class="analytics-stat">
-            <span class="analytics-stat-label">Website visits</span>
-            <strong id="stat-total" class="analytics-stat-value">...</strong>
-            <div class="analytics-bar" aria-hidden="true">
-              <span class="bar-human" id="bar-site-human" style="width: 0%"></span>
-              <span class="bar-agent" id="bar-site-agent" style="width: 0%"></span>
-            </div>
-            <dl class="analytics-split">
-              <div class="analytics-split-item">
-                <dt><span class="analytics-dot human"></span>Human</dt>
-                <dd><span id="stat-human" class="analytics-split-num">...</span><span id="pct-site-human" class="analytics-split-pct">...</span></dd>
-              </div>
-              <div class="analytics-split-item">
-                <dt><span class="analytics-dot agent"></span>Agent</dt>
-                <dd><span id="stat-agent" class="analytics-split-num">...</span><span id="pct-site-agent" class="analytics-split-pct">...</span></dd>
-              </div>
-            </dl>
-          </article>
-          <article class="analytics-stat">
-            <span class="analytics-stat-label">CLI-Hub usage</span>
-            <strong id="stat-cli-total" class="analytics-stat-value">...</strong>
-            <div class="analytics-bar" aria-hidden="true">
-              <span class="bar-human" id="bar-cli-human" style="width: 0%"></span>
-              <span class="bar-agent" id="bar-cli-agent" style="width: 0%"></span>
-            </div>
-            <dl class="analytics-split">
-              <div class="analytics-split-item">
-                <dt><span class="analytics-dot human"></span>Human</dt>
-                <dd><span id="stat-cli-human" class="analytics-split-num">...</span><span id="pct-cli-human" class="analytics-split-pct">...</span></dd>
-              </div>
-              <div class="analytics-split-item">
-                <dt><span class="analytics-dot agent"></span>Agent</dt>
-                <dd><span id="stat-cli-agent" class="analytics-split-num">...</span><span id="pct-cli-agent" class="analytics-split-pct">...</span></dd>
-              </div>
-            </dl>
-          </article>
-        </div>
+        <span class="analytics-kicker">Traffic</span>
+        <span class="analytics-key">Human/Agent</span>
+        <span class="analytics-row">
+          <span class="analytics-title">Page</span>
+          <strong id="stat-total" class="analytics-total">...</strong>
+          <span class="analytics-pair"><strong id="stat-human" class="human-value">...</strong>/<strong id="stat-agent" class="agent-value">...</strong></span>
+        </span>
+        <span class="analytics-divider" aria-hidden="true"></span>
+        <span class="analytics-row">
+          <span class="analytics-title">CLI</span>
+          <strong id="stat-cli-total" class="analytics-total">...</strong>
+          <span class="analytics-pair"><strong id="stat-cli-human" class="human-value">...</strong>/<strong id="stat-cli-agent" class="agent-value">...</strong></span>
+        </span>
       </section>
     </div>
   </footer>
@@ -2895,23 +2747,14 @@
       }
 
       function applyVisitorStats(stats) {
+        const formatK = (val) => {
+          const n = Number(val) || 0;
+          if (!n) return '0K';
+          return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+        };
         const setText = (id, val) => {
           const el = document.getElementById(id);
-          if (el) el.textContent = (val || 0).toLocaleString();
-        };
-        const setSplit = (prefix, human, agent) => {
-          const total = (human || 0) + (agent || 0);
-          const humanPct = total > 0 ? (human / total) * 100 : 0;
-          const agentPct = total > 0 ? 100 - humanPct : 0;
-          const fmtPct = (n) => (n >= 10 || n === 0 ? Math.round(n) : n.toFixed(1)) + '%';
-          const barH = document.getElementById('bar-' + prefix + '-human');
-          const barA = document.getElementById('bar-' + prefix + '-agent');
-          if (barH) barH.style.width = humanPct.toFixed(2) + '%';
-          if (barA) barA.style.width = agentPct.toFixed(2) + '%';
-          const pctH = document.getElementById('pct-' + prefix + '-human');
-          const pctA = document.getElementById('pct-' + prefix + '-agent');
-          if (pctH) pctH.textContent = fmtPct(humanPct);
-          if (pctA) pctA.textContent = fmtPct(agentPct);
+          if (el) el.textContent = formatK(val);
         };
         setText('stat-total', stats.total);
         setText('stat-human', stats.human);
@@ -2919,8 +2762,6 @@
         setText('stat-cli-total', stats.cli_hub_total);
         setText('stat-cli-human', stats.cli_hub_human);
         setText('stat-cli-agent', stats.cli_hub_agent);
-        setSplit('site', stats.human || 0, stats.agent || 0);
-        setSplit('cli', stats.cli_hub_human || 0, stats.cli_hub_agent || 0);
       }
 
       function readUaBrands() {
@@ -3122,15 +2963,28 @@
       });
 
       // ── Live analytics via Cloudflare Worker proxy ──
-      // PostHog personal key lives as a Worker secret (repo:
-      // ~/clianything-analytics-worker). Runtime PostHog counts are queried
-      // every refresh and added to the fixed pre-migration Umami baseline.
+      // Runtime stats are fetched once per page load and rendered as compact
+      // site page-view and CLI-Hub usage counters split by human/agent.
       const ANALYTICS_PROXY_URL = 'https://analytics.clianything.cc/';
-      const LIVE_STATS_REFRESH_MS = 60_000;
       const ZERO_STATS = {
         human: 0, agent: 0,
         cli_hub_human: 0, cli_hub_agent: 0,
       };
+
+      function normalizeStats(stats) {
+        const out = {};
+        for (const key of Object.keys(ZERO_STATS)) {
+          out[key] = Number(stats && stats[key]) || 0;
+        }
+        return out;
+      }
+
+      async function fetchWorkerStats() {
+        const response = await fetch(ANALYTICS_PROXY_URL + 'stats');
+        if (!response.ok) throw new Error('analytics stats http ' + response.status);
+        const data = await response.json();
+        return normalizeStats(data.stats || data);
+      }
 
       async function fetchPosthogTotals() {
         const hogql = (
@@ -3157,6 +3011,15 @@
         };
       }
 
+      async function fetchVisitorStats() {
+        try {
+          return await fetchWorkerStats();
+        } catch {
+          const posthog = await fetchPosthogTotals();
+          return sumStats(UMAMI_BASELINE_STATS, posthog);
+        }
+      }
+
       function sumStats(a, b) {
         const out = {};
         for (const key of Object.keys(ZERO_STATS)) out[key] = (a[key] || 0) + (b[key] || 0);
@@ -3178,16 +3041,14 @@
       }
 
       async function refreshVisitorStats() {
-        const posthog = await fetchPosthogTotals();
-        const merged = sumStats(UMAMI_BASELINE_STATS, posthog);
-        if (!hasAnyStats(merged)) return false;
-        applyVisitorStats(withDerivedTotals(merged));
+        const stats = await fetchVisitorStats();
+        if (!hasAnyStats(stats)) return false;
+        applyVisitorStats(withDerivedTotals(stats));
         return true;
       }
 
       async function loadVisitorStats() {
         await refreshVisitorStats().catch(() => false);
-        setInterval(() => { refreshVisitorStats().catch(() => false); }, LIVE_STATS_REFRESH_MS);
       }
 
       loadVisitorStats();

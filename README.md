@@ -190,7 +190,20 @@ That's it. The plugin is now available in your Claude Code session.
 /cli-anything ./gimp
 ```
 
-Older Claude Code 2.x releases also accepted `/cli-anything:cli-anything`; auxiliary commands still use the `:subcommand` form (e.g. `/cli-anything:refine`).
+Command compatibility across Claude Code versions:
+- Use `/cli-anything` as the primary entrypoint.
+- On older builds where `/cli-anything` isn't recognized **after confirming the plugin is installed and loaded**, try the legacy entry form `/cli-anything:cli-anything`.
+- Auxiliary commands keep the `:subcommand` form (e.g. `/cli-anything:refine`).
+
+If you see `Unknown skill: cli-anything`, focus on plugin install/load first (both entry forms reference the same skill, so swapping forms won't help):
+1. Reload plugin commands: `/reload-plugins`
+2. Verify the plugin is loaded: `/help cli-anything` (CLI-Anything help/commands should appear)
+3. Reinstall from marketplace if needed:
+   - `/plugin marketplace add HKUDS/CLI-Anything`
+   - `/plugin install cli-anything`
+4. After confirming the plugin is available, retry the entry command:
+   - Preferred: `/cli-anything ./gimp`
+   - Older builds only: `/cli-anything:cli-anything ./gimp`
 
 This runs the full pipeline:
 1. 🔍 **Analyze** — Scans source code, maps GUI actions to APIs
@@ -596,7 +609,7 @@ AI agents are great at reasoning but terrible at using real professional softwar
 | 💸 "UI automation breaks constantly" | No screenshots, no clicking, no RPA fragility. Pure command-line reliability with structured interfaces |
 | 📊 "Agents need structured data" | Built-in JSON output for seamless agent consumption + human-readable formats for debugging |
 | 🔧 "Custom integrations are expensive" | One Claude plugin auto-generates CLIs for ANY codebase through proven 7-phase pipeline |
-| ⚡ "Prototype vs Production gap" | 2,269+ tests with real software validation. Battle-tested across 18 major applications |
+| ⚡ "Prototype vs Production gap" | 2,280+ tests with real software validation. Battle-tested across 18 major applications |
 
 ---
 
@@ -1013,8 +1026,8 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center"><strong>🟩 <a href="nsight-graphics/agent-harness/">Nsight Graphics CLI</a></strong></td>
 <td>GPU Debugging &amp; Profiling</td>
 <td><code>cli-anything-nsight-graphics</code></td>
-<td>Official ngfx / ngfx-capture orchestration + GPU Trace summary</td>
-<td align="center">✅ 40</td>
+<td>Official ngfx / ngfx-capture orchestration + GPU Trace summary + replay analysis</td>
+<td align="center">✅ 51</td>
 </tr>
 <tr>
 <td align="center"><strong>🔍 <a href="exa/agent-harness/">Exa</a></strong></td>
@@ -1046,11 +1059,11 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 <tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 2,269</strong></td>
+<td align="center"><strong>✅ 2,280</strong></td>
 </tr>
 </table>
 
-> **100% pass rate** across all 2,269 tests — 1,672 unit tests + 578 end-to-end tests + 19 Node.js tests.
+> **100% pass rate** across all 2,280 tests — 1,682 unit tests + 579 end-to-end tests + 19 Node.js tests.
 
 ---
 
@@ -1090,11 +1103,11 @@ renderdoc      59 passed  ✅   (45 unit + 14 e2e)
 cloudcompare   88 passed  ✅   (49 unit + 39 e2e)
 openscreen    101 passed  ✅   (78 unit + 23 e2e)
 lldb           27 passed  ✅   (23 unit + 4 e2e)
-nsight-graphics 40 passed ✅   (36 unit + 4 e2e)
+nsight-graphics 51 passed ✅   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,269 passed  ✅   100% pass rate
+TOTAL        2,280 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1169,7 +1182,7 @@ cli-anything/
 ├── 📦 sbox/agent-harness/               # s&box CLI (244 tests: 157 unit + 17 orchestrator + 50 e2e + 20 exit-code)
 ├── 🎨 sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
 ├── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
-├── 🟩 nsight-graphics/agent-harness/    # Nsight Graphics CLI (40 tests)
+├── 🟩 nsight-graphics/agent-harness/    # Nsight Graphics CLI (51 tests)
 ├── 🐞 lldb/agent-harness/               # LLDB CLI (27 tests)
 ├── 📈 unrealinsights/agent-harness/     # Unreal Insights CLI (50 tests)
 ├── 🎬 videocaptioner/agent-harness/     # VideoCaptioner CLI (26 tests)
@@ -1402,7 +1415,7 @@ MIT License — free to use, modify, and distribute.
 
 **CLI-Anything** — *Make any software with a codebase Agent-native.*
 
-<sub>A methodology for the age of AI agents | 18 professional software demos | 2,269 passing tests</sub>
+<sub>A methodology for the age of AI agents | 18 professional software demos | 2,280 passing tests</sub>
 
 <br>
 

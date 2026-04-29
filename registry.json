@@ -449,7 +449,7 @@
     {
       "name": "zoom",
       "display_name": "Zoom",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Meeting management via Zoom REST API (OAuth2)",
       "requires": "Zoom account + OAuth app credentials",
       "homepage": "https://zoom.us",
@@ -710,14 +710,14 @@
     {
       "name": "nsight-graphics",
       "display_name": "Nsight Graphics CLI",
-      "version": "0.1.0",
-      "description": "Windows-first Nsight Graphics CLI for Graphics/Frame capture, GPU Trace, Generate C++ Capture, and one-step GPU Trace summary",
-      "requires": "NVIDIA Nsight Graphics installation with ngfx.exe or newer split capture/replay tools",
+      "version": "0.2.0",
+      "description": "Windows-first Nsight Graphics CLI for Graphics/OpenGL capture, GPU Trace summary, Generate C++ Capture, and ngfx-replay analysis",
+      "requires": "NVIDIA Nsight Graphics installation with ngfx.exe plus optional split capture/replay tools",
       "homepage": "https://developer.nvidia.com/nsight-graphics",
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nsight-graphics/agent-harness",
       "entry_point": "cli-anything-nsight-graphics",
-      "skill_md": "nsight-graphics/agent-harness/cli_anything/nsight_graphics/skills/SKILL.md",
+      "skill_md": "skills/cli-anything-nsight-graphics/SKILL.md",
       "category": "graphics",
       "contributors": [
         {

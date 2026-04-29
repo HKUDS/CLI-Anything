@@ -406,6 +406,9 @@ def repl():
                 args = shlex.split(line)
             except ValueError:
                 args = line.split()  # Fallback for unbalanced quotes
+            # Propagate --json from top-level to subcommands in REPL
+            if _json_output and '--json' not in args and not any(a.startswith('--json') for a in args):
+                args = ['--json'] + args
             try:
                 cli.main(args, standalone_mode=False)
             except SystemExit:

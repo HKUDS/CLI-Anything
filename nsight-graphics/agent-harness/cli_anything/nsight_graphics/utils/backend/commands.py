@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from typing import Optional, Sequence
 
 from cli_anything.nsight_graphics.utils.backend.discovery import INSTALL_INSTRUCTIONS
@@ -20,6 +21,15 @@ def require_launch_target(*, project: Optional[str], exe: Optional[str]) -> None
     """Require at least one launch target input."""
     if not project and not exe:
         raise ValueError("Specify --exe or set --project at the root level.")
+
+
+def prepare_output_dir(output_dir: Optional[str]) -> Optional[str]:
+    """Resolve and create an explicit output directory before invoking Nsight."""
+    if not output_dir:
+        return None
+    resolved = Path(output_dir).resolve()
+    resolved.mkdir(parents=True, exist_ok=True)
+    return str(resolved)
 
 
 def ensure_exactly_one(label: str, flags: dict[str, bool]) -> str:
@@ -148,3 +158,14 @@ def build_split_capture_command(
     else:
         command.append("--capture-hotkey")
     return command
+
+
+def build_replay_command(
+    binaries: dict[str, Optional[str]],
+    *,
+    capture_file: str,
+    extra_args: Sequence[str] = (),
+) -> list[str]:
+    """Build a command line for ngfx-replay."""
+    replay = require_binary(binaries, "ngfx_replay")
+    return [replay, *extra_args, capture_file]

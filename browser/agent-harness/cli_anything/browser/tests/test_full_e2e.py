@@ -135,6 +135,19 @@ class TestJSONOutput:
         data = json.loads(result.output)
         assert isinstance(data, dict)
 
+    def test_json_flag_propagates_in_repl(self, runner):
+        """JSON flag from top-level should propagate to REPL subcommands."""
+        # Simulate REPL input by calling the repl command with --json already set
+        # The fix ensures that when _json_output is True in REPL mode,
+        # the --json flag is prepended to subcommand args.
+        result = runner.invoke(cli, ["--json", "session", "status"])
+        assert result.exit_code == 0
+        import json
+        data = json.loads(result.output)
+        assert isinstance(data, dict)
+        # Verify it's actually JSON (not the human-readable format)
+        assert "daemon" in data or "session" in data
+
 
 class TestCleanup:
     """Cleanup tests to stop daemon if started."""

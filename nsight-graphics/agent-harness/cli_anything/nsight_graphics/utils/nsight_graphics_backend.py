@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from cli_anything.nsight_graphics.utils.backend.commands import (
     build_split_capture_command,
+    build_replay_command,
     build_unified_command,
     ensure_at_most_one,
     ensure_exactly_one,
     format_env_values,
     format_program_args,
+    prepare_output_dir,
     require_binary,
     require_launch_target,
 )
@@ -75,6 +77,7 @@ __all__ = [
     "_scan_directory",
     "_version_sort_key",
     "activity_artifact_roots",
+    "build_replay_command",
     "build_split_capture_command",
     "build_unified_command",
     "default_output_dir",
@@ -89,6 +92,7 @@ __all__ = [
     "list_installations",
     "parse_option_help",
     "parse_unified_help",
+    "prepare_output_dir",
     "probe_installation",
     "require_binary",
     "require_launch_target",

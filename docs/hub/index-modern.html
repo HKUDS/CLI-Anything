@@ -869,7 +869,7 @@
       top: 16px;
       z-index: 6;
       margin: 1.15rem;
-      padding: 1rem;
+      padding: 0.75rem;
       border-radius: var(--radius-lg);
       border: 1px solid var(--border);
       background: linear-gradient(180deg, rgba(14, 18, 26, 0.94), rgba(20, 26, 36, 0.84));
@@ -1488,7 +1488,7 @@
       box-shadow: var(--shadow-md);
       display: grid;
       grid-template-columns: 1fr;
-      gap: 0.8rem;
+      gap: 0.55rem;
     }
 
     .footer-band,
@@ -1496,25 +1496,26 @@
       border-radius: var(--radius-lg);
       border: 1px solid var(--border);
       background: rgba(255,255,255,0.03);
-      padding: 1rem 1.05rem;
+      padding: 0.72rem 0.85rem;
     }
 
     .footer-band {
       display: flex;
       flex-direction: column;
-      gap: 0.6rem;
+      gap: 0.38rem;
     }
 
     .footer-label {
       color: var(--text-tertiary);
-      font-size: 0.74rem;
+      font-size: 0.68rem;
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
 
     .footer-copy {
       color: var(--text-secondary);
-      font-size: 0.95rem;
+      font-size: 0.88rem;
+      line-height: 1.38;
     }
 
     .footer-copy a,
@@ -1530,97 +1531,100 @@
 
     .footer-brand {
       color: var(--text-tertiary);
-      font-size: 0.86rem;
+      font-size: 0.78rem;
+      line-height: 1.3;
     }
 
     .footer-stats {
       display: flex;
-      flex-direction: column;
       justify-content: center;
-      gap: 0.55rem;
-      width: min(760px, 100%);
+      width: min(860px, 100%);
       margin: 0 auto;
+      padding: 0.5rem 0.72rem;
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,0.03);
     }
 
     .footer-analytics-board {
-      border-radius: 20px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.03);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-      padding: 0.34rem 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.32rem 0.7rem;
+      min-width: 0;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      font-size: 0.74rem;
+      line-height: 1.35;
+      color: var(--text-tertiary);
+    }
+
+    .analytics-kicker,
+    .analytics-row,
+    .analytics-key,
+    .metric-cell,
+    .metric-pair {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .analytics-kicker {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
     }
 
     .analytics-row {
-      display: grid;
-      grid-template-columns: minmax(0, 168px) repeat(3, minmax(0, 1fr));
-      align-items: end;
-      gap: 0.7rem;
-      padding: 0.74rem 0;
+      gap: 0.42rem;
     }
 
-    .analytics-row + .analytics-row {
-      border-top: 1px solid var(--border);
+    .analytics-key {
+      font-size: 0.68rem;
+      color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums;
     }
 
     .analytics-title {
-      font-size: 0.93rem;
       font-weight: 600;
-      color: var(--text);
-      letter-spacing: -0.02em;
-      line-height: 1.2;
+      color: var(--text-secondary);
     }
 
     .metric-cell {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.18rem;
-      min-width: 0;
+      gap: 0.22rem;
     }
 
     .metric-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.34rem;
-      min-width: 0;
-      font-size: 0.69rem;
       color: var(--text-tertiary);
-      letter-spacing: 0.01em;
-      white-space: nowrap;
     }
 
-    .metric-dot {
-      width: 0.42rem;
-      height: 0.42rem;
-      border-radius: 999px;
-      flex-shrink: 0;
-      background: rgba(129, 144, 171, 0.55);
-    }
-
-    .metric-value {
-      font-size: 1.05rem;
+    .metric-value,
+    .metric-pair strong {
+      font-size: 0.84rem;
       line-height: 1;
       color: var(--text);
       font-variant-numeric: tabular-nums;
-      letter-spacing: -0.03em;
+      letter-spacing: -0.018em;
       white-space: nowrap;
     }
 
-    .metric-cell.total .metric-value {
-      font-weight: 700;
+    .metric-pair {
+      gap: 0.18rem;
+      color: var(--text-tertiary);
     }
 
-    .metric-cell.human .metric-dot {
-      background: var(--green);
+    .metric-pair .human-value,
+    .metric-pair .agent-value {
+      color: var(--text);
     }
 
-    .metric-cell.agent .metric-dot {
-      background: var(--accent);
-    }
-
-    .metric-cell.total .metric-label {
-      color: var(--text-secondary);
+    .analytics-divider {
+      width: 1px;
+      height: 0.9rem;
+      background: var(--border);
+      flex: 0 0 auto;
     }
 
     .sr-only {
@@ -1739,14 +1743,7 @@
         grid-template-columns: 1fr;
       }
 
-      .analytics-row {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.5rem 0.75rem;
-      }
-
-      .analytics-title {
-        grid-column: 1 / -1;
-      }
+      .footer-analytics-board { justify-content: flex-start; }
     }
 
     @media (max-width: 640px) {
@@ -1821,18 +1818,11 @@
         padding-right: 0.9rem;
       }
 
-      .footer-analytics-board {
-        padding: 0.3rem 0.78rem;
+      .footer-stats {
+        padding: 0.5rem 0.68rem;
       }
 
-      .analytics-row {
-        padding: 0.58rem 0;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .analytics-title {
-        grid-column: 1 / -1;
-      }
+      .analytics-divider { display: none; }
     }
   </style>
   <!-- Analytics provider is configured in the footer script. -->
@@ -2091,38 +2081,20 @@
         <div class="footer-brand">Powered by <a href="https://github.com/HKUDS/CLI-Anything" target="_blank">CLI-Anything</a></div>
       </div>
       <div class="footer-stats">
-        <div class="footer-label">Traffic Snapshot</div>
         <div class="footer-analytics-board" aria-label="Traffic snapshot">
-          <div class="analytics-row">
-            <div class="analytics-title">Website Visits</div>
-            <div class="metric-cell total">
-              <span class="metric-label">Total</span>
-              <strong id="stat-total" class="metric-value">...</strong>
-            </div>
-            <div class="metric-cell human">
-              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Human</span>
-              <strong id="stat-human" class="metric-value">...</strong>
-            </div>
-            <div class="metric-cell agent">
-              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Agent</span>
-              <strong id="stat-agent" class="metric-value">...</strong>
-            </div>
-          </div>
-          <div class="analytics-row">
-            <div class="analytics-title">CLI-Hub Usage</div>
-            <div class="metric-cell total">
-              <span class="metric-label">Total</span>
-              <strong id="stat-cli-total" class="metric-value">...</strong>
-            </div>
-            <div class="metric-cell human">
-              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Human</span>
-              <strong id="stat-cli-human" class="metric-value">...</strong>
-            </div>
-            <div class="metric-cell agent">
-              <span class="metric-label"><span class="metric-dot" aria-hidden="true"></span>Agent</span>
-              <strong id="stat-cli-agent" class="metric-value">...</strong>
-            </div>
-          </div>
+          <span class="analytics-kicker">Traffic</span>
+          <span class="analytics-key">Human/Agent</span>
+          <span class="analytics-row">
+            <span class="analytics-title">Page</span>
+            <strong id="stat-total" class="metric-value">...</strong>
+            <span class="metric-pair"><strong id="stat-human" class="human-value">...</strong>/<strong id="stat-agent" class="agent-value">...</strong></span>
+          </span>
+          <span class="analytics-divider" aria-hidden="true"></span>
+          <span class="analytics-row">
+            <span class="analytics-title">CLI</span>
+            <strong id="stat-cli-total" class="metric-value">...</strong>
+            <span class="metric-pair"><strong id="stat-cli-human" class="human-value">...</strong>/<strong id="stat-cli-agent" class="agent-value">...</strong></span>
+          </span>
         </div>
       </div>
     </footer>
@@ -2701,12 +2673,17 @@
       }
 
       function applyVisitorStats(stats) {
-        document.getElementById('stat-total').textContent = (stats.total || 0).toLocaleString();
-        document.getElementById('stat-human').textContent = (stats.human || 0).toLocaleString();
-        document.getElementById('stat-agent').textContent = (stats.agent || 0).toLocaleString();
-        document.getElementById('stat-cli-total').textContent = (stats.cli_hub_total || 0).toLocaleString();
-        document.getElementById('stat-cli-human').textContent = (stats.cli_hub_human || 0).toLocaleString();
-        document.getElementById('stat-cli-agent').textContent = (stats.cli_hub_agent || 0).toLocaleString();
+        const formatK = (val) => {
+          const n = Number(val) || 0;
+          if (!n) return '0K';
+          return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+        };
+        document.getElementById('stat-total').textContent = formatK(stats.total);
+        document.getElementById('stat-human').textContent = formatK(stats.human);
+        document.getElementById('stat-agent').textContent = formatK(stats.agent);
+        document.getElementById('stat-cli-total').textContent = formatK(stats.cli_hub_total);
+        document.getElementById('stat-cli-human').textContent = formatK(stats.cli_hub_human);
+        document.getElementById('stat-cli-agent').textContent = formatK(stats.cli_hub_agent);
       }
 
       function readUaBrands() {
@@ -2908,15 +2885,28 @@
       });
 
       // ── Live analytics via Cloudflare Worker proxy ──
-      // PostHog key lives as a Worker secret (repo:
-      // ~/clianything-analytics-worker). Runtime PostHog counts are queried
-      // every refresh and added to the fixed pre-migration Umami baseline.
+      // Runtime stats are fetched once per page load and rendered as compact
+      // site page-view and CLI-Hub usage counters split by human/agent.
       const ANALYTICS_PROXY_URL = 'https://analytics.clianything.cc/';
-      const LIVE_STATS_REFRESH_MS = 60_000;
       const ZERO_STATS = {
         human: 0, agent: 0,
         cli_hub_human: 0, cli_hub_agent: 0,
       };
+
+      function normalizeStats(stats) {
+        const out = {};
+        for (const key of Object.keys(ZERO_STATS)) {
+          out[key] = Number(stats && stats[key]) || 0;
+        }
+        return out;
+      }
+
+      async function fetchWorkerStats() {
+        const response = await fetch(ANALYTICS_PROXY_URL + 'stats');
+        if (!response.ok) throw new Error('analytics stats http ' + response.status);
+        const data = await response.json();
+        return normalizeStats(data.stats || data);
+      }
 
       async function fetchPosthogTotals() {
         const hogql = (
@@ -2943,6 +2933,15 @@
         };
       }
 
+      async function fetchVisitorStats() {
+        try {
+          return await fetchWorkerStats();
+        } catch {
+          const posthog = await fetchPosthogTotals();
+          return sumStats(UMAMI_BASELINE_STATS, posthog);
+        }
+      }
+
       function sumStats(a, b) {
         const out = {};
         for (const key of Object.keys(ZERO_STATS)) out[key] = (a[key] || 0) + (b[key] || 0);
@@ -2964,16 +2963,14 @@
       }
 
       async function refreshVisitorStats() {
-        const posthog = await fetchPosthogTotals();
-        const merged = sumStats(UMAMI_BASELINE_STATS, posthog);
-        if (!hasAnyStats(merged)) return false;
-        applyVisitorStats(withDerivedTotals(merged));
+        const stats = await fetchVisitorStats();
+        if (!hasAnyStats(stats)) return false;
+        applyVisitorStats(withDerivedTotals(stats));
         return true;
       }
 
       async function loadVisitorStats() {
         await refreshVisitorStats().catch(() => false);
-        setInterval(() => { refreshVisitorStats().catch(() => false); }, LIVE_STATS_REFRESH_MS);
       }
 
       loadVisitorStats();

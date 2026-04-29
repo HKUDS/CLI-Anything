@@ -9,12 +9,14 @@ V1 is intentionally **orchestration-focused**:
 
 - installation and capability probing
 - detached launch and PID attach via `ngfx.exe`
-- Frame Debugger capture
+- Graphics Capture / OpenGL Frame Debugger capture
 - GPU Trace capture and auto-export
+- replay metadata/log/screenshot/perf-report analysis for existing captures
 - Generate C++ Capture
 
-It does **not** attempt RenderDoc-style offline object inspection of pipeline
-state, shaders, textures, or resources.
+Replay analysis uses official `ngfx-replay` outputs. It does **not** attempt
+RenderDoc-style offline object inspection of pipeline state, shaders, textures,
+or resources.
 
 ## Architecture
 
@@ -34,6 +36,7 @@ agent-harness/
         │   ├── launch.py
         │   ├── frame.py
         │   ├── gpu_trace.py
+        │   ├── replay.py
         │   └── cpp_capture.py
         ├── utils/
         │   ├── nsight_graphics_backend.py
@@ -56,6 +59,7 @@ agent-harness/
 | `launch` | `detached`, `attach` |
 | `frame` | `capture` |
 | `gpu-trace` | `capture`, `summarize` |
+| `replay` | `analyze` |
 | `cpp` | `capture` |
 
 ## Backend Strategy
@@ -65,20 +69,27 @@ agent-harness/
 2. Detect compatibility mode:
    - `unified`: legacy `ngfx.exe` activity-driven CLI
    - `split`: modern `ngfx-capture` / `ngfx-replay` present
+   - `unified+split`: both tool families are present
 3. Prefer `ngfx.exe` when available, because it covers launch, attach,
    GPU Trace, and Generate C++ Capture.
-4. Use version-tolerant artifact discovery by diffing the output directory
-   before and after a command instead of depending on one filename.
+4. Create explicit output directories before invoking `ngfx.exe`, then use
+   version-tolerant artifact discovery by diffing the output directory before
+   and after a command instead of depending on one filename.
+5. Use `ngfx-replay` for analysis of existing `.ngfx-capture` files. Accept
+   `.ngfx-gputrace` inputs only to report clear compatibility diagnostics,
+   because `ngfx-replay` documents its filename input as a Graphics Capture file
+   and can reject standalone GPU Trace files with `Invalid file header`.
 
 ## Testing Strategy
 
 - `test_core.py`: mock-based unit tests for discovery, parsing, command
-  construction, error handling, and CLI help.
+  construction, output directory preparation, GPU Trace summary parsing, error
+  handling, and CLI help.
 - `test_full_e2e.py`: conditional tests using a real Nsight installation and a
   user-supplied test executable via environment variables.
 
 ## Notes
 
 - V1 is Windows-first and only claims verified support on Windows hosts.
-- Split replay binaries are detected and reported by `doctor info`, but replay
-  helper commands are intentionally deferred.
+- Replay helpers are metadata/log/perf oriented and do not claim deep
+  shader/pipeline/texture/resource inspection.

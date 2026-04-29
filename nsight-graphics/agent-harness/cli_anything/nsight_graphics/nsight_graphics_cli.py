@@ -9,7 +9,7 @@ import shlex
 
 import click
 
-from cli_anything.nsight_graphics.core import cpp_capture, doctor, frame, gpu_trace, launch
+from cli_anything.nsight_graphics.core import cpp_capture, doctor, frame, gpu_trace, launch, replay
 
 _repl_mode = False
 
@@ -88,6 +88,25 @@ def _print_gpu_trace_summary(summary: dict) -> None:
     if highlights:
         click.echo("Highlights:")
         for line in highlights:
+            click.echo(f"  - {line}")
+
+
+def _print_replay_analysis(payload: dict) -> None:
+    """Render a compact human-readable replay analysis summary."""
+    click.echo(f"Capture: {payload.get('capture_file')}")
+    click.echo(f"Type:    {payload.get('capture_type')}")
+    click.echo(f"Output:  {payload.get('output_dir')}")
+    click.echo(f"Artifacts: {payload.get('artifact_count', 0)}")
+    metadata_present = (payload.get("metadata") or {}).get("present") or {}
+    if metadata_present:
+        click.echo(
+            "Metadata: "
+            + ", ".join(f"{key}={'yes' if value else 'no'}" for key, value in metadata_present.items())
+        )
+    errors = (payload.get("logs") or {}).get("error_summary") or []
+    if errors:
+        click.echo("Captured log errors:")
+        for line in errors:
             click.echo(f"  - {line}")
 
 
@@ -187,7 +206,7 @@ def launch_group():
 
 
 @launch_group.command("detached")
-@click.option("--activity", default="Frame Debugger", show_default=True, help="Nsight activity name.")
+@click.option("--activity", default="Graphics Capture", show_default=True, help="Nsight activity name.")
 @click.option("--exe", "exe_path", type=click.Path(exists=False), default=None, help="Target executable path.")
 @click.option("--dir", "working_dir", type=click.Path(exists=False), default=None, help="Target working directory.")
 @click.option("--arg", "program_args", multiple=True, help="Target argument. Repeat for multiple.")
@@ -210,7 +229,7 @@ def launch_detached_cmd(ctx, activity, exe_path, working_dir, program_args, envs
 
 
 @launch_group.command("attach")
-@click.option("--activity", default="Frame Debugger", show_default=True, help="Nsight activity name.")
+@click.option("--activity", default="Graphics Capture", show_default=True, help="Nsight activity name.")
 @click.option("--pid", type=int, required=True, help="PID to attach.")
 @click.pass_context
 def launch_attach_cmd(ctx, activity, pid):
@@ -228,10 +247,11 @@ def launch_attach_cmd(ctx, activity, pid):
 
 @cli.group("frame")
 def frame_group():
-    """Frame Debugger capture commands."""
+    """Graphics capture commands."""
 
 
 @frame_group.command("capture")
+@click.option("--activity", default=None, help="Nsight activity name. Defaults to Graphics Capture when available.")
 @click.option("--exe", "exe_path", type=click.Path(exists=False), default=None, help="Target executable path.")
 @click.option("--dir", "working_dir", type=click.Path(exists=False), default=None, help="Target working directory.")
 @click.option("--arg", "program_args", multiple=True, help="Target argument. Repeat for multiple.")
@@ -244,6 +264,7 @@ def frame_group():
 @click.pass_context
 def frame_capture_cmd(
     ctx,
+    activity,
     exe_path,
     working_dir,
     program_args,
@@ -261,6 +282,7 @@ def frame_capture_cmd(
             working_dir=working_dir,
             args=program_args,
             envs=envs,
+            activity=activity,
             wait_seconds=wait_seconds,
             wait_frames=wait_frames,
             wait_hotkey=wait_hotkey,
@@ -368,6 +390,36 @@ def gpu_trace_summarize_cmd(ctx, input_dir, summary_limit):
         _handle_exc(ctx, exc)
 
 
+@cli.group("replay")
+def replay_group():
+    """Analyze existing Nsight capture files with ngfx-replay."""
+
+
+@replay_group.command("analyze")
+@click.option("--capture-file", required=True, type=click.Path(exists=True, dir_okay=False), help="Existing .ngfx-capture or .ngfx-gputrace file.")
+@click.option("--output-dir", required=True, type=click.Path(file_okay=False), help="Directory for replay analysis artifacts.")
+@click.option("--metadata", is_flag=True, help="Export metadata, function stream, and object metadata.")
+@click.option("--logs", is_flag=True, help="Export captured logs and captured error logs.")
+@click.option("--screenshot", is_flag=True, help="Export the embedded metadata screenshot.")
+@click.option("--perf-report", is_flag=True, help="Replay once and collect a performance report.")
+@click.pass_context
+def replay_analyze_cmd(ctx, capture_file, output_dir, metadata, logs, screenshot, perf_report):
+    """Analyze an existing capture through ngfx-replay."""
+    try:
+        data = replay.analyze_capture(
+            nsight_path=ctx.obj.get("nsight_path"),
+            capture_file=capture_file,
+            output_dir=output_dir,
+            metadata=metadata,
+            logs=logs,
+            screenshot=screenshot,
+            perf_report=perf_report,
+        )
+        _output(ctx, data, _print_replay_analysis)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
 @cli.group("cpp")
 def cpp_group():
     """Generate C++ Capture commands."""
@@ -416,6 +468,7 @@ def repl(ctx):
         "launch": "detached|attach",
         "frame": "capture",
         "gpu-trace": "capture|summarize",
+        "replay": "analyze",
         "cpp": "capture",
         "help": "Show this help",
         "quit": "Exit REPL",

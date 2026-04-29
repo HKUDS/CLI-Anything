@@ -10,7 +10,7 @@ from setuptools import setup, find_namespace_packages
 
 setup(
     name="cli-anything-zoom",
-    version="1.0.0",
+    version="1.0.1",
     author="cli-anything contributors",
     author_email="",
     description="CLI harness for Zoom - Meeting management via Zoom REST API (OAuth2). Requires: Zoom account + OAuth app credentials",

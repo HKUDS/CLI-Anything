@@ -9,7 +9,7 @@ _LONG_DESC = _README.read_text(encoding="utf-8") if _README.is_file() else ""
 
 setup(
     name="cli-anything-nsight-graphics",
-    version="0.1.0",
+    version="0.2.0",
     description="CLI harness for NVIDIA Nsight Graphics orchestration",
     long_description=_LONG_DESC,
     long_description_content_type="text/markdown",

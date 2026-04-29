@@ -442,7 +442,7 @@ def repl():
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("zoom", version="1.0.0")
+    skin = ReplSkin("zoom", version="1.0.1")
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()
