@@ -972,6 +972,25 @@
           "url": "https://github.com/haorui-harry"
         }
       ]
+    },
+    {
+      "name": "quietshrink",
+      "display_name": "QuietShrink",
+      "version": "1.0.0",
+      "description": "Compress macOS screen recordings on Apple Silicon — 70-90% smaller files at visually lossless quality, hardware-encoded, computer stays silent",
+      "requires": "ffmpeg with hevc_videotoolbox + the quietshrink bash CLI (curl -fsSL https://raw.githubusercontent.com/achiya-automation/quietshrink/main/install.sh | bash)",
+      "homepage": "https://github.com/achiya-automation/quietshrink",
+      "source_url": "https://github.com/achiya-automation/quietshrink",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=quietshrink/agent-harness",
+      "entry_point": "cli-anything-quietshrink",
+      "skill_md": "quietshrink/agent-harness/cli_anything/quietshrink/skills/SKILL.md",
+      "category": "video",
+      "contributors": [
+        {
+          "name": "achiya-automation",
+          "url": "https://github.com/achiya-automation"
+        }
+      ]
     }
   ]
 }
