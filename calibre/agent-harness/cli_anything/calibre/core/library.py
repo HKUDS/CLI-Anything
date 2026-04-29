@@ -1,9 +1,7 @@
 """Library operations — wraps calibredb list, search, add, remove, export."""
 
 import json
-import os
 from pathlib import Path
-from typing import Any
 
 from cli_anything.calibre.utils.calibre_backend import (
     run_calibredb,
@@ -27,16 +25,44 @@ def library_info(library_path: str) -> dict:
     else:
         book_count = 0
 
-    # Count format types by scanning library directory for book files
+    # Derive format counts from calibredb metadata instead of recursively scanning
+    # the library directory, which is slow and I/O-heavy on large libraries.
     format_counts: dict[str, int] = {}
-    lib = Path(library_path)
-    skip_exts = {".db", ".jpg", ".png", ".opf", ".sqlite", ""}
-    for p in lib.rglob("*"):
-        if p.is_file():
-            ext = p.suffix.upper().lstrip(".")
-            if ext and ext not in {"DB", "JPG", "PNG", "OPF", "SQLITE", "WEBP", "GIF"}:
-                format_counts[ext] = format_counts.get(ext, 0) + 1
+    formats_result = run_calibredb(
+        ["list", "--fields=formats", "--for-machine"],
+        library_path=library_path,
+    )
+    formats_output = formats_result["stdout"].strip()
+    if formats_output:
+        try:
+            rows = json.loads(formats_output)
+        except json.JSONDecodeError:
+            rows = []
 
+        if isinstance(rows, dict):
+            rows = list(rows.values())
+        elif not isinstance(rows, list):
+            rows = []
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            value = row.get("formats")
+            if not value:
+                continue
+            if isinstance(value, str):
+                fmts = [f.strip() for f in value.split(",") if f.strip()]
+            elif isinstance(value, list):
+                fmts = [str(f).strip() for f in value if str(f).strip()]
+            else:
+                continue
+            for fmt in fmts:
+                # calibredb returns paths like "/.../book.epub" or bare "EPUB"
+                ext = Path(fmt).suffix.lstrip(".").upper() or fmt.upper()
+                if ext and ext not in {"JPG", "PNG", "OPF", "SQLITE", "WEBP", "GIF", "DB"}:
+                    format_counts[ext] = format_counts.get(ext, 0) + 1
+
+    lib = Path(library_path)
     db_path = lib / "metadata.db"
     db_size = db_path.stat().st_size if db_path.exists() else 0
 

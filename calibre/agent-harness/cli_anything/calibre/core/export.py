@@ -301,11 +301,14 @@ def export_chapters_pdf(
         # Step 2: extract EPUB and parse chapter list
         epub_dir = Path(tmpdir) / "epub_content"
         epub_dir.mkdir()
+        resolved_epub_dir = epub_dir.resolve()
         with zipfile.ZipFile(epub_files[0]) as zf:
-            # Validate each member path to prevent Zip Slip directory traversal attacks
+            # Validate each member path to prevent Zip Slip directory traversal attacks.
+            # Use Path.is_relative_to (Py3.10+) instead of str.startswith to avoid
+            # sibling-prefix bypasses (e.g. /tmp/epub vs /tmp/epub_evil).
             for member in zf.infolist():
-                member_path = (epub_dir / member.filename).resolve()
-                if not str(member_path).startswith(str(epub_dir.resolve())):
+                member_path = (resolved_epub_dir / member.filename).resolve()
+                if not member_path.is_relative_to(resolved_epub_dir):
                     raise ValueError(f"Unsafe EPUB entry rejected: {member.filename}")
                 zf.extract(member, epub_dir)
 
