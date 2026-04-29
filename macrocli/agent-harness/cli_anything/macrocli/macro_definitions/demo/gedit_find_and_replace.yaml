@@ -1,0 +1,90 @@
+name: gedit_find_and_replace
+version: "1.0"
+description: >
+  Open Find & Replace in gedit (Ctrl+H), replace a word, then close the dialog.
+  Uses visual_anchor hotkey + type_text steps.
+tags: [demo, gedit, visual_anchor]
+
+parameters:
+  find_text:
+    type: string
+    required: true
+    description: Text to search for.
+    example: foo
+  replace_text:
+    type: string
+    required: true
+    description: Text to replace with.
+    example: bar
+
+preconditions:
+  - process_running: gedit
+
+steps:
+  - id: focus_gedit
+    backend: semantic_ui
+    action: focus_window
+    params:
+      title_contains: gedit
+    on_failure: fail
+
+  - id: open_find_replace
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+h
+    on_failure: fail
+
+  - id: wait_dialog
+    backend: semantic_ui
+    action: wait_for_window
+    params:
+      title_contains: Replace
+      timeout_ms: 4000
+    on_failure: fail
+
+  - id: type_find
+    backend: visual_anchor
+    action: type_text
+    params:
+      text: "${find_text}"
+      interval_ms: 30
+    on_failure: fail
+
+  - id: tab_to_replace_field
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: tab
+    on_failure: fail
+
+  - id: type_replace
+    backend: visual_anchor
+    action: type_text
+    params:
+      text: "${replace_text}"
+      interval_ms: 30
+    on_failure: fail
+
+  - id: replace_all
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: alt+a
+    on_failure: fail
+
+  - id: close_dialog
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: escape
+    on_failure: skip
+
+postconditions: []
+outputs: []
+
+agent_hints:
+  danger_level: moderate
+  side_effects: [modifies_file, gui_interaction]
+  reversible: true
+  estimated_duration_ms: 3000

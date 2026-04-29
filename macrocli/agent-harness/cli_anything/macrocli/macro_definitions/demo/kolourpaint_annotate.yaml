@@ -1,0 +1,187 @@
+name: kolourpaint_annotate
+version: "1.0"
+description: >
+  Open a screenshot in KolourPaint, let the AI agent identify and draw
+  a red rectangle around the area matching the annotation goal,
+  then save the annotated image.
+
+  This macro demonstrates the hybrid fixed+agent approach:
+  - Fixed steps handle application launch, tool selection, color selection, save
+  - The agent step handles the annotation position decision (purely visual)
+
+tags: [demo, kolourpaint, annotation, gui_agent, visual_anchor]
+
+parameters:
+  input_file:
+    type: string
+    required: true
+    description: Path to the screenshot PNG to annotate.
+    example: /tmp/screenshot.png
+  output_file:
+    type: string
+    required: true
+    description: Path to save the annotated PNG.
+    example: /tmp/annotated.png
+  annotation_goal:
+    type: string
+    required: false
+    default: "the error or problem in the image"
+    description: >
+      Natural language description of what to annotate.
+      The AI agent will decide where to draw the rectangle.
+    example: "the error message in red text"
+
+preconditions:
+  - file_exists: ${input_file}
+  - file_exists: /usr/bin/kolourpaint
+
+steps:
+  # ── Fixed: launch KolourPaint with the input file ─────────────────────────
+  - id: launch_kolourpaint
+    backend: native_api
+    action: start_process
+    params:
+      command: [kolourpaint, "${input_file}"]
+      log_file: /tmp/kolourpaint.log
+      env:
+        DISPLAY: ":99"
+    on_failure: fail
+
+  - id: wait_kolourpaint
+    backend: native_api
+    action: run_command
+    params:
+      command: [sleep, "2.5"]
+    on_failure: skip
+
+  # ── Fixed: select Rectangle tool (hotkey r) ───────────────────────────────
+  - id: select_rectangle_tool
+    backend: semantic_ui
+    action: focus_window
+    params:
+      title_contains: KolourPaint
+    on_failure: fail
+
+  - id: press_rectangle_hotkey
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: r
+    on_failure: fail
+
+  # ── Fixed: select red color (click red swatch in color palette) ───────────
+  - id: select_red_color
+    backend: visual_anchor
+    action: click_relative
+    params:
+      window_title: KolourPaint
+      x_pct: 0.41
+      y_pct: 0.72
+    on_failure: fail
+
+  - id: pause_after_color
+    backend: native_api
+    action: run_command
+    params:
+      command: [sleep, "0.3"]
+    on_failure: skip
+
+  # ── Agent: decide WHERE to draw the rectangle ─────────────────────────────
+  # The agent looks at the screenshot content and decides the coordinates
+  # of the annotation rectangle based on the annotation_goal.
+  - id: agent_draw_annotation
+    backend: gui_agent
+    action: instruct
+    params:
+      window_title: KolourPaint
+      description: >
+        The Rectangle drawing tool is active and a color is selected in KolourPaint.
+        The image canvas occupies this exact screen region:
+          Top-left corner:     (282, 95)
+          Top-right corner:    (980, 95)
+          Bottom-left corner:  (282, 715)
+          Bottom-right corner: (980, 715)
+        The canvas shows a screenshot. Find the area matching: ${annotation_goal}
+        Draw a rectangle around it using the drag action.
+        The drag coordinates MUST be within the canvas bounds above.
+      end_state_description: >
+        A rectangle is drawn around ${annotation_goal} on the canvas.
+      end_state_snapshot: snapshots/annotated_end_state.png
+    on_failure: fail
+
+  - id: pause_after_draw
+    backend: native_api
+    action: run_command
+    params:
+      command: [sleep, "0.5"]
+    on_failure: skip
+
+  # ── Fixed: save as output_file ────────────────────────────────────────────
+  - id: open_save_as
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+shift+s
+    on_failure: fail
+
+  - id: wait_save_dialog
+    backend: semantic_ui
+    action: wait_for_window
+    params:
+      title_contains: Save As
+      timeout_ms: 4000
+    on_failure: skip
+
+  - id: clear_filename
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+l
+    on_failure: skip
+
+  - id: clear_path_field
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+a
+    on_failure: skip
+
+  - id: type_output_path
+    backend: visual_anchor
+    action: type_text
+    params:
+      text: "${output_file}"
+      interval_ms: 30
+    on_failure: fail
+
+  - id: confirm_save
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: enter
+    on_failure: fail
+
+  - id: wait_save_complete
+    backend: native_api
+    action: run_command
+    params:
+      command: [sleep, "1.0"]
+    on_failure: skip
+
+postconditions:
+  - file_exists: ${output_file}
+
+outputs:
+  - name: annotated_file
+    path: ${output_file}
+    description: Path to the annotated screenshot.
+
+agent_hints:
+  danger_level: safe
+  side_effects: [creates_file, opens_application]
+  reversible: true
+  estimated_duration_ms: 15000
+  note: >
+    The annotation position is decided by the AI agent based on the
+    screenshot content and annotation_goal. This cannot be done with
+    fixed coordinates because the target area varies per screenshot.

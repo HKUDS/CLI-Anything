@@ -955,16 +955,16 @@
       ]
     },
     {
-      "name": "openclaw-macro",
-      "display_name": "OpenClaw Macro System",
+      "name": "macrocli",
+      "display_name": "MacroCLI",
       "version": "1.0.0",
-      "description": "Layered CLI that converts GUI workflows into parameterized, agent-callable macros — with backend routing across native APIs, file transforms, accessibility controls, and compiled GUI replay",
+      "description": "Layered macro runtime that converts GUI workflows into parameterized, agent-callable macros — record once, run anywhere via CLI with backend routing across native APIs, file transforms, accessibility controls, and visual template matching",
       "requires": null,
-      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/tree/main/macrocli",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openclaw-skill/agent-harness",
-      "entry_point": "cli-anything-openclaw",
-      "skill_md": "openclaw-skill/agent-harness/cli_anything/openclaw/skills/SKILL.md",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=macrocli/agent-harness",
+      "entry_point": "cli-anything-macrocli",
+      "skill_md": "macrocli/agent-harness/cli_anything/macrocli/skills/SKILL.md",
       "category": "automation",
       "contributors": [
         {

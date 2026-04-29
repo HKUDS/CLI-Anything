@@ -1,0 +1,27 @@
+macros:
+  - name: export_file
+    path: examples/export_file.yaml
+    version: "1.0"
+  - name: undo_last
+    path: examples/undo_last.yaml
+    version: "1.0"
+  - name: transform_json
+    path: examples/transform_json.yaml
+    version: "1.0"
+  # ── Demo macros (gedit) ──────────────────────────────────────
+  - name: gedit_new_window
+    path: demo/gedit_new_window.yaml
+    version: "1.0"
+  - name: gedit_type_and_save
+    path: demo/gedit_type_and_save.yaml
+    version: "1.0"
+  - name: gedit_save_as
+    path: demo/gedit_save_as.yaml
+    version: "1.0"
+  - name: gedit_find_and_replace
+    path: demo/gedit_find_and_replace.yaml
+    version: "1.0"
+  # ── Demo macros (flameshot) ───────────────────────────────────
+  - name: flameshot_annotate
+    path: demo/flameshot_annotate.yaml
+    version: "1.0"

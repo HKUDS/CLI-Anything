@@ -1,0 +1,50 @@
+name: gedit_type_and_save
+version: "1.0"
+description: >
+  Type a line of text into gedit and save the file with Ctrl+S.
+  Uses semantic_ui (AT-SPI) to focus the window, then visual_anchor
+  to type and send the shortcut.
+tags: [demo, gedit, semantic_ui, visual_anchor]
+
+parameters:
+  text:
+    type: string
+    required: false
+    default: "Hello from MacroCLI!"
+    description: Text to type into gedit.
+
+preconditions:
+  - process_running: gedit
+
+steps:
+  - id: focus_gedit
+    backend: semantic_ui
+    action: focus_window
+    params:
+      title_contains: gedit
+    on_failure: fail
+
+  - id: type_text
+    backend: visual_anchor
+    action: type_text
+    params:
+      text: "${text}"
+      interval_ms: 30
+    on_failure: fail
+
+  - id: save_file
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+s
+    on_failure: fail
+
+postconditions: []
+
+outputs: []
+
+agent_hints:
+  danger_level: safe
+  side_effects: [modifies_file, gui_interaction]
+  reversible: true
+  estimated_duration_ms: 2000
