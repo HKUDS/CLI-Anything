@@ -7,6 +7,8 @@ such as pad, pocket, fillet, chamfer, and revolution.
 
 from typing import Any, Dict, List, Optional, Union
 
+from cli_anything.freecad.utils.compat import require_version, V1_1
+
 
 # ---------------------------------------------------------------------------
 # Valid constants
@@ -1868,6 +1870,12 @@ def hole_feature(
     if thread_standard not in VALID_THREAD_STANDARDS:
         raise ValueError(f"Invalid thread_standard '{thread_standard}'. Valid: {sorted(VALID_THREAD_STANDARDS)}")
 
+    # Whitworth/NPT threads and tapered holes require FreeCAD 1.1+
+    if thread_standard != "metric":
+        require_version(V1_1, f"thread_standard '{thread_standard}'")
+    if tapered:
+        require_version(V1_1, "tapered holes")
+
     if tapered and taper_angle is None:
         if thread_standard == "NPT":
             taper_angle = 1.7899  # ASME B1.20.1
@@ -1941,10 +1949,12 @@ def datum_plane(
     }
 
     if attachment_mode is not None:
+        require_version(V1_1, "datum plane attachment modes")
         if attachment_mode not in VALID_ATTACHMENT_MODES:
             raise ValueError(f"Invalid attachment_mode '{attachment_mode}'. Valid: {sorted(VALID_ATTACHMENT_MODES)}")
         feature["attachment_mode"] = attachment_mode
     if attachment_refs is not None:
+        require_version(V1_1, "datum plane attachment refs")
         feature["attachment_refs"] = attachment_refs
 
     body["features"].append(feature)
@@ -2000,10 +2010,12 @@ def datum_line(
     }
 
     if attachment_mode is not None:
+        require_version(V1_1, "datum line attachment modes")
         if attachment_mode not in VALID_ATTACHMENT_MODES:
             raise ValueError(f"Invalid attachment_mode '{attachment_mode}'. Valid: {sorted(VALID_ATTACHMENT_MODES)}")
         feature["attachment_mode"] = attachment_mode
     if attachment_refs is not None:
+        require_version(V1_1, "datum line attachment refs")
         feature["attachment_refs"] = attachment_refs
 
     body["features"].append(feature)
@@ -2049,10 +2061,12 @@ def datum_point(
     }
 
     if attachment_mode is not None:
+        require_version(V1_1, "datum point attachment modes")
         if attachment_mode not in VALID_ATTACHMENT_MODES:
             raise ValueError(f"Invalid attachment_mode '{attachment_mode}'. Valid: {sorted(VALID_ATTACHMENT_MODES)}")
         feature["attachment_mode"] = attachment_mode
     if attachment_refs is not None:
+        require_version(V1_1, "datum point attachment refs")
         feature["attachment_refs"] = attachment_refs
 
     body["features"].append(feature)
@@ -2071,7 +2085,10 @@ def local_coordinate_system(
 
     Replaces the legacy Origin object with a fully configurable
     coordinate system that supports cross-workbench attachment.
+
+    Requires FreeCAD >= 1.1.
     """
+    require_version(V1_1, "local_coordinate_system")
     bodies = project.get("bodies", [])
     if body_index < 0 or body_index >= len(bodies):
         raise IndexError(f"Body index {body_index} out of range (0..{len(bodies) - 1}).")
@@ -2138,7 +2155,10 @@ def toggle_freeze(
     """Toggle the frozen state of a feature in a body (FreeCAD 1.1).
 
     Frozen features are excluded from recomputation.
+
+    Requires FreeCAD >= 1.1.
     """
+    require_version(V1_1, "toggle_freeze")
     bodies = project.get("bodies", [])
     if body_index < 0 or body_index >= len(bodies):
         raise IndexError(f"Body index {body_index} out of range (0..{len(bodies) - 1}).")

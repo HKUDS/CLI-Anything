@@ -8,6 +8,8 @@ arcs, rectangles, and geometric/dimensional constraints.
 import math
 from typing import Any, Dict, List, Optional
 
+from cli_anything.freecad.utils.compat import require_version, V1_1
+
 
 # ---------------------------------------------------------------------------
 # Valid constants
@@ -1610,6 +1612,10 @@ def project_external(
             f"Invalid mode '{mode}'. Must be one of: {', '.join(sorted(valid_modes))}"
         )
 
+    # "reference" mode requires FreeCAD 1.1+
+    if mode == "reference":
+        require_version(V1_1, "external geometry reference mode")
+
     element: Dict[str, Any] = {
         "id": _next_element_id(sketch),
         "type": "external_reference",
@@ -1628,7 +1634,9 @@ def intersection_external(
     sketch_index: int,
     body_index: int,
 ) -> Dict[str, Any]:
-    """Create external geometry from sketch-plane intersection with a body (FreeCAD 1.1).
+    """Create external geometry from sketch-plane intersection with a body.
+
+    Requires FreeCAD >= 1.1.
 
     Generates external geometry elements at the intersection of the sketch
     plane with the specified body geometry.
@@ -1647,6 +1655,7 @@ def intersection_external(
     Dict[str, Any]
         The newly created intersection reference element.
     """
+    require_version(V1_1, "intersection_external")
     _validate_project(project)
     sketch = _get_sketch(project, sketch_index)
 
@@ -1670,9 +1679,10 @@ def add_external_from_face(
     part_index: int,
     face_ref: str,
 ) -> Dict[str, Any]:
-    """Create external geometry from a face selection (FreeCAD 1.1).
+    """Create external geometry from a face selection.
 
     Projects the boundary of the referenced face onto the sketch plane.
+    Requires FreeCAD >= 1.1.
 
     Parameters
     ----------
@@ -1690,6 +1700,7 @@ def add_external_from_face(
     Dict[str, Any]
         The newly created face reference element.
     """
+    require_version(V1_1, "external geometry from face")
     _validate_project(project)
     sketch = _get_sketch(project, sketch_index)
 
