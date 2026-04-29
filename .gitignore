@@ -221,6 +221,8 @@
 !/unrealinsights/agent-harness/
 !/nsight-graphics/agent-harness/
 !/lldb/agent-harness/
+!/sbox/
+!/sbox/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/

@@ -841,6 +841,25 @@
       ]
     },
     {
+      "name": "sbox",
+      "display_name": "s&box",
+      "version": "1.0.0",
+      "description": "Game engine project management for s&box (Source 2): scenes, prefabs, materials, sounds, codegen, asset graph, project validation",
+      "requires": "s&box installed via Steam (sbox.game)",
+      "homepage": "https://sbox.game",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=sbox/agent-harness",
+      "entry_point": "cli-anything-sbox",
+      "skill_md": "skills/cli-anything-sbox/SKILL.md",
+      "category": "gamedev",
+      "contributors": [
+        {
+          "name": "KarandeepSWranch",
+          "url": "https://github.com/KarandeepSWranch"
+        }
+      ]
+    },
+    {
       "name": "dify-workflow",
       "display_name": "Dify Workflow",
       "version": "0.1.0",
