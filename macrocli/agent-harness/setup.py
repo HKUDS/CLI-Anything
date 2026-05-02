@@ -50,12 +50,7 @@ setup(
             "numpy>=1.24.0",
             "pynput>=1.7.0",
         ],
-        "gemini": [
-            "google-generativeai>=0.8.0",
-            "mss>=9.0.0",
-            "Pillow>=10.0.0",
-        ],
-        "openai": [
+        "gui_agent": [
             "openai>=1.0.0",
             "mss>=9.0.0",
             "Pillow>=10.0.0",
@@ -65,7 +60,6 @@ setup(
             "Pillow>=10.0.0",
             "numpy>=1.24.0",
             "pynput>=1.7.0",
-            "google-generativeai>=0.8.0",
             "openai>=1.0.0",
         ],
     },
@@ -80,9 +74,6 @@ setup(
             "macro_definitions/*.yaml",
             "macro_definitions/examples/*.yaml",
             "macro_definitions/demo/*.yaml",
-            "macro_definitions/demo/**/*.png",
-            "macro_definitions/demo/flameshot_templates/*.png",
-            "macro_definitions/demo/snapshots/*.png",
         ],
     },
     include_package_data=True,

@@ -1,5 +1,5 @@
 """GUIAgentBackend — execute a macro step by letting a vision model
-(Gemini or Claude) look at the screen and decide what to do.
+look at the screen and decide what to do.
 
 This backend is used for steps that cannot be expressed as fixed
 coordinates or hotkeys because the interface state is unpredictable.
@@ -18,10 +18,15 @@ At runtime the backend:
   6. Asks model: "have we reached the end state?"
   7. Loops until end state reached or max_steps exceeded
 
-Supported models:
-  - gemini-1.5-flash (default, fastest)
-  - gemini-1.5-pro
-  - gemini-2.0-flash
+The backend uses the OpenAI SDK, which is compatible with any
+OpenAI-compatible API provider (OpenAI, Azure, local vLLM, Ollama,
+LiteLLM, etc.).  Configure model and endpoint via environment
+variables or per-step YAML params:
+
+  Environment variables:
+    MACROCLI_MODEL    — model name (required, no default)
+    MACROCLI_API_KEY  — API key
+    MACROCLI_BASE_URL — base URL for non-OpenAI providers
 
 Example YAML step:
 
@@ -36,8 +41,9 @@ Example YAML step:
           Format dropdown shows PNG, Resolution input shows 300.
         end_state_snapshot: snapshots/step_003_end_state.png
         max_steps: 8
-        model: gemini-1.5-flash
-        api_key: ${GEMINI_API_KEY}
+        model: ${MACROCLI_MODEL}
+        api_key: ${MACROCLI_API_KEY}
+        base_url: ${MACROCLI_BASE_URL}
 """
 
 from __future__ import annotations
@@ -190,7 +196,7 @@ def _execute_action(action_dict: dict, context: BackendContext) -> None:
 # ── Backend ───────────────────────────────────────────────────────────────────
 
 class GUIAgentBackend(Backend):
-    """Execute GUI steps using a vision model (Gemini) to decide actions."""
+    """Execute GUI steps using a vision model (OpenAI-compatible API) to decide actions."""
 
     name = "gui_agent"
     priority = 60  # between semantic_ui(50) and file_transform(70)
@@ -251,9 +257,17 @@ class GUIAgentBackend(Backend):
         end_state_desc: str = p.get("end_state_description", "")
         snapshot_path: str = p.get("end_state_snapshot", "")
         window_title: str = p.get("window_title", "")  # focus this window first
-        model_name: str = p.get("model", os.environ.get("MACROCLI_MODEL", "gemini-2.5-flash"))
+        model_name: str = p.get("model", os.environ.get("MACROCLI_MODEL", ""))
         api_key: str = p.get("api_key", os.environ.get("MACROCLI_API_KEY", ""))
         base_url: str = p.get("base_url", os.environ.get("MACROCLI_BASE_URL", ""))
+
+        if not model_name:
+            return StepResult(
+                success=False,
+                error="GUIAgentBackend: model required. Set MACROCLI_MODEL env var or pass model in step params.",
+                backend_used=self.name,
+                duration_ms=(time.time() - t0) * 1000,
+            )
 
         if not api_key:
             return StepResult(
@@ -441,7 +455,7 @@ class GUIAgentBackend(Backend):
         # ── Round 2: compare and refine ───────────────────────────────────────
         description: str = p.get("description", "")
         end_state_desc: str = p.get("end_state_description", "")
-        model_name: str = p.get("model", os.environ.get("MACROCLI_MODEL", "gemini-2.5-flash"))
+        model_name: str = p.get("model", os.environ.get("MACROCLI_MODEL", ""))
         api_key: str = p.get("api_key", os.environ.get("MACROCLI_API_KEY", ""))
         base_url: str = p.get("base_url", os.environ.get("MACROCLI_BASE_URL", ""))
 

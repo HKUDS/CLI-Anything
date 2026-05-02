@@ -13,6 +13,23 @@ pip install -e .
 
 **Dependencies:** Python 3.10+, PyYAML, click, prompt-toolkit
 
+**Optional extras:**
+
+```bash
+pip install -e ".[visual]"      # visual_anchor backend (mss, Pillow, numpy, pynput)
+pip install -e ".[gui_agent]"   # gui_agent backend     (openai, mss, Pillow)
+pip install -e ".[all]"         # everything
+```
+
+The `gui_agent` backend uses the OpenAI SDK and is compatible with any
+OpenAI-compatible API. Configure via environment variables:
+
+| Variable           | Description                                 |
+|--------------------|---------------------------------------------|
+| `MACROCLI_MODEL`   | Model name (required, e.g. `gpt-4o`)        |
+| `MACROCLI_API_KEY` | API key for the provider                    |
+| `MACROCLI_BASE_URL`| Base URL (only needed for non-OpenAI hosts) |
+
 ## Usage
 
 ```bash
@@ -63,6 +80,8 @@ cli-anything-macrocli (CLI)
 - `native_api` — subprocess / shell commands
 - `file_transform` — XML, JSON, text file editing
 - `semantic_ui` — accessibility controls + keyboard shortcuts
+- `visual_anchor` — template-matching click/type (requires `[visual]`)
+- `gui_agent` — vision-model-driven automation (requires `[gui_agent]`)
 - `gui_macro` — precompiled coordinate-based replay
 - `recovery` — retry + fallback orchestration
 
