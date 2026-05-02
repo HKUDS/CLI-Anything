@@ -1010,6 +1010,25 @@
           "url": "https://github.com/achiya-automation"
         }
       ]
+    },
+    {
+      "name": "stata",
+      "display_name": "Stata",
+      "version": "0.1.0",
+      "description": "Run Stata do-files, batch jobs, and reproducible econometric projects from the terminal with JSON output, log parsing, project scaffolding, and security guard",
+      "requires": "Licensed Stata installation (StataMP/SE/BE 15+), Python 3.10+",
+      "homepage": "https://www.stata.com",
+      "source_url": "https://github.com/LI-Meng420/stata-cli",
+      "install_cmd": "pip install git+https://github.com/LI-Meng420/stata-cli.git",
+      "entry_point": "cli-anything-stata",
+      "skill_md": "https://raw.githubusercontent.com/LI-Meng420/stata-cli/main/cli_anything/stata/skills/SKILL.md",
+      "category": "science",
+      "contributors": [
+        {
+          "name": "LI-Meng420",
+          "url": "https://github.com/LI-Meng420"
+        }
+      ]
     }
   ]
 }
