@@ -12,6 +12,7 @@ from pathlib import Path
 import click
 
 from cli_anything.unrealinsights import __version__
+from cli_anything.unrealinsights.core.analyze import analyze_summary
 from cli_anything.unrealinsights.core.capture import (
     DEFAULT_CHANNELS,
     capture_status,
@@ -22,7 +23,18 @@ from cli_anything.unrealinsights.core.capture import (
     stop_capture,
 )
 from cli_anything.unrealinsights.core.export import execute_export, execute_response_file
+from cli_anything.unrealinsights.core.gui import gui_status, open_gui
+from cli_anything.unrealinsights.core.live import (
+    execute_live_command,
+    list_unreal_processes,
+    trace_bookmark,
+    trace_screenshot,
+    trace_snapshot,
+    trace_status as live_trace_status,
+    trace_stop,
+)
 from cli_anything.unrealinsights.core.session import UnrealInsightsSession, state_dir
+from cli_anything.unrealinsights.core.store import latest_trace_file, list_trace_files, trace_store_info
 from cli_anything.unrealinsights.utils.errors import handle_error
 from cli_anything.unrealinsights.utils.output import format_size, output_json
 from cli_anything.unrealinsights.utils.unrealinsights_backend import (
@@ -128,7 +140,10 @@ def _human_export_result(data: dict[str, object]):
     click.echo(f"Command:   {data['exec_command']}")
     click.echo(f"Log:       {data['log_path']}")
     click.echo(f"Exit code: {data['exit_code']}")
+    click.echo(f"Status:    {data.get('output_status', 'unknown')}")
     click.echo(f"Success:   {'yes' if data['succeeded'] else 'no'}")
+    if data.get("status_message"):
+        click.echo(f"Message:   {data['status_message']}")
     if data["output_files"]:
         click.echo("Outputs:")
         for output_path in data["output_files"]:
@@ -190,6 +205,85 @@ def _human_stop_result(data: dict[str, object]):
     click.echo(f"Requested PID: {termination['requested_pid']}")
     click.echo(f"Stopped:       {'yes' if termination['stopped'] else 'no'}")
     click.echo(f"Exit code:     {termination.get('exit_code')}")
+
+
+def _human_store_info(data: dict[str, object]):
+    click.echo(f"Trace root:    {data['trace_root']}")
+    click.echo(f"Store:         {data['store_dir']}")
+    click.echo(f"Store exists:  {'yes' if data['store_exists'] else 'no'}")
+    click.echo(f"Trace files:   {data['trace_file_count']}")
+    trace_server = data["trace_server"]
+    if trace_server.get("available"):
+        click.echo(f"TraceServer:   {trace_server['path']}")
+    else:
+        click.echo(f"TraceServer:   unavailable ({trace_server.get('error', 'not found')})")
+
+
+def _human_store_list(data: dict[str, object]):
+    click.echo(f"Store:       {data['store_dir']}")
+    click.echo(f"Trace count: {data['trace_count']}")
+    for trace in data["traces"][:20]:
+        live = " live?" if trace.get("is_live_candidate") else ""
+        click.echo(f"  {trace['path']} ({format_size(trace.get('file_size'))}){live}")
+
+
+def _human_store_latest(data: dict[str, object]):
+    latest = data.get("latest")
+    if not latest:
+        click.echo("No trace file found.")
+        return
+    click.echo(f"Latest trace: {latest['path']}")
+    click.echo(f"Size:         {format_size(latest.get('file_size'))}")
+    click.echo(f"Live guess:   {'yes' if latest.get('is_live_candidate') else 'no'}")
+    if data.get("set_current"):
+        click.echo("Current session trace updated.")
+
+
+def _human_processes(data: dict[str, object]):
+    click.echo(f"Processes: {data['process_count']}")
+    for process in data["processes"]:
+        click.echo(f"  {process['pid']}  {process['role']}  {process['name']}  {process.get('path') or ''}")
+
+
+def _human_live_result(data: dict[str, object]):
+    click.echo(f"PID:      {data['pid']}")
+    click.echo(f"Command:  {data['live_command']}")
+    click.echo(f"Backend:  {data['backend']}")
+    click.echo(f"Exit:     {data['exit_code']}")
+    click.echo(f"Success:  {'yes' if data['succeeded'] else 'no'}")
+    if data.get("stdout"):
+        click.echo(data["stdout"])
+    if data.get("stderr"):
+        click.echo(data["stderr"])
+
+
+def _human_gui_status(data: dict[str, object]):
+    click.echo(f"Unreal Insights GUI running: {'yes' if data['running'] else 'no'}")
+    for process in data["processes"]:
+        click.echo(f"  {process['pid']}  {process.get('path') or process['name']}")
+
+
+def _human_gui_open(data: dict[str, object]):
+    click.echo(f"UnrealInsights.exe: {data['insights_exe']}")
+    if data.get("trace_path"):
+        click.echo(f"Trace:              {data['trace_path']}")
+    click.echo(f"PID:                {data['pid']}")
+    click.echo("Mode:               GUI kept running")
+
+
+def _human_analyze_summary(data: dict[str, object]):
+    click.echo(f"Trace:   {data.get('trace_path') or 'not supplied'}")
+    click.echo(f"Out dir: {data['out_dir']}")
+    click.echo(f"Success: {'yes' if data['succeeded'] else 'no'}")
+    top_timers = data["summary"].get("top_timers", [])
+    if top_timers:
+        click.echo("Top timers:")
+        for entry in top_timers[:10]:
+            click.echo(f"  {entry['name']}  score={entry.get('score')}")
+    if data.get("warnings"):
+        click.echo("Warnings:")
+        for warning in data["warnings"]:
+            click.echo(f"  {warning}")
 
 
 @click.group(invoke_without_command=True)
@@ -304,6 +398,71 @@ def trace_info(ctx):
     """Show the active trace path."""
     session = _get_session(ctx)
     _output(ctx, session.trace_info(), _human_trace_info)
+
+
+@cli.group("store")
+def store_group():
+    """Trace Store discovery and session selection."""
+
+
+@store_group.command("info")
+@click.option("--store-dir", type=click.Path(exists=False), default=None, help="Explicit Trace Store directory.")
+@click.pass_context
+def store_info(ctx, store_dir):
+    """Inspect the local Unreal Trace Store."""
+    try:
+        session = _get_session(ctx)
+        data = trace_store_info(store_dir=store_dir, trace_server_exe=session.trace_server_exe)
+        _output(ctx, data, _human_store_info)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@store_group.command("list")
+@click.option("--store-dir", type=click.Path(exists=False), default=None, help="Explicit Trace Store directory.")
+@click.option("--live-only", is_flag=True, help="Only show recently modified trace files.")
+@click.option("--include-cache/--no-include-cache", default=True, show_default=True, help="Include Trace Store .ucache files.")
+@click.option("--live-window", type=float, default=60.0, show_default=True, help="Seconds used for live-candidate detection.")
+@click.pass_context
+def store_list(ctx, store_dir, live_only, include_cache, live_window):
+    """List trace files in the Trace Store."""
+    try:
+        data = list_trace_files(
+            store_dir=store_dir,
+            live_only=live_only,
+            include_cache=include_cache,
+            live_window_seconds=live_window,
+        )
+        _output(ctx, data, _human_store_list)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@store_group.command("latest")
+@click.option("--store-dir", type=click.Path(exists=False), default=None, help="Explicit Trace Store directory.")
+@click.option("--live-only", is_flag=True, help="Only consider recently modified trace files.")
+@click.option("--include-cache/--no-include-cache", default=True, show_default=True, help="Include Trace Store .ucache files.")
+@click.option("--live-window", type=float, default=60.0, show_default=True, help="Seconds used for live-candidate detection.")
+@click.option("--set-current", is_flag=True, help="Set the selected trace as the current session trace.")
+@click.pass_context
+def store_latest(ctx, store_dir, live_only, include_cache, live_window, set_current):
+    """Select the newest trace file in the Trace Store."""
+    try:
+        data = latest_trace_file(
+            store_dir=store_dir,
+            live_only=live_only,
+            include_cache=include_cache,
+            live_window_seconds=live_window,
+        )
+        latest = data.get("latest")
+        if latest and set_current:
+            _get_session(ctx).set_trace(latest["path"])
+            data["set_current"] = True
+        else:
+            data["set_current"] = False
+        _output(ctx, data, _human_store_latest)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
 
 
 @cli.group("capture")
@@ -454,6 +613,166 @@ def capture_snapshot_cmd(ctx, output_trace):
     try:
         data = snapshot_capture(_get_session(ctx), output_trace=output_trace)
         _output(ctx, data, _human_snapshot_result)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@cli.group("live")
+def live_group():
+    """Live UE process discovery and trace-control command delivery."""
+
+
+@live_group.command("processes")
+@click.option("--include-tools/--no-include-tools", default=True, show_default=True, help="Include UnrealInsights and TraceServer.")
+@click.pass_context
+def live_processes(ctx, include_tools):
+    """List local Unreal-related processes."""
+    try:
+        data = list_unreal_processes(include_tools=include_tools)
+        _output(ctx, data, _human_processes)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+def _run_live_command(ctx: click.Context, fn, *args, backend_command=None, timeout=None):
+    data = fn(*args, backend_command=backend_command, timeout=timeout)
+    _output(ctx, data, _human_live_result)
+
+
+@live_group.command("exec")
+@click.option("--pid", required=True, type=int, help="Target UE process id.")
+@click.option("--backend-command", default=None, help="External command template accepting {pid} and {cmd}.")
+@click.option("--timeout", type=float, default=None, help="Optional backend timeout in seconds.")
+@click.argument("command", nargs=-1, required=True)
+@click.pass_context
+def live_exec(ctx, pid, backend_command, timeout, command):
+    """Send a raw console command to a live UE process."""
+    try:
+        data = execute_live_command(
+            pid,
+            " ".join(command),
+            backend_command=backend_command,
+            timeout=timeout,
+        )
+        _output(ctx, data, _human_live_result)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@live_group.command("trace-status")
+@click.option("--pid", required=True, type=int, help="Target UE process id.")
+@click.option("--backend-command", default=None, help="External command template accepting {pid} and {cmd}.")
+@click.option("--timeout", type=float, default=None, help="Optional backend timeout in seconds.")
+@click.pass_context
+def live_trace_status_cmd(ctx, pid, backend_command, timeout):
+    """Run Trace.Status on a live UE process."""
+    try:
+        _run_live_command(ctx, live_trace_status, pid, backend_command=backend_command, timeout=timeout)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@live_group.command("bookmark")
+@click.option("--pid", required=True, type=int, help="Target UE process id.")
+@click.option("--backend-command", default=None, help="External command template accepting {pid} and {cmd}.")
+@click.option("--timeout", type=float, default=None, help="Optional backend timeout in seconds.")
+@click.argument("name")
+@click.pass_context
+def live_bookmark(ctx, pid, backend_command, timeout, name):
+    """Insert a Trace.Bookmark marker in a live UE process."""
+    try:
+        _run_live_command(ctx, trace_bookmark, pid, name, backend_command=backend_command, timeout=timeout)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@live_group.command("screenshot")
+@click.option("--pid", required=True, type=int, help="Target UE process id.")
+@click.option("--backend-command", default=None, help="External command template accepting {pid} and {cmd}.")
+@click.option("--timeout", type=float, default=None, help="Optional backend timeout in seconds.")
+@click.argument("name")
+@click.pass_context
+def live_screenshot(ctx, pid, backend_command, timeout, name):
+    """Insert a Trace.Screenshot marker in a live UE process."""
+    try:
+        _run_live_command(ctx, trace_screenshot, pid, name, backend_command=backend_command, timeout=timeout)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@live_group.command("snapshot")
+@click.option("--pid", required=True, type=int, help="Target UE process id.")
+@click.option("--backend-command", default=None, help="External command template accepting {pid} and {cmd}.")
+@click.option("--timeout", type=float, default=None, help="Optional backend timeout in seconds.")
+@click.argument("output_trace", type=click.Path(exists=False))
+@click.pass_context
+def live_snapshot(ctx, pid, backend_command, timeout, output_trace):
+    """Request a Trace.SnapshotFile from a live UE process."""
+    try:
+        _run_live_command(ctx, trace_snapshot, pid, output_trace, backend_command=backend_command, timeout=timeout)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@live_group.command("stop-trace")
+@click.option("--pid", required=True, type=int, help="Target UE process id.")
+@click.option("--backend-command", default=None, help="External command template accepting {pid} and {cmd}.")
+@click.option("--timeout", type=float, default=None, help="Optional backend timeout in seconds.")
+@click.pass_context
+def live_stop_trace(ctx, pid, backend_command, timeout):
+    """Stop tracing in a live UE process without killing the process."""
+    try:
+        _run_live_command(ctx, trace_stop, pid, backend_command=backend_command, timeout=timeout)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@cli.group("gui")
+def gui_group():
+    """Unreal Insights GUI co-pilot helpers."""
+
+
+@gui_group.command("status")
+@click.pass_context
+def gui_status_cmd(ctx):
+    """Show running Unreal Insights GUI processes."""
+    try:
+        data = gui_status()
+        _output(ctx, data, _human_gui_status)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@gui_group.command("open")
+@click.option("--trace", "trace_override", type=click.Path(exists=False), default=None, help="Trace file to open in the GUI.")
+@click.pass_context
+def gui_open_cmd(ctx, trace_override):
+    """Open Unreal Insights GUI and keep it running."""
+    try:
+        trace_path = trace_override or _get_session(ctx).trace_path
+        insights = _resolve_insights(ctx)
+        data = open_gui(insights["path"], trace_path=trace_path)
+        _output(ctx, data, _human_gui_open)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
+@gui_group.command("open-latest")
+@click.option("--store-dir", type=click.Path(exists=False), default=None, help="Explicit Trace Store directory.")
+@click.option("--live-only", is_flag=True, help="Only consider recently modified trace files.")
+@click.option("--include-cache/--no-include-cache", default=True, show_default=True, help="Include Trace Store .ucache files.")
+@click.pass_context
+def gui_open_latest(ctx, store_dir, live_only, include_cache):
+    """Open the newest Trace Store trace in Unreal Insights GUI."""
+    try:
+        latest = latest_trace_file(store_dir=store_dir, live_only=live_only, include_cache=include_cache).get("latest")
+        if not latest:
+            raise RuntimeError("No trace file found in the Trace Store.")
+        _get_session(ctx).set_trace(latest["path"])
+        insights = _resolve_insights(ctx)
+        data = open_gui(insights["path"], trace_path=latest["path"])
+        data["latest"] = latest
+        _output(ctx, data, _human_gui_open)
     except Exception as exc:
         _handle_exc(ctx, exc)
 
@@ -656,6 +975,46 @@ def batch_run_rsp(ctx, rsp_path):
         _handle_exc(ctx, exc)
 
 
+@cli.group("analyze")
+def analyze_group():
+    """Export and summarize Unreal Insights timing/counter data."""
+
+
+@analyze_group.command("summary")
+@click.option("--trace", "trace_override", type=click.Path(exists=False), default=None, help="Trace file to analyze.")
+@click.option("--out", "out_dir", required=True, type=click.Path(exists=False), help="Directory for exports and summary inputs.")
+@click.option("--skip-export", is_flag=True, help="Summarize existing CSV exports without launching UnrealInsights.exe.")
+@click.option("--limit", type=int, default=20, show_default=True, help="Maximum entries per summary list.")
+@click.pass_context
+def analyze_summary_cmd(ctx, trace_override, out_dir, skip_export, limit):
+    """Run the standard exporter bundle and summarize hot spots."""
+    try:
+        trace_path = None
+        insights = None
+        if trace_override:
+            trace_path = str(Path(trace_override).expanduser().resolve())
+            _get_session(ctx).set_trace(trace_path)
+        elif not skip_export:
+            trace_path = _require_trace(ctx)
+        elif _get_session(ctx).trace_path:
+            trace_path = _get_session(ctx).trace_path
+
+        if not skip_export:
+            insights = _resolve_insights(ctx)
+
+        data = analyze_summary(
+            insights["path"] if insights else None,
+            trace_path,
+            out_dir,
+            insights_version=insights.get("version") if insights else None,
+            skip_export=skip_export,
+            limit=limit,
+        )
+        _output(ctx, data, _human_analyze_summary)
+    except Exception as exc:
+        _handle_exc(ctx, exc)
+
+
 @cli.command()
 @click.pass_context
 def repl(ctx):
@@ -673,9 +1032,13 @@ def repl(ctx):
     repl_commands = {
         "backend": "info|ensure-insights",
         "trace": "set|info",
+        "store": "info|list|latest",
         "capture": "run|start|status|stop|snapshot",
+        "live": "processes|exec|trace-status|bookmark|screenshot|snapshot|stop-trace",
+        "gui": "status|open|open-latest",
         "export": "threads|timers|timing-events|timer-stats|timer-callees|counters|counter-values",
         "batch": "run-rsp",
+        "analyze": "summary",
         "help": "Show this help",
         "quit": "Exit REPL",
     }

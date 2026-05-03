@@ -27,6 +27,11 @@ The command may be:
 - a direct exporter command such as `TimingInsights.ExportThreads`
 - `@=<response-file>` for batch execution
 
+Simple exporter filters are emitted without inner quotes, for example
+`-threads=GameThread`, `-timers=*`, and `-counter=*`. This keeps Unreal's
+`FParse::Token` from treating backslash-escaped quotes as literal filter text
+inside `-ExecOnAnalysisCompleteCmd`.
+
 This harness can also ensure an engine-matched analysis backend for custom
 source engines by locating or building `Engine/Binaries/Win64/UnrealInsights.exe`.
 
@@ -43,7 +48,9 @@ This harness supports two v1 launch shapes:
 - explicit target executable path
 - `--project + --engine-root` convenience mode, which resolves `UnrealEditor.exe`
 
-This harness only supports file-mode capture orchestration in v1.
+This harness supports file-mode capture orchestration plus v1 helper surfaces
+for Trace Store discovery, GUI co-pilot launch, pluggable live command delivery,
+and basic timing/counter summaries.
 
 ## CLI Coverage Map
 
@@ -61,12 +68,23 @@ This harness only supports file-mode capture orchestration in v1.
 | Export counter list | `export counters` | v1 |
 | Export counter values | `export counter-values` | v1 |
 | Batch response file | `batch run-rsp` | v1 |
-| Control live instances | — | future |
-| Trace store browsing | — | future |
+| Trace Store browsing | `store info/list/latest` | v1 |
+| List live UE processes | `live processes` | v1 |
+| Send live console command | `live exec` | v1 backend boundary |
+| Common trace control commands | `live trace-status/bookmark/screenshot/snapshot/stop-trace` | v1 backend boundary |
+| Keep Unreal Insights GUI running | `gui status/open/open-latest` | v1 |
+| Timing/counter summary | `analyze summary` | v1 |
+| Export result classification | `output_status` / `export_status` JSON fields | v1 |
 
 ## Current Limitations
 
 - Windows-first discovery only
-- No SessionServices control of already-running UE instances
-- No trace store session enumeration
+- Live command delivery requires an external SessionServices/ushell-style backend
+  configured through `UNREALINSIGHTS_LIVE_EXEC` or `--backend-command`
 - Capture orchestration assumes the target executable accepts standard UE trace flags
+- `capture stop` still stops the harness-launched process tree; use
+  `live stop-trace` when the intent is to stop trace collection without killing UE
+- Empty exporter output is classified as `no_output`; agents should treat that
+  as a trace/filter data boundary unless UnrealInsights logs explicit errors
+- Deep Memory, Networking, Slate, Asset Loading, and Cooking analysis are reported
+  as uncovered domains by `analyze summary`
