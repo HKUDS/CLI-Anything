@@ -9,7 +9,7 @@ _long_desc = _README.read_text(encoding="utf-8") if _README.is_file() else ""
 
 setup(
     name="cli-anything-lldb",
-    version="0.1.0",
+    version="1.0.0",
     description="CLI harness for LLDB debugger via Python API",
     long_description=_long_desc,
     long_description_content_type="text/markdown",
@@ -26,6 +26,7 @@ setup(
     entry_points={
         "console_scripts": [
             "cli-anything-lldb=cli_anything.lldb.lldb_cli:main",
+            "cli-anything-lldb-dap=cli_anything.lldb.dap:main",
         ],
     },
     package_data={
