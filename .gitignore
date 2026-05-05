@@ -81,6 +81,7 @@
 !/QGIS/
 !/n8n/
 !/obsidian/
+!/calibre/
 !/unrealinsights/
 !/nsight-graphics/
 !/lldb/
@@ -169,6 +170,8 @@
 /n8n/.*
 /obsidian/*
 /obsidian/.*
+/calibre/*
+/calibre/.*
 /unrealinsights/*
 /unrealinsights/.*
 /nsight-graphics/*
@@ -227,6 +230,7 @@
 !/QGIS/agent-harness/
 !/n8n/agent-harness/
 !/obsidian/agent-harness/
+!/calibre/agent-harness/
 !/safari/
 !/safari/agent-harness/
 !/unrealinsights/agent-harness/
