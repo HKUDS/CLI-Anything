@@ -6,11 +6,13 @@ Usage:
     python -m pytest cli_anything/browser/tests/test_core.py -v
 """
 
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page, fs
+from cli_anything.browser.utils import domshell_backend as backend
 
 
 # ── Session Tests ────────────────────────────────────────────────
@@ -387,3 +389,45 @@ class TestDaemonMode:
             result = fs.list_elements(sess)
 
             mock_ls.assert_called_once_with("/", use_daemon=False)
+
+
+class TestBackendResultNormalization:
+    """测试后端返回结构标准化。"""
+
+    def test_parse_ls_text_to_entries(self):
+        """应把 ls 文本结果解析为 entries 列表。"""
+        text = "  windows/       (1 windows)\n  tabs/          (44 tabs)"
+        result = backend._parse_ls_text("/", text)
+        assert result["path"] == "/"
+        assert len(result["entries"]) == 2
+        assert result["entries"][0]["name"] == "windows"
+        assert result["entries"][0]["path"] == "/windows"
+
+    def test_normalize_ls_call_tool_result(self):
+        """应把 CallToolResult 转为 fs ls 可直接消费的字典。"""
+        mock_result = type(
+            "MockCallToolResult",
+            (),
+            {
+                "isError": False,
+                "content": [
+                    type("Text", (), {"text": "  windows/       (1 windows)"})()
+                ],
+            },
+        )()
+        normalized = backend._normalize_tool_result(
+            "domshell_ls",
+            mock_result,
+            {"options": "/"},
+        )
+        assert "entries" in normalized
+        assert normalized["entries"][0]["path"] == "/windows"
+
+    def test_safe_aexit_timeout(self):
+        """关闭超时应被吞掉，避免主流程卡死。"""
+        class SlowContext:
+            async def __aexit__(self, exc_type, exc, tb):
+                await asyncio.sleep(0.05)
+
+        with patch.object(backend, "MCP_CLOSE_TIMEOUT_SECONDS", 0.01):
+            asyncio.run(backend._safe_aexit(SlowContext()))
