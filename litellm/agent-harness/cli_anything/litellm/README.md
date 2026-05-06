@@ -13,6 +13,7 @@ pip install cli-anything-litellm
 ```bash
 cli health
 cli models list
+cli ask "review my repo setup"
 cli config bootstrap --workspace .
 cli task run .litellm/tasks/repair.yaml --workspace .
 cli patch show
@@ -27,3 +28,4 @@ cli patch rollback
 - Expects tasks and flows as repo-local YAML files.
 - Produces both unified diff and action JSON for each patch loop.
 - Defaults to app/workflow editing with auto-apply, repo-scoped safety, and verification after each patch.
+- At the `litellm>` prompt, plain English input is treated as an ad hoc `ask` request.

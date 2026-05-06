@@ -30,6 +30,14 @@ Rules:
 - If no change is needed, return an empty actions list.
 """
 
+ASK_SYSTEM_PROMPT = """You are a pragmatic engineering assistant.
+Answer in plain language.
+If the user asks for repo or workflow help, use the supplied workspace context.
+If the user asks for operating-system diagnostics, be explicit that you cannot inspect
+live system state unless given command output or files, but still give concrete next checks.
+Keep the answer concise and actionable.
+"""
+
 
 def parse_completion_payload(response: dict[str, Any]) -> dict[str, Any]:
     choices = response.get("choices") or []
@@ -199,3 +207,35 @@ def execute_flow(
         )
     status = "completed" if all(result["status"] == "completed" for result in results) else "partial"
     return {"status": status, "results": results}
+
+
+def ask_model(
+    prompt: str,
+    *,
+    workspace: str | Path,
+    host: str,
+    api_key: str | None,
+    model: str,
+    include: list[str] | None = None,
+) -> dict[str, Any]:
+    include = include or []
+    context = collect_context(workspace, include, max_chars=12000) if include else ""
+    user_prompt = f"Workspace: {Path(workspace).resolve()}\nUser request: {prompt}"
+    if context:
+        user_prompt += f"\nRelevant context:\n{context}"
+    response = chat_completion(
+        host,
+        api_key=api_key,
+        model=model,
+        messages=[
+            {"role": "system", "content": ASK_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    choices = response.get("choices") or []
+    if not choices:
+        raise RuntimeError("LiteLLM returned no choices")
+    content = choices[0].get("message", {}).get("content", "").strip()
+    if not content:
+        raise RuntimeError("LiteLLM returned empty content")
+    return {"content": content, "model": model, "workspace": str(Path(workspace).resolve())}

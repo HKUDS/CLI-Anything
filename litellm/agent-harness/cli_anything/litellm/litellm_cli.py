@@ -12,7 +12,7 @@ from typing import Any
 import click
 
 from cli_anything.litellm import __version__
-from cli_anything.litellm.core.execution import execute_flow, execute_task
+from cli_anything.litellm.core.execution import ask_model, execute_flow, execute_task
 from cli_anything.litellm.core.patches import export_patch, rollback_patch
 from cli_anything.litellm.core.session import SessionStore, workspace_session_file
 from cli_anything.litellm.core.taskdefs import load_flow, load_task, validate_definition
@@ -74,6 +74,29 @@ def _handle_error(func):
     return wrapper
 
 
+def _looks_like_command(line: str) -> bool:
+    try:
+        token = shlex.split(line)[0]
+    except (ValueError, IndexError):
+        return False
+    return token in {"help", "exit", "quit", "repl", "models", "health", "config", "task", "flow", "patch", "session", "ask"}
+
+
+def _run_ask(ctx: click.Context, prompt: str) -> None:
+    model = ctx.obj.get("model")
+    if not model:
+        raise RuntimeError("No model configured. Use --model or `config set model <alias>`.")
+    result = ask_model(
+        prompt,
+        workspace=ctx.obj["workspace"],
+        host=ctx.obj["host"],
+        api_key=ctx.obj["api_key"],
+        model=model,
+    )
+    _session(ctx.obj["workspace"]).record("ask", {"prompt": prompt}, result)
+    _output(result if ctx.obj["as_json"] else result["content"], ctx.obj["as_json"], "Assistant")
+
+
 @click.group(context_settings=CONTEXT_SETTINGS, invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True, default=False, help="JSON output")
 @click.option("--host", default=None, help="LiteLLM proxy base URL")
@@ -128,9 +151,14 @@ def repl(ctx: click.Context) -> None:
         if line in {"exit", "quit"}:
             break
         try:
-            cli.main(args=shlex.split(line), standalone_mode=False, obj=ctx.obj)
+            if _looks_like_command(line):
+                cli.main(args=shlex.split(line), standalone_mode=False, obj=ctx.obj)
+            else:
+                _run_ask(ctx, line)
         except SystemExit:
             pass
+        except RuntimeError as exc:
+            error(str(exc))
 
 
 @cli.group()
@@ -154,6 +182,15 @@ def health_cmd(ctx: click.Context) -> None:
     """Check LiteLLM proxy health."""
     result = backend_health(ctx.obj["host"], api_key=ctx.obj["api_key"])
     _output(result, ctx.obj["as_json"], "LiteLLM health")
+
+
+@cli.command("ask")
+@click.argument("prompt", nargs=-1, required=True)
+@click.pass_context
+@_handle_error
+def ask_cmd(ctx: click.Context, prompt: tuple[str, ...]) -> None:
+    """Ask for plain-language help instead of running a task/flow command."""
+    _run_ask(ctx, " ".join(prompt))
 
 
 @cli.group()

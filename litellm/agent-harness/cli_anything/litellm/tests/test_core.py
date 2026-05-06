@@ -193,3 +193,17 @@ class TestCLI:
         result = runner.invoke(cli, ["--json", "health"])
         assert result.exit_code == 0
         assert json.loads(result.output)["status"] == "ok"
+
+    @patch("cli_anything.litellm.litellm_cli.ask_model")
+    def test_ask_command(self, mock_ask, runner, tmp_path):
+        mock_ask.return_value = {"content": "Check Activity Monitor.", "model": "gpt-5.4", "workspace": str(tmp_path)}
+        result = runner.invoke(cli, ["--workspace", str(tmp_path), "ask", "review", "my", "battery"])
+        assert result.exit_code == 0
+        assert "Check Activity Monitor." in result.output
+
+    @patch("cli_anything.litellm.litellm_cli.ask_model")
+    def test_repl_plain_language_routes_to_ask(self, mock_ask, runner, tmp_path):
+        mock_ask.return_value = {"content": "Top consumers are likely browser tabs.", "model": "gpt-5.4", "workspace": str(tmp_path)}
+        result = runner.invoke(cli, ["--workspace", str(tmp_path)], input="review my battery usage\nquit\n")
+        assert result.exit_code == 0
+        assert "Top consumers are likely browser tabs." in result.output
