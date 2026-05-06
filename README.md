@@ -981,6 +981,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 98</td>
 </tr>
 <tr>
+<td align="center"><strong>🛠️ <a href="litellm/agent-harness/">LiteLLM</a></strong></td>
+<td>Agent Execution</td>
+<td><code>cli</code></td>
+<td>LiteLLM proxy-backed app, workflow, and loop editing</td>
+<td align="center">✅ 8</td>
+</tr>
+<tr>
 <td align="center"><strong>🧬 <a href="unimol_tools/agent-harness/">Uni-Mol Tools</a></strong></td>
 <td>Molecular Property Prediction (AI4S)</td>
 <td><code>cli-anything-unimol-tools</code></td>
@@ -1178,6 +1185,7 @@ cli-anything/
 ├── 🧩 dify-workflow/agent-harness/      # Dify Workflow CLI wrapper (11 tests)
 ├── 🛡️ adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
 ├── 🦙 ollama/agent-harness/             # Ollama CLI (98 tests)
+├── 🛠️ litellm/agent-harness/            # LiteLLM CLI (8 tests)
 ├── 🎮 godot/agent-harness/              # Godot Engine CLI (24 tests)
 ├── 📦 sbox/agent-harness/               # s&box CLI (244 tests: 157 unit + 17 orchestrator + 50 e2e + 20 exit-code)
 ├── 🎨 sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)

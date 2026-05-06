@@ -390,6 +390,25 @@
       ]
     },
     {
+      "name": "litellm",
+      "display_name": "LiteLLM",
+      "version": "1.0.0",
+      "description": "Agent execution CLI for LiteLLM proxy-backed app, workflow, and loop editing",
+      "requires": "LiteLLM proxy running at http://localhost:4000 or configured host",
+      "homepage": "https://www.litellm.ai",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=litellm/agent-harness",
+      "entry_point": "cli",
+      "skill_md": "skills/cli-anything-litellm/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
       "name": "obs-studio",
       "display_name": "OBS Studio",
       "version": "1.0.0",

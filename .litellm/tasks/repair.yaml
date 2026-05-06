@@ -1,0 +1,20 @@
+name: repo-repair
+goal: Repair the targeted app or workflow behavior with minimal, robust edits.
+target:
+  include:
+    - litellm/agent-harness/cli_anything/litellm/litellm_cli.py
+    - litellm/agent-harness/cli_anything/litellm/core/execution.py
+    - litellm/agent-harness/cli_anything/litellm/core/taskdefs.py
+steps:
+  - prompt: >
+      Inspect the selected files and apply the smallest correct patch needed to
+      fix the reported behavior. Prefer deterministic edits and preserve the CLI defaults.
+success_criteria:
+  - The reported failure is resolved.
+  - Existing behavior outside the fix remains stable.
+verify:
+  command: python3 -m pytest litellm/agent-harness/cli_anything/litellm/tests/ -q
+max_iterations: 3
+patch_policy:
+  auto_apply: true
+  repo_scoped_only: true

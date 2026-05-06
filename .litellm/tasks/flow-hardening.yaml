@@ -1,0 +1,21 @@
+name: flow-hardening
+goal: Strengthen agent execution flows and retry loops without broad refactors.
+target:
+  include:
+    - litellm/agent-harness/cli_anything/litellm/core/execution.py
+    - litellm/agent-harness/cli_anything/litellm/core/session.py
+    - litellm/agent-harness/cli_anything/litellm/core/patches.py
+steps:
+  - prompt: >
+      Improve orchestration flow safety, loop stop conditions, and patch/session handling.
+      Optimize for stable agent execution behavior and reviewable diffs.
+success_criteria:
+  - Flow iterations stop correctly on success or max iterations.
+  - Repo-scoped patch safety remains enforced.
+  - Session and rollback behavior remain consistent across invocations.
+verify:
+  command: python3 -m pytest litellm/agent-harness/cli_anything/litellm/tests/ -q
+max_iterations: 3
+patch_policy:
+  auto_apply: true
+  repo_scoped_only: true

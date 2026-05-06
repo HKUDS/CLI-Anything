@@ -16,6 +16,11 @@
 !/CONTRIBUTING.md
 !/SECURITY.md
 !/assets/
+!/.litellm/
+!/.litellm/.gitignore
+!/.litellm/README.md
+!/.litellm/tasks/
+!/.litellm/tasks/*.yaml
 !/.pi-extension/
 /.pi-extension/cli-anything/node_modules
 !/.claude-plugin/
@@ -223,6 +228,8 @@
 !/exa/agent-harness/
 !/QGIS/agent-harness/
 !/n8n/agent-harness/
+!/litellm/
+!/litellm/agent-harness/
 !/obsidian/agent-harness/
 !/safari/
 !/safari/agent-harness/
