@@ -77,6 +77,7 @@
 !/rms/
 !/renderdoc/
 !/cloudcompare/
+!/calibre
 !/openscreen/
 !/QGIS/
 !/n8n/
@@ -87,6 +88,7 @@
 !/macrocli/
 !/sbox/
 !/quietshrink/
+
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
