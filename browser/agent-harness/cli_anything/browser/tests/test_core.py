@@ -7,10 +7,12 @@ Usage:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, patch
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page, fs
+from cli_anything.browser.utils import domshell_backend as backend_mod
 
 
 # ── Session Tests ────────────────────────────────────────────────
@@ -387,3 +389,129 @@ class TestDaemonMode:
             result = fs.list_elements(sess)
 
             mock_ls.assert_called_once_with("/", use_daemon=False)
+
+
+class TestBackendTimeouts:
+    """Test backend timeout parsing and behavior."""
+
+    def test_timeout_default_value(self, monkeypatch):
+        """Timeout defaults to safe value when env var is unset."""
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", raising=False)
+        assert backend_mod._get_tool_timeout_seconds() == 20.0
+
+    def test_timeout_invalid_env_falls_back_to_default(self, monkeypatch):
+        """Invalid timeout env var falls back to default."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "not-a-number")
+        assert backend_mod._get_tool_timeout_seconds() == 20.0
+
+    def test_timeout_is_clamped_to_minimum(self, monkeypatch):
+        """Timeout values below 1 second are clamped to 1 second."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "0")
+        assert backend_mod._get_tool_timeout_seconds() == 1.0
+
+    def test_await_with_timeout_passes_fast_calls(self, monkeypatch):
+        """Fast operations should complete without timeout errors."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+
+        async def _fast():
+            return {"ok": True}
+
+        result = asyncio.run(backend_mod._await_with_timeout(_fast(), "unit-test"))
+        assert result == {"ok": True}
+
+    def test_await_with_timeout_raises_runtime_error_on_timeout(self, monkeypatch):
+        """Slow operations should raise actionable RuntimeError."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "1")
+
+        async def _slow():
+            await asyncio.sleep(2)
+            return {"ok": True}
+
+        with pytest.raises(RuntimeError, match="timed out"):
+            asyncio.run(backend_mod._await_with_timeout(_slow(), "unit-test"))
+
+    def test_daemon_timeout_is_not_retried_in_non_daemon_mode(self):
+        """Daemon timeout should reset daemon, bubble up, and avoid duplicate reissue."""
+        class _DummyDaemonSession:
+            def call_tool(self, _tool_name, _arguments):
+                return object()
+
+        original_daemon = backend_mod._daemon_session
+        try:
+            backend_mod._daemon_session = _DummyDaemonSession()
+
+            with patch(
+                "cli_anything.browser.utils.domshell_backend._await_with_timeout",
+                side_effect=backend_mod.MCPToolTimeoutError("timed out"),
+            ) as mock_await, patch(
+                "cli_anything.browser.utils.domshell_backend._stop_daemon",
+                new_callable=AsyncMock,
+            ) as mock_stop, patch(
+                "cli_anything.browser.utils.domshell_backend.stdio_client",
+            ) as mock_stdio:
+                with pytest.raises(RuntimeError, match="timed out"):
+                    asyncio.run(backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=True))
+
+                mock_await.assert_called_once()
+                mock_stop.assert_awaited_once()
+                mock_stdio.assert_not_called()
+        finally:
+            backend_mod._daemon_session = original_daemon
+
+    def test_daemon_runtime_error_falls_back_to_non_daemon_mode(self, monkeypatch):
+        """Non-timeout daemon RuntimeError should stop daemon and fallback once."""
+        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+        class _BrokenDaemonSession:
+            def call_tool(self, _tool_name, _arguments):
+                raise RuntimeError("loop mismatch")
+
+        class _DummyStdioContext:
+            async def __aenter__(self):
+                return object(), object()
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class _DummyClientSession:
+            def __init__(self, _read, _write):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def initialize(self):
+                return object()
+
+            def call_tool(self, _tool_name, _arguments):
+                return object()
+
+        original_daemon = backend_mod._daemon_session
+        try:
+            backend_mod._daemon_session = _BrokenDaemonSession()
+
+            with patch(
+                "cli_anything.browser.utils.domshell_backend._await_with_timeout",
+                side_effect=[None, {"ok": True}],
+            ) as mock_await, patch(
+                "cli_anything.browser.utils.domshell_backend._stop_daemon",
+                new_callable=AsyncMock,
+            ) as mock_stop, patch(
+                "cli_anything.browser.utils.domshell_backend.stdio_client",
+                return_value=_DummyStdioContext(),
+            ) as mock_stdio, patch(
+                "cli_anything.browser.utils.domshell_backend.ClientSession",
+                _DummyClientSession,
+            ):
+                result = asyncio.run(
+                    backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=True)
+                )
+
+                assert result == {"ok": True}
+                mock_stop.assert_awaited_once()
+                assert mock_await.call_count == 2
+                mock_stdio.assert_called_once()
+        finally:
+            backend_mod._daemon_session = original_daemon
