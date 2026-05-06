@@ -51,6 +51,7 @@
 !/zotero/
 !/mubu/
 !/obs-studio/
+!/nslogger/
 !/kdenlive/
 !/shotcut/
 !/anygen/
@@ -105,6 +106,8 @@
 /mubu/.*
 /obs-studio/*
 /obs-studio/.*
+/nslogger/*
+/nslogger/.*
 /kdenlive/*
 /kdenlive/.*
 /shotcut/*
@@ -191,6 +194,7 @@
 !/zotero/agent-harness/
 !/mubu/agent-harness/
 !/obs-studio/agent-harness/
+!/nslogger/agent-harness/
 !/kdenlive/agent-harness/
 !/shotcut/agent-harness/
 !/anygen/agent-harness/
