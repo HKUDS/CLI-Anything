@@ -10,7 +10,7 @@ import click
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_all_clis, get_cli, search_clis, list_categories
-from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli
+from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli, install_all
 from cli_hub.analytics import (
     detect_invocation_context,
     track_first_run,
@@ -100,6 +100,50 @@ def uninstall(name):
         click.secho(f"✓ {msg}", fg="green")
     else:
         click.secho(f"✗ {msg}", fg="red", err=True)
+        raise SystemExit(1)
+
+
+@main.command("install-all")
+def install_all_cmd():
+    """Install all available CLIs from the registry."""
+    try:
+        all_clis = fetch_all_clis()
+    except Exception as e:
+        click.secho(f"Failed to fetch registry: {e}", fg="red", err=True)
+        raise SystemExit(1)
+
+    if not all_clis:
+        click.echo("No CLIs found in the registry.")
+        return
+
+    total = len(all_clis)
+    succeeded = 0
+    failed = 0
+    failed_names = []
+
+    click.echo(f"Installing {total} CLIs...\n")
+
+    for i, cli in enumerate(all_clis, 1):
+        name = cli["name"]
+        display = cli.get("display_name", name)
+        click.echo(f"  [{i}/{total}] {display} ({name})... ", nl=False)
+
+        success, msg = install_cli(name)
+
+        if success:
+            succeeded += 1
+            click.secho("✓", fg="green")
+            track_install(name, cli.get("version", "unknown"))
+        else:
+            failed += 1
+            failed_names.append(name)
+            click.secho(f"✗ {msg}", fg="red")
+
+    click.echo()
+    click.echo(f"  Done: {succeeded} succeeded, {failed} failed out of {total}")
+
+    if failed_names:
+        click.echo(f"  Failed: {', '.join(failed_names)}")
         raise SystemExit(1)
 
 
