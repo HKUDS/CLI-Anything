@@ -47,7 +47,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 
 ## 📰 News
 
-> Thanks to all invaluable efforts from the community! More updates continuously on the way everyday..
+> Thanks to all invaluable efforts from the community! More updates are continuously on the way every day.
 
 - **2026-04-18** 🧩 **All SKILL.md files are now being unified under the top-level `skills/` directory** — every CLI skill can be installed from one canonical source with `npx skills add HKUDS/CLI-Anything --skill <skill-name> -g -y`. We also added root-skill validation CI, synced contribution / PR docs and REPL skill-path hints to the new layout, and refreshed the **CLI-Hub** install-first frontend around the new `npx skills` flow.
 
