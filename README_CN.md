@@ -94,7 +94,7 @@ CLI-Anything 以 Claude Code 插件市场的形式托管在 GitHub 上。
 /cli-anything ./gimp
 
 # 兼容写法（旧版本 Claude Code 可重试）
-# /cli-anything:cli-anything ./gimp
+/cli-anything:cli-anything ./gimp
 ```
 
 Claude Code 不同版本的命令兼容说明：
