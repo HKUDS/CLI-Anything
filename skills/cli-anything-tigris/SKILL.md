@@ -2,33 +2,34 @@
 name: >-
   cli-anything-tigris
 description: >-
-  Command-line interface for Tigris object storage — a globally distributed, S3-compatible blob store with no egress fees. Manage buckets, upload/download objects, generate presigned URLs. Designed for AI agents and automation via the S3 API.
+  Command-line interface for Tigris object storage — wraps the official `tigris` CLI to expose buckets, objects, presigned URLs, snapshots, IAM, and scoped access keys to AI agents. Globally distributed, S3-compatible, no egress fees.
 ---
 
 # cli-anything-tigris
 
-A stateless command-line interface for [Tigris](https://www.tigrisdata.com) object storage, built on the S3-compatible API via boto3. Designed for AI agents and power users who need to push artifacts to durable global storage without a browser UI.
+A stateless command-line interface for [Tigris](https://www.tigrisdata.com)
+object storage. Wraps the official `tigris` CLI so every Tigris primitive
+(snapshots, IAM, scoped credentials, OAuth) is reachable through a single
+agent-friendly entry point with `--json` everywhere.
 
 ## Installation
 
 ```bash
+# 1. Install the underlying Tigris CLI
+npm install -g @tigrisdata/cli
+# or:
+brew install tigrisdata/tap/tigris
+
+# 2. Authenticate (browser OAuth)
+tigris login
+
+# 3. Install this harness
 pip install cli-anything-tigris
 ```
 
 **Prerequisites:**
 - Python 3.10+
-- A Tigris account and access key — sign up at [storage.new](https://storage.new)
-
-## Credentials
-
-The CLI reads credentials from environment variables in this order:
-
-1. `TIGRIS_STORAGE_ACCESS_KEY_ID` / `TIGRIS_STORAGE_SECRET_ACCESS_KEY` (Tigris-specific)
-2. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (standard AWS chain)
-
-You can also pass `--access-key` / `--secret-key` directly on the command line.
-
-The default endpoint is `https://t3.storage.dev`. Override with `--endpoint` if you're on a regional URL.
+- `tigris` CLI on PATH (the binary's alias is `t3`)
 
 ## Usage
 
@@ -41,85 +42,142 @@ cli-anything-tigris --help
 # Start interactive REPL
 cli-anything-tigris
 
-# List buckets (JSON output for agents)
+# Whoami (JSON output for agents)
+cli-anything-tigris --json auth whoami
+
+# List buckets
 cli-anything-tigris --json bucket list
 
 # Upload a local file
 cli-anything-tigris --json object put --bucket my-bucket --key path/to/file.txt --file ./local.txt
 
-# Download an object to a local path
+# Download an object
 cli-anything-tigris --json object get --bucket my-bucket --key path/to/file.txt --output ./out.txt
 
-# Generate a presigned download URL (1 hour)
+# Server-side copy
+cli-anything-tigris --json object cp t3://my-bucket/src.txt t3://my-bucket/dst.txt
+
+# Take a snapshot
+cli-anything-tigris --json snapshot take my-bucket --name baseline-v1
+
+# Create a scoped access key for an agent run
+cli-anything-tigris --json access-key create my-agent-key
+cli-anything-tigris --json access-key assign tid_AaBb --bucket my-bucket --role Editor
+
+# Presigned download URL (1 hour)
 cli-anything-tigris --json presign get --bucket my-bucket --key path/to/file.txt --expires 3600
 ```
 
 ### REPL Mode
 
-When invoked without a subcommand, the CLI enters an interactive REPL with tab-completion and history.
+When invoked without a subcommand, the CLI enters an interactive REPL with
+tab-completion and history.
 
 ## Command Groups
 
+### auth
+OAuth-based authentication.
+
+| Command | Description |
+|---------|-------------|
+| `login` | Browser OAuth login (`tigris login`) |
+| `logout` | Log out of current session |
+| `whoami` | Print authenticated user / org |
+
 ### bucket
-Manage Tigris buckets.
+Bucket CRUD.
 
 | Command | Description |
 |---------|-------------|
 | `list` | List all buckets |
-| `create --name NAME` | Create a new bucket |
+| `create --name NAME` | Create a bucket |
 | `delete --name NAME` | Delete an empty bucket |
 | `info NAME` | Get bucket info |
 
 ### object
-Manage objects within buckets.
+Object operations (wraps `tigris ls/cp/rm/stat`).
 
 | Command | Description |
 |---------|-------------|
-| `list --bucket B [--prefix P] [--limit N]` | List objects in a bucket |
+| `list --bucket B [--prefix P] [--limit N]` | List objects |
 | `put --bucket B --key K (--file F \| --text T)` | Upload an object |
-| `get --bucket B --key K [--output F]` | Download an object |
+| `get --bucket B --key K --output F` | Download an object |
 | `delete --bucket B --key K` | Delete an object |
-| `info --bucket B --key K` | Get object metadata (HEAD) |
-| `cp SRC DST` | Copy between local paths and `tigris://bucket/key` |
+| `info --bucket B --key K` | Object metadata (HEAD / stat) |
+| `cp SRC DST [-r]` | Copy. Accepts `t3://` or `tigris://` URIs. |
 
 ### presign
-Generate presigned URLs for time-limited object access.
+Time-limited URLs.
 
 | Command | Description |
 |---------|-------------|
 | `get --bucket B --key K [--expires SEC]` | Presigned download URL |
 | `put --bucket B --key K [--expires SEC]` | Presigned upload URL |
 
+### snapshot
+Point-in-time bucket snapshots — a Tigris-specific primitive.
+
+| Command | Description |
+|---------|-------------|
+| `list BUCKET` | List snapshots for a bucket |
+| `take BUCKET [--name N]` | Take a snapshot |
+
+### access-key
+Scoped programmatic credentials — combine with `snapshot` for per-agent isolation.
+
+| Command | Description |
+|---------|-------------|
+| `list` | List all access keys |
+| `create NAME` | Create a new access key (secret shown ONCE) |
+| `get KEY_ID` | Show key details |
+| `delete KEY_ID` | Permanently delete a key |
+| `assign KEY_ID --bucket B --role R` | Scope a key to a bucket + role |
+| `rotate KEY_ID` | Rotate a key's secret |
+
+### iam
+Policies and organization users.
+
+| Command | Description |
+|---------|-------------|
+| `policy list` | List IAM policies |
+| `policy create NAME --document FILE` | Create a policy from a JSON file |
+| `user list` | List org users |
+| `user invite EMAIL [--role R]` | Invite a user |
+
 ## Output Formats
 
 All commands support dual output modes:
 
 - **Human-readable** (default): tables, colors, formatted text
-- **Machine-readable** (`--json` flag): structured JSON for agent consumption
-
-```bash
-# Human output
-cli-anything-tigris bucket list
-
-# JSON for agents
-cli-anything-tigris --json bucket list
-```
+- **Machine-readable** (`--json`): JSON envelope (or upstream CLI's
+  `--format json` output, echoed verbatim)
 
 ## For AI Agents
 
 When using this CLI programmatically:
 
-1. **Always use `--json`** for parseable output.
-2. **Check return codes** — 0 for success, non-zero for errors.
-3. **Parse stderr** for error messages on failure.
-4. **`object cp` accepts `tigris://bucket/key` URIs** — server-side copies (tigris → tigris) skip the round-trip entirely.
-5. **`presign get/put` returns a URL on stdout** in human mode; in JSON mode it's the `url` field.
+1. Always pass `--json` for parseable output.
+2. Check return codes — 0 for success, non-zero for errors.
+3. Read stderr for error messages.
+4. `object cp` accepts `t3://bucket/key` or `tigris://bucket/key` URIs;
+   server-side copies (t3 → t3) skip the round trip entirely.
+5. `presign` returns a URL on stdout in human mode; in JSON mode it's the
+   `url` field.
+6. **For destructive work**: take a `snapshot` of the target bucket first,
+   then do the work, then either keep the snapshot or discard.
+7. **For per-agent isolation**: `access-key create` + `access-key assign
+   --bucket B --role Editor` to mint a key scoped to one bucket; revoke with
+   `access-key delete` when the agent run ends.
 
 ## Why Tigris
 
-- **Globally distributed.** Data is automatically placed close to wherever it's read; no manual region configuration.
-- **No egress fees.** Agents pulling artifacts from anywhere in the world don't incur per-region bandwidth charges.
-- **S3-compatible.** Drops in alongside boto3, `mountpoint-s3`, and any other S3-aware tool.
+- **Globally distributed.** Data placed close to wherever it's read.
+- **No egress fees.** Agents pulling artifacts from anywhere don't incur
+  per-region bandwidth charges.
+- **Snapshots + scoped credentials.** Primitives generic S3-compatible
+  providers don't ship — the foundation for per-agent isolation.
+- **S3-compatible.** Drops in alongside boto3, `mountpoint-s3`, and any
+  other S3-aware tool.
 
 ## Version
 

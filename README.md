@@ -1106,9 +1106,9 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 <tr>
 <td align="center"><strong>🗄️ <a href="tigris/agent-harness/">Tigris</a></strong></td>
-<td>Object Storage (S3-compatible, global, no egress)</td>
+<td>Object Storage (S3-compatible, global, no egress) — buckets, objects, snapshots, IAM, access keys</td>
 <td><code>cli-anything-tigris</code></td>
-<td>boto3 + Tigris S3 API</td>
+<td>subprocess wrapping the official <code>tigris</code> CLI</td>
 <td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
 </tr>
 <tr>

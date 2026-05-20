@@ -1,14 +1,16 @@
-# Tigris CLI — Test Plan
+# Tigris CLI Harness — Test Plan
 
 ## Layout
 
-- `test_core.py` — unit tests for the `TigrisBackend` wrapper and the Click CLI
-  commands. **boto3 is fully mocked** — these tests run without a Tigris account
-  or network access, and are safe to run in any CI environment.
-- `test_full_e2e.py` — *(not included in MVP)* end-to-end tests against a real
-  Tigris account. Requires `TIGRIS_STORAGE_ACCESS_KEY_ID` and
-  `TIGRIS_STORAGE_SECRET_ACCESS_KEY` plus a writable test bucket. See "Adding
-  e2e tests" below.
+- `test_core.py` — unit tests for the `TigrisBackend` subprocess wrapper and
+  the Click CLI. `subprocess.run` is fully mocked, and `shutil.which` is
+  patched at module load so the backend believes `tigris` is on PATH. These
+  tests run with **no `tigris` CLI installed and no network access** — safe
+  for any CI environment.
+- `test_full_e2e.py` — real-world tests that shell out to the actual `tigris`
+  CLI against a real bucket. **Skipped by default**; gated on the
+  `CLI_ANYTHING_TIGRIS_RUN_E2E` env var plus `tigris` being on PATH plus a
+  configured test bucket.
 
 ## Running unit tests
 
@@ -18,39 +20,46 @@ pip install -e .[dev]
 pytest cli_anything/tigris/tests/test_core.py -v
 ```
 
-All tests should pass without any Tigris credentials or network access.
+All tests should pass with no Tigris CLI and no credentials.
 
-## Coverage areas
-
-The unit tests cover:
+## Coverage areas (unit tests)
 
 | Area | Tests |
 |------|-------|
-| `TigrisBackend.list_buckets` | response shape, ISO date formatting |
-| `TigrisBackend.create_bucket` / `delete_bucket` | boto3 args, return shape |
-| `TigrisBackend.head_bucket` | endpoint passthrough |
-| `TigrisBackend.list_objects` | prefix + limit args, etag quote stripping |
-| `TigrisBackend.put_object` | inline bytes + content-type |
-| `TigrisBackend.get_object` | body read |
-| `TigrisBackend.head_object` | metadata shape |
-| `TigrisBackend.copy_object` | CopySource shape |
-| `TigrisBackend.presign_get` / `presign_put` | URL passthrough, content-type |
-| CLI: `bucket list --json` | exit code + JSON output |
-| CLI: `object put` without `--file`/`--text` | error path |
-| CLI: `presign get --json` | URL in output |
-| URI parsing: `_parse_tigris_uri` | happy path + rejection cases |
+| URI/path helpers (`_path_to_t3`, `_parse_tigris_uri`) | scheme normalization, happy + reject paths |
+| Backend init | binary resolution via `shutil.which`, missing-binary error, env-var export for credentials |
+| Bucket ops | `list/create/delete/head` invoke `tigris buckets …` with correct args + `--format json` |
+| Object ops | `list` (with prefix + client-side limit), `cp` (with `--recursive`), `put_from_file`, `put_inline` (tempfile path), `delete` (uses `rm --yes`), `head` (uses `stat`) |
+| Presign | flags forwarded, URL extracted from JSON dict, fallback parse from raw string |
+| Snapshots | `list/take` invoke `tigris snapshots …` |
+| Access keys | `list/create/get/delete/assign/rotate` flag wiring |
+| IAM | `policies list/create`, `users list/invite` flag wiring |
+| Error path | non-zero exit code raises `TigrisCliError` with stderr |
+| CLI integration | `--json` output works for bucket/object/presign/snapshot/access-key/auth; `object put` without `--file`/`--text` errors; `object cp` with no `t3://` errors |
 
-## Adding e2e tests
+## Running e2e tests
 
-To extend with real-Tigris e2e:
+```bash
+# Install + auth
+npm install -g @tigrisdata/cli     # or: brew install tigrisdata/tap/tigris
+tigris login
 
-1. Create a test bucket in your Tigris account.
-2. Set env vars: `TIGRIS_STORAGE_ACCESS_KEY_ID`, `TIGRIS_STORAGE_SECRET_ACCESS_KEY`,
-   `CLI_ANYTHING_TIGRIS_TEST_BUCKET`.
-3. Add `test_full_e2e.py` with `@pytest.mark.e2e` markers that put / get / delete
-   real objects. Use unique per-run key prefixes (UUIDs) and clean up in
-   teardown.
-4. Skip e2e tests in CI by default (`@pytest.mark.skipif(not os.getenv("RUN_E2E"))`).
+# Configure
+export CLI_ANYTHING_TIGRIS_TEST_BUCKET=<your-test-bucket>
+export CLI_ANYTHING_TIGRIS_RUN_E2E=1
 
-E2e tests are intentionally omitted from the MVP to keep the install / CI path
-zero-friction.
+# Run
+pytest cli_anything/tigris/tests/test_full_e2e.py -v
+```
+
+E2e tests cover:
+
+- `whoami` returns a non-empty session
+- `list_buckets` includes the configured test bucket
+- put / get / head / list / delete round trip for a single object
+- presigned URL is well-formed and includes the key's last segment
+- `snapshots list` succeeds against the test bucket
+
+Each test uses a per-run UUID prefix for keys to avoid collisions when
+multiple devs / CI runners hit the same bucket. Cleanup happens in
+`finally` blocks so partial failures don't leave litter.

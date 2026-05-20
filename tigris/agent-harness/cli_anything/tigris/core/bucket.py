@@ -3,20 +3,20 @@
 import json as json_mod
 import click
 
-from ..utils.tigris_backend import TigrisBackend
+from ..utils.tigris_backend import TigrisBackend, TigrisCliError
 
 
 @click.group("bucket")
 @click.pass_context
 def bucket_group(ctx):
-    """Manage Tigris buckets."""
+    """Manage Tigris buckets (wraps `tigris buckets`)."""
     pass
 
 
 @bucket_group.command("list")
 @click.pass_context
 def list_buckets(ctx):
-    """List all buckets."""
+    """List all buckets in the current organization."""
     backend: TigrisBackend = ctx.obj["backend"]
     use_json = ctx.obj.get("json", False)
     skin = ctx.obj.get("skin")
@@ -28,14 +28,19 @@ def list_buckets(ctx):
             if not buckets:
                 skin.info("No buckets found.")
                 return
-            headers = ["Name", "Created"]
-            rows = [[b["name"], b["created"]] for b in buckets]
-            skin.table(headers, rows)
-    except Exception as e:
-        if use_json:
-            click.echo(json_mod.dumps({"error": str(e)}, indent=2))
-        else:
-            skin.error(f"Failed to list buckets: {e}")
+            if isinstance(buckets, list):
+                # Normalize to a couple of expected fields if present.
+                rows = []
+                headers = ["Name", "Created"]
+                for b in buckets:
+                    name = b.get("name") or b.get("Name") or "?"
+                    created = b.get("created") or b.get("CreationDate") or ""
+                    rows.append([name, str(created)])
+                skin.table(headers, rows)
+            else:
+                click.echo(buckets)
+    except TigrisCliError as e:
+        _emit_error(use_json, skin, f"Failed to list buckets: {e}")
         raise SystemExit(1)
 
 
@@ -50,36 +55,32 @@ def create_bucket(ctx, name):
     try:
         result = backend.create_bucket(name)
         if use_json:
-            click.echo(json_mod.dumps(result, indent=2))
+            click.echo(json_mod.dumps(result or {"name": name, "status": "created"}, indent=2))
         else:
             skin.success(f"Bucket '{name}' created")
-    except Exception as e:
-        if use_json:
-            click.echo(json_mod.dumps({"error": str(e)}, indent=2))
-        else:
-            skin.error(f"Failed to create bucket: {e}")
+    except TigrisCliError as e:
+        _emit_error(use_json, skin, f"Failed to create bucket: {e}")
         raise SystemExit(1)
 
 
 @bucket_group.command("delete")
 @click.option("--name", required=True, help="Bucket name to delete")
+@click.option("--yes", is_flag=True, default=True,
+              help="Skip the CLI's interactive confirmation (default: true)")
 @click.pass_context
-def delete_bucket(ctx, name):
+def delete_bucket(ctx, name, yes):
     """Delete an empty bucket."""
     backend: TigrisBackend = ctx.obj["backend"]
     use_json = ctx.obj.get("json", False)
     skin = ctx.obj.get("skin")
     try:
-        result = backend.delete_bucket(name)
+        result = backend.delete_bucket(name, yes=yes)
         if use_json:
-            click.echo(json_mod.dumps(result, indent=2))
+            click.echo(json_mod.dumps(result or {"name": name, "status": "deleted"}, indent=2))
         else:
             skin.success(f"Bucket '{name}' deleted")
-    except Exception as e:
-        if use_json:
-            click.echo(json_mod.dumps({"error": str(e)}, indent=2))
-        else:
-            skin.error(f"Failed to delete bucket: {e}")
+    except TigrisCliError as e:
+        _emit_error(use_json, skin, f"Failed to delete bucket: {e}")
         raise SystemExit(1)
 
 
@@ -87,21 +88,30 @@ def delete_bucket(ctx, name):
 @click.argument("name")
 @click.pass_context
 def bucket_info(ctx, name):
-    """Get info about a bucket."""
+    """Get info about a bucket (`tigris buckets get`)."""
     backend: TigrisBackend = ctx.obj["backend"]
     use_json = ctx.obj.get("json", False)
     skin = ctx.obj.get("skin")
     try:
         info = backend.head_bucket(name)
         if use_json:
-            click.echo(json_mod.dumps(info, indent=2))
+            click.echo(json_mod.dumps(info or {"name": name}, indent=2))
         else:
             skin.section(f"Bucket: {name}")
-            skin.status("Exists", str(info.get("exists", False)))
-            skin.status("Endpoint", info.get("endpoint", "?"))
-    except Exception as e:
-        if use_json:
-            click.echo(json_mod.dumps({"error": str(e)}, indent=2))
-        else:
-            skin.error(f"Failed to get bucket info: {e}")
+            if isinstance(info, dict):
+                for k, v in info.items():
+                    skin.status(k, str(v))
+            else:
+                click.echo(info)
+    except TigrisCliError as e:
+        _emit_error(use_json, skin, f"Failed to get bucket info: {e}")
         raise SystemExit(1)
+
+
+def _emit_error(use_json: bool, skin, message: str) -> None:
+    if use_json:
+        click.echo(json_mod.dumps({"error": message}, indent=2))
+    elif skin:
+        skin.error(message)
+    else:
+        click.echo(message, err=True)
