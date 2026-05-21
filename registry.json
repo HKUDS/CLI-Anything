@@ -447,6 +447,25 @@
       ]
     },
     {
+      "name": "shopify",
+      "display_name": "Shopify",
+      "version": "1.0.0",
+      "description": "Manage Shopify themes, apps, Hydrogen storefronts, and store operations via the official @shopify/cli",
+      "requires": "Node.js with @shopify/cli (npm install -g @shopify/cli)",
+      "homepage": "https://shopify.dev/docs/cli",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=shopify/agent-harness",
+      "entry_point": "cli-anything-shopify",
+      "skill_md": "skills/cli-anything-shopify/SKILL.md",
+      "category": "ecommerce",
+      "contributors": [
+        {
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
       "name": "shotcut",
       "display_name": "Shotcut",
       "version": "1.0.0",
@@ -1031,6 +1050,25 @@
       ]
     },
     {
+      "name": "universal-image-converter",
+      "display_name": "Universal Image Converter",
+      "version": "1.0.0",
+      "description": "Batch image format conversion via Pillow — convert between PNG, JPEG, WebP, TIFF, BMP, ICO, GIF with resize and quality presets",
+      "requires": null,
+      "homepage": "https://github.com/Jesikurr/Universal-Image-Converter",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=universal-image-converter/agent-harness",
+      "entry_point": "cli-anything-universal-image-converter",
+      "skill_md": "skills/cli-anything-universal-image-converter/SKILL.md",
+      "category": "image",
+      "contributors": [
+        {
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
       "name": "ve-twini",
       "display_name": "VE Twini",
       "version": "1.0.0",
@@ -1141,6 +1179,25 @@
         {
           "name": "iGodly",
           "url": "https://github.com/iGodly"
+        }
+      ]
+    },
+    {
+      "name": "cli-anything-hub",
+      "display_name": "CLI-Anything Hub",
+      "version": "0.3.0",
+      "description": "Package manager for CLI-Anything — browse, install, update, and manage 40+ agent-native CLI interfaces for GUI applications",
+      "requires": "Python >= 3.10",
+      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "source_url": null,
+      "install_cmd": "pip install cli-anything-hub",
+      "entry_point": "cli-hub",
+      "skill_md": "skills/cli-hub-meta-skill/SKILL.md",
+      "category": "meta",
+      "contributors": [
+        {
+          "name": "HKUDS",
+          "url": "https://github.com/HKUDS"
         }
       ]
     }

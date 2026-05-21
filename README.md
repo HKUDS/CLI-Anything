@@ -1206,6 +1206,7 @@ cli-anything/
 ├── 🎬 openscreen/agent-harness/         # Openscreen CLI — screen recording editor (101 tests)
 ├── ☁️ cloudcompare/agent-harness/       # CloudCompare CLI (88 tests)
 ├── 🔍 exa/agent-harness/               # Exa CLI (40 tests)
+├── 🖼️ universal-image-converter/agent-harness/  # Universal Image Converter CLI (49 tests)
 └── ⛅ cloudanalyzer/agent-harness/      # CloudAnalyzer CLI (14 tests)
 ```
 
