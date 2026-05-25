@@ -6,6 +6,25 @@
   },
   "clis": [
     {
+      "name": "cc-switch",
+      "display_name": "CC Switch",
+      "version": "1.0.0",
+      "description": "Manage AI coding tool configurations - inspect providers, skills, MCP servers, usage stats, and proxy settings",
+      "requires": "CC Switch installed with active database",
+      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cc-switch/agent-harness",
+      "entry_point": "cli-anything-ccswitch",
+      "skill_md": "skills/cli-anything-ccswitch/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "computersniper",
+          "url": "https://github.com/computersniper"
+        }
+      ]
+    },
+    {
       "name": "wiremock",
       "display_name": "WireMock",
       "version": "0.1.0",
