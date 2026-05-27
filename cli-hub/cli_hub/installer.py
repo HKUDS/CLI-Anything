@@ -368,18 +368,6 @@ def update_cli(name):
     return success, msg
 
 
-def install_all(force_refresh=False):
-    """Install all CLIs from the registry. Returns list of (name, success, message) tuples."""
-    from cli_hub.registry import fetch_all_clis
-    all_clis = fetch_all_clis(force_refresh)
-    results = []
-    for cli in all_clis:
-        name = cli["name"]
-        success, msg = install_cli(name)
-        results.append((name, success, msg))
-    return results
-
-
 def get_installed():
     """Return dict of installed CLIs."""
     return _load_installed()
