@@ -2006,6 +2006,8 @@ def runtime_check(model_path: str, target: str):
 
     if _json_output:
         output({"model": str(info.path), "target": target, "issues": [{"level": l, "scope": s, "msg": m} for l, s, m in issues]})
+        if any(l == "error" for l, _, _ in issues):
+            sys.exit(1)
         return
 
     click.echo(f"\n  🔧 Runtime Check: {info.path.name}  (target: {target})\n")
