@@ -11,6 +11,7 @@ class MotionRef:
     file: str
     fade_in: float = 0.0
     fade_out: float = 0.0
+    extra: dict = field(default_factory=dict)  # preserve unknown fields (Sound, MetaInfo, etc.)
 
 
 @dataclass
@@ -104,10 +105,12 @@ def load_model(path: Path) -> ModelInfo:
     for group_name, motions in refs.get("Motions", {}).items():
         info.motions[group_name] = []
         for m in motions:
+            extra = {k: v for k, v in m.items() if k not in ("File", "FadeInTime", "FadeOutTime")}
             info.motions[group_name].append(MotionRef(
                 file=m.get("File", ""),
                 fade_in=m.get("FadeInTime", 0),
                 fade_out=m.get("FadeOutTime", 0),
+                extra=extra,
             ))
 
     # Groups
@@ -142,10 +145,12 @@ def save_model(info: ModelInfo, path: Path | None = None) -> Path:
     # Motions
     motions_out = {}
     for group_name, motion_list in info.motions.items():
-        motions_out[group_name] = [
-            {"File": m.file, "FadeInTime": m.fade_in, "FadeOutTime": m.fade_out}
-            for m in motion_list
-        ]
+        entries = []
+        for m in motion_list:
+            entry = {"File": m.file, "FadeInTime": m.fade_in, "FadeOutTime": m.fade_out}
+            entry.update(m.extra)  # preserve Sound, MetaInfo, etc.
+            entries.append(entry)
+        motions_out[group_name] = entries
     refs["Motions"] = motions_out
 
     # Groups
