@@ -70,24 +70,32 @@ def package_model(info: ModelInfo, output_path: Path, include_motions: bool = Tr
         phys_path = model_dir / info.physics
         if phys_path.exists():
             files.add(phys_path)
+        else:
+            result.missing_files.append(info.physics)
 
     # Pose
     if info.pose:
         pose_path = model_dir / info.pose
         if pose_path.exists():
             files.add(pose_path)
+        else:
+            result.missing_files.append(info.pose)
 
     # UserData
     if info.userdata:
         ud_path = model_dir / info.userdata
         if ud_path.exists():
             files.add(ud_path)
+        else:
+            result.missing_files.append(info.userdata)
 
     # DisplayInfo
     if info.display_info:
         di_path = model_dir / info.display_info
         if di_path.exists():
             files.add(di_path)
+        else:
+            result.missing_files.append(info.display_info)
 
     # Motions
     if include_motions:
