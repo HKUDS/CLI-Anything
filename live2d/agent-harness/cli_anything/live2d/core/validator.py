@@ -57,11 +57,11 @@ def validate_model(
 
     # Moc3
     moc3_path = check(info.moc3, "Moc3")
-    if moc3_path:
+    if moc3_path and strict:
         moc3 = load_moc3(moc3_path)
         if not moc3.valid:
             result.errors.append(f"Invalid Moc3 header: {info.moc3}")
-        elif strict and moc3.file_size < min_moc3_size:
+        elif moc3.file_size < min_moc3_size:
             result.errors.append(
                 f"Moc3 too small: {info.moc3} ({moc3.file_size}B, minimum {min_moc3_size}B)"
             )
