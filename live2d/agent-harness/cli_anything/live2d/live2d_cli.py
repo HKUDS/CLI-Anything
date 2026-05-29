@@ -1875,13 +1875,29 @@ def flatten(model_path: str, out_dir: str, dry_run: bool):
             if p.exists():
                 files.append((p, Path(ref).name))
 
-    # Deduplicate
-    seen = set()
+    # Deduplicate and detect collisions
+    seen = {}  # name -> original source path
     unique_files = []
+    collisions = []
     for src, name in files:
-        if name not in seen and src.exists():
-            seen.add(name)
+        if not src.exists():
+            continue
+        if name in seen:
+            if seen[name] != src:
+                collisions.append((name, seen[name], src))
+        else:
+            seen[name] = src
             unique_files.append((src, name))
+
+    if collisions:
+        click.echo(f"\n  ❌ Basename collisions detected:\n")
+        for name, a, b in collisions:
+            click.echo(f"     {name}:")
+            click.echo(f"       {a.relative_to(model_dir)}")
+            click.echo(f"       {b.relative_to(model_dir)}")
+        click.echo(f"\n  Cannot flatten — rename files to avoid collisions first.")
+        click.echo()
+        sys.exit(1)
 
     if _json_output:
         output({"files": len(unique_files), "out_dir": str(out), "entries": [n for _, n in unique_files]})
@@ -1980,11 +1996,12 @@ def runtime_check(model_path: str, target: str):
 
     # Yoyo checks
     if target in ("yoyo", "all"):
-        if "Idle" not in info.motions:
+        # Normalize: accept both "Idle" and "idle"
+        yoyo_idle = info.motions.get("Idle") or info.motions.get("idle")
+        if not yoyo_idle:
             issues.append(("error", "yoyo", "No Idle group (required for Yoyo)"))
         else:
-            idle = info.motions["Idle"]
-            if not any(m.fade_in <= 0.5 for m in idle):
+            if not any(m.fade_in <= 0.5 for m in yoyo_idle):
                 issues.append(("warning", "yoyo", "Idle motions should have fast fade-in (≤0.5s)"))
 
     if _json_output:
