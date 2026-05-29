@@ -129,7 +129,7 @@ def load_physics(path: Path) -> PhysicsInfo:
                 weight=out.get("Weight", 1.0),
             ))
 
-        for vert in setting_data.get("Vertex", []):
+        for vert in setting_data.get("Vertices", setting_data.get("Vertex", [])):
             setting.vertices.append(PhysicsVertex(
                 position=vert.get("Position", {}),
                 mobility=vert.get("Mobility", 0),
