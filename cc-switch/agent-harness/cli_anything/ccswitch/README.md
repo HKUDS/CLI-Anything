@@ -1,6 +1,6 @@
 # CC Switch CLI - Agent Harness
 
-A read-only CLI interface for CC Switch, a desktop app that manages AI coding
+A CLI interface for CC Switch, a desktop app that manages AI coding
 tool configurations across Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw,
 and Hermes. Reads directly from the live CC Switch SQLite database.
 
@@ -24,6 +24,7 @@ Requires CC Switch installed with an active database at `~/.cc-switch/cc-switch.
 ```bash
 # Status overview
 cli-anything-ccswitch
+cli-anything-ccswitch status
 
 # List all providers
 cli-anything-ccswitch providers list
@@ -71,6 +72,7 @@ cli-anything-ccswitch --json providers get <id> --app claude
 
 | Group | Description |
 |-------|-------------|
+| `status` | Show a quick database overview |
 | `providers` | Manage AI provider configurations (list, get, set-current) |
 | `proxy` | Manage the local HTTP proxy server (status, config) |
 | `mcp` | Manage MCP servers (list, enable) |

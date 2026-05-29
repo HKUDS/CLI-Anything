@@ -17,7 +17,7 @@ from cli_anything.ccswitch.utils.db import (
     VALID_APP_TYPES,
 )
 from cli_anything.ccswitch.ccswitch_cli import (
-    _resolve_app, _table, _mask_sensitive,
+    _resolve_app, _table, _mask_sensitive, _mask_value, _write_live_config,
 )
 
 
@@ -166,9 +166,13 @@ def test_mask_password():
     assert "mysec" in result or "***" in result
 
 
+def test_mask_hotkey_is_not_treated_as_secret():
+    assert _mask_sensitive("hotkey", "ctrl+k") == "ctrl+k"
+
+
 def test_mask_short_value():
     result = _mask_sensitive("secret", "abc")
-    assert "***" in result
+    assert result == "***"
 
 
 def test_mask_non_sensitive():
@@ -193,6 +197,31 @@ def test_mask_nested_dict():
 # CLI help tests
 # ───────────────────────────
 
+def test_mask_value_nested_json():
+    result = _mask_value({
+        "env": {
+            "ANTHROPIC_AUTH_TOKEN": "sk-test1234567890",
+            "ANTHROPIC_MODEL": "deepseek-v4-pro",
+        },
+        "headers": [
+            {"authorization": "Bearer abcdef1234567890"},
+        ],
+    })
+
+    assert result["env"]["ANTHROPIC_AUTH_TOKEN"] != "sk-test1234567890"
+    assert result["env"]["ANTHROPIC_MODEL"] == "deepseek-v4-pro"
+    assert result["headers"][0]["authorization"] != "Bearer abcdef1234567890"
+
+
+def test_mask_sensitive_nested_list():
+    result = _mask_sensitive("headers", [
+        {"authorization": "Bearer abcdef1234567890"},
+    ])
+
+    assert "Bearer abcdef1234567890" not in result
+    assert "headers" not in result
+
+
 from click.testing import CliRunner
 from cli_anything.ccswitch.ccswitch_cli import cli
 
@@ -200,6 +229,340 @@ from cli_anything.ccswitch.ccswitch_cli import cli
 @pytest.fixture
 def runner():
     return CliRunner()
+
+
+def _init_cli_db(path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE providers (
+            id TEXT,
+            app_type TEXT,
+            name TEXT,
+            category TEXT,
+            is_current INTEGER,
+            sort_index INTEGER,
+            settings_config TEXT
+        );
+        CREATE TABLE settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        CREATE TABLE skills (
+            id TEXT
+        );
+        CREATE TABLE mcp_servers (
+            id TEXT
+        );
+    """)
+    return conn
+
+
+def test_providers_get_json_masks_settings_config(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute(
+        "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "deepseek",
+            "claude",
+            "DeepSeek",
+            "default",
+            1,
+            0,
+            json.dumps({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "sk-test1234567890",
+                    "ANTHROPIC_MODEL": "deepseek-v4-pro",
+                },
+                "headers": [{"authorization": "Bearer abcdef1234567890"}],
+            }),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(cli, [
+        "--json", "--db", str(db_path),
+        "providers", "get", "deepseek", "--app", "claude",
+    ])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    output = json.dumps(data)
+    assert "sk-test1234567890" not in output
+    assert "Bearer abcdef1234567890" not in output
+    assert data["settings_config"]["env"]["ANTHROPIC_MODEL"] == "deepseek-v4-pro"
+
+
+def test_providers_get_plain_masks_nested_list(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute(
+        "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "deepseek",
+            "claude",
+            "DeepSeek",
+            "default",
+            1,
+            0,
+            json.dumps({
+                "headers": [{"authorization": "Bearer abcdef1234567890"}],
+                "model": "deepseek-v4-pro",
+            }),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(cli, [
+        "--db", str(db_path),
+        "providers", "get", "deepseek", "--app", "claude",
+    ])
+
+    assert result.exit_code == 0
+    assert "Bearer abcdef1234567890" not in result.output
+    assert "deepseek-v4-pro" in result.output
+
+
+def test_status_command_json(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute(
+        "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("deepseek", "claude", "DeepSeek", "default", 1, 0, "{}"),
+    )
+    conn.execute("INSERT INTO skills VALUES (?)", ("skill-1",))
+    conn.execute("INSERT INTO mcp_servers VALUES (?)", ("mcp-1",))
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(cli, ["--json", "--db", str(db_path), "status"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {
+        "providers": 1,
+        "current": {"claude": "DeepSeek"},
+        "skills": 1,
+        "mcp_servers": 1,
+    }
+
+
+def test_settings_get_json_outputs_object(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute("INSERT INTO settings VALUES (?, ?)", ("theme", "dark"))
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(cli, [
+        "--json", "--db", str(db_path), "settings", "get", "theme",
+    ])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"theme": "dark"}
+
+
+def test_settings_outputs_mask_sensitive_values(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute("INSERT INTO settings VALUES (?, ?)", ("OPENAI_API_KEY", "sk-secret1234567890"))
+    conn.commit()
+    conn.close()
+
+    get_result = runner.invoke(cli, [
+        "--json", "--db", str(db_path), "settings", "get", "OPENAI_API_KEY",
+    ])
+    list_result = runner.invoke(cli, [
+        "--json", "--db", str(db_path), "settings", "list",
+    ])
+    set_result = runner.invoke(cli, [
+        "--db", str(db_path), "settings", "set", "OPENAI_API_KEY", "sk-newsecret1234567890",
+    ])
+
+    assert get_result.exit_code == 0
+    assert list_result.exit_code == 0
+    assert set_result.exit_code == 0
+    combined = get_result.output + list_result.output + set_result.output
+    assert "sk-secret1234567890" not in combined
+    assert "sk-newsecret1234567890" not in combined
+    assert json.loads(get_result.output)["OPENAI_API_KEY"] != "sk-secret1234567890"
+
+    conn = sqlite3.connect(db_path)
+    assert conn.execute(
+        "SELECT value FROM settings WHERE key=?", ("OPENAI_API_KEY",)
+    ).fetchone()[0] == "sk-newsecret1234567890"
+    conn.close()
+
+
+def test_write_live_config_codex_writes_config_and_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("""
+        CREATE TABLE providers (
+            app_type TEXT,
+            is_current INTEGER,
+            settings_config TEXT
+        )
+    """)
+    db.execute(
+        "INSERT INTO providers VALUES (?, ?, ?)",
+        (
+            "codex",
+            1,
+            json.dumps({
+                "config": 'model = "deepseek-v4-pro"',
+                "auth": {"OPENAI_API_KEY": "sk-codex1234567890"},
+            }),
+        ),
+    )
+
+    _write_live_config("codex", db)
+
+    assert (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8") == (
+        'model = "deepseek-v4-pro"\n'
+    )
+    auth = json.loads((tmp_path / ".codex" / "auth.json").read_text(encoding="utf-8"))
+    assert auth == {"OPENAI_API_KEY": "sk-codex1234567890"}
+    assert not list((tmp_path / ".codex").glob(".config.toml.*"))
+    assert not list((tmp_path / ".codex").glob(".auth.json.*"))
+
+
+def test_write_live_config_claude_merges_nested_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    settings_path = tmp_path / ".claude" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(json.dumps({"env": {"EXISTING": "1"}}), encoding="utf-8")
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("""
+        CREATE TABLE providers (
+            app_type TEXT,
+            is_current INTEGER,
+            settings_config TEXT
+        )
+    """)
+    db.execute(
+        "INSERT INTO providers VALUES (?, ?, ?)",
+        (
+            "claude",
+            1,
+            json.dumps({"env": {"ANTHROPIC_AUTH_TOKEN": "sk-test1234567890"}}),
+        ),
+    )
+
+    _write_live_config("claude", db)
+
+    data = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert data["env"]["EXISTING"] == "1"
+    assert data["env"]["ANTHROPIC_AUTH_TOKEN"] == "sk-test1234567890"
+
+
+def test_write_live_config_opencode_merges_provider_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    config_path = tmp_path / ".config" / "opencode" / "opencode.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        "provider": {"old": {"npm": "@ai-sdk/openai"}},
+    }), encoding="utf-8")
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("""
+        CREATE TABLE providers (
+            id TEXT,
+            app_type TEXT,
+            is_current INTEGER,
+            settings_config TEXT
+        )
+    """)
+    db.execute(
+        "INSERT INTO providers VALUES (?, ?, ?, ?)",
+        (
+            "deepseek",
+            "opencode",
+            1,
+            json.dumps({
+                "settingsConfig": {
+                    "npm": "@ai-sdk/openai-compatible",
+                    "options": {
+                        "baseURL": "https://api.deepseek.com/v1",
+                        "apiKey": "sk-opencode1234567890",
+                    },
+                    "models": {
+                        "deepseek-v4-pro": {"name": "DeepSeek V4 Pro"},
+                    },
+                },
+            }),
+        ),
+    )
+
+    _write_live_config("opencode", db)
+
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert "old" in data["provider"]
+    assert data["provider"]["deepseek"]["options"]["apiKey"] == "sk-opencode1234567890"
+    assert data["provider"]["deepseek"]["models"]["deepseek-v4-pro"]["name"] == "DeepSeek V4 Pro"
+
+
+def test_providers_set_current_codex_writes_live_config(runner, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute(
+        "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "old",
+            "codex",
+            "Old",
+            "default",
+            1,
+            0,
+            json.dumps({"config": 'model = "old"'}),
+        ),
+    )
+    conn.execute(
+        "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "deepseek",
+            "codex",
+            "DeepSeek",
+            "default",
+            0,
+            1,
+            json.dumps({
+                "config": 'model = "deepseek-v4-pro"',
+                "auth": {"OPENAI_API_KEY": "sk-codex1234567890"},
+            }),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(cli, [
+        "--db", str(db_path), "providers", "set-current", "deepseek", "--app", "codex",
+    ])
+
+    assert result.exit_code == 0
+    assert "sk-codex1234567890" not in result.output
+    assert (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8") == (
+        'model = "deepseek-v4-pro"\n'
+    )
+    auth = json.loads((tmp_path / ".codex" / "auth.json").read_text(encoding="utf-8"))
+    assert auth["OPENAI_API_KEY"] == "sk-codex1234567890"
+
+    conn = sqlite3.connect(db_path)
+    current = conn.execute(
+        "SELECT id FROM providers WHERE app_type=? AND is_current=1", ("codex",)
+    ).fetchone()[0]
+    conn.close()
+    assert current == "deepseek"
 
 
 def test_main_help(runner):

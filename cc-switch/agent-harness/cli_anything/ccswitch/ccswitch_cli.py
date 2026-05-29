@@ -12,7 +12,10 @@ Usage:
 """
 
 import json as _json
+import os as _os
 import sys
+import tempfile as _tempfile
+from collections.abc import Mapping
 import click
 
 from .utils.db import connect_db, load_config, load_settings, VALID_APP_TYPES
@@ -32,13 +35,59 @@ def _resolve_app(app: str | None) -> str | None:
 
 def _mask_sensitive(key: str, value) -> str:
     """Mask sensitive values like API tokens and keys."""
-    sensitive = ("token", "key", "secret", "password", "auth")
-    if isinstance(value, str) and any(s in key.lower() for s in sensitive):
+    if isinstance(value, str) and _is_sensitive_key(key):
         if len(value) > 12:
             return value[:8] + "..." + value[-4:]
-        return value[:4] + "***"
-    if isinstance(value, dict):
-        return "{" + ", ".join(f"{k}: {_mask_sensitive(k, v)}" for k, v in value.items()) + "}"
+        return "***"
+    if isinstance(value, Mapping | list | tuple):
+        return _format_masked_value(_mask_value(value, key))
+    return str(value)
+
+
+def _is_sensitive_key(key: str) -> bool:
+    lowered = key.lower()
+    normalized = "".join(ch if ch.isalnum() else "_" for ch in lowered).strip("_")
+    parts = {p for p in normalized.split("_") if p}
+    if not normalized:
+        return False
+    if normalized in {"key", "apikey", "api_key"}:
+        return True
+    if normalized.endswith("_key") or normalized.startswith("key_"):
+        return True
+    sensitive_words = {
+        "token", "secret", "password", "auth", "credential",
+        "bearer", "cookie", "private",
+    }
+    if parts & sensitive_words:
+        return True
+    return any(word in normalized for word in (
+        "apikey", "api_key", "authtoken", "accesskey", "secretkey",
+        "secretaccesskey", "authorization",
+    ))
+
+
+def _mask_value(value, key: str = ""):
+    """Return a JSON-safe copy with sensitive nested values masked."""
+    if _is_sensitive_key(key):
+        if isinstance(value, str):
+            return _mask_sensitive(key, value)
+        return "***"
+    if isinstance(value, Mapping):
+        return {k: _mask_value(v, str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_mask_value(item, key) for item in value]
+    if isinstance(value, tuple):
+        return [_mask_value(item, key) for item in value]
+    return value
+
+
+def _format_masked_value(value) -> str:
+    if isinstance(value, Mapping):
+        return "{" + ", ".join(
+            f"{k}: {_format_masked_value(v)}" for k, v in value.items()
+        ) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(_format_masked_value(item) for item in value) + "]"
     return str(value)
 
 
@@ -73,6 +122,13 @@ def cli(ctx: click.Context, json_mode: bool, db_path: str | None) -> None:
     if ctx.invoked_subcommand is None:
         # Show status overview
         _show_status(ctx)
+
+
+@cli.command("status")
+@click.pass_context
+def status(ctx: click.Context) -> None:
+    """Show a quick database overview."""
+    _show_status(ctx)
 
 
 def _show_status(ctx: click.Context) -> None:
@@ -181,6 +237,7 @@ def providers_get(ctx: click.Context, provider_id: str, app: str) -> None:
         data["settings_config"] = _json.loads(data["settings_config"])
 
         if ctx.obj.get("json_mode"):
+            data["settings_config"] = _mask_value(data["settings_config"])
             _json.dump(data, sys.stdout, indent=2, default=str)
             return
 
@@ -191,7 +248,7 @@ def providers_get(ctx: click.Context, provider_id: str, app: str) -> None:
         click.echo(f"  Current: {bool(data['is_current'])}")
         click.echo(f"  Settings:")
         for k, v in sorted(data["settings_config"].items()):
-            click.echo(f"    {k}: {_mask_sensitive(k, v)}")
+            click.echo(f"    {k}: {_format_masked_value(_mask_value(v, k))}")
     finally:
         db.close()
 
@@ -218,18 +275,16 @@ def providers_set_current(ctx: click.Context, provider_id: str, app: str) -> Non
         db.execute(
             "UPDATE providers SET is_current=1 WHERE id=? AND app_type=?", (provider_id, app)
         )
+
+        _write_live_config(app, db)
         db.commit()
         click.echo(f"Switched {app} to provider: {row['name']}")
-
-        # Offer to write live config
-        _write_live_config(app, db)
     finally:
         db.close()
 
 
 def _write_live_config(app: str, db) -> None:
     """Write the current provider config to the live app config file."""
-    import os as _os
     from pathlib import Path
 
     home = Path(_os.path.expanduser("~"))
@@ -245,32 +300,123 @@ def _write_live_config(app: str, db) -> None:
         "claude": home / ".claude" / "settings.json",
         "codex": home / ".codex" / "config.toml",
         "gemini": home / ".gemini" / "settings.json",
-        "opencode": home / ".opencode" / "config.toml",
+        "opencode": home / ".config" / "opencode" / "opencode.json",
         "openclaw": home / ".openclaw" / "openclaw.json",
         "hermes": home / ".hermes" / "config.yaml",
     }
 
     target = target_map.get(app)
-    if not target or not target.parent.exists():
-        click.echo(f"  (Note: {app} config directory not found, skipping live write)")
+    if not target:
         return
 
-    if app in ("claude",):
-        # Claude Code uses env vars in settings.json
-        existing = {}
-        if target.exists():
-            with open(target) as f:
-                existing = _json.load(f)
-        existing["env"] = existing.get("env", {})
-        if "ANTHROPIC_AUTH_TOKEN" in config:
-            existing["env"]["ANTHROPIC_AUTH_TOKEN"] = config["ANTHROPIC_AUTH_TOKEN"]
-        if "ANTHROPIC_BASE_URL" in config:
-            existing["env"]["ANTHROPIC_BASE_URL"] = config["ANTHROPIC_BASE_URL"]
-        if "ANTHROPIC_MODEL" in config:
-            existing["env"]["ANTHROPIC_MODEL"] = config["ANTHROPIC_MODEL"]
-        with open(target, "w") as f:
-            _json.dump(existing, f, indent=2)
+    if app == "claude":
+        _write_json_env_config(target, _env_config(config))
         click.echo(f"  Written live config to: {target}")
+    elif app == "codex":
+        wrote = False
+        if "config" in config:
+            _write_text_config(target, str(config["config"]))
+            wrote = True
+        if isinstance(config.get("auth"), dict):
+            _write_json_config(home / ".codex" / "auth.json", config["auth"])
+            wrote = True
+        if wrote:
+            click.echo(f"  Written live config to: {target}")
+        else:
+            click.echo(f"  (Note: no supported {app} live config payload found)")
+    elif app == "gemini":
+        if "config" in config:
+            _write_text_config(target, str(config["config"]))
+        else:
+            _write_json_env_config(target, _env_config(config))
+        click.echo(f"  Written live config to: {target}")
+    elif app == "opencode":
+        if "config" in config:
+            _write_text_config(target, str(config["config"]))
+        elif "settingsConfig" in config:
+            _write_opencode_provider_config(target, str(row["id"]), config["settingsConfig"])
+        else:
+            click.echo(f"  (Note: no supported {app} live config payload found)")
+            return
+        click.echo(f"  Written live config to: {target}")
+    elif app == "openclaw":
+        _write_json_config(target, config)
+        click.echo(f"  Written live config to: {target}")
+    elif app == "hermes":
+        if "config" in config:
+            _write_text_config(target, str(config["config"]))
+        else:
+            click.echo(f"  (Note: no supported {app} live config payload found)")
+            return
+        click.echo(f"  Written live config to: {target}")
+
+
+def _env_config(config: dict) -> dict:
+    env = config.get("env")
+    if isinstance(env, dict):
+        return env
+    return config
+
+
+def _write_json_env_config(target, env: dict) -> None:
+    existing = {}
+    if target.exists():
+        with open(target, encoding="utf-8") as f:
+            existing = _json.load(f)
+    if not isinstance(existing, dict):
+        existing = {}
+    existing_env = existing.get("env")
+    if not isinstance(existing_env, dict):
+        existing_env = {}
+    existing_env.update(env)
+    existing["env"] = existing_env
+    _write_json_config(target, existing)
+
+
+def _write_json_config(target, config: dict) -> None:
+    _write_text_config(target, _json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+
+
+def _write_opencode_provider_config(target, provider_id: str, provider_config: dict) -> None:
+    existing = {
+        "$schema": "https://opencode.ai/config.json",
+    }
+    if target.exists():
+        with open(target, encoding="utf-8") as f:
+            existing = _json.load(f)
+    if not isinstance(existing, dict):
+        existing = {}
+    providers = existing.get("provider")
+    if not isinstance(providers, dict):
+        providers = {}
+    providers[provider_id] = provider_config
+    existing["provider"] = providers
+    _write_json_config(target, existing)
+
+
+def _write_text_config(target, content: str) -> None:
+    if content and not content.endswith("\n"):
+        content += "\n"
+    _write_secure_file(target, content)
+
+
+def _write_secure_file(target, content: str) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = _tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    try:
+        with _os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        try:
+            _os.chmod(tmp_name, 0o600)
+        except OSError:
+            pass
+        _os.replace(tmp_name, target)
+    except Exception:
+        try:
+            _os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 # ──────────────────────────────────────────────
@@ -610,10 +756,12 @@ def settings_list(ctx: click.Context) -> None:
     try:
         rows = db.execute("SELECT key, value FROM settings ORDER BY key").fetchall()
         if ctx.obj.get("json_mode"):
-            _json.dump({r["key"]: r["value"] for r in rows}, sys.stdout, indent=2)
+            _json.dump({
+                r["key"]: _mask_value(r["value"], r["key"]) for r in rows
+            }, sys.stdout, indent=2)
             return
         click.echo(_table(["Key", "Value"], [
-            (r["key"], r["value"][:80]) for r in rows
+            (r["key"], _mask_sensitive(r["key"], r["value"])[:80]) for r in rows
         ]))
     finally:
         db.close()
@@ -630,7 +778,10 @@ def settings_get(ctx: click.Context, key: str) -> None:
         if not row:
             click.echo(f"Setting '{key}' not found", err=True)
             raise SystemExit(1)
-        click.echo(row["value"])
+        if ctx.obj.get("json_mode"):
+            _json.dump({key: _mask_value(row["value"], key)}, sys.stdout, indent=2)
+            return
+        click.echo(_mask_sensitive(key, row["value"]))
     finally:
         db.close()
 
@@ -647,7 +798,7 @@ def settings_set(ctx: click.Context, key: str, value: str) -> None:
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value)
         )
         db.commit()
-        click.echo(f"Set '{key}' = '{value}'")
+        click.echo(f"Set '{key}' = '{_mask_sensitive(key, value)}'")
     finally:
         db.close()
 

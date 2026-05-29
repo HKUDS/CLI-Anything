@@ -54,4 +54,4 @@
 ## Rendering Gap Assessment
 - **No rendering gap** — CC Switch manages text-based AI CLI configuration files. There is no visual/graphical rendering. The CLI directly reads/writes SQLite and JSON, which is functionally identical to what the GUI does.
 
-This CLI harness DOES implement preview: `preview stats` reads real usage data from the database and outputs summary JSON for agents to decide on cost optimization.
+The current harness focuses on status, provider switching, proxy, MCP, skills, usage, settings, and sessions. Preview-style summaries can be added later on top of the existing `usage stats` data.
