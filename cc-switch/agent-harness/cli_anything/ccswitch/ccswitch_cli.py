@@ -299,7 +299,7 @@ def _write_live_config(app: str, db) -> None:
     target_map = {
         "claude": home / ".claude" / "settings.json",
         "codex": home / ".codex" / "config.toml",
-        "gemini": home / ".gemini" / "settings.json",
+        "gemini": home / ".gemini" / ".env",
         "opencode": home / ".config" / "opencode" / "opencode.json",
         "openclaw": home / ".openclaw" / "openclaw.json",
         "hermes": home / ".hermes" / "config.yaml",
@@ -325,11 +325,25 @@ def _write_live_config(app: str, db) -> None:
         else:
             click.echo(f"  (Note: no supported {app} live config payload found)")
     elif app == "gemini":
+        written_targets = []
+        env = _gemini_env_config(config)
+        if env:
+            _write_env_config(target, env)
+            written_targets.append(target)
         if "config" in config:
-            _write_text_config(target, str(config["config"]))
+            settings_target = home / ".gemini" / "settings.json"
+            if isinstance(config["config"], dict):
+                _write_json_config(settings_target, config["config"])
+            else:
+                _write_text_config(settings_target, str(config["config"]))
+            written_targets.append(settings_target)
+        if written_targets:
+            click.echo(
+                "  Written live config to: "
+                + ", ".join(str(path) for path in written_targets)
+            )
         else:
-            _write_json_env_config(target, _env_config(config))
-        click.echo(f"  Written live config to: {target}")
+            click.echo(f"  (Note: no supported {app} live config payload found)")
     elif app == "opencode":
         if "config" in config:
             _write_text_config(target, str(config["config"]))
@@ -358,6 +372,15 @@ def _env_config(config: dict) -> dict:
     return config
 
 
+def _gemini_env_config(config: dict) -> dict:
+    env = config.get("env")
+    if isinstance(env, dict):
+        return env
+    if "config" in config or "auth" in config or "settingsConfig" in config:
+        return {}
+    return config
+
+
 def _write_json_env_config(target, env: dict) -> None:
     existing = {}
     if target.exists():
@@ -371,6 +394,50 @@ def _write_json_env_config(target, env: dict) -> None:
     existing_env.update(env)
     existing["env"] = existing_env
     _write_json_config(target, existing)
+
+
+def _write_env_config(target, env: dict) -> None:
+    existing = {}
+    if target.exists():
+        existing = _parse_env_file(target.read_text(encoding="utf-8"))
+    existing.update(_coerce_env_config(env))
+    lines = [f"{key}={existing[key]}" for key in sorted(existing)]
+    _write_text_config(target, "\n".join(lines))
+
+
+def _parse_env_file(content: str) -> dict[str, str]:
+    parsed = {}
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if _is_valid_env_key(key):
+            parsed[key] = value
+    return parsed
+
+
+def _coerce_env_config(env: dict) -> dict[str, str]:
+    result = {}
+    for key, value in env.items():
+        key = str(key)
+        if not _is_valid_env_key(key):
+            continue
+        result[key] = _env_value(value)
+    return result
+
+
+def _is_valid_env_key(key: str) -> bool:
+    return bool(key) and all(
+        ch == "_" or "A" <= ch <= "Z" or "a" <= ch <= "z" or "0" <= ch <= "9"
+        for ch in key
+    )
+
+
+def _env_value(value) -> str:
+    text = "" if value is None else str(value)
+    return text.replace("\r", "\\r").replace("\n", "\\n")
 
 
 def _write_json_config(target, config: dict) -> None:
@@ -836,12 +903,12 @@ def sessions_list(ctx: click.Context, app: str | None, limit: int) -> None:
                 (limit,),
             ).fetchall()
 
-        if not rows:
-            click.echo("No session logs found. Enable usage tracking in CC Switch first.")
-            return
-
         if ctx.obj.get("json_mode"):
             _json.dump([dict(r) for r in rows], sys.stdout, indent=2, default=str)
+            return
+
+        if not rows:
+            click.echo("No session logs found. Enable usage tracking in CC Switch first.")
             return
 
         click.echo(_table(["Path", "Last Modified", "Last Synced"], [

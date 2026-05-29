@@ -254,6 +254,11 @@ def _init_cli_db(path: Path) -> sqlite3.Connection:
         CREATE TABLE mcp_servers (
             id TEXT
         );
+        CREATE TABLE session_log_sync (
+            file_path TEXT,
+            last_modified INTEGER,
+            last_synced_at INTEGER
+        );
     """)
     return conn
 
@@ -347,6 +352,18 @@ def test_status_command_json(runner, tmp_path):
         "skills": 1,
         "mcp_servers": 1,
     }
+
+
+def test_sessions_list_json_empty_outputs_array(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.commit()
+    conn.close()
+
+    result = runner.invoke(cli, ["--json", "--db", str(db_path), "sessions", "list"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == []
 
 
 def test_settings_get_json_outputs_object(runner, tmp_path):
@@ -460,6 +477,51 @@ def test_write_live_config_claude_merges_nested_env(tmp_path, monkeypatch):
     data = json.loads(settings_path.read_text(encoding="utf-8"))
     assert data["env"]["EXISTING"] == "1"
     assert data["env"]["ANTHROPIC_AUTH_TOKEN"] == "sk-test1234567890"
+
+
+def test_write_live_config_gemini_writes_env_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    env_path = tmp_path / ".gemini" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("EXISTING=1\n", encoding="utf-8")
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("""
+        CREATE TABLE providers (
+            app_type TEXT,
+            is_current INTEGER,
+            settings_config TEXT
+        )
+    """)
+    db.execute(
+        "INSERT INTO providers VALUES (?, ?, ?)",
+        (
+            "gemini",
+            1,
+            json.dumps({
+                "env": {
+                    "GEMINI_API_KEY": "sk-gemini1234567890",
+                    "GOOGLE_GEMINI_BASE_URL": "https://api.example.test",
+                    "GEMINI_MODEL": "gemini-3.1-pro",
+                    "MULTILINE": "one\nTWO=2",
+                    "BAD-KEY": "ignored",
+                },
+            }),
+        ),
+    )
+
+    _write_live_config("gemini", db)
+
+    content = env_path.read_text(encoding="utf-8")
+    assert "EXISTING=1" in content
+    assert "GEMINI_API_KEY=sk-gemini1234567890" in content
+    assert "GOOGLE_GEMINI_BASE_URL=https://api.example.test" in content
+    assert "GEMINI_MODEL=gemini-3.1-pro" in content
+    assert "MULTILINE=one\\nTWO=2" in content
+    assert "\nTWO=2" not in content
+    assert "BAD-KEY=ignored" not in content
+    assert not (tmp_path / ".gemini" / "settings.json").exists()
 
 
 def test_write_live_config_opencode_merges_provider_settings(tmp_path, monkeypatch):

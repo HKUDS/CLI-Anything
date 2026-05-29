@@ -4,7 +4,7 @@
 
 | Test File | Tests | Type |
 |-----------|-------|------|
-| `test_core.py` | 42 | Unit tests with synthetic data |
+| `test_core.py` | 44 | Unit tests with synthetic data |
 | `test_full_e2e.py` | 20 | E2E tests against a real or configured CC Switch database |
 
 ## Unit Test Coverage
@@ -31,12 +31,14 @@
 - Plain `providers get` masking for nested list/header values
 - `settings get --json` object output
 - `settings get/list/set` masking for sensitive settings
+- `sessions list --json` empty-result output
 - `providers set-current` DB update plus live Codex config write
 
 ### Live Config Write Helpers
 
 - Claude settings JSON env merge
 - Codex `config.toml` and `auth.json` writes
+- Gemini `.env` merge with env key validation and newline escaping
 - OpenCode provider merge into `~/.config/opencode/opencode.json`
 - Temporary file cleanup after secure writes
 
@@ -63,8 +65,8 @@
 
 ```powershell
 python -m pytest cli_anything\ccswitch\tests -q
-..............................................................           [100%]
-62 passed in 2.43s
+................................................................         [100%]
+64 passed in 2.52s
 ```
 
 Additional checks:
@@ -78,5 +80,5 @@ Both checks passed.
 
 ## Coverage Notes
 
-- Write operations covered by synthetic tests: `providers set-current`, `settings set`, and live config writes for Claude, Codex, and OpenCode.
+- Write operations covered by synthetic tests: `providers set-current`, `settings set`, and live config writes for Claude, Codex, Gemini, and OpenCode.
 - Destructive live-database operations and process-control flows should be validated only in a disposable CC Switch environment.
