@@ -1227,25 +1227,6 @@
           "url": "https://github.com/octo-patch"
         }
       ]
-    },
-    {
-      "name": "everything",
-      "display_name": "Everything",
-      "version": "1.0.0",
-      "description": "Instant file search on Windows via Everything's es.exe — JSON output, GBK→UTF-8 encoding, REPL mode, WSL/Linux dual-environment support",
-      "requires": "Everything 1.4+ installed and running with es.exe",
-      "homepage": "https://www.voidtools.com",
-      "source_url": "https://github.com/jueduilunhui/cli-anything-everything",
-      "install_cmd": "pip install git+https://github.com/jueduilunhui/cli-anything-everything.git",
-      "entry_point": "cli-anything-everything",
-      "skill_md": "https://raw.githubusercontent.com/jueduilunhui/cli-anything-everything/main/SKILL.md",
-      "category": "search",
-      "contributors": [
-        {
-          "name": "jueduilunhui",
-          "url": "https://github.com/jueduilunhui"
-        }
-      ]
     }
   ]
 }
