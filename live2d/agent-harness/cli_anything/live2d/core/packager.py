@@ -106,6 +106,14 @@ def package_model(info: ModelInfo, output_path: Path, include_motions: bool = Tr
                     files.add(m_path)
                 else:
                     result.missing_files.append(m.file)
+                # Include Sound files referenced in motions
+                sound = m.extra.get("Sound") if hasattr(m, 'extra') else None
+                if sound:
+                    s_path = model_dir / sound
+                    if s_path.exists():
+                        files.add(s_path)
+                    else:
+                        result.missing_files.append(sound)
 
     # Expressions
     if include_expressions:

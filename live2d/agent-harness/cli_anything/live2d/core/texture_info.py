@@ -56,6 +56,9 @@ def get_texture_info(path: Path) -> TextureInfo:
     except ImportError:
         # Fallback: read PNG/JPEG headers directly
         _read_dimensions_fallback(path, info)
+    except Exception:
+        # Pillow found the file but can't identify it (corrupt/placeholder)
+        _read_dimensions_fallback(path, info)
 
     return info
 

@@ -1899,10 +1899,6 @@ def flatten(model_path: str, out_dir: str, dry_run: bool):
         click.echo()
         sys.exit(1)
 
-    if _json_output:
-        output({"files": len(unique_files), "out_dir": str(out), "entries": [n for _, n in unique_files]})
-        return
-
     click.echo(f"\n  📦 Flatten: {info.path.name} → {out}\n")
 
     if dry_run:
@@ -1934,8 +1930,11 @@ def flatten(model_path: str, out_dir: str, dry_run: bool):
     flat_info.path = out / info.path.name
     save_model(flat_info)
 
-    click.echo(f"\n  ✅ Flattened {len(unique_files)} files to {out}")
-    click.echo()
+    if _json_output:
+        output({"files": len(unique_files), "out_dir": str(out), "entries": [n for _, n in unique_files]})
+    else:
+        click.echo(f"\n  ✅ Flattened {len(unique_files)} files to {out}")
+        click.echo()
 
 
 # ── runtime-check ──────────────────────────────────────────────
