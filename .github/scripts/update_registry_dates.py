@@ -111,7 +111,11 @@ def _extract_pypi_package(install_cmd: str) -> str | None:
         return None
 
     install_index = None
-    if tokens[:3] == ["python3", "-m", "pip"]:
+    if (
+        len(tokens) >= 3
+        and tokens[0] in {"python", "python3"}
+        and tokens[1:3] == ["-m", "pip"]
+    ):
         install_index = 3
     elif tokens[0] in {"pip", "pip3"}:
         install_index = 1

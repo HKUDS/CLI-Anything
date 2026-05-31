@@ -362,6 +362,46 @@
           "url": "https://github.com/MartaKar"
         }
       ]
+    },
+    {
+      "name": "obsidian-agent-cli",
+      "display_name": "Obsidian CLI",
+      "version": "0.1.1",
+      "description": "Full-featured CLI for Obsidian — manage notes, canvases, Excalidraw diagrams, Kanban boards, periodic notes, git, tasks, and more. Includes an AI agent skill for persistent knowledge capture and project memory.",
+      "category": "productivity",
+      "requires": "Obsidian desktop app, Local REST API community plugin",
+      "homepage": "https://obsidian.md",
+      "source_url": "https://github.com/ProxyLandLLC/obsidian-agent-cli",
+      "install_cmd": "pip install obsidian-agent-cli",
+      "entry_point": "obsidian-agent",
+      "skill_md": "https://github.com/ProxyLandLLC/obsidian-agent-cli/blob/v0.1.1/SKILL.md",
+      "contributors": [
+        {
+          "url": "https://github.com/ProxyLandLLC",
+          "name": "ProxyLandLLC"
+        }
+      ]
+    },
+    {
+      "name": "arcgis-pro",
+      "display_name": "ArcGIS Pro",
+      "version": "0.1.0",
+      "description": "Agent-native CLI for ArcGIS Pro (ArcPy): professional cartography (layouts + map series), geoprocessing, and feature query/edit — plus a live-Pro MCP bridge that drives the open session.",
+      "category": "scientific",
+      "platform": "windows",
+      "requires": "Windows only — ArcGIS Pro is Windows-only. Needs a licensed ArcGIS Pro install with ArcPy (its bundled arcgispro-py3 Python); the optional live-Pro MCP bridge additionally needs the .NET 8 SDK.",
+      "homepage": "https://www.esri.com/en-us/arcgis/products/arcgis-pro/overview",
+      "source_url": "https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro",
+      "package_manager": "pip",
+      "install_cmd": "pip install git+https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro.git@v0.1.0",
+      "entry_point": "cli-anything-arcgis-pro",
+      "skill_md": "https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro/blob/v0.1.0/SKILL.md",
+      "contributors": [
+        {
+          "name": "Jasper0122",
+          "url": "https://github.com/Jasper0122"
+        }
+      ]
     }
   ]
 }

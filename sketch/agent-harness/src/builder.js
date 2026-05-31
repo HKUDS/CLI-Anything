@@ -61,12 +61,53 @@ async function buildSketchFile(sketch, outputPath) {
 
 function loadTokens(specTokensPath, cliTokensPath, specDir) {
   const defaultTokensPath = path.resolve(__dirname, '..', 'tokens', 'default.json');
+  const tokensDir = path.resolve(__dirname, '..', 'tokens');
   let tokensPath = defaultTokensPath;
 
+  const isSafePath = (p, base) => {
+    try {
+      // Canonicalize both paths to resolve symlinks and '..' segments.
+      // This ensures that even if a path looks like it's inside 'base',
+      // if it's a symlink pointing outside, we'll find the real outside path.
+      const realP = fs.existsSync(p) ? fs.realpathSync(p) : path.resolve(p);
+      const realBase = fs.realpathSync(base);
+
+      const relative = path.relative(realBase, realP);
+
+      // On Windows, relative might be an absolute path if drives differ
+      if (path.isAbsolute(relative)) return false;
+
+      // Ensure the path doesn't escape the base directory.
+      // We check for '../' prefix or if it's exactly '..'.
+      // This specifically allows directory names that happen to start with dots (like '..brand').
+      const isOutside = relative.startsWith('..' + path.sep) || relative === '..';
+      return !isOutside;
+    } catch (e) {
+      return false;
+    }
+  };
+
   if (cliTokensPath) {
-    tokensPath = path.resolve(cliTokensPath);
+    const resolved = path.resolve(cliTokensPath);
+    // Allow if in tokens dir, local to specDir, or in current working directory (CWD)
+    // CWD is allowed for explicit CLI overrides as documented.
+    if (
+      isSafePath(resolved, tokensDir) ||
+      (specDir && isSafePath(resolved, path.resolve(specDir))) ||
+      isSafePath(resolved, process.cwd())
+    ) {
+      tokensPath = resolved;
+    } else {
+      console.warn(`Unsafe tokens path ignored: ${cliTokensPath}`);
+    }
   } else if (specTokensPath) {
-    tokensPath = path.resolve(specDir, specTokensPath);
+    const resolved = path.resolve(specDir, specTokensPath);
+    // Allow if in project tokens dir or local to specDir
+    if (isSafePath(resolved, tokensDir) || isSafePath(resolved, path.resolve(specDir))) {
+      tokensPath = resolved;
+    } else {
+      console.warn(`Unsafe spec tokens path ignored: ${specTokensPath}`);
+    }
   }
 
   if (!fs.existsSync(tokensPath)) {

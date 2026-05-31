@@ -19,7 +19,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start"></a>
   <a href="https://hkuds.github.io/CLI-Anything/"><img src="https://img.shields.io/badge/CLI_Hub-Browse_%26_Install-ff69b4?style=for-the-badge" alt="CLI Hub"></a>
   <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-18_Apps-green?style=for-the-badge" alt="Demos"></a>
-  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-2%2C269_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
+  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-2%2C461_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -48,6 +48,16 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 ## 📰 News
 
 > Thanks to all invaluable efforts from the community! More updates continuously on the way everyday..
+
+- **2026-05-30** 🧭 **Hermes skill** proposed (#320), adding a CLI-Anything orchestration skill with installer scripts and HARNESS fallback guidance. 🗺️ **ArcGIS Pro** was proposed for the public registry (#318) as a Windows/ArcPy CLI for cartography, geoprocessing, feature editing, and live-Pro MCP workflows.
+
+- **2026-05-27** 🔧 **CLI-Hub** registry date updates now handle `python -m pip` install commands (#312), improving package-date detection for registry automation.
+
+- **2026-05-23** 📝 **Obsidian Agent CLI** was proposed for the public registry (#307), bringing a PyPI-installed Obsidian automation CLI with persistent agent memory workflows and a pinned skill link.
+
+- **2026-05-21** 🔒 **Sketch CLI** token-file handling was hardened against path traversal and symlink escapes (#304).
+
+- **2026-05-20** 📓 **Joplin CLI** was proposed (#300) with notebooks, notes, to-dos, tags, attachments, search/sync, import/export, server/E2EE helpers, full docs, packaged skill docs, and a 134-test validation baseline.
 
 - **2026-05-20** 🎛️ **Rekordbox CLI** merged (#252) with guarded SQLCipher write paths, backup-required forced writes, smoke coverage, and root skill sync. 📚 **Calibre CLI** merged (#223) with library/search/metadata/conversion/export workflows, 41 unit tests, real-Calibre E2E evidence, and root skill validation. 🧊 **3MF CLI** merged (#209) with mesh inspection, hole resizing, repair, comparison, and preserved triangle attributes. 🎙️ **MiniMax CLI** merged (#189) with chat/TTS workflows, JSON-safe model/voice listing, REPL quote handling, and smoke/E2E coverage. 🎮 **UEAtelier** joined the registry (#297) as an Unreal Editor MCP self-extension workbench with a Python CLI proxy.
 
@@ -959,6 +969,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="calibre/agent-harness/">58</a></td>
 </tr>
 <tr>
+<td align="center"><strong>📓 <a href="joplin/agent-harness/">Joplin</a></strong></td>
+<td>Note-taking &amp; To-dos</td>
+<td><code>cli-anything-joplin</code></td>
+<td>Joplin terminal CLI subprocess</td>
+<td align="center">✅ 134</td>
+</tr>
+<tr>
 <td align="center"><strong>📝 <a href="mubu/agent-harness/">Mubu</a></strong></td>
 <td>Knowledge Management &amp; Outlining</td>
 <td><code>cli-anything-mubu</code></td>
@@ -1163,11 +1180,11 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 <tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 2,330</strong></td>
+<td align="center"><strong>✅ 2,461</strong></td>
 </tr>
 </table>
 
-> **100% pass rate** across all 2,330 tests — 1,732 unit tests + 579 end-to-end tests + 19 Node.js tests.
+> **100% pass rate** across all 2,461 tests — 1,732 unit tests + 579 end-to-end tests + 19 Node.js tests.
 
 ---
 
@@ -1212,8 +1229,9 @@ nsight-graphics 51 passed ✅   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 3mf            50 passed  ✅   (50 unit)
+joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,330 passed  ✅   100% pass rate
+TOTAL        2,461 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1271,6 +1289,7 @@ cli-anything/
 ├── 📧 mailchimp/agent-harness/          # Mailchimp Marketing API CLI (303 commands, 36 unit tests)
 ├── 📚 zotero/agent-harness/             # Zotero CLI (new, write import support)
 ├── 📖 calibre/agent-harness/            # Calibre CLI (58 tests: 38 unit + 20 E2E)
+├── 📓 joplin/agent-harness/             # Joplin CLI (134 tests: 107 unit + 27 e2e)
 ├── 📝 mubu/agent-harness/               # Mubu CLI (96 tests)
 ├── 📹 obs-studio/agent-harness/         # OBS Studio CLI (153 tests)
 ├── 📱 nslogger/agent-harness/           # NSLogger CLI (139 tests)

@@ -1039,6 +1039,25 @@
       ]
     },
     {
+      "name": "joplin",
+      "display_name": "Joplin",
+      "version": "1.0.0",
+      "description": "Note-taking and to-do automation — manage notebooks, notes, to-dos, tags, attachments, search, sync, and import/export via the Joplin terminal CLI",
+      "requires": "Joplin terminal CLI installed and available in PATH as `joplin` (npm install -g joplin)",
+      "homepage": "https://joplinapp.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=joplin/agent-harness",
+      "entry_point": "cli-anything-joplin",
+      "skill_md": "skills/cli-anything-joplin/SKILL.md",
+      "category": "knowledge",
+      "contributors": [
+        {
+          "name": "27494539a-hub",
+          "url": "https://github.com/27494539a-hub"
+        }
+      ]
+    },
+    {
       "name": "unimol_tools",
       "display_name": "Uni-Mol Tools",
       "version": "1.0.0",

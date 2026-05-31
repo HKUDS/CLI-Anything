@@ -32,6 +32,7 @@
 # Step 3: Allow cli-anything-plugin, codex-skill, and skill_generation tests
 !/cli-anything-plugin/
 !/codex-skill/
+!/hermes-skill/
 !/skill_generation/
 !/openclaw-skill/
 !/cli-hub-meta-skill/
@@ -84,6 +85,7 @@
 !/QGIS/
 !/n8n/
 !/obsidian/
+!/joplin/
 !/unrealinsights/
 !/firefly-iii/
 !/nsight-graphics/
@@ -181,6 +183,8 @@
 /n8n/.*
 /obsidian/*
 /obsidian/.*
+/joplin/*
+/joplin/.*
 /unrealinsights/*
 /unrealinsights/.*
 /nsight-graphics/*
@@ -250,6 +254,7 @@
 !/QGIS/agent-harness/
 !/n8n/agent-harness/
 !/obsidian/agent-harness/
+!/joplin/agent-harness/
 !/calibre/agent-harness/
 !/safari/
 !/safari/agent-harness/
@@ -261,7 +266,6 @@
 !/sbox/agent-harness/
 !/quietshrink/agent-harness/
 !/mailchimp/agent-harness/
-!/rekordbox/
 !/rekordbox/agent-harness/
 !/cc-switch/agent-harness/
 
