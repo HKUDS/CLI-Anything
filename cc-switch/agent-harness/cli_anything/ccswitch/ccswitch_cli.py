@@ -20,6 +20,8 @@ import click
 
 from .utils.db import connect_db, load_config, load_settings, VALID_APP_TYPES
 
+_MANAGED_APPS = VALID_APP_TYPES
+
 # ──────────────────────────────────────────────
 # Shared helpers
 # ──────────────────────────────────────────────
@@ -104,6 +106,31 @@ def _table(headers: list[str], rows: list[tuple]) -> str:
     for row in all_rows[1:]:
         lines.append("  ".join(v.ljust(col_widths[i]) for i, v in enumerate(row)))
     return "\n".join(lines)
+
+
+def _enabled_apps_str(row: Mapping) -> str:
+    apps = [app for app in _MANAGED_APPS if row[f"enabled_{app}"]]
+    return ",".join(apps) if apps else "-"
+
+
+def _normalise_usage_rows(rows) -> list[dict]:
+    normalised = []
+    for row in rows:
+        data = dict(row)
+        data["input_tok"] = data["input_tok"] or 0
+        data["output_tok"] = data["output_tok"] or 0
+        data["cost"] = data["cost"] or 0
+        normalised.append(data)
+    return normalised
+
+
+def _enabled_app_columns(db, table: str) -> str:
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+    parts = []
+    for app in _MANAGED_APPS:
+        column = f"enabled_{app}"
+        parts.append(column if column in columns else f"0 AS {column}")
+    return ", ".join(parts)
 
 
 # ──────────────────────────────────────────────
@@ -587,24 +614,18 @@ def mcp_list(ctx: click.Context) -> None:
     """List all MCP servers."""
     db = connect_db(ctx.obj.get("db_path"))
     try:
+        enabled_columns = _enabled_app_columns(db, "mcp_servers")
         rows = db.execute(
-            "SELECT id, name, description, enabled_claude, enabled_codex, "
-            "enabled_gemini, enabled_opencode, enabled_hermes FROM mcp_servers ORDER BY name"
+            f"SELECT id, name, description, {enabled_columns} "
+            "FROM mcp_servers ORDER BY name"
         ).fetchall()
 
         if ctx.obj.get("json_mode"):
             _json.dump([dict(r) for r in rows], sys.stdout, indent=2, default=str)
             return
 
-        def apps_str(r: dict) -> str:
-            apps = []
-            for a in ("claude", "codex", "gemini", "opencode", "hermes"):
-                if r[f"enabled_{a}"]:
-                    apps.append(a[:2])
-            return ",".join(apps) if apps else "-"
-
         click.echo(_table(["ID", "Name", "Apps", "Description"], [
-            (r["id"][:30], r["name"], apps_str(r), (r["description"] or "")[:50])
+            (r["id"][:30], r["name"], _enabled_apps_str(r), (r["description"] or "")[:50])
             for r in rows
         ]))
     finally:
@@ -648,9 +669,10 @@ def skills_list(ctx: click.Context) -> None:
     """List all installed skills."""
     db = connect_db(ctx.obj.get("db_path"))
     try:
+        enabled_columns = _enabled_app_columns(db, "skills")
         rows = db.execute(
             "SELECT id, name, description, repo_owner, repo_name, "
-            "enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_hermes "
+            f"{enabled_columns} "
             "FROM skills ORDER BY name"
         ).fetchall()
 
@@ -658,16 +680,9 @@ def skills_list(ctx: click.Context) -> None:
             _json.dump([dict(r) for r in rows], sys.stdout, indent=2, default=str)
             return
 
-        def apps_str(r: dict) -> str:
-            apps = []
-            for a in ("claude", "codex", "gemini", "opencode", "hermes"):
-                if r[f"enabled_{a}"]:
-                    apps.append(a[:2])
-            return ",".join(apps) if apps else "-"
-
         click.echo(_table(["Name", "Source", "Apps", "Description"], [
             (r["name"], f"{r['repo_owner']}/{r['repo_name']}" if r["repo_owner"] else "local",
-             apps_str(r), (r["description"] or "")[:50])
+             _enabled_apps_str(r), (r["description"] or "")[:50])
             for r in rows
         ]))
     finally:
@@ -736,14 +751,16 @@ def usage_stats(ctx: click.Context, days: int, app: str | None) -> None:
                 (f"-{days}",),
             ).fetchall()
 
+        rows = _normalise_usage_rows(rows)
+
         if ctx.obj.get("json_mode"):
-            _json.dump([dict(r) for r in rows], sys.stdout, indent=2, default=str)
+            _json.dump(rows, sys.stdout, indent=2, default=str)
             return
 
-        total_cost = sum(r["cost"] or 0 for r in rows)
+        total_cost = sum(r["cost"] for r in rows)
         total_requests = sum(r["requests"] for r in rows)
-        total_in = sum(r["input_tok"] or 0 for r in rows)
-        total_out = sum(r["output_tok"] or 0 for r in rows)
+        total_in = sum(r["input_tok"] for r in rows)
+        total_out = sum(r["output_tok"] for r in rows)
 
         if app:
             click.echo(_table(["Model", "Requests", "Input Tokens", "Output Tokens", "Cost (USD)"], [

@@ -4,7 +4,7 @@
 
 | Test File | Tests | Type |
 |-----------|-------|------|
-| `test_core.py` | 44 | Unit tests with synthetic data |
+| `test_core.py` | 46 | Unit tests with synthetic data |
 | `test_full_e2e.py` | 20 | E2E tests against a real or configured CC Switch database |
 
 ## Unit Test Coverage
@@ -32,6 +32,8 @@
 - `settings get --json` object output
 - `settings get/list/set` masking for sensitive settings
 - `sessions list --json` empty-result output
+- `mcp list` and `skills list` include OpenClaw state
+- `usage stats` normalizes nullable token/cost aggregates
 - `providers set-current` DB update plus live Codex config write
 
 ### Live Config Write Helpers
@@ -65,8 +67,8 @@
 
 ```powershell
 python -m pytest cli_anything\ccswitch\tests -q
-................................................................         [100%]
-64 passed in 2.52s
+..................................................................       [100%]
+66 passed in 2.61s
 ```
 
 Additional checks:

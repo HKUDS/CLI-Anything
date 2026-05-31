@@ -249,10 +249,38 @@ def _init_cli_db(path: Path) -> sqlite3.Connection:
             value TEXT
         );
         CREATE TABLE skills (
-            id TEXT
+            id TEXT,
+            name TEXT DEFAULT '',
+            description TEXT,
+            repo_owner TEXT,
+            repo_name TEXT,
+            enabled_claude INTEGER DEFAULT 0,
+            enabled_codex INTEGER DEFAULT 0,
+            enabled_gemini INTEGER DEFAULT 0,
+            enabled_opencode INTEGER DEFAULT 0,
+            enabled_openclaw INTEGER DEFAULT 0,
+            enabled_hermes INTEGER DEFAULT 0
         );
         CREATE TABLE mcp_servers (
-            id TEXT
+            id TEXT,
+            name TEXT DEFAULT '',
+            description TEXT,
+            enabled_claude INTEGER DEFAULT 0,
+            enabled_codex INTEGER DEFAULT 0,
+            enabled_gemini INTEGER DEFAULT 0,
+            enabled_opencode INTEGER DEFAULT 0,
+            enabled_openclaw INTEGER DEFAULT 0,
+            enabled_hermes INTEGER DEFAULT 0
+        );
+        CREATE TABLE proxy_request_logs (
+            app_type TEXT,
+            model TEXT,
+            status_code INTEGER,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            total_cost_usd TEXT,
+            latency_ms INTEGER,
+            created_at INTEGER
         );
         CREATE TABLE session_log_sync (
             file_path TEXT,
@@ -338,8 +366,8 @@ def test_status_command_json(runner, tmp_path):
         "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?, ?)",
         ("deepseek", "claude", "DeepSeek", "default", 1, 0, "{}"),
     )
-    conn.execute("INSERT INTO skills VALUES (?)", ("skill-1",))
-    conn.execute("INSERT INTO mcp_servers VALUES (?)", ("mcp-1",))
+    conn.execute("INSERT INTO skills (id) VALUES (?)", ("skill-1",))
+    conn.execute("INSERT INTO mcp_servers (id) VALUES (?)", ("mcp-1",))
     conn.commit()
     conn.close()
 
@@ -411,6 +439,76 @@ def test_settings_outputs_mask_sensitive_values(runner, tmp_path):
         "SELECT value FROM settings WHERE key=?", ("OPENAI_API_KEY",)
     ).fetchone()[0] == "sk-newsecret1234567890"
     conn.close()
+
+
+def test_mcp_and_skills_list_include_openclaw(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute(
+        """
+        INSERT INTO mcp_servers (
+            id, name, description, enabled_claude, enabled_codex, enabled_gemini,
+            enabled_opencode, enabled_openclaw, enabled_hermes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("mcp-1", "OpenClaw MCP", "desc", 0, 0, 0, 0, 1, 0),
+    )
+    conn.execute(
+        """
+        INSERT INTO skills (
+            id, name, description, repo_owner, repo_name, enabled_claude,
+            enabled_codex, enabled_gemini, enabled_opencode, enabled_openclaw,
+            enabled_hermes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("skill-1", "OpenClaw Skill", "desc", "owner", "repo", 0, 0, 0, 0, 1, 0),
+    )
+    conn.commit()
+    conn.close()
+
+    mcp_json = runner.invoke(cli, ["--json", "--db", str(db_path), "mcp", "list"])
+    skills_json = runner.invoke(cli, ["--json", "--db", str(db_path), "skills", "list"])
+    mcp_text = runner.invoke(cli, ["--db", str(db_path), "mcp", "list"])
+    skills_text = runner.invoke(cli, ["--db", str(db_path), "skills", "list"])
+
+    assert mcp_json.exit_code == 0
+    assert skills_json.exit_code == 0
+    assert mcp_text.exit_code == 0
+    assert skills_text.exit_code == 0
+    assert json.loads(mcp_json.output)[0]["enabled_openclaw"] == 1
+    assert json.loads(skills_json.output)[0]["enabled_openclaw"] == 1
+    assert "openclaw" in mcp_text.output
+    assert "openclaw" in skills_text.output
+
+
+def test_usage_stats_normalises_nullable_aggregates(runner, tmp_path):
+    db_path = tmp_path / "cc-switch.db"
+    conn = _init_cli_db(db_path)
+    conn.execute(
+        """
+        INSERT INTO proxy_request_logs (
+            app_type, model, status_code, input_tokens, output_tokens,
+            total_cost_usd, latency_ms, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER))
+        """,
+        ("claude", "deepseek-v4-pro", 200, None, None, None, 100),
+    )
+    conn.commit()
+    conn.close()
+
+    text_result = runner.invoke(cli, ["--db", str(db_path), "usage", "stats", "--days", "30"])
+    json_result = runner.invoke(cli, [
+        "--json", "--db", str(db_path), "usage", "stats", "--days", "30",
+    ])
+
+    assert text_result.exit_code == 0
+    assert "deepseek-v4-pro" in text_result.output
+    assert "$0.0000" in text_result.output
+    assert json_result.exit_code == 0
+    data = json.loads(json_result.output)
+    assert data[0]["input_tok"] == 0
+    assert data[0]["output_tok"] == 0
+    assert data[0]["cost"] == 0
 
 
 def test_write_live_config_codex_writes_config_and_auth(tmp_path, monkeypatch):
