@@ -95,6 +95,7 @@
 !/3MF/
 !/calibre/
 !/rekordbox/
+!/live2d/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
 /gimp/.*
@@ -198,6 +199,8 @@
 /calibre/.*
 /rekordbox/*
 /rekordbox/.*
+/live2d/*
+/live2d/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -258,6 +261,7 @@
 !/sbox/agent-harness/
 !/quietshrink/agent-harness/
 !/mailchimp/agent-harness/
+!/live2d/agent-harness/
 !/rekordbox/agent-harness/
 
 # Exclude non-gedit demo macros from macrocli (local only)

@@ -1227,6 +1227,25 @@
           "url": "https://github.com/octo-patch"
         }
       ]
+    },
+    {
+      "name": "live2d",
+      "display_name": "Live2D Cubism",
+      "version": "0.3.0",
+      "description": "Inspect, validate, edit, lint, diff, batch-manage, and deploy Live2D Cubism models (.model3.json, .moc3, .motion3.json, .exp3.json) from the command line — 42 commands covering the full model lifecycle",
+      "requires": "Python 3.10+",
+      "homepage": "https://www.live2d.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=live2d/agent-harness",
+      "entry_point": "cli-anything-live2d",
+      "skill_md": "skills/cli-anything-live2d/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "zyzly0705",
+          "url": "https://github.com/zyzly0705"
+        }
+      ]
     }
   ]
 }
