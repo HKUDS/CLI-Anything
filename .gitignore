@@ -262,6 +262,7 @@
 !/quietshrink/agent-harness/
 !/mailchimp/agent-harness/
 !/rekordbox/
+!/rekordbox/agent-harness/
 !/cc-switch/agent-harness/
 
 # Exclude non-gedit demo macros from macrocli (local only)
