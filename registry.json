@@ -1246,6 +1246,31 @@
           "url": "https://github.com/octo-patch"
         }
       ]
+    },
+    {
+      "name": "smithue-cli",
+      "display_name": "SmithUE CLI",
+      "version": "0.7.0",
+      "description": "CLI tool for controlling Unreal Engine editor via SmithUE plugin. Enables AI agents to execute editor commands, list tools, search capabilities, and monitor editor status.",
+      "requires": "Unreal Engine with SmithUE plugin running (Windows only)",
+      "homepage": "https://github.com/123dx-svg/smithue-cli",
+      "source_url": "https://github.com/123dx-svg/smithue-cli",
+      "install_cmd": "npm install -g smithue-cli",
+      "entry_point": "smithue-cli",
+      "skill_md": "https://raw.githubusercontent.com/123dx-svg/smithue-cli/main/skills/SKILL.md",
+      "platforms": [
+        "windows"
+      ],
+      "engines": {
+        "node": ">=18"
+      },
+      "category": "devtools",
+      "contributors": [
+        {
+          "name": "123dx-svg",
+          "url": "https://github.com/123dx-svg"
+        }
+      ]
     }
   ]
 }
