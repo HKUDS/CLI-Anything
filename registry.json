@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-04-16"
+    "updated": "2026-06-01"
   },
   "clis": [
     {
@@ -97,6 +97,25 @@
         {
           "name": "CLI-Anything-Team",
           "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
+      "name": "baota",
+      "display_name": "宝塔面板 (Baota Panel)",
+      "version": "1.0.0",
+      "description": "Linux server management panel — manage sites, SSL, databases, DNS, firewall, and cron via 宝塔面板 API",
+      "requires": "宝塔面板 (Baota Panel) at /www/server/panel",
+      "homepage": "https://www.bt.cn",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=baota/agent-harness",
+      "entry_point": "cli-anything-baota",
+      "skill_md": "skills/cli-anything-baota/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "gyorkluu",
+          "url": "https://github.com/gyorkluu"
         }
       ]
     },

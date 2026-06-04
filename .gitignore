@@ -50,6 +50,7 @@
 !/blender/
 !/inkscape/
 !/audacity/
+!/baota/
 !/libreoffice/
 !/zotero/
 !/mubu/
@@ -107,6 +108,8 @@
 /inkscape/.*
 /audacity/*
 /audacity/.*
+/baota/*
+/baota/.*
 /libreoffice/*
 /libreoffice/.*
 /zotero/*
@@ -209,6 +212,7 @@
 !/blender/agent-harness/
 !/inkscape/agent-harness/
 !/audacity/agent-harness/
+!/baota/agent-harness/
 !/libreoffice/agent-harness/
 !/zotero/agent-harness/
 !/mubu/agent-harness/

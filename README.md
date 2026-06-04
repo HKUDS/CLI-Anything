@@ -986,6 +986,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 161</td>
 </tr>
 <tr>
+<td align="center"><strong>🖥️ 宝塔 (Baota)</strong></td>
+<td>Server Management</td>
+<td><code>cli-anything-baota</code></td>
+<td>Baota Panel API + Bridge</td>
+<td align="center">✅ 121</td>
+</tr>
+<tr>
 <td align="center"><strong>🌐 Browser</strong></td>
 <td>Browser Automation</td>
 <td><code>cli-anything-browser</code></td>
@@ -1264,6 +1271,7 @@ gimp          107 passed  ✅   (64 unit + 43 e2e)
 blender       208 passed  ✅   (150 unit + 58 e2e)
 inkscape      202 passed  ✅   (148 unit + 54 e2e)
 audacity      161 passed  ✅   (107 unit + 54 e2e)
+baota         121 passed  ✅   (85 unit + 36 e2e)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 mubu           96 passed  ✅   (85 unit + 11 e2e)
 obs-studio    153 passed  ✅   (116 unit + 37 e2e)
@@ -1344,6 +1352,7 @@ cli-anything/
 ├── 🧊 blender/agent-harness/            # Blender CLI (208 tests)
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI (202 tests)
 ├── 🎵 audacity/agent-harness/           # Audacity CLI (161 tests)
+├── 🖥️ baota/agent-harness/             # 宝塔 Baota Panel CLI (121 tests)
 ├── 🌐 browser/agent-harness/            # Browser CLI (DOMShell MCP, new)
 ├── 📄 libreoffice/agent-harness/        # LibreOffice CLI (158 tests)
 ├── 📧 mailchimp/agent-harness/          # Mailchimp Marketing API CLI (303 commands, 36 unit tests)

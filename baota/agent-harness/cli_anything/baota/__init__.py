@@ -1,0 +1,1 @@
+"""Baota Panel CLI - A command-line interface for 宝塔面板 server management."""
