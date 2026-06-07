@@ -39,7 +39,7 @@
 ### Live Config Write Helpers
 
 - Claude settings JSON env merge
-- Codex `config.toml` and `auth.json` writes
+- Codex provider TOML merge preserves unrelated `config.toml` sections plus `auth.json` writes
 - Gemini `.env` merge with env key validation and newline escaping
 - OpenCode provider merge into `~/.config/opencode/opencode.json`
 - Temporary file cleanup after secure writes

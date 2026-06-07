@@ -16,7 +16,9 @@ import os as _os
 import sys
 import tempfile as _tempfile
 from collections.abc import Mapping
+from copy import deepcopy as _deepcopy
 import click
+import tomlkit
 
 from .utils.db import connect_db, load_config, load_settings, VALID_APP_TYPES
 
@@ -131,6 +133,41 @@ def _enabled_app_columns(db, table: str) -> str:
         column = f"enabled_{app}"
         parts.append(column if column in columns else f"0 AS {column}")
     return ", ".join(parts)
+
+
+_CODEX_PROVIDER_CONFIG_KEYS = ("model", "model_provider", "base_url")
+
+
+def _merge_codex_provider_toml(target, provider_config: str) -> None:
+    """Merge provider-owned Codex TOML fields without deleting user settings."""
+    try:
+        existing_text = target.read_text(encoding="utf-8") if target.exists() else ""
+        existing_doc = (
+            tomlkit.parse(existing_text) if existing_text.strip() else tomlkit.document()
+        )
+        provider_doc = (
+            tomlkit.parse(provider_config) if provider_config.strip() else tomlkit.document()
+        )
+    except Exception as exc:
+        raise click.ClickException(f"Invalid Codex config.toml: {exc}") from exc
+
+    for key in _CODEX_PROVIDER_CONFIG_KEYS:
+        if key in provider_doc:
+            existing_doc[key] = _deepcopy(provider_doc[key])
+
+    if "model_providers" in provider_doc:
+        provider_table = provider_doc["model_providers"]
+        if not hasattr(provider_table, "items"):
+            existing_doc["model_providers"] = _deepcopy(provider_table)
+        else:
+            existing_table = existing_doc.get("model_providers")
+            if not hasattr(existing_table, "items"):
+                existing_doc["model_providers"] = tomlkit.table()
+                existing_table = existing_doc["model_providers"]
+            for provider_id, provider_settings in provider_table.items():
+                existing_table[provider_id] = _deepcopy(provider_settings)
+
+    _write_text_config(target, tomlkit.dumps(existing_doc))
 
 
 # ──────────────────────────────────────────────
@@ -342,7 +379,7 @@ def _write_live_config(app: str, db) -> None:
     elif app == "codex":
         wrote = False
         if "config" in config:
-            _write_text_config(target, str(config["config"]))
+            _merge_codex_provider_toml(target, str(config["config"]))
             wrote = True
         if isinstance(config.get("auth"), dict):
             _write_json_config(home / ".codex" / "auth.json", config["auth"])

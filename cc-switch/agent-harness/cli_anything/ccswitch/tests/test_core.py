@@ -9,6 +9,7 @@ from pathlib import Path
 from contextlib import contextmanager
 
 import pytest
+import tomlkit
 
 from cli_anything.ccswitch.utils.db import (
     get_cc_switch_dir, get_db_path, get_config_path,
@@ -514,6 +515,31 @@ def test_usage_stats_normalises_nullable_aggregates(runner, tmp_path):
 def test_write_live_config_codex_writes_config_and_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    config_path = tmp_path / ".codex" / "config.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        'approval_policy = "on-request"\n'
+        'sandbox_mode = "workspace-write"\n'
+        'model = "old-model"\n'
+        'model_provider = "old-provider"\n'
+        '\n'
+        '[model_providers.old-provider]\n'
+        'name = "Old Provider"\n'
+        'base_url = "https://old.example.test"\n'
+        '\n'
+        '[model_providers.keep]\n'
+        'name = "Keep Provider"\n'
+        'base_url = "https://keep.example.test"\n'
+        '\n'
+        '# mcp should stay with filesystem\n'
+        '[mcp_servers.filesystem]\n'
+        'command = "npx"\n'
+        'args = ["-y", "@modelcontextprotocol/server-filesystem"]\n'
+        '\n'
+        '[profiles.work]\n'
+        'model = "profile-model"\n',
+        encoding="utf-8",
+    )
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row
     db.execute("""
@@ -529,7 +555,14 @@ def test_write_live_config_codex_writes_config_and_auth(tmp_path, monkeypatch):
             "codex",
             1,
             json.dumps({
-                "config": 'model = "deepseek-v4-pro"',
+                "config": (
+                    'model = "deepseek-v4-pro"\n'
+                    'model_provider = "deepseek"\n'
+                    '\n'
+                    '[model_providers.deepseek]\n'
+                    'name = "DeepSeek"\n'
+                    'base_url = "https://api.deepseek.com/v1"\n'
+                ),
                 "auth": {"OPENAI_API_KEY": "sk-codex1234567890"},
             }),
         ),
@@ -537,13 +570,82 @@ def test_write_live_config_codex_writes_config_and_auth(tmp_path, monkeypatch):
 
     _write_live_config("codex", db)
 
-    assert (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8") == (
-        'model = "deepseek-v4-pro"\n'
-    )
+    merged = config_path.read_text(encoding="utf-8")
+    assert 'model = "deepseek-v4-pro"' in merged
+    assert 'model_provider = "deepseek"' in merged
+    assert '[model_providers.deepseek]' in merged
+    assert 'base_url = "https://api.deepseek.com/v1"' in merged
+    assert '[model_providers.keep]' in merged
+    assert 'approval_policy = "on-request"' in merged
+    assert 'sandbox_mode = "workspace-write"' in merged
+    assert '[mcp_servers.filesystem]' in merged
+    assert '[profiles.work]' in merged
+    parsed = tomlkit.parse(merged)
+    assert parsed["mcp_servers"]["filesystem"]["command"] == "npx"
+    assert parsed["profiles"]["work"]["model"] == "profile-model"
     auth = json.loads((tmp_path / ".codex" / "auth.json").read_text(encoding="utf-8"))
     assert auth == {"OPENAI_API_KEY": "sk-codex1234567890"}
     assert not list((tmp_path / ".codex").glob(".config.toml.*"))
     assert not list((tmp_path / ".codex").glob(".auth.json.*"))
+
+
+def test_write_live_config_codex_handles_multiline_strings(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    config_path = tmp_path / ".codex" / "config.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        'model = "old-model"\n'
+        'model_provider = "deepseek"\n'
+        '\n'
+        '[model_providers.deepseek]\n'
+        'name = "Old DeepSeek"\n'
+        'notes = """\n'
+        'line one\n'
+        '[mcp_servers.fake]\n'
+        'line three\n'
+        '"""\n'
+        'base_url = "https://old.example.test"\n'
+        '\n'
+        '[mcp_servers.real]\n'
+        'command = "npx"\n',
+        encoding="utf-8",
+    )
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("""
+        CREATE TABLE providers (
+            app_type TEXT,
+            is_current INTEGER,
+            settings_config TEXT
+        )
+    """)
+    db.execute(
+        "INSERT INTO providers VALUES (?, ?, ?)",
+        (
+            "codex",
+            1,
+            json.dumps({
+                "config": (
+                    'model = "deepseek-v4-pro"\n'
+                    'model_provider = "deepseek"\n'
+                    '\n'
+                    '[model_providers.deepseek]\n'
+                    'name = "DeepSeek"\n'
+                    'base_url = "https://api.deepseek.com/v1"\n'
+                ),
+            }),
+        ),
+    )
+
+    _write_live_config("codex", db)
+
+    parsed = tomlkit.parse(config_path.read_text(encoding="utf-8"))
+    assert parsed["model"] == "deepseek-v4-pro"
+    assert parsed["model_provider"] == "deepseek"
+    assert parsed["model_providers"]["deepseek"]["base_url"] == "https://api.deepseek.com/v1"
+    assert parsed["mcp_servers"]["real"]["command"] == "npx"
+    assert "fake" not in parsed["mcp_servers"]
 
 
 def test_write_live_config_claude_merges_nested_env(tmp_path, monkeypatch):
@@ -673,6 +775,18 @@ def test_write_live_config_opencode_merges_provider_settings(tmp_path, monkeypat
 def test_providers_set_current_codex_writes_live_config(runner, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    config_path = tmp_path / ".codex" / "config.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        'approval_policy = "on-request"\n'
+        '\n'
+        '[mcp_servers.filesystem]\n'
+        'command = "npx"\n'
+        '\n'
+        '[profiles.work]\n'
+        'model = "profile-model"\n',
+        encoding="utf-8",
+    )
     db_path = tmp_path / "cc-switch.db"
     conn = _init_cli_db(db_path)
     conn.execute(
@@ -697,7 +811,14 @@ def test_providers_set_current_codex_writes_live_config(runner, tmp_path, monkey
             0,
             1,
             json.dumps({
-                "config": 'model = "deepseek-v4-pro"',
+                "config": (
+                    'model = "deepseek-v4-pro"\n'
+                    'model_provider = "deepseek"\n'
+                    '\n'
+                    '[model_providers.deepseek]\n'
+                    'name = "DeepSeek"\n'
+                    'base_url = "https://api.deepseek.com/v1"\n'
+                ),
                 "auth": {"OPENAI_API_KEY": "sk-codex1234567890"},
             }),
         ),
@@ -711,9 +832,13 @@ def test_providers_set_current_codex_writes_live_config(runner, tmp_path, monkey
 
     assert result.exit_code == 0
     assert "sk-codex1234567890" not in result.output
-    assert (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8") == (
-        'model = "deepseek-v4-pro"\n'
-    )
+    merged = config_path.read_text(encoding="utf-8")
+    assert 'model = "deepseek-v4-pro"' in merged
+    assert 'model_provider = "deepseek"' in merged
+    assert '[model_providers.deepseek]' in merged
+    assert 'approval_policy = "on-request"' in merged
+    assert '[mcp_servers.filesystem]' in merged
+    assert '[profiles.work]' in merged
     auth = json.loads((tmp_path / ".codex" / "auth.json").read_text(encoding="utf-8"))
     assert auth["OPENAI_API_KEY"] == "sk-codex1234567890"
 

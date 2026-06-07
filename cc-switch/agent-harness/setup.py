@@ -14,6 +14,7 @@ setup(
     install_requires=[
         "click>=8.0",
         "prompt_toolkit>=3.0",
+        "tomlkit>=0.12",
     ],
     entry_points={
         "console_scripts": [
