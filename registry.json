@@ -2,9 +2,28 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-04-16"
+    "updated": "2026-06-10"
   },
   "clis": [
+    {
+      "name": "jumpserver",
+      "display_name": "JumpServer",
+      "version": "0.1.0",
+      "description": "Bastion host management — manage assets, users, permissions, sessions, accounts, and audit logs via JumpServer REST API",
+      "requires": "JumpServer v3.0+ instance",
+      "homepage": "https://www.jumpserver.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=jumpserver/agent-harness",
+      "entry_point": "cli-anything-jumpserver",
+      "skill_md": "skills/cli-anything-jumpserver/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "Ayasaz",
+          "url": "https://github.com/Ayasaz"
+        }
+      ]
+    },
     {
       "name": "wiremock",
       "display_name": "WireMock",
