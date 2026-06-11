@@ -1,0 +1,18 @@
+[
+  {
+    "name": "tinyfish",
+    "display_name": "TinyFish Web Automation",  
+    "version": "1.0.0",
+    "description": "Structured CLI wrapper for TinyFish web automation - search, fetch, browser control with JSON output",
+    "requires": "TinyFish binary installed at /opt/nvm/versions/node/v24.14.1/bin/tinyfish",
+    "homepage": "https://github.com/aikio208/cli-anything-tinyfish",
+    "source_url": null,
+    "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=tinyfish/agent-harness",
+    "entry_point": "cli-anything-tinyfish",
+    "skill_md": "skills/cli-anything-tinyfish/SKILL.md", 
+    "category": "web-automation",
+    "contributors": [
+      {"name": "aikio208", "url": "https://github.com/aikio208"}
+    ]
+  }
+]
