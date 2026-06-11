@@ -53,10 +53,10 @@ def test_save_and_load_config(tmp_path):
         original_file = backend.CONFIG_FILE
         backend.CONFIG_FILE = config_file
         try:
-            save_config({"api_key": "test-key-123", "default_model": "MiniMax-M2.7"})
+            save_config({"api_key": "test-key-123", "default_model": "MiniMax-M3"})
             loaded = load_config()
             assert loaded["api_key"] == "test-key-123"
-            assert loaded["default_model"] == "MiniMax-M2.7"
+            assert loaded["default_model"] == "MiniMax-M3"
         finally:
             backend.CONFIG_FILE = original_file
 
@@ -64,11 +64,14 @@ def test_save_and_load_config(tmp_path):
 # ── Chat models ────────────────────────────────────────────────────────────────
 
 def test_chat_models_list():
-    """MiniMax-M2.7 and MiniMax-M2.7-highspeed must be in the model list."""
+    """MiniMax-M3, MiniMax-M2.7 and MiniMax-M2.7-highspeed must be in the model list."""
     model_ids = [m["id"] for m in CHAT_MODELS]
+    assert "MiniMax-M3" in model_ids
     assert "MiniMax-M2.7" in model_ids
     assert "MiniMax-M2.7-highspeed" in model_ids
-    assert len(CHAT_MODELS) == 2
+    assert len(CHAT_MODELS) == 3
+    # M3 must be the first (default) model
+    assert CHAT_MODELS[0]["id"] == "MiniMax-M3"
 
 
 def test_tts_models_list():
@@ -102,7 +105,7 @@ def test_chat_completion_success():
 
         result = chat_completion(
             api_key="fake-key",
-            model="MiniMax-M2.7",
+            model="MiniMax-M3",
             messages=[{"role": "user", "content": "Hello"}],
         )
 
@@ -118,7 +121,7 @@ def test_chat_completion_uses_minimax_base_url():
         mock_resp.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
         mock_post.return_value = mock_resp
 
-        chat_completion(api_key="key", model="MiniMax-M2.7", messages=[])
+        chat_completion(api_key="key", model="MiniMax-M3", messages=[])
 
         call_url = mock_post.call_args[0][0]
         assert "minimax.io" in call_url
@@ -133,7 +136,7 @@ def test_chat_completion_default_temperature():
         mock_resp.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
         mock_post.return_value = mock_resp
 
-        chat_completion(api_key="key", model="MiniMax-M2.7", messages=[])
+        chat_completion(api_key="key", model="MiniMax-M3", messages=[])
 
         body = mock_post.call_args[1]["json"]
         assert body["temperature"] == 1.0
@@ -189,7 +192,7 @@ def test_chat_completion_stream_success():
 
         result = chat_completion_stream(
             api_key="fake-key",
-            model="MiniMax-M2.7",
+            model="MiniMax-M3",
             messages=[{"role": "user", "content": "Hi"}],
             on_chunk=on_chunk,
         )

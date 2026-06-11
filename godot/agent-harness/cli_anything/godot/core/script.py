@@ -124,10 +124,15 @@ def validate_script(project_path: str, script_path: str) -> dict:
         timeout=30,
     )
 
-    valid = result["returncode"] == 0
+    # Godot 4.6.x exits 0 even on parse errors with --check-only, so the
+    # return code alone is unreliable. Also scan stderr for error markers.
+    stderr = result["stderr"] or ""
+    error_markers = ("SCRIPT ERROR", "Parse Error", "Failed to load script")
+    has_error = any(marker in stderr for marker in error_markers)
+    valid = result["returncode"] == 0 and not has_error
     return {
         "status": "ok",
         "script": script_path,
         "valid": valid,
-        "errors": result["stderr"] if not valid else "",
+        "errors": stderr if not valid else "",
     }

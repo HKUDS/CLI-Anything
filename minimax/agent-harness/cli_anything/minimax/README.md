@@ -34,7 +34,7 @@ cli-anything-minimax tts --text "Hello world" --output hello.mp3
 ### Chat
 
 ```bash
-# Simple chat (default model: MiniMax-M2.7)
+# Simple chat (default model: MiniMax-M3)
 cli-anything-minimax chat --prompt "Explain quantum computing"
 
 # High-speed model
@@ -85,7 +85,8 @@ cli-anything-minimax models --tts
 
 | Model | Description |
 |-------|-------------|
-| `MiniMax-M2.7` | Peak Performance. Ultimate Value. (default) |
+| `MiniMax-M3` | Next-generation flagship model (default) |
+| `MiniMax-M2.7` | Peak Performance. Ultimate Value. |
 | `MiniMax-M2.7-highspeed` | Same performance, faster and more agile |
 
 ### TTS

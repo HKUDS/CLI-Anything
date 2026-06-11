@@ -12,10 +12,10 @@ with open("cli_anything/minimax/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-minimax",
-    version="1.0.0",
+    version="1.1.0",
     author="cli-anything contributors",
     author_email="",
-    description="CLI harness for MiniMax AI — chat (MiniMax-M2.7) and TTS via MiniMax API. Requires: MINIMAX_API_KEY",
+    description="CLI harness for MiniMax AI — chat (MiniMax-M3) and TTS via MiniMax API. Requires: MINIMAX_API_KEY",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/HKUDS/CLI-Anything",

@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you find CLI-Anything useful, please cite our technical report."
+title: "CLI-Anything"
+authors:
+  - family-names: Yang
+    given-names: Yuhao
+  - family-names: Fan
+    given-names: Tianyu
+  - family-names: Huang
+    given-names: Chao
+repository-code: "https://github.com/HKUDS/CLI-Anything"
+url: "https://arxiv.org/abs/2606.03854"
+preferred-citation:
+  type: article
+  title: "CLI-Anything: Towards Agent-Native Computer Use"
+  authors:
+    - family-names: Yang
+      given-names: Yuhao
+    - family-names: Fan
+      given-names: Tianyu
+    - family-names: Huang
+      given-names: Chao
+  year: 2026
+  url: "https://arxiv.org/abs/2606.03854"
+  identifiers:
+    - type: other
+      value: "arXiv:2606.03854"
+      description: "arXiv identifier"
