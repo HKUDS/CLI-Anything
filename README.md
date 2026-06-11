@@ -236,7 +236,7 @@ Give SKILL-compatible agents the CLI-Hub meta-skill so they can discover and ins
 npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
 ```
 
-**Works with:** OpenClaw, Nanobot, Claude Code, Codex, Antigravity, and other SKILL-compatible agents.
+**Works with:** OpenClaw, Nanobot, Claude Code, Codex, Reasonix, Antigravity, and other SKILL-compatible agents.
 
 Then prompt:
 
@@ -255,7 +255,7 @@ Use the CLI-Anything generator when you need a new harness for software, a codeb
 
 - **Python 3.10+**
 - Target software or source repo available locally or online
-- A supported AI coding agent: [Claude Code](#-claude-code) | [Pi](#-pi-coding-agent) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Hermes](#-hermes) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [More Platforms](#-more-platforms-coming-soon)
+- A supported AI coding agent: [Claude Code](#-claude-code) | [Pi](#-pi-coding-agent) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Hermes](#-hermes) | [Reasonix](#-reasonix) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [More Platforms](#-more-platforms-coming-soon)
 
 ### Pick Your Agent Platform
 
@@ -623,6 +623,48 @@ The Hermes skill adapts the same methodology used by the Claude Code plugin and
 Codex skill, binding Hermes's `terminal`, `execute_code`, `delegate_task`, and
 `read_file` / `write_file` / `patch` tools to the 7-phase harness workflow while
 keeping the generated Python harness format unchanged.
+</details>
+
+<details>
+
+<summary><h4 id="-reasonix">⚡ Reasonix <sup><code>Experimental</code></sup> <sup><code>Community</code></sup></h4></summary>
+
+**Step 1: Install the Skill**
+
+Run the bundled installer:
+
+```bash
+# Clone the repo
+git clone https://github.com/HKUDS/CLI-Anything.git
+
+# Install the skill
+bash CLI-Anything/reasonix-skill/scripts/install.sh
+```
+
+On Windows PowerShell, use:
+
+```powershell
+.\CLI-Anything\reasonix-skill\scripts\install.ps1
+```
+
+This installs the skill to Reasonix's global skill directory at `~/.reasonix/skills/cli-anything`.
+
+Restart Reasonix after installation so it is discovered.
+
+**Step 2: Use CLI-Anything from Reasonix**
+
+Describe the task in natural language, for example:
+
+```text
+Use CLI-Anything to build a harness for ./gimp
+Use CLI-Anything to refine ./shotcut for picture-in-picture workflows
+Use CLI-Anything to validate ./libreoffice
+```
+
+The Reasonix skill adapts the same methodology used by the Claude Code plugin and
+Codex/Hermes skills, binding Reasonix's `bash`, `write_file`, `edit_file`,
+`multi_edit`, `grep`, `glob`, and optional `mcp__codegraph__search` / `mcp__codegraph__context` tools to the
+7-phase harness workflow while keeping the generated Python harness format unchanged.
 </details>
 
 <details>
@@ -1012,6 +1054,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="browser/agent-harness/">New</a></td>
 </tr>
 <tr>
+<td align="center"><strong><a href="web-yu-pri/agent-harness/">Web Yu-pri</a></strong></td>
+<td>Japan Post Shipping Labels</td>
+<td><code>cli-anything-web-yu-pri</code></td>
+<td>Playwright + Web Yu-pri forms</td>
+<td align="center">✅ <a href="web-yu-pri/agent-harness/">New</a></td>
+</tr>
+<tr>
 <td align="center"><strong>📄 LibreOffice</strong></td>
 <td>Office Suite (Writer, Calc, Impress)</td>
 <td><code>cli-anything-libreoffice</code></td>
@@ -1115,6 +1164,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td><code>cli-anything-drawio</code></td>
 <td>mxGraph XML + draw.io CLI</td>
 <td align="center">✅ 138</td>
+</tr>
+<tr>
+<td align="center"><strong><a href="eez-studio/agent-harness/">EEZ Studio</a></strong></td>
+<td>Embedded UI / Instrument Automation</td>
+<td><code>cli-anything-eez-studio</code></td>
+<td>.eez-project JSON + EEZ Studio Node backend</td>
+<td align="center">✅ <a href="eez-studio/agent-harness/">New</a></td>
 </tr>
 <tr>
 <td align="center"><strong>⛓️ ETH2 QuickStart</strong></td>
@@ -1257,6 +1313,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 50</td>
 </tr>
 <tr>
+<td align="center"><strong>🗄️ <a href="tigris/agent-harness/">Tigris</a></strong></td>
+<td>Object Storage (S3-compatible, global, no egress) — buckets, objects, snapshots, IAM, access keys</td>
+<td><code>cli-anything-tigris</code></td>
+<td>subprocess wrapping the official <code>tigris</code> CLI</td>
+<td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
 <td align="center"><strong>✅ 2,461</strong></td>
 </tr>
@@ -1364,12 +1427,14 @@ cli-anything/
 │   ├── scripts/                         # Bash and PowerShell installers
 │   └── tests/                           # Installer resource-sync regression test
 ├── 🧭 hermes-skill/                     # Hermes Agent skill entry point
+├── 🧠 reasonix-skill/                   # Reasonix skill entry point
 ├── 🎨 gimp/agent-harness/               # GIMP CLI (107 tests)
 ├── 🧊 blender/agent-harness/            # Blender CLI (208 tests)
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI (202 tests)
 ├── 🎵 audacity/agent-harness/           # Audacity CLI (161 tests)
 ├── wavetone/agent-harness/              # WaveTone CLI (32 tests: 30 default + 2 backend-gated e2e)
 ├── 🌐 browser/agent-harness/            # Browser CLI (DOMShell MCP, new)
+├── 🌐 web-yu-pri/agent-harness/         # Japan Post Web Yu-pri CLI (new)
 ├── 📄 libreoffice/agent-harness/        # LibreOffice CLI (158 tests)
 ├── 📧 mailchimp/agent-harness/          # Mailchimp Marketing API CLI (303 commands, 36 unit tests)
 ├── 📚 zotero/agent-harness/             # Zotero CLI (new, write import support)
@@ -1383,6 +1448,7 @@ cli-anything/
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22 tests)
 ├── 🎵 musescore/agent-harness/          # MuseScore CLI (56 tests)
 ├── 📐 drawio/agent-harness/             # Draw.io CLI (138 tests)
+├── 🧪 eez-studio/agent-harness/         # EEZ Studio CLI (project, LVGL, SCPI automation)
 ├── ⛓️ eth2-quickstart/agent-harness/    # ETH2 QuickStart CLI (18 unit, 3 e2e skipped)
 ├── 🧜 mermaid/agent-harness/            # Mermaid Live Editor CLI (10 tests)
 ├── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)
