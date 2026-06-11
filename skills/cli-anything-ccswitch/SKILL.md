@@ -26,6 +26,7 @@ After installation, the command `cli-anything-ccswitch` is available.
 
 | Group | Description |
 |-------|-------------|
+| `status` | Show a quick database overview |
 | `providers` | Manage AI provider configurations (list, get, set-current) |
 | `proxy` | Manage the local HTTP proxy server (status, config) |
 | `mcp` | Manage MCP (Model Context Protocol) servers (list, enable) |
@@ -127,6 +128,7 @@ cli-anything-ccswitch sessions list --app claude --limit 10
 ### Status overview
 
 ```bash
+cli-anything-ccswitch status
 cli-anything-ccswitch
 cli-anything-ccswitch --json
 ```

@@ -13,6 +13,28 @@ from pathlib import Path
 import pytest
 
 
+LIVE_DB_OPT_IN_ENV = "CLI_ANYTHING_CCSWITCH_LIVE_DB"
+NO_LIVE_DB_TESTS = {"test_help", "test_providers_help"}
+
+
+def _live_db_path() -> Path:
+    home = Path(os.environ.get("CCSWITCH_HOME", os.path.expanduser("~")))
+    return home / ".cc-switch" / "cc-switch.db"
+
+
+@pytest.fixture(autouse=True)
+def _gate_live_db_tests(request):
+    if request.node.name in NO_LIVE_DB_TESTS:
+        return
+
+    if os.environ.get(LIVE_DB_OPT_IN_ENV) != "1":
+        pytest.skip(f"set {LIVE_DB_OPT_IN_ENV}=1 to run live CC Switch DB tests")
+
+    db_path = _live_db_path()
+    if not db_path.is_file():
+        pytest.skip(f"live CC Switch database not found at {db_path}")
+
+
 def _resolve_cli(name):
     """Resolve installed CLI command; falls back to python -m for dev."""
     import shutil
