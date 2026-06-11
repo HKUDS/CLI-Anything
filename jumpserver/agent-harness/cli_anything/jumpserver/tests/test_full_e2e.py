@@ -7,9 +7,12 @@ Uses `CLI_ANYTHING_FORCE_INSTALLED=1` env var.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 
 class TestCLISubprocess:
@@ -18,26 +21,36 @@ class TestCLISubprocess:
     CLI_NAME = "cli-anything-jumpserver"
 
     @staticmethod
-    def _resolve_cli(name: str) -> str:
-        """Find the CLI command. First check PATH, fall back to dev script."""
-        env_force = os.environ.get("CLI_ANYTHING_FORCE_INSTALLED", "")
-        result = subprocess.run(
-            ["which", name], capture_output=True, text=True
-        )
-        if result.returncode == 0 and env_force != "0":
-            return result.stdout.strip()
+    def _resolve_cli(name: str) -> list[str]:
+        """Resolve installed CLI command; fall back to module execution."""
+        force = os.environ.get("CLI_ANYTHING_FORCE_INSTALLED", "").strip() == "1"
+        path = shutil.which(name)
+        if path:
+            return [path]
+        if force:
+            raise RuntimeError(f"{name} not found in PATH. Install with: pip install -e .")
+        return [sys.executable, "-m", "cli_anything.jumpserver.jumpserver_cli"]
 
-        # Fallback: run the module directly
-        repo_root = Path(__file__).resolve().parent.parent.parent
-        return str(repo_root / "cli_anything" / "jumpserver" / "jumpserver_cli.py")
-
-    def _run(self, *args, expected_exit=0, timeout=10):
+    def _run(self, *args, expected_exit=0, timeout=10, input_text=None):
         """Run CLI command and return CompletedProcess."""
-        cli = self._resolve_cli(self.CLI_NAME)
-        cmd = [sys.executable, cli] + list(args)
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
+        cmd = self._resolve_cli(self.CLI_NAME) + list(args)
+        with tempfile.TemporaryDirectory(prefix="jumpserver-cli-home-") as home:
+            env = os.environ.copy()
+            env["HOME"] = home
+            harness_root = str(Path(__file__).resolve().parents[3])
+            env["PYTHONPATH"] = (
+                harness_root
+                if not env.get("PYTHONPATH")
+                else f"{harness_root}{os.pathsep}{env['PYTHONPATH']}"
+            )
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                input=input_text,
+                env=env,
+            )
 
         if expected_exit is not None:
             assert result.returncode == expected_exit, (
@@ -58,6 +71,15 @@ class TestCLISubprocess:
 
 class TestCLIDiscovery(TestCLISubprocess):
     """CLI availability and help."""
+
+    def test_fallback_cli_uses_module_path(self):
+        with patch.dict(os.environ, {"CLI_ANYTHING_FORCE_INSTALLED": ""}):
+            with patch("shutil.which", return_value=None):
+                assert self._resolve_cli(self.CLI_NAME) == [
+                    sys.executable,
+                    "-m",
+                    "cli_anything.jumpserver.jumpserver_cli",
+                ]
 
     def test_help_output(self):
         result = self._run("--help")
@@ -84,6 +106,16 @@ class TestAuthCommands(TestCLISubprocess):
 
     def test_auth_status_no_session(self):
         result = self._run_json("auth", "status")
+        data = self._parse_json(result)
+        assert data["status"] == "not authenticated"
+
+    def test_auth_status_global_json(self):
+        result = self._run("--json", "auth", "status")
+        data = self._parse_json(result)
+        assert data["status"] == "not authenticated"
+
+    def test_auth_status_global_json_output_alias(self):
+        result = self._run("--json-output", "auth", "status")
         data = self._parse_json(result)
         assert data["status"] == "not authenticated"
 
@@ -147,6 +179,42 @@ class TestUserCommands(TestCLISubprocess):
     def test_user_my_assets_help(self):
         result = self._run("user", "my-assets", "--help")
         assert "output" in result.stdout.lower()
+
+    def test_reset_password_requires_force_or_confirmation(self):
+        result = self._run(
+            "user",
+            "reset-password",
+            "user-1",
+            "--password",
+            "secret-password",
+            input_text="n\n",
+            expected_exit=1,
+        )
+        assert "Reset password for user 'user-1'?" in result.stdout
+        assert "secret-password" not in result.stdout
+        assert "secret-password" not in result.stderr
+
+    def test_reset_password_force_reaches_json_auth_gate(self):
+        result = self._run(
+            "--json",
+            "user",
+            "reset-password",
+            "user-1",
+            "--password",
+            "secret-password",
+            "--force",
+            expected_exit=1,
+        )
+        assert result.stdout == ""
+        data = json.loads(result.stderr)
+        assert data["status"] == "error"
+        assert "Not authenticated" in data["message"]
+        assert "secret-password" not in result.stderr
+
+    def test_reset_password_has_force_and_yes_options(self):
+        result = self._run("user", "reset-password", "--help")
+        assert "--force" in result.stdout
+        assert "--yes" in result.stdout
 
 
 class TestPermCommands(TestCLISubprocess):
@@ -226,6 +294,13 @@ class TestOutputFormats(TestCLISubprocess):
         result = self._run("auth", "status", "--output", "table")
         assert "not authenticated" in result.stdout.lower()
 
+    def test_unauthenticated_global_json_error_is_parseable(self):
+        result = self._run("--json", "asset", "list", expected_exit=1)
+        assert result.stdout == ""
+        data = json.loads(result.stderr)
+        assert data["status"] == "error"
+        assert "Not authenticated" in data["message"]
+
 
 class TestDryRun(TestCLISubprocess):
     """Dry-run functionality."""
@@ -266,6 +341,31 @@ class TestDryRun(TestCLISubprocess):
         )
         data = self._parse_json(result)
         assert data["action"] == "create permission"
+
+    def test_dry_run_account_create_masks_secret_json(self):
+        result = self._run(
+            "account", "create",
+            "--asset", "1",
+            "--username", "root",
+            "--secret", "super-secret",
+            "--dry-run",
+            "--output", "json",
+        )
+        data = self._parse_json(result)
+        assert data["action"] == "create account"
+        assert data["data"]["secret"] == "********"
+        assert "super-secret" not in result.stdout
+
+    def test_dry_run_account_create_masks_secret_text(self):
+        result = self._run(
+            "account", "create",
+            "--asset", "1",
+            "--username", "root",
+            "--secret", "super-secret",
+            "--dry-run",
+        )
+        assert "********" in result.stdout
+        assert "super-secret" not in result.stdout
 
     def test_dry_run_asset_delete(self):
         result = self._run(

@@ -10,6 +10,7 @@ from cli_anything.jumpserver.utils import (
     require_auth,
     handle_api_error,
     print_result,
+    should_emit_human_text,
 )
 
 
@@ -75,7 +76,7 @@ def session_replay(session_id, output):
     data = resp.json()
     print_result(data, fmt=output)
 
-    if output == "table" and isinstance(data, dict):
+    if should_emit_human_text(output) and isinstance(data, dict):
         replay_url = data.get("url", data.get("replay_url", ""))
         if replay_url:
             click.echo(f"\n  Replay URL: {session.base_url}{replay_url}")

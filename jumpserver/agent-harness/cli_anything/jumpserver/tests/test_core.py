@@ -26,6 +26,7 @@ from cli_anything.jumpserver.utils import (
     handle_api_error,
     parse_ids,
     validate_output_format,
+    mask_sensitive_data,
     CLIError,
 )
 
@@ -402,6 +403,21 @@ class TestOutputFormatting:
         assert "value" in output
 
 
+class TestPackagingMetadata:
+    """Package metadata regressions."""
+
+    def test_readme_paths_exist(self):
+        harness_root = Path(__file__).resolve().parents[3]
+        readme_path = harness_root / "cli_anything" / "jumpserver" / "README.md"
+        assert readme_path.exists()
+        assert 'readme = "cli_anything/jumpserver/README.md"' in (
+            harness_root / "pyproject.toml"
+        ).read_text()
+        assert 'open("cli_anything/jumpserver/README.md", "r")' in (
+            harness_root / "setup.py"
+        ).read_text()
+
+
 # ─── Utility Tests ───────────────────────────────────────────────
 
 
@@ -482,6 +498,28 @@ class TestParseIDs:
         ids = "0000-0000-0000,1111-1111-1111"
         result = parse_ids(ids)
         assert len(result) == 2
+
+
+class TestSensitiveDataMasking:
+    """Sensitive dry-run payload masking."""
+
+    def test_masks_nested_sensitive_values(self):
+        data = {
+            "username": "root",
+            "secret": "super-secret",
+            "nested": {
+                "password": "password123",
+                "tokens": [{"token": "abc123"}],
+            },
+        }
+
+        masked = mask_sensitive_data(data)
+
+        assert masked["username"] == "root"
+        assert masked["secret"] == "********"
+        assert masked["nested"]["password"] == "********"
+        assert masked["nested"]["tokens"][0]["token"] == "********"
+        assert data["secret"] == "super-secret"
 
 
 class TestValidateOutputFormat:

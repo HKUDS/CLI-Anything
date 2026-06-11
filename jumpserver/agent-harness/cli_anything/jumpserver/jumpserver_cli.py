@@ -17,6 +17,7 @@ import sys
 import os
 import cmd
 import shlex
+import json
 from typing import Any
 
 import click
@@ -25,7 +26,7 @@ from cli_anything.jumpserver import __version__
 from cli_anything.jumpserver.core.session import Session
 from cli_anything.jumpserver.core.state import get_state, reset_state
 from cli_anything.jumpserver.core.output import format_output
-from cli_anything.jumpserver.utils import print_result, CLIError
+from cli_anything.jumpserver.utils import print_result, CLIError, wants_json_output
 
 # Import command groups
 from cli_anything.jumpserver.core.commands_auth import auth_group
@@ -209,8 +210,15 @@ class JumpServerREPL(cmd.Cmd):
 @click.group(cls=JumpserverCLI)
 @click.version_option(version=__version__, prog_name="jumpserver-cli")
 @click.option(
-    "--json-output",
+    "--json",
     "output_json",
+    is_flag=True,
+    default=False,
+    help="Output in JSON format",
+)
+@click.option(
+    "--json-output",
+    "json_output",
     is_flag=True,
     default=False,
     help="Output in JSON format (shortcut for -o json)",
@@ -228,7 +236,7 @@ class JumpServerREPL(cmd.Cmd):
     envvar="JUMPSERVER_URL",
 )
 @click.pass_context
-def main(ctx, output_json, interactive, url):
+def main(ctx, output_json, json_output, interactive, url):
     """JumpServer CLI - Command-line interface for JumpServer bastion host.
 
     Manage assets, users, permissions, sessions, and more from your terminal.
@@ -240,11 +248,12 @@ def main(ctx, output_json, interactive, url):
       jumpserver --interactive
     """
     ctx.ensure_object(dict)
-    ctx.obj["output_json"] = output_json
+    ctx.obj["output_json"] = output_json or json_output
 
     if url:
         session = Session.load()
         session.base_url = url.rstrip("/")
+        session.save()
 
     if interactive and ctx.invoked_subcommand is None:
         JumpserverCLI._start_repl(ctx)
@@ -253,25 +262,50 @@ def main(ctx, output_json, interactive, url):
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
         return
-        session.save()
 
     if interactive:
         ctx.obj["interactive"] = True
 
 
+def _show_click_error(error: click.ClickException, json_mode: bool) -> None:
+    """Render Click errors in JSON mode when requested."""
+    if json_mode:
+        click.echo(
+            json.dumps(
+                {"status": "error", "message": error.format_message()},
+                ensure_ascii=False,
+            ),
+            err=True,
+        )
+        return
+    error.show()
+
+
 def cli_main():
     """Entry point for console_scripts."""
+    json_mode = wants_json_output()
     try:
-        main()
+        main(standalone_mode=False)
+    except click.exceptions.Exit as e:
+        sys.exit(e.exit_code)
     except KeyboardInterrupt:
         click.echo("\nInterrupted.")
         sys.exit(130)
+    except click.Abort:
+        if json_mode:
+            click.echo(
+                json.dumps({"status": "error", "message": "Aborted."}),
+                err=True,
+            )
+        else:
+            click.echo("Aborted!", err=True)
+        sys.exit(1)
     except CLIError as e:
-        e.show()
+        e.show(json_mode=json_mode)
         sys.exit(1)
     except click.ClickException as e:
-        e.show()
-        sys.exit(1)
+        _show_click_error(e, json_mode=json_mode)
+        sys.exit(e.exit_code or 1)
 
 
 if __name__ == "__main__":

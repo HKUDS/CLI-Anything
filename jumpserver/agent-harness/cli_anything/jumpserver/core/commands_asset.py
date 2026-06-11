@@ -11,6 +11,7 @@ from cli_anything.jumpserver.utils import (
     handle_api_error,
     parse_ids,
     print_result,
+    should_emit_human_text,
 )
 
 
@@ -124,7 +125,8 @@ def create_asset(name, address, platform, asset_type, nodes, comment, domain, ac
     resp = client.post(f"assets/{endpoint}/", data=data)
     handle_api_error(resp, "create asset")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Asset '{name}' created.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Asset '{name}' created.", fg="green"))
 
 
 @asset_group.command(name="update")
@@ -165,7 +167,8 @@ def update_asset(asset_id, asset_type, name, address, comment, active, output, d
     resp = client.put(f"assets/{endpoint}/{asset_id}/", data=data)
     handle_api_error(resp, "update asset")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Asset '{asset_id}' updated.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Asset '{asset_id}' updated.", fg="green"))
 
 
 @asset_group.command(name="delete")
@@ -230,7 +233,7 @@ def list_nodes(parent, search, tree, output):
     data = resp.json()
     print_result(data, fmt=output)
 
-    if output == "table" and isinstance(data, list):
+    if should_emit_human_text(output) and isinstance(data, list):
         _print_node_tree(data)
 
 
@@ -267,7 +270,8 @@ def create_node(name, parent, output, dry_run):
     resp = client.post("assets/nodes/", data=data)
     handle_api_error(resp, "create node")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Node '{name}' created.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Node '{name}' created.", fg="green"))
 
 
 @node_group.command(name="delete")
@@ -306,7 +310,8 @@ def add_assets_to_node(node_id, assets, output, dry_run):
     resp = client.post(f"assets/nodes/{node_id}/assets/add/", data={"assets": asset_ids})
     handle_api_error(resp, "add assets to node")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Assets added to node '{node_id}'.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Assets added to node '{node_id}'.", fg="green"))
 
 
 # ─── Platforms ─────────────────────────────────────────────────

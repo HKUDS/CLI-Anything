@@ -13,6 +13,8 @@ from cli_anything.jumpserver.utils import (
     handle_api_error,
     parse_ids,
     print_result,
+    mask_sensitive_data,
+    should_emit_human_text,
 )
 
 
@@ -85,7 +87,10 @@ def create_user(name, username, email, password, role, active, output, dry_run):
         data["password"] = password
 
     if dry_run:
-        print_result({"action": "create user", "data": data}, fmt=output)
+        print_result(
+            {"action": "create user", "data": mask_sensitive_data(data)},
+            fmt=output,
+        )
         return
 
     session = Session.load()
@@ -93,7 +98,8 @@ def create_user(name, username, email, password, role, active, output, dry_run):
     resp = client.post("users/users/", data=data)
     handle_api_error(resp, "create user")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ User '{username}' created.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ User '{username}' created.", fg="green"))
 
 
 @user_group.command(name="update")
@@ -125,7 +131,8 @@ def update_user(user_id, name, email, role, active, output, dry_run):
     resp = client.put(f"users/users/{user_id}/", data=data)
     handle_api_error(resp, "update user")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ User '{user_id}' updated.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ User '{user_id}' updated.", fg="green"))
 
 
 @user_group.command(name="delete")
@@ -150,19 +157,36 @@ def delete_user(user_id, force, dry_run):
 @user_group.command(name="reset-password")
 @click.argument("user_id")
 @click.option("--password", "-p", required=True, help="New password")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@click.option("--yes", is_flag=True, help="Alias for --force")
 @click.option("--output", "-o", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
 @click.option("--dry-run", is_flag=True, help="Preview without executing")
-def reset_password(user_id, password, output, dry_run):
+def reset_password(user_id, password, force, yes, output, dry_run):
     """Reset a user's password."""
     if dry_run:
-        click.echo(f"[DRY RUN] Would reset password for user: {user_id}")
+        print_result(
+            {
+                "action": "reset password",
+                "user_id": user_id,
+                "data": mask_sensitive_data({"password": password}),
+            },
+            fmt=output,
+        )
         return
+    if not (force or yes):
+        click.confirm(f"Reset password for user '{user_id}'?", abort=True)
 
     session = Session.load()
     client = require_auth(session)
     resp = client.post(f"users/users/{user_id}/password/reset/", data={"password": password})
     handle_api_error(resp, "reset password")
-    click.echo(click.style(f"✓ Password reset for user '{user_id}'.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"✓ Password reset for user '{user_id}'.", fg="green"))
+    else:
+        print_result(
+            {"status": "ok", "action": "reset password", "user_id": user_id},
+            fmt=output,
+        )
 
 
 @user_group.command(name="unblock")
@@ -228,7 +252,8 @@ def create_group(name, comment, output, dry_run):
     resp = client.post("users/groups/", data=data)
     handle_api_error(resp, "create group")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Group '{name}' created.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Group '{name}' created.", fg="green"))
 
 
 @group_commands.command(name="members")

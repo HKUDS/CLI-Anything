@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "cli-anything-jumpserver"
 version = "0.1.0"
 description = "Stateful CLI harness for JumpServer bastion host management"
-readme = "README.md"
+readme = "cli_anything/jumpserver/README.md"
 license = { text = "MIT" }
 authors = [
     { name = "cli-anything" }

@@ -1,5 +1,5 @@
 ---
-name: cli-anything-jumpserver
+name: "cli-anything-jumpserver"
 description: Stateful CLI harness for JumpServer bastion host management. Supports asset, user, permission, account, session, audit, and operations management via REST API, with both one-shot and interactive REPL modes.
 version: 0.1.0
 category: infrastructure

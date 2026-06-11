@@ -11,6 +11,8 @@ from cli_anything.jumpserver.utils import (
     handle_api_error,
     parse_ids,
     print_result,
+    mask_sensitive_data,
+    should_emit_human_text,
 )
 
 
@@ -95,7 +97,10 @@ def create_account(asset, username, name, secret_type, secret, privileged, activ
         data["comment"] = comment
 
     if dry_run:
-        print_result({"action": "create account", "data": data}, fmt=output)
+        print_result(
+            {"action": "create account", "data": mask_sensitive_data(data)},
+            fmt=output,
+        )
         return
 
     session = Session.load()
@@ -103,7 +108,8 @@ def create_account(asset, username, name, secret_type, secret, privileged, activ
     resp = client.post("accounts/accounts/", data=data)
     handle_api_error(resp, "create account")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Account '{username}' created.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Account '{username}' created.", fg="green"))
 
 
 @account_group.command(name="update")
@@ -133,7 +139,14 @@ def update_account(account_id, username, name, secret_type, secret, privileged, 
         data["is_active"] = active
 
     if dry_run:
-        print_result({"action": "update account", "id": account_id, "data": data}, fmt=output)
+        print_result(
+            {
+                "action": "update account",
+                "id": account_id,
+                "data": mask_sensitive_data(data),
+            },
+            fmt=output,
+        )
         return
 
     session = Session.load()
@@ -141,7 +154,8 @@ def update_account(account_id, username, name, secret_type, secret, privileged, 
     resp = client.put(f"accounts/accounts/{account_id}/", data=data)
     handle_api_error(resp, "update account")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Account '{account_id}' updated.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Account '{account_id}' updated.", fg="green"))
 
 
 @account_group.command(name="delete")

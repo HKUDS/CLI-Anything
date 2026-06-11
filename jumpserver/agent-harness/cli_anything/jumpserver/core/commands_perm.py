@@ -11,6 +11,7 @@ from cli_anything.jumpserver.utils import (
     handle_api_error,
     parse_ids,
     print_result,
+    should_emit_human_text,
 )
 
 
@@ -100,7 +101,8 @@ def create_perm(name, users, user_groups, assets, nodes, actions, date_start, da
     resp = client.post("perms/asset-permissions/", data=data)
     handle_api_error(resp, "create permission")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Permission '{name}' created.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Permission '{name}' created.", fg="green"))
 
 
 @perm_group.command(name="update")
@@ -141,7 +143,8 @@ def update_perm(perm_id, name, users, user_groups, assets, nodes, actions, activ
     resp = client.put(f"perms/asset-permissions/{perm_id}/", data=data)
     handle_api_error(resp, "update permission")
     print_result(resp.json(), fmt=output)
-    click.echo(click.style(f"\n✓ Permission '{perm_id}' updated.", fg="green"))
+    if should_emit_human_text(output):
+        click.echo(click.style(f"\n✓ Permission '{perm_id}' updated.", fg="green"))
 
 
 @perm_group.command(name="delete")

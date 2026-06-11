@@ -8,7 +8,12 @@ import click
 from cli_anything.jumpserver.core.session import Session
 from cli_anything.jumpserver.core.output import format_output
 from cli_anything.jumpserver.core.state import get_state
-from cli_anything.jumpserver.utils import require_auth, handle_api_error, print_result
+from cli_anything.jumpserver.utils import (
+    require_auth,
+    handle_api_error,
+    print_result,
+    should_emit_human_text,
+)
 
 
 @click.group(name="auth")
@@ -50,7 +55,8 @@ def login(ctx, url, username, password, org, insecure, output):
             "url": session.base_url,
         }
         print_result(data, fmt=output)
-        click.echo(click.style("\n✓ Login successful. Session saved.", fg="green"))
+        if should_emit_human_text(output):
+            click.echo(click.style("\n✓ Login successful. Session saved.", fg="green"))
 
     except Exception as e:
         session.clear()
@@ -98,12 +104,13 @@ def status(output):
         print_result(data, fmt=output)
 
     except Exception as e:
-        click.echo(f"Session exists but API check failed: {e}")
         data = {
             "status": "expired",
             "url": session.base_url,
             "username": session.username,
         }
+        if should_emit_human_text(output):
+            click.echo(f"Session exists but API check failed: {e}")
         print_result(data, fmt=output)
 
 
@@ -131,7 +138,8 @@ def org(org_id, list_orgs, output):
         session.org_name = org_data.get("name", "")
         session.save()
         print_result(org_data, fmt=output)
-        click.echo(click.style(f"\n✓ Switched to organization: {session.org_name}", fg="green"))
+        if should_emit_human_text(output):
+            click.echo(click.style(f"\n✓ Switched to organization: {session.org_name}", fg="green"))
     else:
         current = {
             "org_id": session.org_id or "(default)",

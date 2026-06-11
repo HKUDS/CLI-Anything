@@ -4,6 +4,7 @@ Utilities for cli_anything.jumpserver.
 Includes context management, error handling, and helper functions.
 """
 import sys
+import json
 from contextlib import contextmanager
 from typing import Any
 
@@ -21,11 +22,97 @@ class CLIError(click.ClickException):
         super().__init__(message)
         self.detail = detail
 
-    def show(self, file=None) -> None:
+    def show(self, file=None, json_mode: bool | None = None) -> None:
         """Display the error message."""
+        if file is None:
+            file = sys.stderr
+        if json_mode is None:
+            json_mode = is_json_mode()
+
+        if json_mode:
+            payload = {"status": "error", "message": self.message}
+            if self.detail:
+                payload["detail"] = self.detail
+            click.echo(json.dumps(payload, ensure_ascii=False), file=file)
+            return
+
         click.echo(click.style(f"Error: {self.message}", fg="red"), err=True)
         if self.detail:
             click.echo(f"  {self.detail}", err=True)
+
+
+SENSITIVE_KEYS = {
+    "password",
+    "secret",
+    "token",
+    "access_token",
+    "refresh_token",
+    "private_key",
+    "ssh_key",
+}
+MASKED_VALUE = "********"
+
+
+def _iter_context_chain(ctx: click.Context | None):
+    """Yield the current Click context and its parents."""
+    while ctx is not None:
+        yield ctx
+        ctx = ctx.parent
+
+
+def is_json_mode() -> bool:
+    """Return whether the active Click invocation requested JSON output."""
+    ctx = click.get_current_context(silent=True)
+    for current in _iter_context_chain(ctx):
+        obj = current.obj or {}
+        if obj.get("output_json"):
+            return True
+        if current.params.get("output") == "json":
+            return True
+    return False
+
+
+def wants_json_output(args: list[str] | None = None) -> bool:
+    """Best-effort JSON mode detection for top-level exception handling."""
+    args = list(sys.argv[1:] if args is None else args)
+    if "--json" in args or "--json-output" in args:
+        return True
+
+    for index, arg in enumerate(args):
+        if arg in {"--output", "-o"}:
+            if index + 1 < len(args) and args[index + 1] == "json":
+                return True
+        elif arg == "--output=json":
+            return True
+
+    return False
+
+
+def resolve_output_format(fmt: str) -> str:
+    """Apply global JSON mode to command-local output format defaults."""
+    if fmt == "table" and is_json_mode():
+        return "json"
+    return fmt
+
+
+def should_emit_human_text(fmt: str = "table") -> bool:
+    """Return whether companion human text should be printed."""
+    return resolve_output_format(fmt) != "json"
+
+
+def mask_sensitive_data(value: Any) -> Any:
+    """Recursively mask sensitive values before echoing dry-run payloads."""
+    if isinstance(value, dict):
+        masked = {}
+        for key, item in value.items():
+            if str(key).lower() in SENSITIVE_KEYS and item not in (None, ""):
+                masked[key] = MASKED_VALUE
+            else:
+                masked[key] = mask_sensitive_data(item)
+        return masked
+    if isinstance(value, list):
+        return [mask_sensitive_data(item) for item in value]
+    return value
 
 
 def require_auth(session: Session) -> JumpServerClient:
@@ -100,6 +187,7 @@ def print_result(
     columns: list[str] | None = None,
 ) -> None:
     """Print API response data in the requested format."""
+    fmt = resolve_output_format(fmt)
     columns_list = None
     if columns:
         columns_list = [c.strip() for c in columns.split(",")]
@@ -107,7 +195,7 @@ def print_result(
     # Handle paginated API responses
     if isinstance(data, dict) and "results" in data:
         format_output(data["results"], fmt=fmt, columns=columns_list)
-        if "count" in data:
+        if fmt != "json" and "count" in data:
             click.echo(f"\nTotal: {data['count']}")
     else:
         format_output(data, fmt=fmt, columns=columns_list)
