@@ -1424,7 +1424,7 @@
       "display_name": "TinyFish Web Agent",
       "version": "0.1.1",
       "description": "All four TinyFish products from the terminal: web search, clean page extraction, natural-language browser automation, and remote CDP browser sessions — via the REST APIs.",
-      "requires": "TinyFish API key (free at agent.tinyfish.ai/api-keys)",
+      "requires": "TinyFish API key (free at https://agent.tinyfish.ai/api-keys)",
       "homepage": "https://tinyfish.ai",
       "source_url": "https://github.com/webdevtodayjason/cli-anything-tinyfish",
       "install_cmd": "pip install cli-anything-tinyfish",
