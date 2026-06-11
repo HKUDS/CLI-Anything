@@ -103,14 +103,17 @@ def get_key(ctx, key_id):
 
 @access_key_group.command("delete")
 @click.argument("key_id")
-@click.option("--yes", is_flag=True, default=True,
-              help="Skip the CLI's interactive confirmation (default: true)")
+@click.option("--yes", is_flag=True, default=False,
+              help="Required. Confirm access-key deletion and pass --yes to Tigris.")
 @click.pass_context
 def delete_key(ctx, key_id, yes):
     """Permanently delete an access key."""
     backend: TigrisBackend = ctx.obj["backend"]
     use_json = ctx.obj.get("json", False)
     skin = ctx.obj.get("skin")
+    if not yes:
+        _emit_error(use_json, skin, "Refusing to delete access key without --yes")
+        raise SystemExit(1)
     try:
         result = backend.delete_access_key(key_id, yes=yes)
         if use_json:
@@ -149,14 +152,17 @@ def assign_key(ctx, key_id, bucket, role):
 
 @access_key_group.command("rotate")
 @click.argument("key_id")
-@click.option("--yes", is_flag=True, default=True,
-              help="Skip the CLI's interactive confirmation (default: true)")
+@click.option("--yes", is_flag=True, default=False,
+              help="Required. Confirm secret rotation and pass --yes to Tigris.")
 @click.pass_context
 def rotate_key(ctx, key_id, yes):
     """Rotate an access key's secret."""
     backend: TigrisBackend = ctx.obj["backend"]
     use_json = ctx.obj.get("json", False)
     skin = ctx.obj.get("skin")
+    if not yes:
+        _emit_error(use_json, skin, "Refusing to rotate access key without --yes")
+        raise SystemExit(1)
     try:
         result = backend.rotate_access_key(key_id, yes=yes)
         if use_json:

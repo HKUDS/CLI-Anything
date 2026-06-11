@@ -122,10 +122,19 @@ def test_create_bucket_invokes_correct_args():
         assert _run_call_args(m)[1:] == ["buckets", "create", "x", "--format", "json"]
 
 
-def test_delete_bucket_includes_yes_flag():
+def test_delete_bucket_defaults_to_confirmation():
     with _patch_run(json_out={"status": "deleted"}) as m:
         b = TigrisBackend()
         b.delete_bucket("x")
+        argv = _run_call_args(m)
+        assert "--yes" not in argv
+        assert "buckets" in argv and "delete" in argv and "x" in argv
+
+
+def test_delete_bucket_includes_yes_flag_when_requested():
+    with _patch_run(json_out={"status": "deleted"}) as m:
+        b = TigrisBackend()
+        b.delete_bucket("x", yes=True)
         argv = _run_call_args(m)
         assert "--yes" in argv
         assert "buckets" in argv and "delete" in argv and "x" in argv
@@ -246,6 +255,24 @@ def test_list_access_keys():
         assert _run_call_args(m)[1:] == ["access-keys", "list", "--format", "json"]
 
 
+def test_delete_access_key_defaults_to_confirmation():
+    with _patch_run(json_out={"status": "deleted"}) as m:
+        b = TigrisBackend()
+        b.delete_access_key("tid_AaBb")
+        argv = _run_call_args(m)
+        assert "--yes" not in argv
+        assert "access-keys" in argv and "delete" in argv and "tid_AaBb" in argv
+
+
+def test_delete_access_key_includes_yes_flag_when_requested():
+    with _patch_run(json_out={"status": "deleted"}) as m:
+        b = TigrisBackend()
+        b.delete_access_key("tid_AaBb", yes=True)
+        argv = _run_call_args(m)
+        assert "--yes" in argv
+        assert "access-keys" in argv and "delete" in argv and "tid_AaBb" in argv
+
+
 def test_assign_access_key_uses_role_and_bucket():
     with _patch_run(json_out={"status": "assigned"}) as m:
         b = TigrisBackend()
@@ -254,6 +281,24 @@ def test_assign_access_key_uses_role_and_bucket():
         assert "access-keys" in argv and "assign" in argv and "tid_AaBb" in argv
         assert "--bucket" in argv and "my-bucket" in argv
         assert "--role" in argv and "Editor" in argv
+
+
+def test_rotate_access_key_defaults_to_confirmation():
+    with _patch_run(json_out={"status": "rotated"}) as m:
+        b = TigrisBackend()
+        b.rotate_access_key("tid_AaBb")
+        argv = _run_call_args(m)
+        assert "--yes" not in argv
+        assert "access-keys" in argv and "rotate" in argv and "tid_AaBb" in argv
+
+
+def test_rotate_access_key_includes_yes_flag_when_requested():
+    with _patch_run(json_out={"status": "rotated"}) as m:
+        b = TigrisBackend()
+        b.rotate_access_key("tid_AaBb", yes=True)
+        argv = _run_call_args(m)
+        assert "--yes" in argv
+        assert "access-keys" in argv and "rotate" in argv and "tid_AaBb" in argv
 
 
 # ── IAM ───────────────────────────────────────────────────────────────
@@ -300,6 +345,23 @@ def test_cli_bucket_list_json():
         assert "demo" in r.output
 
 
+def test_cli_bucket_delete_requires_yes():
+    with patch("cli_anything.tigris.utils.tigris_backend.subprocess.run") as m:
+        runner = CliRunner()
+        r = runner.invoke(cli, ["--json", "bucket", "delete", "--name", "b"])
+        assert r.exit_code != 0
+        assert "without --yes" in r.output
+        m.assert_not_called()
+
+
+def test_cli_bucket_delete_with_yes_passes_yes_flag():
+    with _patch_run(json_out={"status": "deleted"}) as m:
+        runner = CliRunner()
+        r = runner.invoke(cli, ["--json", "bucket", "delete", "--name", "b", "--yes"])
+        assert r.exit_code == 0, r.output
+        assert "--yes" in _run_call_args(m)
+
+
 def test_cli_object_put_requires_file_or_text():
     runner = CliRunner()
     r = runner.invoke(cli, ["--json", "object", "put", "--bucket", "b", "--key", "k"])
@@ -335,6 +397,40 @@ def test_cli_access_key_assign_json():
             "--bucket", "b", "--role", "Editor",
         ])
         assert r.exit_code == 0, r.output
+
+
+def test_cli_access_key_delete_requires_yes():
+    with patch("cli_anything.tigris.utils.tigris_backend.subprocess.run") as m:
+        runner = CliRunner()
+        r = runner.invoke(cli, ["--json", "access-key", "delete", "tid_x"])
+        assert r.exit_code != 0
+        assert "without --yes" in r.output
+        m.assert_not_called()
+
+
+def test_cli_access_key_delete_with_yes_passes_yes_flag():
+    with _patch_run(json_out={"status": "deleted"}) as m:
+        runner = CliRunner()
+        r = runner.invoke(cli, ["--json", "access-key", "delete", "tid_x", "--yes"])
+        assert r.exit_code == 0, r.output
+        assert "--yes" in _run_call_args(m)
+
+
+def test_cli_access_key_rotate_requires_yes():
+    with patch("cli_anything.tigris.utils.tigris_backend.subprocess.run") as m:
+        runner = CliRunner()
+        r = runner.invoke(cli, ["--json", "access-key", "rotate", "tid_x"])
+        assert r.exit_code != 0
+        assert "without --yes" in r.output
+        m.assert_not_called()
+
+
+def test_cli_access_key_rotate_with_yes_passes_yes_flag():
+    with _patch_run(json_out={"status": "rotated"}) as m:
+        runner = CliRunner()
+        r = runner.invoke(cli, ["--json", "access-key", "rotate", "tid_x", "--yes"])
+        assert r.exit_code == 0, r.output
+        assert "--yes" in _run_call_args(m)
 
 
 def test_cli_auth_whoami_json():

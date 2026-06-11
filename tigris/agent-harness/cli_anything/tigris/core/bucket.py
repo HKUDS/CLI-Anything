@@ -65,14 +65,17 @@ def create_bucket(ctx, name):
 
 @bucket_group.command("delete")
 @click.option("--name", required=True, help="Bucket name to delete")
-@click.option("--yes", is_flag=True, default=True,
-              help="Skip the CLI's interactive confirmation (default: true)")
+@click.option("--yes", is_flag=True, default=False,
+              help="Required. Confirm bucket deletion and pass --yes to Tigris.")
 @click.pass_context
 def delete_bucket(ctx, name, yes):
     """Delete an empty bucket."""
     backend: TigrisBackend = ctx.obj["backend"]
     use_json = ctx.obj.get("json", False)
     skin = ctx.obj.get("skin")
+    if not yes:
+        _emit_error(use_json, skin, "Refusing to delete bucket without --yes")
+        raise SystemExit(1)
     try:
         result = backend.delete_bucket(name, yes=yes)
         if use_json:

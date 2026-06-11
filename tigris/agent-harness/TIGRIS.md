@@ -13,6 +13,11 @@ the S3 protocol. This means agents get access to every Tigris primitive
 generic S3 ops — and the harness inherits new commands as the upstream CLI
 ships them.
 
+This is intentionally Tigris CLI-only tooling. Do not use this harness as a
+generic S3 endpoint wrapper, and do not treat it as MinIO, Cloudflare R2, AWS
+S3, or arbitrary S3-compatible endpoint management. It shells out to the
+official `tigris` binary and follows that CLI's auth and command model.
+
 ## Requirements
 
 - **Python 3.10+** (uses PEP 604 union syntax and PEP 585 generic types).
@@ -76,11 +81,11 @@ agent-harness/
 | Group        | What it wraps                          | Operations |
 |--------------|----------------------------------------|------------|
 | `auth`       | `tigris login/logout/whoami`           | login, logout, whoami |
-| `bucket`     | `tigris buckets ...`                   | list, create, delete, info |
+| `bucket`     | `tigris buckets ...`                   | list, create, delete --yes, info |
 | `object`     | `tigris ls/cp/rm/stat`                 | list, put, get, delete, info, cp |
 | `presign`    | `tigris presign`                       | get, put |
 | `snapshot`   | `tigris snapshots ...`                 | list, take |
-| `access-key` | `tigris access-keys ...`               | list, create, get, delete, assign, rotate |
+| `access-key` | `tigris access-keys ...`               | list, create, get, delete --yes, assign, rotate --yes |
 | `iam`        | `tigris iam policies / users ...`      | policy list/create, user list/invite |
 
 ## Output Modes
@@ -105,6 +110,8 @@ When agents drive this CLI:
    `snapshot list` to find one to restore from.
 7. Use `access-key create` + `access-key assign --bucket B --role Editor` to
    mint a scoped key for an agent run, then `access-key delete` to revoke.
+8. Bucket deletion, access-key deletion, and access-key rotation require
+   explicit `--yes`; without it, the harness refuses to call the backend.
 
 ## Testing
 

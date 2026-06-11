@@ -1,6 +1,5 @@
 ---
-name: >-
-  cli-anything-tigris
+name: "cli-anything-tigris"
 description: >-
   Command-line interface for Tigris object storage — wraps the official `tigris` CLI to expose buckets, objects, presigned URLs, snapshots, IAM, and scoped access keys to AI agents. Globally distributed, S3-compatible, no egress fees.
 ---
@@ -11,6 +10,13 @@ A stateless command-line interface for [Tigris](https://www.tigrisdata.com)
 object storage. Wraps the official `tigris` CLI so every Tigris primitive
 (snapshots, IAM, scoped credentials, OAuth) is reachable through a single
 agent-friendly entry point with `--json` everywhere.
+
+## Scope
+
+This harness is for the official Tigris CLI only. It shells out to the
+`tigris` binary and assumes Tigris auth through `tigris login` or Tigris
+access keys. It is not a generic S3 endpoint tool, and it does not manage
+MinIO, Cloudflare R2, AWS S3, or arbitrary S3-compatible endpoints.
 
 ## Installation
 
@@ -60,9 +66,16 @@ cli-anything-tigris --json object cp t3://my-bucket/src.txt t3://my-bucket/dst.t
 # Take a snapshot
 cli-anything-tigris --json snapshot take my-bucket --name baseline-v1
 
+# Delete a bucket; --yes is required
+cli-anything-tigris --json bucket delete --name old-bucket --yes
+
 # Create a scoped access key for an agent run
 cli-anything-tigris --json access-key create my-agent-key
 cli-anything-tigris --json access-key assign tid_AaBb --bucket my-bucket --role Editor
+
+# Rotate or delete access keys; --yes is required
+cli-anything-tigris --json access-key rotate tid_AaBb --yes
+cli-anything-tigris --json access-key delete tid_AaBb --yes
 
 # Presigned download URL (1 hour)
 cli-anything-tigris --json presign get --bucket my-bucket --key path/to/file.txt --expires 3600
@@ -91,7 +104,7 @@ Bucket CRUD.
 |---------|-------------|
 | `list` | List all buckets |
 | `create --name NAME` | Create a bucket |
-| `delete --name NAME` | Delete an empty bucket |
+| `delete --name NAME --yes` | Delete an empty bucket (`--yes` required) |
 | `info NAME` | Get bucket info |
 
 ### object
@@ -130,9 +143,9 @@ Scoped programmatic credentials — combine with `snapshot` for per-agent isolat
 | `list` | List all access keys |
 | `create NAME` | Create a new access key (secret shown ONCE) |
 | `get KEY_ID` | Show key details |
-| `delete KEY_ID` | Permanently delete a key |
+| `delete KEY_ID --yes` | Permanently delete a key (`--yes` required) |
 | `assign KEY_ID --bucket B --role R` | Scope a key to a bucket + role |
-| `rotate KEY_ID` | Rotate a key's secret |
+| `rotate KEY_ID --yes` | Rotate a key's secret (`--yes` required) |
 
 ### iam
 Policies and organization users.
@@ -163,8 +176,10 @@ When using this CLI programmatically:
    server-side copies (t3 → t3) skip the round trip entirely.
 5. `presign` returns a URL on stdout in human mode; in JSON mode it's the
    `url` field.
-6. **For destructive work**: take a `snapshot` of the target bucket first,
-   then do the work, then either keep the snapshot or discard.
+6. **For destructive work**: bucket deletion, access-key deletion, and
+   access-key rotation require explicit `--yes`; take a `snapshot` of the
+   target bucket first, then do the work, then either keep the snapshot or
+   discard.
 7. **For per-agent isolation**: `access-key create` + `access-key assign
    --bucket B --role Editor` to mint a key scoped to one bucket; revoke with
    `access-key delete` when the agent run ends.
@@ -176,8 +191,8 @@ When using this CLI programmatically:
   per-region bandwidth charges.
 - **Snapshots + scoped credentials.** Primitives generic S3-compatible
   providers don't ship — the foundation for per-agent isolation.
-- **S3-compatible.** Drops in alongside boto3, `mountpoint-s3`, and any
-  other S3-aware tool.
+- **S3-compatible.** Useful alongside S3-aware tools, but this harness
+  itself is not a generic S3/MinIO/R2/AWS endpoint manager.
 
 ## Version
 

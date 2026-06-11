@@ -155,7 +155,7 @@ class TigrisBackend:
     def create_bucket(self, name: str) -> Any:
         return self._run(["buckets", "create", name])
 
-    def delete_bucket(self, name: str, yes: bool = True) -> Any:
+    def delete_bucket(self, name: str, yes: bool = False) -> Any:
         args = ["buckets", "delete", name]
         if yes:
             args.append("--yes")
@@ -274,7 +274,7 @@ class TigrisBackend:
     def get_access_key(self, key_id: str) -> Any:
         return self._run(["access-keys", "get", key_id])
 
-    def delete_access_key(self, key_id: str, yes: bool = True) -> Any:
+    def delete_access_key(self, key_id: str, yes: bool = False) -> Any:
         args = ["access-keys", "delete", key_id]
         if yes:
             args.append("--yes")
@@ -289,7 +289,7 @@ class TigrisBackend:
             "--bucket", bucket, "--role", role,
         ])
 
-    def rotate_access_key(self, key_id: str, yes: bool = True) -> Any:
+    def rotate_access_key(self, key_id: str, yes: bool = False) -> Any:
         args = ["access-keys", "rotate", key_id]
         if yes:
             args.append("--yes")

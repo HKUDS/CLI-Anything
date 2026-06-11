@@ -28,11 +28,11 @@ All tests should pass with no Tigris CLI and no credentials.
 |------|-------|
 | URI/path helpers (`_path_to_t3`, `_parse_tigris_uri`) | scheme normalization, happy + reject paths |
 | Backend init | binary resolution via `shutil.which`, missing-binary error, env-var export for credentials |
-| Bucket ops | `list/create/delete/head` invoke `tigris buckets …` with correct args + `--format json` |
+| Bucket ops | `list/create/delete/head` invoke `tigris buckets …` with correct args + `--format json`; `delete` only passes `--yes` when explicitly requested |
 | Object ops | `list` (with prefix + client-side limit), `cp` (with `--recursive`), `put_from_file`, `put_inline` (tempfile path), `delete` (uses `rm --yes`), `head` (uses `stat`) |
 | Presign | flags forwarded, URL extracted from JSON dict, fallback parse from raw string |
 | Snapshots | `list/take` invoke `tigris snapshots …` |
-| Access keys | `list/create/get/delete/assign/rotate` flag wiring |
+| Access keys | `list/create/get/delete/assign/rotate` flag wiring; `delete` and `rotate` only pass `--yes` when explicitly requested |
 | IAM | `policies list/create`, `users list/invite` flag wiring |
 | Error path | non-zero exit code raises `TigrisCliError` with stderr |
 | CLI integration | `--json` output works for bucket/object/presign/snapshot/access-key/auth; `object put` without `--file`/`--text` errors; `object cp` with no `t3://` errors |
