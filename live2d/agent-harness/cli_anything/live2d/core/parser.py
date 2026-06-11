@@ -1,6 +1,8 @@
 """Parse Live2D Cubism model3.json files."""
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
@@ -157,7 +159,22 @@ def save_model(info: ModelInfo, path: Path | None = None) -> Path:
     if info.groups:
         data["Groups"] = info.groups
 
-    with open(target, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=target.parent,
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        os.chmod(tmp_path, target.stat().st_mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, target)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
     return target

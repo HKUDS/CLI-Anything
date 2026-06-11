@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import filecmp
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +22,7 @@ def snapshot(model_path: Path) -> Path:
     bdir = _backup_dir_for(model_path)
     bdir.mkdir(parents=True, exist_ok=True)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     dest = bdir / f"{ts}.model3.json"
     shutil.copy2(model_path, dest)
 
@@ -68,14 +69,13 @@ def restore(model_path: Path, backup_name: str | None = None) -> Path:
 
 
 def auto_backup(model_path: Path) -> Path | None:
-    """Auto-backup before edit. Skips if last backup was < 1 second ago."""
+    """Auto-backup before edit. Skips only when content is unchanged."""
     bdir = _backup_dir_for(model_path)
     if bdir.exists():
         backups = sorted(bdir.glob("*.model3.json"), reverse=True)
         if backups:
             last = backups[0]
-            age = datetime.now().timestamp() - last.stat().st_mtime
-            if age < 1.0:
-                return None  # too recent, skip
+            if filecmp.cmp(model_path, last, shallow=False):
+                return None
 
     return snapshot(model_path)

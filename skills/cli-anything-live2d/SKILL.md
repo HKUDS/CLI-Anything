@@ -1,5 +1,5 @@
 ---
-name: cli-anything-live2d
+name: "cli-anything-live2d"
 description: "Inspect, validate, edit, lint, diff, batch-manage, and deploy Live2D Cubism models (.model3.json) from the command line."
 metadata: { "cli-anything": { "category": "graphics", "requires": null } }
 ---

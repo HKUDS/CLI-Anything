@@ -4,11 +4,15 @@ import json
 import pytest
 from pathlib import Path
 
+from click.testing import CliRunner
+
+from cli_anything.live2d.core import parser as parser_module
 from cli_anything.live2d.core.parser import load_model, save_model, MotionRef, ExpressionRef
-from cli_anything.live2d.core.backup import snapshot, list_backups, restore, auto_backup
+from cli_anything.live2d.core.backup import snapshot, list_backups, restore, auto_backup, _backup_dir_for
 from cli_anything.live2d.core.linter import lint_model, LintReport
 from cli_anything.live2d.core.differ import diff_models
 from cli_anything.live2d.core.snapshot import write_snapshot, generate_html
+from cli_anything.live2d.live2d_cli import cli
 
 
 # ── Fixtures ────────────────────────────────────────────────────
@@ -116,11 +120,49 @@ class TestBackup:
         assert restored.moc3 == "changed.moc3"
 
     def test_auto_backup_dedup(self, model_path):
-        """Auto-backup should skip if last backup was < 1s ago."""
+        """Auto-backup should skip unchanged content."""
         b1 = auto_backup(model_path)
         b2 = auto_backup(model_path)
         assert b1 is not None
-        assert b2 is None  # too recent
+        assert b2 is None
+
+    def test_auto_backup_keeps_rapid_changed_states(self, model_path):
+        """Rapid edits should still get separate undo points when content changed."""
+        b1 = auto_backup(model_path)
+
+        info = load_model(model_path)
+        info.moc3 = "changed.moc3"
+        save_model(info)
+
+        b2 = auto_backup(model_path)
+        assert b1 is not None
+        assert b2 is not None
+        assert b2 != b1
+        assert len(list_backups(model_path)) == 2
+        assert load_model(b2).moc3 == "changed.moc3"
+
+    def test_backup_clean_json_deletes_without_dry_run(self, model_path):
+        bdir = _backup_dir_for(model_path)
+        bdir.mkdir(parents=True)
+        for name in (
+            "20240101_000000_000000.model3.json",
+            "20240102_000000_000000.model3.json",
+            "20240103_000000_000000.model3.json",
+        ):
+            (bdir / name).write_text(model_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+        result = CliRunner().invoke(cli, ["--json", "backup-clean", str(model_path), "--keep", "1"])
+
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["delete"] == 2
+        assert data["deleted"] == [
+            "20240102_000000_000000.model3.json",
+            "20240101_000000_000000.model3.json",
+        ]
+        assert sorted(p.name for p in bdir.glob("*.model3.json")) == [
+            "20240103_000000_000000.model3.json",
+        ]
 
     def test_list_empty(self, tmp_path):
         f = tmp_path / "m.model3.json"
@@ -192,6 +234,22 @@ class TestEditAndSave:
         reloaded = load_model(model_path)
         assert reloaded.moc3 == "new_model.moc3"
         assert reloaded.physics == "new_physics.json"
+
+    def test_save_model_preserves_original_when_write_fails(self, model_path, monkeypatch):
+        original = model_path.read_text(encoding="utf-8")
+        info = load_model(model_path)
+        info.moc3 = "should_not_persist.moc3"
+
+        def fail_dump(*args, **kwargs):
+            raise RuntimeError("simulated write failure")
+
+        monkeypatch.setattr(parser_module.json, "dump", fail_dump)
+
+        with pytest.raises(RuntimeError):
+            save_model(info)
+
+        assert model_path.read_text(encoding="utf-8") == original
+        assert list(model_path.parent.glob(f".{model_path.name}.*.tmp")) == []
 
 
 # ── Lint Tests ──────────────────────────────────────────────────
@@ -533,6 +591,22 @@ class TestFlatten:
             if src.exists():
                 shutil.copy2(src, out / Path(tex).name)
         assert (out / model_path.name).exists()
+
+    def test_flatten_copies_and_rewrites_motion_sound(self, model_dir, model_path, tmp_path):
+        data = json.loads(model_path.read_text(encoding="utf-8"))
+        data["FileReferences"]["Motions"]["Idle"][0]["Sound"] = "sounds/idle.wav"
+        model_path.write_text(json.dumps(data), encoding="utf-8")
+        (model_dir / "sounds").mkdir()
+        (model_dir / "sounds" / "idle.wav").write_bytes(b"RIFFtest")
+
+        out = tmp_path / "flat"
+        result = CliRunner().invoke(cli, ["flatten", str(model_path), "--out-dir", str(out)])
+
+        assert result.exit_code == 0, result.output
+        assert (out / "idle.wav").exists()
+        flat_info = load_model(out / model_path.name)
+        assert flat_info.motions["Idle"][0].file == "idle_01.motion3.json"
+        assert flat_info.motions["Idle"][0].extra["Sound"] == "idle.wav"
 
 
 # ── Runtime-Check Tests ───────────────────────────────────────
