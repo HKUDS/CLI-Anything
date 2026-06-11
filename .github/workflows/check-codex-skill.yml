@@ -1,0 +1,31 @@
+name: Check Codex Skill
+
+on:
+  pull_request:
+    paths:
+      - 'codex-skill/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-codex-skill.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'codex-skill/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-codex-skill.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-installer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test Codex skill installer
+        run: bash codex-skill/tests/test_install.sh

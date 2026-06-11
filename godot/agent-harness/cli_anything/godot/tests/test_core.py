@@ -273,6 +273,66 @@ class TestBackend:
             assert result is not None
 
 
+# ── Script validation tests ────────────────────────────────────────────
+
+class TestValidateScript:
+    """Regression tests for #335: Godot 4.6.x exits 0 on parse errors,
+    so validate_script must also scan stderr for error markers."""
+
+    @staticmethod
+    def _godot_result(returncode=0, stdout="", stderr=""):
+        return {"returncode": returncode, "stdout": stdout, "stderr": stderr}
+
+    def test_parse_error_with_zero_returncode_is_invalid(self, tmp_project):
+        from cli_anything.godot.core.script import validate_script
+        stderr = (
+            "SCRIPT ERROR: Parse Error: Expected end of statement after "
+            'expression, found ":" instead.\n'
+            "          at: GDScript::reload (res://scripts/player.gd:3)"
+        )
+        with mock.patch(
+            "cli_anything.godot.core.script.run_godot",
+            return_value=self._godot_result(returncode=0, stderr=stderr),
+        ):
+            result = validate_script(str(tmp_project), "scripts/player.gd")
+        assert result["status"] == "ok"
+        assert result["valid"] is False
+        assert "Parse Error" in result["errors"]
+
+    def test_clean_script_with_zero_stderr_is_valid(self, tmp_project):
+        from cli_anything.godot.core.script import validate_script
+        with mock.patch(
+            "cli_anything.godot.core.script.run_godot",
+            return_value=self._godot_result(returncode=0, stderr=""),
+        ):
+            result = validate_script(str(tmp_project), "scripts/player.gd")
+        assert result["status"] == "ok"
+        assert result["valid"] is True
+        assert result["errors"] == ""
+
+    def test_benign_stderr_noise_is_still_valid(self, tmp_project):
+        from cli_anything.godot.core.script import validate_script
+        stderr = "WARNING: Blend file import is enabled in the project settings.\n"
+        with mock.patch(
+            "cli_anything.godot.core.script.run_godot",
+            return_value=self._godot_result(returncode=0, stderr=stderr),
+        ):
+            result = validate_script(str(tmp_project), "scripts/player.gd")
+        assert result["valid"] is True
+        assert result["errors"] == ""
+
+    def test_nonzero_returncode_is_invalid(self, tmp_project):
+        from cli_anything.godot.core.script import validate_script
+        stderr = "Failed to load script res://scripts/player.gd\n"
+        with mock.patch(
+            "cli_anything.godot.core.script.run_godot",
+            return_value=self._godot_result(returncode=1, stderr=stderr),
+        ):
+            result = validate_script(str(tmp_project), "scripts/player.gd")
+        assert result["valid"] is False
+        assert "Failed to load script" in result["errors"]
+
+
 # ── CLI root tests ─────────────────────────────────────────────────────
 
 class TestCLIRoot:

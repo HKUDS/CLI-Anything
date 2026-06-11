@@ -216,7 +216,7 @@ class TestFsModule:
 
             result = fs.list_elements(sess)
 
-            mock_ls.assert_called_once_with("/main", use_daemon=False)
+            mock_ls.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_list_elements_with_path(self):
         """Listing elements with explicit path overrides working_dir."""
@@ -228,7 +228,7 @@ class TestFsModule:
 
             result = fs.list_elements(sess, "/div")
 
-            mock_ls.assert_called_once_with("/div", use_daemon=False)
+            mock_ls.assert_called_once_with("/div", use_daemon=False, session=sess)
 
     def test_list_elements_empty_path_uses_working_dir(self):
         """Listing with empty path uses session working_dir."""
@@ -240,7 +240,7 @@ class TestFsModule:
 
             result = fs.list_elements(sess, "")
 
-            mock_ls.assert_called_once_with("/main", use_daemon=False)
+            mock_ls.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_change_directory_absolute_path(self):
         """Changing to absolute path updates working_dir."""
@@ -252,7 +252,7 @@ class TestFsModule:
             result = fs.change_directory(sess, "/main")
 
             assert sess.working_dir == "/main"
-            mock_cd.assert_called_once_with("/main", use_daemon=False)
+            mock_cd.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_change_directory_relative_parent(self):
         """Changing to .. goes up one level."""
@@ -265,7 +265,7 @@ class TestFsModule:
             result = fs.change_directory(sess, "..")
 
             assert sess.working_dir == "/main"
-            mock_cd.assert_called_once_with("/main", use_daemon=False)
+            mock_cd.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_change_directory_parent_from_root(self):
         """Changing to .. from root stays at root."""
@@ -300,7 +300,7 @@ class TestFsModule:
             result = fs.change_directory(sess, "div[0]")
 
             assert sess.working_dir == "/main/div[0]"
-            mock_cd.assert_called_once_with("/main/div[0]", use_daemon=False)
+            mock_cd.assert_called_once_with("/main/div[0]", use_daemon=False, session=sess)
 
     def test_read_element(self):
         """Reading element calls backend."""
@@ -315,7 +315,7 @@ class TestFsModule:
 
             result = fs.read_element(sess, "/main/button[0]")
 
-            mock_cat.assert_called_once_with("/main/button[0]", use_daemon=False)
+            mock_cat.assert_called_once_with("/main/button[0]", use_daemon=False, session=sess)
 
     def test_read_element_empty_path_uses_working_dir(self):
         """Reading with empty path uses session working_dir."""
@@ -327,11 +327,11 @@ class TestFsModule:
 
             result = fs.read_element(sess, "")
 
-            mock_cat.assert_called_once_with("/main", use_daemon=False)
+            mock_cat.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_grep_elements(self):
-        """Grepping calls backend with pattern."""
-        sess = Session()
+        """Grepping calls backend with pattern and session cwd as path."""
+        sess = Session()  # working_dir defaults to "/"
 
         with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep:
             mock_grep.return_value = {
@@ -340,23 +340,22 @@ class TestFsModule:
 
             result = fs.grep_elements(sess, "Login")
 
-            mock_grep.assert_called_once_with("Login", use_daemon=False)
+            mock_grep.assert_called_once_with(
+                "Login", path="/", prev="/", use_daemon=False, session=sess
+            )
 
     def test_grep_elements_with_path(self):
-        """Grepping with path cds to that path first, then restores."""
+        """Grepping with an explicit path forwards it to backend.grep."""
         sess = Session()
 
-        with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep, \
-             patch("cli_anything.browser.core.fs.backend.cd") as mock_cd:
+        with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep:
             mock_grep.return_value = {"matches": ["/main/button[0]"]}
-            mock_cd.return_value = {"path": "/main"}
 
             result = fs.grep_elements(sess, "Login", "/main")
 
-            mock_grep.assert_called_once_with("Login", use_daemon=False)
-            assert mock_cd.call_count == 2
-            mock_cd.assert_any_call("/main", use_daemon=False)
-            mock_cd.assert_any_call("/", use_daemon=False)
+            mock_grep.assert_called_once_with(
+                "Login", path="/main", prev="/", use_daemon=False, session=sess
+            )
 
 
 # ── Daemon Mode Tests ────────────────────────────────────────────
@@ -374,7 +373,7 @@ class TestDaemonMode:
 
             result = fs.list_elements(sess)
 
-            mock_ls.assert_called_once_with("/", use_daemon=True)
+            mock_ls.assert_called_once_with("/", use_daemon=True, session=sess)
 
     def test_normal_mode_does_not_use_daemon(self):
         """Commands don't use daemon mode when session.daemon_mode is False."""
@@ -386,4 +385,57 @@ class TestDaemonMode:
 
             result = fs.list_elements(sess)
 
-            mock_ls.assert_called_once_with("/", use_daemon=False)
+            mock_ls.assert_called_once_with("/", use_daemon=False, session=sess)
+
+
+# ── CLI-layer error surfacing (Codex P2 R4) ─────────────────────────
+
+
+class TestCLIErrorSurfacing:
+    """The non-JSON branches of `fs ls` and `fs grep` previously fell
+    straight into ``result.get("entries"/"matches", [])`` and surfaced
+    "No elements at …" / "No matches for …" for DOMShell errors. Codex
+    P2 R4 on PR #308 commit 5790651 required surfacing the error
+    message instead.
+    """
+
+    def _invoke(self, mod_target, error_result, argv):
+        """Mock the dependency check + the fs_mod target, invoke CLI."""
+        from click.testing import CliRunner
+        from cli_anything.browser.browser_cli import cli
+
+        with patch(
+            "cli_anything.browser.browser_cli.backend.is_available",
+            return_value=(True, "ok"),
+        ), patch(
+            f"cli_anything.browser.browser_cli.fs_mod.{mod_target}",
+            return_value=error_result,
+        ):
+            return CliRunner().invoke(cli, argv)
+
+    def test_fs_ls_surfaces_error_in_non_json_output(self):
+        """`fs ls` on a path DOMShell errors against should display the
+        error message — not the misleading "No elements at <path>".
+        """
+        error_result = {
+            "error": "ls: nonexistent: No such directory",
+            "output": "ls: nonexistent: No such directory",
+        }
+        result = self._invoke(
+            "list_elements", error_result, ["fs", "ls", "/nonexistent"],
+        )
+        # click.echo(err=True) goes to stderr; CliRunner captures both.
+        assert "No such directory" in result.output
+        assert "No elements" not in result.output
+
+    def test_fs_grep_surfaces_error_in_non_json_output(self):
+        """Mirror for `fs grep`. Codex P2 R4 regression test."""
+        error_result = {
+            "error": "cd: /nonexistent: No such directory",
+            "output": "cd: /nonexistent: No such directory",
+        }
+        result = self._invoke(
+            "grep_elements", error_result, ["fs", "grep", "Login", "/nonexistent"],
+        )
+        assert "No such directory" in result.output
+        assert "No matches" not in result.output

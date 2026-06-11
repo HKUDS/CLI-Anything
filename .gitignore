@@ -34,6 +34,7 @@
 !/cli-anything-plugin/
 !/codex-skill/
 !/hermes-skill/
+!/reasonix-skill/
 !/skill_generation/
 !/openclaw-skill/
 !/cli-hub-meta-skill/
@@ -70,6 +71,7 @@
 !/minimax/
 !/ollama/
 !/browser/
+!/web-yu-pri/
 !/seaclip/
 !/pm2/
 !/chromadb/
@@ -98,6 +100,7 @@
 !/3MF/
 !/calibre/
 !/rekordbox/
+!/siyuan/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
 /gimp/.*
@@ -143,6 +146,8 @@
 /ollama/.*
 /browser/*
 /browser/.*
+/web-yu-pri/*
+/web-yu-pri/.*
 /seaclip/*
 /seaclip/.*
 /pm2/*
@@ -203,12 +208,16 @@
 /calibre/.*
 /rekordbox/*
 /rekordbox/.*
+/siyuan/*
+/siyuan/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
 !/blender/agent-harness/
 !/inkscape/agent-harness/
 !/audacity/agent-harness/
+!/wavetone/
+!/wavetone/agent-harness/
 !/libreoffice/agent-harness/
 !/zotero/agent-harness/
 !/mubu/agent-harness/
@@ -229,6 +238,7 @@
 !/minimax/agent-harness/
 !/ollama/agent-harness/
 !/browser/agent-harness/
+!/web-yu-pri/agent-harness/
 !/seaclip/agent-harness/
 !/pm2/agent-harness/
 !/chromadb/agent-harness/
@@ -265,6 +275,7 @@
 !/quietshrink/agent-harness/
 !/mailchimp/agent-harness/
 !/rekordbox/agent-harness/
+!/siyuan/agent-harness/
 
 # Exclude non-gedit demo macros from macrocli (local only)
 /macrocli/agent-harness/cli_anything/macrocli/macro_definitions/demo/flameshot*

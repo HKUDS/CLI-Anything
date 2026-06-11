@@ -30,6 +30,16 @@ def _canonical_skill_name(harness_path: Path, software_name: str) -> str:
     return f"cli-anything-{software_dir.replace('_', '-')}"
 
 
+def _click_declared_name(decorator_args: str, fallback: str) -> str:
+    """Return the Click command/group name declared in a decorator."""
+    match = re.search(r'^\s*["\']([^"\']+)["\']', decorator_args)
+    if not match:
+        match = re.search(r'\bname\s*=\s*["\']([^"\']+)["\']', decorator_args)
+    if match:
+        return match.group(1)
+    return fallback.replace("_", "-")
+
+
 @dataclass
 class CommandInfo:
     """Information about a CLI command."""
@@ -209,28 +219,53 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
     # - Docstrings on the same line or following line after function definition
     # - Various Click decorator patterns like @click.option(), @click.argument()
     # Uses re.DOTALL to match across newlines between decorator and def
+    optional_decorator_pattern = r'(?:\s*@[\w.]+(?:\([^)]*\))?)*'
+
     group_pattern = (
-        r'@(\w+)\.group\([^)]*\)'                          # @xxx.group(...)
-        r'(?:\s*@[\w.]+\([^)]*\))*'                         # optional additional decorators
-        r'\s*def\s+(\w+)\([^)]*\)'                          # def xxx(...):
-        r':\s*'                                             # colon with optional whitespace
-        r'(?:"""([\s\S]*?)"""|\'\'\'([\s\S]*?)\'\'\')?'      # optional docstring (""" or ''')
+        r'@(\w+)\.group\(([^)]*)\)'  # @xxx.group(...)
+        + optional_decorator_pattern  # optional additional decorators
+        + r'\s*def\s+(\w+)\([^)]*\)'  # def xxx(...):
+        + r':\s*'  # colon with optional whitespace
+        + r'(?:"""([\s\S]*?)"""|\'\'\'([\s\S]*?)\'\'\')?'  # optional docstring (""" or ''')
     )
 
-    for match in re.finditer(group_pattern, content):
-        group_func = match.group(2)
-        # Docstring can be in group 3 (triple-double) or group 4 (triple-single)
-        group_doc = (match.group(3) or match.group(4) or "").strip()
+    group_lookup = {}
+    group_display_paths = {}
+    group_matches = list(re.finditer(group_pattern, content))
+    root_group_funcs = {
+        match.group(3).lower()
+        for match in group_matches
+        if match.group(1).lower() == "click"
+    }
 
-        group_name = group_func.replace("_", " ").title()
-        if not group_name:
-            group_name = group_func.title()
+    for match in group_matches:
+        group_parent = match.group(1)
+        group_args = match.group(2)
+        group_func = match.group(3)
+        # Docstring can be in group 4 (triple-double) or group 5 (triple-single)
+        group_doc = (match.group(4) or match.group(5) or "").strip()
 
-        groups.append(CommandGroup(
+        local_group_name = _format_display_name(_click_declared_name(group_args, group_func))
+        parent_key = group_parent.lower()
+        if parent_key == "click" or parent_key in root_group_funcs:
+            group_path = [local_group_name]
+        else:
+            parent_path = group_display_paths.get(parent_key)
+            if parent_path:
+                group_path = [*parent_path, local_group_name]
+            else:
+                group_path = [_format_display_name(group_parent), local_group_name]
+
+        group_name = " ".join(group_path)
+
+        group = CommandGroup(
             name=group_name,
             description=group_doc or f"Commands for {group_name.lower()} operations.",
             commands=[]
-        ))
+        )
+        groups.append(group)
+        group_lookup[group_func.lower()] = group
+        group_display_paths[group_func.lower()] = group_path
 
     # Find Click command decorators
     # Pattern handles:
@@ -238,26 +273,28 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
     # - Docstrings on the same line or following line after function definition
     # - Various Click decorator patterns like @click.option(), @click.argument()
     command_pattern = (
-        r'@(\w+)\.command\([^)]*\)'                         # @xxx.command(...)
-        r'(?:\s*@[\w.]+\([^)]*\))*'                          # optional additional decorators
-        r'\s*def\s+(\w+)\([^)]*\)'                           # def xxx(...):
-        r':\s*'                                              # colon with optional whitespace
-        r'(?:"""([\s\S]*?)"""|\'\'\'([\s\S]*?)\'\'\')?'       # optional docstring (""" or ''')
+        r'@(\w+)\.command\(([^)]*)\)'  # @xxx.command(...)
+        + optional_decorator_pattern  # optional additional decorators
+        + r'\s*def\s+(\w+)\([^)]*\)'  # def xxx(...):
+        + r':\s*'  # colon with optional whitespace
+        + r'(?:"""([\s\S]*?)"""|\'\'\'([\s\S]*?)\'\'\')?'  # optional docstring (""" or ''')
     )
 
     for match in re.finditer(command_pattern, content):
         group_name = match.group(1)
-        cmd_name = match.group(2)
-        # Docstring can be in group 3 (triple-double) or group 4 (triple-single)
-        cmd_doc = (match.group(3) or match.group(4) or "").strip()
+        cmd_args = match.group(2)
+        cmd_func = match.group(3)
+        # Docstring can be in group 4 (triple-double) or group 5 (triple-single)
+        cmd_doc = (match.group(4) or match.group(5) or "").strip()
 
         # Find the matching group
-        for group in groups:
-            if group.name.lower().replace(" ", "_") == group_name.lower():
-                group.commands.append(CommandInfo(
-                    name=cmd_name.replace("_", "-"),
-                    description=cmd_doc or f"Execute {cmd_name} operation."
-                ))
+        group = group_lookup.get(group_name.lower())
+        if group:
+            cmd_name = _click_declared_name(cmd_args, cmd_func)
+            group.commands.append(CommandInfo(
+                name=cmd_name,
+                description=cmd_doc or f"Execute {cmd_func} operation."
+            ))
 
     # If no groups found, create a default one with all commands
     if not groups:
@@ -268,12 +305,14 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
         )
 
         for match in re.finditer(command_pattern, content):
-            cmd_name = match.group(2)
-            # Docstring can be in group 3 (triple-double) or group 4 (triple-single)
-            cmd_doc = (match.group(3) or match.group(4) or "").strip()
+            cmd_args = match.group(2)
+            cmd_func = match.group(3)
+            # Docstring can be in group 4 (triple-double) or group 5 (triple-single)
+            cmd_doc = (match.group(4) or match.group(5) or "").strip()
+            cmd_name = _click_declared_name(cmd_args, cmd_func)
             default_group.commands.append(CommandInfo(
-                name=cmd_name.replace("_", "-"),
-                description=cmd_doc or f"Execute {cmd_name} operation."
+                name=cmd_name,
+                description=cmd_doc or f"Execute {cmd_func} operation."
             ))
 
         if default_group.commands:
