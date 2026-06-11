@@ -424,6 +424,32 @@
           "url": "https://github.com/dreamor"
         }
       ]
+    },
+    {
+      "name": "smithue-cli",
+      "display_name": "SmithUE CLI",
+      "version": "0.8.0",
+      "description": "CLI tool for controlling Unreal Engine editor via SmithUE plugin. Enables AI agents to execute editor commands, list tools, search capabilities, and monitor editor status.",
+      "category": "devtools",
+      "platform": "windows",
+      "requires": "Node.js >=18; Unreal Engine with SmithUE plugin running (Windows only)",
+      "homepage": "https://github.com/123dx-svg/smithue-cli",
+      "source_url": "https://github.com/123dx-svg/smithue-cli",
+      "package_manager": "npm",
+      "npm_package": "smithue-cli",
+      "install_cmd": "npm install -g smithue-cli",
+      "npx_cmd": "npx smithue-cli",
+      "entry_point": "smithue-cli",
+      "skill_md": "https://raw.githubusercontent.com/123dx-svg/smithue-cli/970f4b86b8b0671728585979b3c974829b4f47d0/skills/SKILL.md",
+      "engines": {
+        "node": ">=18"
+      },
+      "contributors": [
+        {
+          "name": "123dx-svg",
+          "url": "https://github.com/123dx-svg"
+        }
+      ]
     }
   ]
 }

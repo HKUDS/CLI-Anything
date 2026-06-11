@@ -1306,6 +1306,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 50</td>
 </tr>
 <tr>
+<td align="center"><strong>🗄️ <a href="tigris/agent-harness/">Tigris</a></strong></td>
+<td>Object Storage (S3-compatible, global, no egress) — buckets, objects, snapshots, IAM, access keys</td>
+<td><code>cli-anything-tigris</code></td>
+<td>subprocess wrapping the official <code>tigris</code> CLI</td>
+<td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
 <td align="center"><strong>✅ 2,461</strong></td>
 </tr>
