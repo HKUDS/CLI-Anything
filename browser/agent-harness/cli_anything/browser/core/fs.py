@@ -32,7 +32,7 @@ def list_elements(session: "Session", path: str = "") -> dict:
     """
     target_path = path if path else session.working_dir
     use_daemon = session.daemon_mode
-    return backend.ls(target_path, use_daemon=use_daemon)
+    return backend.ls(target_path, use_daemon=use_daemon, session=session)
 
 
 def change_directory(session: "Session", path: str) -> dict:
@@ -69,7 +69,7 @@ def change_directory(session: "Session", path: str) -> dict:
             path = session.working_dir.rstrip("/") + "/" + path
 
     use_daemon = session.daemon_mode
-    result = backend.cd(path, use_daemon=use_daemon)
+    result = backend.cd(path, use_daemon=use_daemon, session=session)
     # Only update working_dir if backend succeeded
     if isinstance(result, dict) and "error" not in result:
         new_working_dir = result.get("path", path)
@@ -93,7 +93,7 @@ def read_element(session: "Session", path: str = "") -> dict:
     """
     target_path = path if path else session.working_dir
     use_daemon = session.daemon_mode
-    return backend.cat(target_path, use_daemon=use_daemon)
+    return backend.cat(target_path, use_daemon=use_daemon, session=session)
 
 
 def grep_elements(session: "Session", pattern: str, path: str = "") -> dict:
@@ -113,16 +113,11 @@ def grep_elements(session: "Session", pattern: str, path: str = "") -> dict:
     """
     target_path = path if path else session.working_dir
     use_daemon = session.daemon_mode
-
-    # DOMShell's grep searches from the server-side CWD. To root the search
-    # at the requested path, cd there first, grep, then restore.
-    if target_path and target_path != "/":
-        cd_result = backend.cd(target_path, use_daemon=use_daemon)
-        if hasattr(cd_result, 'isError') and cd_result.isError:
-            return cd_result
-
-    try:
-        return backend.grep(pattern, use_daemon=use_daemon)
-    finally:
-        if target_path and target_path != "/":
-            backend.cd(session.working_dir or "/", use_daemon=use_daemon)
+    prev = session.working_dir or "/"
+    return backend.grep(
+        pattern,
+        path=target_path,
+        prev=prev,
+        use_daemon=use_daemon,
+        session=session,
+    )

@@ -226,6 +226,13 @@ def fs_ls(path):
     if _json_output:
         output(result)
     else:
+        # Surface DOMShell errors (e.g. `fs ls /nonexistent`) before
+        # falling into the empty-entries "No elements" branch — without
+        # this, an error from the kernel was hidden behind a misleading
+        # "No elements at …" message. (Codex P2 R4 on commit 5790651.)
+        if "error" in result:
+            click.echo(result["error"], err=True)
+            return
         entries = result.get("entries", [])
         if not entries:
             click.echo(f"No elements at {path or sess.working_dir}")
@@ -273,6 +280,13 @@ def fs_grep(pattern, path):
     if _json_output:
         output(result)
     else:
+        # Surface DOMShell errors before the empty-matches "No matches"
+        # branch — same fix shape as fs_ls. Without this, an anchor cd
+        # failure on rooted grep was hidden behind "No matches".
+        # (Codex P2 R4 on commit 5790651.)
+        if "error" in result:
+            click.echo(result["error"], err=True)
+            return
         matches = result.get("matches", [])
         if not matches:
             click.echo(f"No matches for '{pattern}'")
@@ -304,7 +318,7 @@ def act_click(path):
     """Click an element at the given path."""
     sess = get_session()
     use_daemon = sess.daemon_mode
-    result = backend.click(path, use_daemon=use_daemon)
+    result = backend.click(path, use_daemon=use_daemon, session=sess)
     output(result, f"Clicked: {path}")
 
 
@@ -316,7 +330,7 @@ def act_type(path, text):
     """Type text into an input element."""
     sess = get_session()
     use_daemon = sess.daemon_mode
-    result = backend.type_text(path, text, use_daemon=use_daemon)
+    result = backend.type_text(path, text, use_daemon=use_daemon, session=sess)
     output(result, f"Typed into: {path}")
 
 

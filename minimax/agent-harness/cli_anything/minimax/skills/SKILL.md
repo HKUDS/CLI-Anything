@@ -2,7 +2,7 @@
 name: >-
   cli-anything-minimax
 description: >-
-  Command-line interface for MiniMax AI — chat (MiniMax-M2.7) and TTS (speech-2.8-hd) via the MiniMax API.
+  Command-line interface for MiniMax AI — chat (MiniMax-M3) and TTS (speech-2.8-hd) via the MiniMax API.
 ---
 
 # cli-anything-minimax
@@ -30,7 +30,7 @@ cli-anything-minimax --help
 # Start interactive REPL
 cli-anything-minimax
 
-# Chat with MiniMax-M2.7
+# Chat with MiniMax-M3
 cli-anything-minimax chat --prompt "What is AI?"
 
 # High-speed model
@@ -115,7 +115,8 @@ cli-anything-minimax tts --text "Fast" --model speech-2.8-turbo --voice English_
 
 | Model ID | Description |
 |----------|-------------|
-| `MiniMax-M2.7` | Peak Performance. Ultimate Value. (default) |
+| `MiniMax-M3` | Next-generation flagship model (default) |
+| `MiniMax-M2.7` | Peak Performance. Ultimate Value. |
 | `MiniMax-M2.7-highspeed` | Same performance, faster and more agile |
 
 ## TTS Models

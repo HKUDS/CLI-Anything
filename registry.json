@@ -101,6 +101,25 @@
       ]
     },
     {
+      "name": "wavetone",
+      "display_name": "WaveTone",
+      "version": "1.0.0",
+      "description": "Prepare WaveTone 2.61 audio transcription manifests, probe audio files, and launch the real Windows WaveTone executable",
+      "requires": "WaveTone 2.61 extracted on Windows; set WAVETONE_EXE or WAVETONE_HOME",
+      "homepage": "http://ackiesound.ifdef.jp/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wavetone/agent-harness",
+      "entry_point": "cli-anything-wavetone",
+      "skill_md": "skills/cli-anything-wavetone/SKILL.md",
+      "category": "audio",
+      "contributors": [
+        {
+          "name": "Shuhan Zhang",
+          "url": "https://github.com/Manifold68575"
+        }
+      ]
+    },
+    {
       "name": "blender",
       "display_name": "Blender",
       "version": "1.0.0",
@@ -135,6 +154,25 @@
         {
           "name": "furkankoykiran",
           "url": "https://github.com/furkankoykiran"
+        }
+      ]
+    },
+    {
+      "name": "web-yu-pri",
+      "display_name": "Web Yu-pri",
+      "version": "0.1.0",
+      "description": "Japan Post Web Yu-pri browser workflow automation for login, inspection, screenshots, dry-run planning, and contents-form filling",
+      "requires": "Japan Post Web Yu-pri account, Playwright, Microsoft Edge/Chrome or Playwright Chromium",
+      "homepage": "https://mgr.post.japanpost.jp/C30P01Action.do",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=web-yu-pri/agent-harness",
+      "entry_point": "cli-anything-web-yu-pri",
+      "skill_md": "skills/cli-anything-web-yu-pri/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "shinpei710",
+          "url": "https://github.com/shinpei710"
         }
       ]
     },
@@ -447,6 +485,25 @@
         {
           "name": "CLI-Anything-Team",
           "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
+      "name": "openwebui",
+      "display_name": "OpenWebUI",
+      "version": "1.0.0",
+      "description": "Operate a running OpenWebUI backend through an agent-friendly CLI",
+      "requires": "OpenWebUI instance running",
+      "homepage": "https://openwebui.com",
+      "source_url": "https://github.com/ashaiful/cli-anything-openwebui",
+      "install_cmd": "pip install git+https://github.com/ashaiful/cli-anything-openwebui.git",
+      "entry_point": "cli-anything-openwebui",
+      "skill_md": "https://github.com/ashaiful/cli-anything-openwebui/blob/main/cli_anything/openwebui/skills/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "ashaiful",
+          "url": "https://github.com/ashaiful"
         }
       ]
     },
@@ -1020,6 +1077,25 @@
       ]
     },
     {
+      "name": "joplin",
+      "display_name": "Joplin",
+      "version": "1.0.0",
+      "description": "Note-taking and to-do automation — manage notebooks, notes, to-dos, tags, attachments, search, sync, and import/export via the Joplin terminal CLI",
+      "requires": "Joplin terminal CLI installed and available in PATH as `joplin` (npm install -g joplin)",
+      "homepage": "https://joplinapp.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=joplin/agent-harness",
+      "entry_point": "cli-anything-joplin",
+      "skill_md": "skills/cli-anything-joplin/SKILL.md",
+      "category": "knowledge",
+      "contributors": [
+        {
+          "name": "27494539a-hub",
+          "url": "https://github.com/27494539a-hub"
+        }
+      ]
+    },
+    {
       "name": "unimol_tools",
       "display_name": "Uni-Mol Tools",
       "version": "1.0.0",
@@ -1212,8 +1288,8 @@
     {
       "name": "minimax",
       "display_name": "MiniMax",
-      "version": "1.0.0",
-      "description": "Chat and TTS via MiniMax AI API — MiniMax-M2.7 chat models and speech-2.8-hd TTS",
+      "version": "1.1.0",
+      "description": "Chat and TTS via MiniMax AI API — MiniMax-M3 chat models and speech-2.8-hd TTS",
       "requires": "MINIMAX_API_KEY",
       "homepage": "https://platform.minimax.io",
       "source_url": null,
@@ -1225,6 +1301,26 @@
         {
           "name": "octo-patch",
           "url": "https://github.com/octo-patch"
+        }
+      ]
+    },
+    {
+      "name": "siyuan",
+      "display_name": "SiYuan CLI",
+      "version": "1.0.0",
+      "description": "Knowledge management and note-taking via SiYuan HTTP API — manage notebooks, documents, blocks, and search content from the command line",
+      "category": "knowledge-management",
+      "requires": "SiYuan running with HTTP API enabled (default http://127.0.0.1:6806)",
+      "homepage": "https://github.com/siyuan-note/siyuan",
+      "source_url": null,
+      "install_strategy": "pip",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=siyuan/agent-harness",
+      "skill_md": "skills/cli-anything-siyuan/SKILL.md",
+      "entry_point": "cli-anything-siyuan",
+      "contributors": [
+        {
+          "name": "hito0512",
+          "url": "https://github.com/hito0512"
         }
       ]
     },

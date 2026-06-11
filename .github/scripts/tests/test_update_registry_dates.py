@@ -54,3 +54,9 @@ def test_extract_npm_package_supports_scoped_package_names():
     }
 
     assert MODULE._extract_npm_package(cli) == "@sentry/cli"
+
+
+def test_extract_pypi_package_supports_python_module_invocation():
+    install_cmd = "python -m pip install py4csr"
+
+    assert MODULE._extract_pypi_package(install_cmd) == "py4csr"

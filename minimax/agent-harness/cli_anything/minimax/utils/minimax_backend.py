@@ -20,6 +20,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 ENV_API_KEY = "MINIMAX_API_KEY"
 
 CHAT_MODELS = [
+    {"id": "MiniMax-M3", "description": "Next-generation flagship model (default)"},
     {"id": "MiniMax-M2.7", "description": "Peak Performance. Ultimate Value. Master the Complex"},
     {"id": "MiniMax-M2.7-highspeed", "description": "Same performance, faster and more agile"},
 ]
@@ -91,7 +92,7 @@ def _make_auth_headers(api_key: str) -> dict:
 
 def chat_completion(
     api_key: Optional[str] = None,
-    model: str = "MiniMax-M2.7",
+    model: str = "MiniMax-M3",
     messages: Optional[list] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -124,7 +125,7 @@ def chat_completion(
 
 def chat_completion_stream(
     api_key: Optional[str] = None,
-    model: str = "MiniMax-M2.7",
+    model: str = "MiniMax-M3",
     messages: Optional[list] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -251,7 +252,7 @@ def tts_synthesize(
 
 def run_full_workflow(
     api_key: Optional[str] = None,
-    model: str = "MiniMax-M2.7",
+    model: str = "MiniMax-M3",
     prompt: str = "",
     system_message: Optional[str] = None,
     temperature: Optional[float] = None,

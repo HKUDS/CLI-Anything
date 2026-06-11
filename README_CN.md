@@ -11,6 +11,7 @@ CLI-Anything：连接 AI Agent 与全世界软件的桥梁</strong><br>
   <a href="#-快速上手"><img src="https://img.shields.io/badge/快速上手-5_分钟-blue?style=for-the-badge" alt="Quick Start"></a>
   <a href="#-实测展示"><img src="https://img.shields.io/badge/Demo-13_款软件-green?style=for-the-badge" alt="Demos"></a>
   <a href="#-测试结果"><img src="https://img.shields.io/badge/测试-1%2C741_通过-brightgreen?style=for-the-badge" alt="Tests"></a>
+  <a href="https://arxiv.org/abs/2606.03854"><img src="https://img.shields.io/badge/Tech_Report-arXiv%3A2606.03854-b31b1b?style=for-the-badge" alt="Tech Report"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -277,6 +278,7 @@ bash CLI-Anything/codex-skill/scripts/install.sh
 ```
 
 脚本会把 skill 安装到 `$CODEX_HOME/skills/cli-anything`；如果没有设置 `CODEX_HOME`，则默认安装到 `~/.codex/skills/cli-anything`。
+安装器还会把权威版本的 `HARNESS.md`、命令规范、按需指南、可复用辅助脚本、skill 模板和 preview 协议复制到已安装 skill 的 `references/` 和 `scripts/` 目录。这样 Codex skill 可以独立工作，同时仍以 `cli-anything-plugin/` 作为唯一权威来源。
 
 安装后重启 Codex，让它重新发现这个 skill。
 
@@ -288,10 +290,17 @@ bash CLI-Anything/codex-skill/scripts/install.sh
 Use CLI-Anything to build a harness for ./gimp
 Use CLI-Anything to refine ./shotcut for picture-in-picture workflows
 Use CLI-Anything to validate ./libreoffice
+Use CLI-Anything to list generated harnesses under the current directory
 ```
 
 这个 Codex skill 复用了 Claude Code 插件和 OpenCode 命令所使用的同一套方法论，
 不会改变生成出来的 Python harness 结构。
+
+可以运行下面的命令，验证 Codex 安装包是否完整：
+
+```bash
+bash CLI-Anything/codex-skill/tests/test_install.sh
+```
 
 </details>
 
@@ -368,7 +377,7 @@ cli-anything-gimp
 | **🤖 AI/ML 平台** | 用结构化命令驱动模型训练、推理流水线和超参搜索 | Stable Diffusion WebUI、ComfyUI、InvokeAI、Text-generation-webui、Open WebUI、Fooocus、Kohya_ss、AnythingLLM、SillyTavern |
 | **📊 数据与分析** | 以编程方式完成数据处理、可视化和统计分析工作流 | JupyterLab、Apache Superset、Metabase、Redash、DBeaver、KNIME、Orange、OpenSearch Dashboards、Lightdash |
 | **💻 开发工具** | 通过 CLI 串联代码编辑、构建、测试与部署流程 | Jenkins、Gitea、Hoppscotch、Portainer、pgAdmin、SonarQube、ArgoCD、OpenLens、Insomnia、Beekeeper Studio |
-| **🎨 创意与媒体** | 以编程方式控制内容创作、编辑和渲染工作流 | Blender、GIMP、OBS Studio、Audacity、Krita、Kdenlive、Shotcut、Inkscape、Darktable、LMMS、Ardour |
+| **🎨 创意与媒体** | 以编程方式控制内容创作、编辑和渲染工作流 | Blender、GIMP、OBS Studio、Audacity、WaveTone、Krita、Kdenlive、Shotcut、Inkscape、Darktable、LMMS、Ardour |
 | **📐 图表与可视化** | 以编程方式创建和操作流程图、架构图、ER 图等各类图表 | Draw.io (diagrams.net)、Mermaid、PlantUML、Excalidraw、yEd |
 | **🔬 科学计算** | 自动化科研工作流、仿真模拟和复杂计算 | ImageJ、FreeCAD、QGIS、ParaView、Gephi、LibreCAD、Stellarium、KiCad、JASP、Jamovi |
 | **🏢 企业与办公** | 将商业应用和生产力工具转化为 Agent 可访问的系统 | NextCloud、GitLab、Grafana、Mattermost、LibreOffice、AppFlowy、NocoDB、Odoo (Community)、Plane、ERPNext |
@@ -534,6 +543,13 @@ CLI-Anything 适用于任何有代码库的软件 —— 不限领域，不限�
 <td align="center">✅ 161</td>
 </tr>
 <tr>
+<td align="center"><strong>WaveTone</strong></td>
+<td>音频扒谱辅助</td>
+<td><code>cli-anything-wavetone</code></td>
+<td>JSON manifest + real WaveTone launch</td>
+<td align="center"><a href="wavetone/agent-harness/">新增</a></td>
+</tr>
+<tr>
 <td align="center"><strong>📄 LibreOffice</strong></td>
 <td>办公套件（Writer、Calc、Impress）</td>
 <td><code>cli-anything-libreoffice</code></td>
@@ -639,12 +655,19 @@ CLI-Anything 适用于任何有代码库的软件 —— 不限领域，不限�
 <td align="center">✅ 50+</td>
 </tr>
 <tr>
+<td align="center"><strong>📓 <a href="joplin/agent-harness/">Joplin</a></strong></td>
+<td>笔记与待办</td>
+<td><code>cli-anything-joplin</code></td>
+<td>Joplin 终端 CLI 子进程</td>
+<td align="center">✅ 134</td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>合计</strong></td>
-<td align="center"><strong>✅ 1,824</strong></td>
+<td align="center"><strong>✅ 1,955</strong></td>
 </tr>
 </table>
 
-> 全部 1,824 项测试 **100% 通过** - 1,318 项单元测试 + 487 项端到端测试 + 19 项 Node.js 测试。
+> 全部 1,955 项测试 **100% 通过** - 1,318 项单元测试 + 487 项端到端测试 + 19 项 Node.js 测试。
 
 ---
 
@@ -665,6 +688,7 @@ gimp          107 passed  ✅   (64 unit + 43 e2e)
 blender       208 passed  ✅   (150 unit + 58 e2e)
 inkscape      202 passed  ✅   (148 unit + 54 e2e)
 audacity      161 passed  ✅   (107 unit + 54 e2e)
+wavetone       30 passed  ✅   (24 unit + 6 default e2e，2 backend-gated e2e skipped；32 passed opt-in)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 obs-studio    153 passed  ✅   (116 unit + 37 e2e)
 kdenlive      155 passed  ✅   (111 unit + 44 e2e)
@@ -678,8 +702,9 @@ nsight-graphics 51 passed ✅   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 sketch         19 passed  ✅   (19 jest, Node.js)
 3mf            50 passed  ✅   (50 unit)
+joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        1,824 passed  ✅   100% pass rate
+TOTAL        1,955 passed  ✅   100% pass rate
 ```
 
 ---
@@ -732,13 +757,19 @@ cli-anything/
 │   ├── cli-anything-validate.md         # 标准验证
 │   └── cli-anything-list.md             # 列出所有 CLI 工具
 │
-├── 🤖 codex-skill/                      # Codex skill 接入层
+├── 🤖 codex-skill/                      # 可独立安装的 Codex skill
+│   ├── SKILL.md                         # Codex 工作流入口
+│   ├── agents/                          # Codex 界面元数据
+│   ├── scripts/                         # Bash 和 PowerShell 安装器
+│   └── tests/                           # 安装资源同步回归测试
 ├── 🎨 gimp/agent-harness/               # GIMP CLI（107 项测试）
 ├── 🧊 blender/agent-harness/            # Blender CLI（208 项测试）
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI（202 项测试）
 ├── 🎵 audacity/agent-harness/           # Audacity CLI（161 项测试）
+├── wavetone/agent-harness/              # WaveTone CLI（32 项测试：30 default + 2 backend-gated e2e）
 ├── 📄 libreoffice/agent-harness/        # LibreOffice CLI（158 项测试）
 ├── 📚 zotero/agent-harness/             # Zotero CLI（新增，支持文献导入）
+├── 📓 joplin/agent-harness/             # Joplin CLI（134 测试：107 单元 + 27 e2e）
 ├── 📹 obs-studio/agent-harness/         # OBS Studio CLI（153 项测试）
 ├── 🎞️ kdenlive/agent-harness/           # Kdenlive CLI（155 项测试）
 ├── 🎬 shotcut/agent-harness/            # Shotcut CLI（154 项测试）
@@ -973,6 +1004,24 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<软件名>/tests/
   </a>
 </div>
 -->
+
+---
+
+## 📚 引用
+
+如果 CLI-Anything 对你有帮助，请引用我们的技术报告：
+
+```bibtex
+@misc{yang2026clianythingagentnativecomputeruse,
+      title={CLI-Anything: Towards Agent-Native Computer Use}, 
+      author={Yuhao Yang and Tianyu Fan and Chao Huang},
+      year={2026},
+      eprint={2606.03854},
+      archivePrefix={arXiv},
+      primaryClass={cs.HC},
+      url={https://arxiv.org/abs/2606.03854}, 
+}
+```
 
 ---
 
