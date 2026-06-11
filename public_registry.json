@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-04-18"
+    "updated": "2026-06-03"
   },
   "clis": [
     {
@@ -400,6 +400,28 @@
         {
           "name": "Jasper0122",
           "url": "https://github.com/Jasper0122"
+        }
+      ]
+    },
+    {
+      "name": "cloakbrowser",
+      "display_name": "CloakBrowser CLI",
+      "version": "latest",
+      "description": "Agent-friendly CLI for CloakBrowser — stealth Chromium that passes every bot detection test. Covers fingerprint flags, humanize behaviors, page operations, content extraction, cookies, storage, network, multi-page sessions, and CDP gateway.",
+      "category": "web",
+      "requires": "Node.js >= 20, cloakbrowser >= 0.3.0, playwright-core >= 1.40.0",
+      "homepage": "https://github.com/dreamor/cloakbrowser-cli",
+      "source_url": "https://github.com/dreamor/cloakbrowser-cli",
+      "package_manager": "npm",
+      "npm_package": "@dreamor/cloakbrowser-cli",
+      "install_cmd": "npm install -g @dreamor/cloakbrowser-cli cloakbrowser playwright-core",
+      "npx_cmd": "npx @dreamor/cloakbrowser-cli",
+      "skill_md": "https://github.com/dreamor/cloakbrowser-cli/blob/main/SKILL.md",
+      "entry_point": "cloak",
+      "contributors": [
+        {
+          "name": "dreamor",
+          "url": "https://github.com/dreamor"
         }
       ]
     }

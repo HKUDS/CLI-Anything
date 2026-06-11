@@ -20,6 +20,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
   <a href="https://hkuds.github.io/CLI-Anything/"><img src="https://img.shields.io/badge/CLI_Hub-Browse_%26_Install-ff69b4?style=for-the-badge" alt="CLI Hub"></a>
   <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-18_Apps-green?style=for-the-badge" alt="Demos"></a>
   <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-2%2C461_Passing-brightgreen?style=for-the-badge" alt="Tests"></a>
+  <a href="https://arxiv.org/abs/2606.03854"><img src="https://img.shields.io/badge/Tech_Report-arXiv%3A2606.03854-b31b1b?style=for-the-badge" alt="Tech Report"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -33,7 +34,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
 <a href="https://github.com/HKUDS/.github/blob/main/profile/README.md"><img src="https://img.shields.io/badge/WeChat-Group-C5EAB4?style=flat&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
-**One Command Line**: Make any software agent-ready for Pi, OpenClaw, nanobot, Cursor, Claude Code, etc.&nbsp;&nbsp;[**中文文档**](README_CN.md) | [**日本語ドキュメント**](README_JA.md)
+**One Command Line**: Make any software agent-ready for Pi, OpenClaw, nanobot, Cursor, Claude Code, etc.&nbsp;&nbsp;[**中文文档**](README_CN.md) | [**日本語ドキュメント**](README_JA.md) | [**Deutsch**](README_DE.md)
 
 <p align="center">
   <img src="assets/cli-typing.gif" alt="CLI-Anything typing demo" width="800">
@@ -235,7 +236,7 @@ Give SKILL-compatible agents the CLI-Hub meta-skill so they can discover and ins
 npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
 ```
 
-**Works with:** OpenClaw, Nanobot, Claude Code, Codex, Antigravity, and other SKILL-compatible agents.
+**Works with:** OpenClaw, Nanobot, Claude Code, Codex, Reasonix, Antigravity, and other SKILL-compatible agents.
 
 Then prompt:
 
@@ -254,7 +255,7 @@ Use the CLI-Anything generator when you need a new harness for software, a codeb
 
 - **Python 3.10+**
 - Target software or source repo available locally or online
-- A supported AI coding agent: [Claude Code](#-claude-code) | [Pi](#-pi-coding-agent) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [More Platforms](#-more-platforms-coming-soon)
+- A supported AI coding agent: [Claude Code](#-claude-code) | [Pi](#-pi-coding-agent) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Hermes](#-hermes) | [Reasonix](#-reasonix) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [More Platforms](#-more-platforms-coming-soon)
 
 ### Pick Your Agent Platform
 
@@ -553,6 +554,11 @@ On Windows PowerShell, use:
 ```
 
 This installs the skill to `$CODEX_HOME/skills/cli-anything` (or `~/.codex/skills/cli-anything` if `CODEX_HOME` is unset).
+The installer also vendors the canonical `HARNESS.md`, command specifications,
+on-demand guides, reusable helper scripts, skill template, and preview protocol
+into the installed skill's `references/` and `scripts/` directories.
+This keeps the Codex skill self-contained while using `cli-anything-plugin/` as
+the source of truth.
 
 Restart Codex after installation so it is discovered.
 
@@ -564,10 +570,101 @@ Describe the task in natural language, for example:
 Use CLI-Anything to build a harness for ./gimp
 Use CLI-Anything to refine ./shotcut for picture-in-picture workflows
 Use CLI-Anything to validate ./libreoffice
+Use CLI-Anything to list generated harnesses under the current directory
 ```
 
 The Codex skill adapts the same methodology used by the Claude Code plugin and
 OpenCode commands, while keeping the generated Python harness format unchanged.
+
+To verify the self-contained Codex installation locally:
+
+```bash
+bash CLI-Anything/codex-skill/tests/test_install.sh
+```
+</details>
+
+<details>
+
+<summary><h4 id="-hermes">⚡ Hermes <sup><code>Experimental</code></sup> <sup><code>Community</code></sup></h4></summary>
+
+**Step 1: Install the Skill**
+
+Run the bundled installer:
+
+```bash
+# Clone the repo
+git clone https://github.com/HKUDS/CLI-Anything.git
+
+# Install the skill
+bash CLI-Anything/hermes-skill/scripts/install.sh
+```
+
+On Windows PowerShell, use:
+
+```powershell
+.\CLI-Anything\hermes-skill\scripts\install.ps1
+```
+
+This installs the skill to `$HERMES_HOME/skills/cli-anything-hermes` (or `~/.hermes/skills/cli-anything-hermes` if `HERMES_HOME` is unset).
+
+Restart [Hermes Agent](https://github.com/NousResearch/hermes-agent) after installation so it is discovered.
+
+**Step 2: Use CLI-Anything from Hermes**
+
+Describe the task in natural language, for example:
+
+```text
+Use CLI-Anything to build a harness for ./gimp
+Use CLI-Anything to refine ./shotcut for picture-in-picture workflows
+Use CLI-Anything to validate ./libreoffice
+```
+
+The Hermes skill adapts the same methodology used by the Claude Code plugin and
+Codex skill, binding Hermes's `terminal`, `execute_code`, `delegate_task`, and
+`read_file` / `write_file` / `patch` tools to the 7-phase harness workflow while
+keeping the generated Python harness format unchanged.
+</details>
+
+<details>
+
+<summary><h4 id="-reasonix">⚡ Reasonix <sup><code>Experimental</code></sup> <sup><code>Community</code></sup></h4></summary>
+
+**Step 1: Install the Skill**
+
+Run the bundled installer:
+
+```bash
+# Clone the repo
+git clone https://github.com/HKUDS/CLI-Anything.git
+
+# Install the skill
+bash CLI-Anything/reasonix-skill/scripts/install.sh
+```
+
+On Windows PowerShell, use:
+
+```powershell
+.\CLI-Anything\reasonix-skill\scripts\install.ps1
+```
+
+This installs the skill to Reasonix's global skill directory at `~/.reasonix/skills/cli-anything`.
+
+Restart Reasonix after installation so it is discovered.
+
+**Step 2: Use CLI-Anything from Reasonix**
+
+Describe the task in natural language, for example:
+
+```text
+Use CLI-Anything to build a harness for ./gimp
+Use CLI-Anything to refine ./shotcut for picture-in-picture workflows
+Use CLI-Anything to validate ./libreoffice
+```
+
+The Reasonix skill adapts the same methodology used by the Claude Code plugin and
+Codex/Hermes skills, binding Reasonix's `bash`, `write_file`, `edit_file`,
+`multi_edit`, `grep`, `glob`, and optional `mcp__codegraph__search` / `mcp__codegraph__context` tools to the
+7-phase harness workflow while keeping the generated Python harness format unchanged.
 </details>
 
 <details>
@@ -667,7 +764,7 @@ The meta-skill points agents to the live CLI-Hub catalog, where they can choose 
 | **🤖 AI/ML Platforms** | Automate model training, inference pipelines, and hyperparameter tuning through structured commands | Stable Diffusion WebUI, ComfyUI, Ollama, InvokeAI, Text-generation-webui, Open WebUI, Fooocus, Kohya_ss, AnythingLLM, SillyTavern |
 | **📊 Data & Analytics** | Enable programmatic data processing, visualization, and statistical analysis workflows | JupyterLab, Apache Superset, Metabase, Redash, DBeaver, KNIME, Orange, OpenSearch Dashboards, Lightdash |
 | **💻 Development Tools** | Streamline code editing, building, testing, and deployment processes via command interfaces | Jenkins, Gitea, Hoppscotch, Portainer, pgAdmin, SonarQube, ArgoCD, OpenLens, Insomnia, Beekeeper Studio, **[iTerm2](https://iterm2.com)** |
-| **🎨 Creative & Media** | Control content creation, editing, and rendering workflows programmatically | Blender, GIMP, OBS Studio, Audacity, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour |
+| **🎨 Creative & Media** | Control content creation, editing, and rendering workflows programmatically | Blender, GIMP, OBS Studio, Audacity, WaveTone, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour |
 | **🎮 Game Development** | Manage game projects, scenes, exports, and scripting through headless engine interfaces | **[Godot Engine](https://godotengine.org)**, **[s&box](https://sbox.game)** |
 | **🔬 Scientific Computing** | Automate research workflows, simulations, and complex calculations | ImageJ, FreeCAD, QGIS, ParaView, Gephi, LibreCAD, Stellarium, KiCad, JASP, Jamovi |
 | **🏢 Enterprise & Office** | Convert business applications and productivity tools into agent-accessible systems | NextCloud, GitLab, Grafana, Mattermost, LibreOffice, AppFlowy, NocoDB, Odoo (Community), Plane, ERPNext |
@@ -872,6 +969,22 @@ An agent uses the VideoCaptioner CLI to automatically generate and overlay style
 
 *Contributed by [@WEIFENG2333](https://github.com/WEIFENG2333)*
 
+### ArcGIS Pro &mdash; Live Agent Cartography via the MCP Bridge
+
+> **Harness:** [`arcgis-pro`](https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro) (registered in [`public_registry.json`](public_registry.json)) | **Mode:** live-Pro MCP bridge | **Artifact:** Agent-driven map navigation in a running ArcGIS Pro session
+
+An agent drives a **live, open ArcGIS Pro session** through an MCP bridge — reading the project, zooming the map to feature layers, running geoprocessing, and exporting layouts — while each step executes inside Pro as you watch. ArcGIS Pro is Esri's commercial GIS desktop (Windows-only, licensed), so this wraps its official **ArcPy / ArcGIS Pro SDK** rather than being generated from source — the ArcGIS Pro counterpart to the QGIS harness.
+
+<p align="center">
+  <img src="assets/demos/arcgis-pro-live-bridge-demo.gif" alt="ArcGIS Pro live-bridge demo: an agent driving a running ArcGIS Pro session over MCP" width="860" />
+</p>
+
+<p align="center">
+  <sub>README GIF generated from the full local demo video with a high-quality ffmpeg palette workflow.</sub>
+</p>
+
+*Contributed by [@Jasper0122](https://github.com/Jasper0122)*
+
 *More CLI demos coming soon.*
 
 ---
@@ -927,11 +1040,25 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 161</td>
 </tr>
 <tr>
+<td align="center"><strong>WaveTone</strong></td>
+<td>Audio Transcription</td>
+<td><code>cli-anything-wavetone</code></td>
+<td>JSON manifest + real WaveTone launch</td>
+<td align="center"><a href="wavetone/agent-harness/">New</a></td>
+</tr>
+<tr>
 <td align="center"><strong>🌐 Browser</strong></td>
 <td>Browser Automation</td>
 <td><code>cli-anything-browser</code></td>
 <td>DOMShell MCP + Accessibility Tree</td>
 <td align="center">✅ <a href="browser/agent-harness/">New</a></td>
+</tr>
+<tr>
+<td align="center"><strong><a href="web-yu-pri/agent-harness/">Web Yu-pri</a></strong></td>
+<td>Japan Post Shipping Labels</td>
+<td><code>cli-anything-web-yu-pri</code></td>
+<td>Playwright + Web Yu-pri forms</td>
+<td align="center">✅ <a href="web-yu-pri/agent-harness/">New</a></td>
 </tr>
 <tr>
 <td align="center"><strong>📄 LibreOffice</strong></td>
@@ -1205,6 +1332,7 @@ gimp          107 passed  ✅   (64 unit + 43 e2e)
 blender       208 passed  ✅   (150 unit + 58 e2e)
 inkscape      202 passed  ✅   (148 unit + 54 e2e)
 audacity      161 passed  ✅   (107 unit + 54 e2e)
+wavetone       30 passed  ✅   (24 unit + 6 default e2e, 2 backend-gated e2e skipped; 32 passed opt-in)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 mubu           96 passed  ✅   (85 unit + 11 e2e)
 obs-studio    153 passed  ✅   (116 unit + 37 e2e)
@@ -1279,12 +1407,20 @@ cli-anything/
 │   └── scripts/
 │       └── setup-cli-anything.sh         # Setup script
 │
-├── 🤖 codex-skill/                      # Codex skill entry point
+├── 🤖 codex-skill/                      # Self-contained Codex skill installer
+│   ├── SKILL.md                         # Codex workflow entry point
+│   ├── agents/                          # Codex UI metadata
+│   ├── scripts/                         # Bash and PowerShell installers
+│   └── tests/                           # Installer resource-sync regression test
+├── 🧭 hermes-skill/                     # Hermes Agent skill entry point
+├── 🧠 reasonix-skill/                   # Reasonix skill entry point
 ├── 🎨 gimp/agent-harness/               # GIMP CLI (107 tests)
 ├── 🧊 blender/agent-harness/            # Blender CLI (208 tests)
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI (202 tests)
 ├── 🎵 audacity/agent-harness/           # Audacity CLI (161 tests)
+├── wavetone/agent-harness/              # WaveTone CLI (32 tests: 30 default + 2 backend-gated e2e)
 ├── 🌐 browser/agent-harness/            # Browser CLI (DOMShell MCP, new)
+├── 🌐 web-yu-pri/agent-harness/         # Japan Post Web Yu-pri CLI (new)
 ├── 📄 libreoffice/agent-harness/        # LibreOffice CLI (158 tests)
 ├── 📧 mailchimp/agent-harness/          # Mailchimp Marketing API CLI (303 commands, 36 unit tests)
 ├── 📚 zotero/agent-harness/             # Zotero CLI (new, write import support)
@@ -1549,6 +1685,24 @@ If CLI-Anything helps make your software Agent-native, give us a star! ⭐
     </picture>
   </a>
 </div>
+
+---
+
+## 📚 Citation
+
+If you find CLI-Anything useful, please cite our technical report:
+
+```bibtex
+@misc{yang2026clianythingagentnativecomputeruse,
+      title={CLI-Anything: Towards Agent-Native Computer Use}, 
+      author={Yuhao Yang and Tianyu Fan and Chao Huang},
+      year={2026},
+      eprint={2606.03854},
+      archivePrefix={arXiv},
+      primaryClass={cs.HC},
+      url={https://arxiv.org/abs/2606.03854}, 
+}
+```
 
 ---
 

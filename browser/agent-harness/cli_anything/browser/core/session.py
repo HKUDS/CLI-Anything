@@ -21,6 +21,11 @@ class Session:
     - history: Stack of URLs for back navigation
     - forward_stack: Stack of URLs for forward navigation
     - daemon_mode: Whether persistent daemon connection is active
+    - domshell_lane_id: The DOMShell 2.x lane (Chrome tab-group) the harness
+      has been pinned to. ``None`` until the first ``_call_execute`` reply
+      arrives carrying a ``[lane: <id>]`` marker; thereafter passed as
+      ``group_id`` on every subsequent call so browser state (current tab,
+      cwd, focus) persists across REPL commands in non-daemon mode.
     """
 
     current_url: str = ""
@@ -28,6 +33,7 @@ class Session:
     history: list[str] = field(default_factory=list)
     forward_stack: list[str] = field(default_factory=list)
     daemon_mode: bool = False
+    domshell_lane_id: Optional[str] = None
 
     def set_url(self, url: str, record_history: bool = True) -> None:
         """Set the current URL and update history.
@@ -95,4 +101,5 @@ class Session:
             "history_length": len(self.history),
             "forward_stack_length": len(self.forward_stack),
             "daemon_mode": self.daemon_mode,
+            "domshell_lane_id": self.domshell_lane_id,
         }

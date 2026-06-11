@@ -42,7 +42,7 @@ def open_page(session: "Session", url: str) -> dict:
         raise ValueError(error_msg)
 
     use_daemon = session.daemon_mode
-    result = backend.open_url(url, use_daemon=use_daemon)
+    result = backend.open_url(url, use_daemon=use_daemon, session=session)
     session.set_url(url)
     session.set_working_dir("/")  # Reset to root on new page
     return result
@@ -62,7 +62,7 @@ def reload_page(session: "Session") -> dict:
         {"status": "reloaded", "url": "https://example.com"}
     """
     use_daemon = session.daemon_mode
-    result = backend.reload(use_daemon=use_daemon)
+    result = backend.reload(use_daemon=use_daemon, session=session)
     return result
 
 
@@ -80,7 +80,7 @@ def go_back(session: "Session") -> dict:
         {"url": "https://previous.com", "status": "navigated"}
     """
     use_daemon = session.daemon_mode
-    result = backend.back(use_daemon=use_daemon)
+    result = backend.back(use_daemon=use_daemon, session=session)
 
     # Update session state if backend returned a URL
     if isinstance(result, dict) and "url" in result:
@@ -103,7 +103,7 @@ def go_forward(session: "Session") -> dict:
         {"url": "https://next.com", "status": "navigated"}
     """
     use_daemon = session.daemon_mode
-    result = backend.forward(use_daemon=use_daemon)
+    result = backend.forward(use_daemon=use_daemon, session=session)
 
     # Update session state if backend returned a URL
     if isinstance(result, dict) and "url" in result:

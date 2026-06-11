@@ -13,6 +13,7 @@
 # Step 2: Allow .gitignore, README, assets, and marketplace
 !.gitignore
 !/README.md
+!/CITATION.cff
 !/CONTRIBUTING.md
 !/SECURITY.md
 !/FIX_NOTES.md
@@ -33,6 +34,7 @@
 !/cli-anything-plugin/
 !/codex-skill/
 !/hermes-skill/
+!/reasonix-skill/
 !/skill_generation/
 !/openclaw-skill/
 !/cli-hub-meta-skill/
@@ -69,6 +71,7 @@
 !/minimax/
 !/ollama/
 !/browser/
+!/web-yu-pri/
 !/seaclip/
 !/pm2/
 !/chromadb/
@@ -98,6 +101,7 @@
 !/calibre/
 !/rekordbox/
 !/cc-switch/
+!/siyuan/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
 /gimp/.*
@@ -143,6 +147,8 @@
 /ollama/.*
 /browser/*
 /browser/.*
+/web-yu-pri/*
+/web-yu-pri/.*
 /seaclip/*
 /seaclip/.*
 /pm2/*
@@ -205,12 +211,16 @@
 /rekordbox/.*
 /cc-switch/*
 /cc-switch/.*
+/siyuan/*
+/siyuan/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
 !/blender/agent-harness/
 !/inkscape/agent-harness/
 !/audacity/agent-harness/
+!/wavetone/
+!/wavetone/agent-harness/
 !/libreoffice/agent-harness/
 !/zotero/agent-harness/
 !/mubu/agent-harness/
@@ -231,6 +241,7 @@
 !/minimax/agent-harness/
 !/ollama/agent-harness/
 !/browser/agent-harness/
+!/web-yu-pri/agent-harness/
 !/seaclip/agent-harness/
 !/pm2/agent-harness/
 !/chromadb/agent-harness/
@@ -268,6 +279,7 @@
 !/mailchimp/agent-harness/
 !/rekordbox/agent-harness/
 !/cc-switch/agent-harness/
+!/siyuan/agent-harness/
 
 # Exclude non-gedit demo macros from macrocli (local only)
 /macrocli/agent-harness/cli_anything/macrocli/macro_definitions/demo/flameshot*
@@ -294,6 +306,7 @@
 
 assets/gen_typing_gif.py
 !README_CN.md
+!README_DE.md
 !opencode-commands/
 !/qoder-plugin/
 

@@ -156,12 +156,13 @@ class TestCLISubprocessSmoke:
         assert status["history_count"] == 0
 
         models = self._run(["models"], tmp_path)
+        assert "MiniMax-M3" in models.stdout
         assert "MiniMax-M2.7" in models.stdout
 
         models_json = self._run(["--json", "models"], tmp_path)
         model_payload = json.loads(models_json.stdout)
         assert isinstance(model_payload, list)
-        assert model_payload[0]["id"] == "MiniMax-M2.7"
+        assert model_payload[0]["id"] == "MiniMax-M3"
 
         voices = self._run(["voices"], tmp_path)
         assert "English_Graceful_Lady" in voices.stdout
@@ -257,7 +258,7 @@ def test_chat_completion_e2e():
 
             result = chat_completion(
                 api_key="sk-mock",
-                model="MiniMax-M2.7",
+                model="MiniMax-M3",
                 messages=[{"role": "user", "content": "Say ok"}],
             )
             assert result["choices"][0]["message"]["content"] == "ok"
@@ -265,7 +266,7 @@ def test_chat_completion_e2e():
 
     result = chat_completion(
         api_key=API_KEY,
-        model="MiniMax-M2.7",
+        model="MiniMax-M3",
         messages=[{"role": "user", "content": "Say 'ok'"}],
         max_tokens=10,
     )
@@ -328,7 +329,7 @@ def test_chat_stream_e2e():
 
             chat_completion_stream(
                 api_key="sk-mock",
-                model="MiniMax-M2.7",
+                model="MiniMax-M3",
                 messages=[{"role": "user", "content": "Hello"}],
                 on_chunk=on_chunk,
             )
@@ -339,7 +340,7 @@ def test_chat_stream_e2e():
     received = []
     chat_completion_stream(
         api_key=API_KEY,
-        model="MiniMax-M2.7",
+        model="MiniMax-M3",
         messages=[{"role": "user", "content": "Say 'ok' only"}],
         max_tokens=5,
         on_chunk=lambda c: received.append(c),
