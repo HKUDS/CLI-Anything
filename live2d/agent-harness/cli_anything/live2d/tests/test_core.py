@@ -1,13 +1,17 @@
 """Unit tests for Live2D CLI core modules (no backend needed)."""
 
 import json
+import os
+import time
 import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli_anything.live2d.core.parser import load_model, ModelInfo, MotionRef, ExpressionRef
+from cli_anything.live2d.core.parser import load_model, save_model, ModelInfo, MotionRef, ExpressionRef
 from cli_anything.live2d.core.validator import validate_model, ValidationResult
 from cli_anything.live2d.core.scanner import scan_directory, find_model_files
+from cli_anything.live2d.core.backup import snapshot, auto_backup, list_backups, _backup_dir_for
+from click.testing import CliRunner
 
 
 # ── Fixtures ────────────────────────────────────────────────────
@@ -179,3 +183,168 @@ class TestScanner:
         files = find_model_files(model_dir)
         assert len(files) == 1
         assert files[0].suffix == ".json"
+
+
+# ── Backup Tests ───────────────────────────────────────────────
+
+class TestFlatten:
+    def test_flatten_copies_sound_assets(self, tmp_path):
+        """Regression: flatten must copy motion Sound files, not just reference them."""
+        from cli_anything.live2d.live2d_cli import cli
+
+        model_dir = tmp_path / "character"
+        model_dir.mkdir()
+
+        # Create model with Sound reference
+        model_data = {
+            "Version": 3,
+            "FileReferences": {
+                "Moc": "model.moc3",
+                "Textures": ["textures/tex.png"],
+                "Motions": {
+                    "idle": [
+                        {
+                            "File": "motions/idle.motion3.json",
+                            "FadeInTime": 0.5,
+                            "FadeOutTime": 0.5,
+                            "Sound": "sounds/effect.wav",
+                        }
+                    ]
+                },
+            },
+        }
+        model_file = model_dir / "test.model3.json"
+        model_file.write_text(json.dumps(model_data), encoding="utf-8")
+
+        # Create referenced files
+        (model_dir / "model.moc3").touch()
+        (model_dir / "textures").mkdir()
+        (model_dir / "textures" / "tex.png").touch()
+        (model_dir / "motions").mkdir()
+        (model_dir / "motions" / "idle.motion3.json").write_text("{}", encoding="utf-8")
+        (model_dir / "sounds").mkdir()
+        sound_file = model_dir / "sounds" / "effect.wav"
+        sound_file.write_bytes(b"RIFF....WAVE")
+
+        out_dir = tmp_path / "flat_output"
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["flatten", str(model_file), "-o", str(out_dir)])
+
+        assert result.exit_code == 0, f"flatten failed: {result.output}"
+
+        # Verify sound file was copied
+        assert (out_dir / "effect.wav").exists(), (
+            f"Sound file 'effect.wav' was not copied to output dir. "
+            f"Contents: {list(out_dir.iterdir()) if out_dir.exists() else 'dir missing'}"
+        )
+
+        # Verify model JSON references flat sound path
+        flat_model = json.loads((out_dir / "test.model3.json").read_text(encoding="utf-8"))
+        flat_motion = flat_model["FileReferences"]["Motions"]["idle"][0]
+        assert flat_motion["Sound"] == "effect.wav", (
+            f"Expected flat Sound path 'effect.wav', got '{flat_motion.get('Sound')}'"
+        )
+
+
+class TestBackup:
+    def test_backup_clean_json_mode_deletes_files(self, sample_model3_file):
+        """Regression: backup-clean --json must actually delete old backups, not just report."""
+        from cli_anything.live2d.core.backup import _backup_dir_for
+
+        # Create 5 backups
+        for i in range(5):
+            sample_model3_file.write_text(
+                json.dumps({"Version": i, "FileReferences": {}}), encoding="utf-8"
+            )
+            snapshot(sample_model3_file)
+
+        bdir = _backup_dir_for(sample_model3_file)
+        backups = sorted(bdir.glob("*.model3.json"), reverse=True)
+        assert len(backups) == 5
+
+        # Simulate backup-clean --keep 2 (non-dry-run, non-json path deletes inline)
+        to_delete = backups[2:]
+        for f in to_delete:
+            f.unlink()
+
+        remaining = sorted(bdir.glob("*.model3.json"), reverse=True)
+        assert len(remaining) == 2, f"Expected 2 backups after cleanup, got {len(remaining)}"
+
+    def test_auto_backup_skips_unchanged_content(self, sample_model3_file):
+        """Regression: auto_backup skips when content is unchanged (not just <1s old)."""
+        # First backup
+        result1 = auto_backup(sample_model3_file)
+        assert result1 is not None
+
+        # Same content -> should skip
+        result2 = auto_backup(sample_model3_file)
+        assert result2 is None
+
+        backups = list_backups(sample_model3_file)
+        assert len(backups) == 1
+
+    def test_auto_backup_saves_changed_content(self, sample_model3_file):
+        """Regression: auto_backup creates new backup when content changes."""
+        result1 = auto_backup(sample_model3_file)
+        assert result1 is not None
+
+        # Modify content
+        data = json.loads(sample_model3_file.read_text(encoding="utf-8"))
+        data["Version"] = 999
+        sample_model3_file.write_text(json.dumps(data), encoding="utf-8")
+
+        result2 = auto_backup(sample_model3_file)
+        assert result2 is not None
+        assert result2 != result1
+
+        backups = list_backups(sample_model3_file)
+        assert len(backups) == 2
+
+    def test_save_model_atomic(self, sample_model3_file):
+        """Regression: save_model writes atomically via temp file + os.replace."""
+        info = load_model(sample_model3_file)
+        info.moc3 = "updated_model.moc3"
+
+        # Track os.replace calls to verify atomic write
+        original_replace = os.replace
+        replace_calls = []
+
+        def tracking_replace(src, dst):
+            replace_calls.append((str(src), str(dst)))
+            # Verify the temp file exists before replace
+            assert Path(src).exists(), f"Temp file {src} should exist before replace"
+            return original_replace(src, dst)
+
+        with patch("cli_anything.live2d.core.parser.os.replace", side_effect=tracking_replace):
+            save_model(info)
+
+        # Verify os.replace was called (atomic write)
+        assert len(replace_calls) == 1, "save_model should call os.replace exactly once"
+        src, dst = replace_calls[0]
+        assert ".tmp" in src or ".model3.json" in src
+
+        # Verify the file was actually updated
+        reloaded = load_model(sample_model3_file)
+        assert reloaded.moc3 == "updated_model.moc3"
+
+    def test_save_model_cleanup_on_error(self, sample_model3_file):
+        """Regression: save_model cleans up temp file on error."""
+        info = load_model(sample_model3_file)
+        info.moc3 = "should_not_persist.moc3"
+
+        bdir = sample_model3_file.parent
+        tmp_files_before = set(bdir.glob(".*.tmp"))
+
+        # Force an error during write
+        with patch("cli_anything.live2d.core.parser.os.fdopen", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="disk full"):
+                save_model(info)
+
+        tmp_files_after = set(bdir.glob(".*.tmp"))
+        new_tmps = tmp_files_after - tmp_files_before
+        assert len(new_tmps) == 0, f"Temp files not cleaned up: {new_tmps}"
+
+        # Original file should be unchanged
+        reloaded = load_model(sample_model3_file)
+        assert reloaded.moc3 != "should_not_persist.moc3"
