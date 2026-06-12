@@ -52,8 +52,13 @@ function isDocumentationFile(path) {
     /^README(?:_[A-Z]+)?\.md$/.test(path) ||
     /^(CONTRIBUTING|SECURITY)\.md$/.test(path) ||
     /^docs\//.test(path) ||
+    /^[^/]+\/agent-harness\/.*\.md$/i.test(path) ||
     /^[^/]+\.md$/i.test(path)
   );
+}
+
+function isHarnessImplementationFile(path) {
+  return isHarnessFile(path) && !isDocumentationFile(path);
 }
 
 function titleLooksLikeRegistryCli(title) {
@@ -64,7 +69,7 @@ function computeScriptLabels(files, title) {
   const paths = files.map((file) => file.filename);
   const labelsToApply = new Set();
 
-  const hasHarnessChange = paths.some(isHarnessFile);
+  const hasHarnessImplementationChange = paths.some(isHarnessImplementationFile);
   const hasNewHarness = files.some(isNewHarnessManifest);
   const registryOnly = paths.length > 0 && paths.every((path) => REGISTRY_FILES.has(path));
   const registryNewCli = registryOnly && titleLooksLikeRegistryCli(title || "");
@@ -72,7 +77,7 @@ function computeScriptLabels(files, title) {
 
   if (hasNewHarness || registryNewCli) {
     labelsToApply.add("new-cli");
-  } else if (hasHarnessChange) {
+  } else if (hasHarnessImplementationChange) {
     labelsToApply.add("existing-cli-fix");
   }
 

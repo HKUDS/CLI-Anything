@@ -197,3 +197,12 @@ test("mixed README and harness changes are not documentation-only", () => {
 
   assert.deepStrictEqual(labels, ["existing-cli-fix"]);
 });
+
+test("harness README-only changes are documentation", () => {
+  const labels = computeAllLabels({
+    title: "docs(firefly-iii): clarify setup notes",
+    files: [{filename: "firefly-iii/agent-harness/README.md", status: "modified"}],
+  });
+
+  assert.deepStrictEqual(labels, ["documentation"]);
+});
