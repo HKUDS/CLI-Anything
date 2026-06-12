@@ -470,7 +470,10 @@
           "name": "99cz99",
           "url": "https://github.com/99cz99"
         }
-      ]
+      ],
+      "install_strategy": "command",
+      "uninstall_cmd": "pip uninstall -y cli-anything-labview",
+      "update_cmd": "pip install --upgrade --force-reinstall git+https://github.com/99cz99/cli-anything-labview.git@v1.0.0"
     }
   ]
 }
