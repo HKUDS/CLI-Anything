@@ -450,6 +450,27 @@
           "url": "https://github.com/123dx-svg"
         }
       ]
+    },
+    {
+      "name": "labview",
+      "display_name": "NI LabVIEW",
+      "version": "1.0.0",
+      "description": "Agent-native CLI harness for NI LabVIEW: VI control, project management, front-panel access, build specs, and data acquisition from the command line via ActiveX/COM automation",
+      "category": "scientific",
+      "platform": "windows",
+      "requires": "Windows only — NI LabVIEW 2025 (or compatible) with ActiveX Server enabled; Python 3.10+ with pywin32>=300",
+      "homepage": "https://www.ni.com/en/support/downloads/software-products/download.labview.html",
+      "source_url": "https://github.com/99cz99/cli-anything-labview",
+      "package_manager": "pip",
+      "install_cmd": "pip install git+https://github.com/99cz99/cli-anything-labview.git@v1.0.0",
+      "entry_point": "cli-anything-labview",
+      "skill_md": "https://raw.githubusercontent.com/99cz99/cli-anything-labview/master/skills/cli-anything-labview/SKILL.md",
+      "contributors": [
+        {
+          "name": "99cz99",
+          "url": "https://github.com/99cz99"
+        }
+      ]
     }
   ]
 }
