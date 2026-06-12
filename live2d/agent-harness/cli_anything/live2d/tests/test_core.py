@@ -250,9 +250,10 @@ class TestFlatten:
 class TestBackup:
     def test_backup_clean_json_mode_deletes_files(self, sample_model3_file):
         """Regression: backup-clean --json must actually delete old backups, not just report."""
+        from cli_anything.live2d.live2d_cli import cli
         from cli_anything.live2d.core.backup import _backup_dir_for
 
-        # Create 5 backups
+        # Create 5 backups with distinct content
         for i in range(5):
             sample_model3_file.write_text(
                 json.dumps({"Version": i, "FileReferences": {}}), encoding="utf-8"
@@ -263,13 +264,23 @@ class TestBackup:
         backups = sorted(bdir.glob("*.model3.json"), reverse=True)
         assert len(backups) == 5
 
-        # Simulate backup-clean --keep 2 (non-dry-run, non-json path deletes inline)
-        to_delete = backups[2:]
-        for f in to_delete:
-            f.unlink()
+        # Invoke backup-clean --keep 2 --json through the CLI
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "backup-clean", str(sample_model3_file), "--keep", "2"
+        ])
 
+        assert result.exit_code == 0, f"backup-clean failed: {result.output}"
+
+        # Verify only 2 backups remain on disk
         remaining = sorted(bdir.glob("*.model3.json"), reverse=True)
         assert len(remaining) == 2, f"Expected 2 backups after cleanup, got {len(remaining)}"
+
+        # Verify JSON output reports the deletion
+        out = json.loads(result.output)
+        assert out["delete"] == 3
+        assert out["total"] == 5
+        assert len(out["deleted"]) == 3
 
     def test_auto_backup_skips_unchanged_content(self, sample_model3_file):
         """Regression: auto_backup skips when content is unchanged (not just <1s old)."""
