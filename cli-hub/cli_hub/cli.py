@@ -8,9 +8,12 @@ from pathlib import Path
 
 import click
 
+import requests as _requests
+
 from cli_hub import __version__
 from cli_hub.registry import fetch_all_clis, get_cli, search_clis, list_categories
 from cli_hub.installer import install_cli, uninstall_cli, get_installed, update_cli
+from cli_hub.installer import _install_strategy
 from cli_hub.analytics import (
     detect_invocation_context,
     track_first_run,
@@ -100,6 +103,75 @@ def uninstall(name):
         click.secho(f"✓ {msg}", fg="green")
     else:
         click.secho(f"✗ {msg}", fg="red", err=True)
+        raise SystemExit(1)
+
+
+@main.command("install-all")
+@click.option("--force", is_flag=True, help="Reinstall CLIs that are already installed.")
+def install_all_cmd(force):
+    """Install all available CLIs from the registry."""
+    try:
+        all_clis = fetch_all_clis()
+    except (_requests.RequestException, ValueError) as e:
+        click.secho(f"Failed to fetch registry: {e}", fg="red", err=True)
+        raise SystemExit(1)
+
+    if not all_clis:
+        click.echo("No CLIs found in the registry.")
+        return
+
+    installed_map = get_installed() if not force else {}
+    total = len(all_clis)
+    succeeded = 0
+    failed = 0
+    skipped = 0
+    skipped_names = []
+    failed_names = []
+
+    click.echo(f"Installing {total} CLIs...\n")
+
+    for i, cli in enumerate(all_clis, 1):
+        name = cli["name"]
+        display = cli.get("display_name", name)
+
+        # Skip bundled CLIs — they can't be installed independently
+        strategy = _install_strategy(cli)
+        if strategy == "bundled":
+            skipped += 1
+            skipped_names.append(name)
+            click.secho(f"  [{i}/{total}] {display} — skipped (bundled)", fg="yellow")
+            continue
+
+        # Skip already-installed CLIs unless --force
+        if name in installed_map:
+            skipped += 1
+            skipped_names.append(name)
+            click.echo(f"  [{i}/{total}] {display} — already installed")
+            continue
+
+        click.echo(f"  [{i}/{total}] {display} ({name})... ", nl=False)
+
+        success, msg = install_cli(name)
+
+        if success:
+            succeeded += 1
+            click.secho("✓", fg="green")
+            track_install(name, cli.get("version", "unknown"))
+        else:
+            failed += 1
+            failed_names.append(name)
+            click.secho(f"✗ {msg}", fg="red")
+
+    click.echo()
+    parts = [f"{succeeded} succeeded"]
+    if skipped:
+        parts.append(f"{skipped} skipped")
+    if failed:
+        parts.append(f"{failed} failed")
+    click.echo(f"  Done: {', '.join(parts)} out of {total}")
+
+    if failed_names:
+        click.echo(f"  Failed: {', '.join(failed_names)}")
         raise SystemExit(1)
 
 

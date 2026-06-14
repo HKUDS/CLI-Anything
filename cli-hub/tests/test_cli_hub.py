@@ -1228,3 +1228,112 @@ class TestCLI:
         result = self.runner.invoke(main, ["launch", "nonexistent"])
         assert result.exit_code == 1
         assert "not found" in result.output
+
+    # ── install-all tests ──
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.install_cli", return_value=(True, "Installed GIMP (cli-anything-gimp)"))
+    @patch("cli_hub.cli._install_strategy", return_value="pip")
+    @patch("cli_hub.cli.get_installed", return_value={})
+    @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
+    def test_install_all_success(self, mock_fetch, mock_installed, mock_strategy, mock_install, mock_track, mock_detect, mock_visit, mock_first_run):
+        """install-all shows per-CLI status and succeeds when all pass."""
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["install-all"])
+        assert result.exit_code == 0
+        assert "3 CLIs" in result.output
+        assert "3 succeeded" in result.output
+        assert mock_install.call_count == 3
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.install_cli", side_effect=[
+        (True, "Installed GIMP"),
+        (False, "pip install failed: timeout"),
+        (True, "Installed Audacity"),
+    ])
+    @patch("cli_hub.cli._install_strategy", return_value="pip")
+    @patch("cli_hub.cli.get_installed", return_value={})
+    @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
+    def test_install_all_partial_failure(self, mock_fetch, mock_installed, mock_strategy, mock_install, mock_track, mock_detect, mock_visit, mock_first_run):
+        """install-all reports partial failures and exits non-zero."""
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["install-all"])
+        assert result.exit_code == 1
+        assert "2 succeeded" in result.output
+        assert "1 failed" in result.output
+        assert "blender" in result.output
+        assert "Failed:" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.fetch_all_clis", return_value=[])
+    def test_install_all_empty_registry(self, mock_fetch, mock_detect, mock_visit, mock_first_run):
+        """install-all handles empty registry gracefully."""
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["install-all"])
+        assert result.exit_code == 0
+        assert "No CLIs found" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.fetch_all_clis", side_effect=requests.RequestException("network error"))
+    def test_install_all_fetch_failure(self, mock_fetch, mock_detect, mock_visit, mock_first_run):
+        """install-all exits with error when registry fetch fails."""
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["install-all"])
+        assert result.exit_code == 1
+        assert "Failed to fetch registry" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.install_cli", return_value=(True, "Installed GIMP"))
+    @patch("cli_hub.cli._install_strategy", return_value="pip")
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}, "blender": {"version": "1.0.0"}})
+    @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
+    def test_install_all_skips_installed(self, mock_fetch, mock_installed, mock_strategy, mock_install, mock_detect, mock_visit, mock_first_run):
+        """install-all skips CLIs that are already installed."""
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["install-all"])
+        assert result.exit_code == 0
+        assert "2 skipped" in result.output
+        assert "1 succeeded" in result.output
+        assert mock_install.call_count == 1  # only audacity
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.install_cli", return_value=(True, "Installed GIMP"))
+    @patch("cli_hub.cli._install_strategy", return_value="pip")
+    @patch("cli_hub.cli.get_installed", return_value={})
+    @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
+    def test_install_all_force_reinstalls(self, mock_fetch, mock_installed, mock_strategy, mock_install, mock_track, mock_detect, mock_visit, mock_first_run):
+        """install-all --force reinstalls even already-installed CLIs."""
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["install-all", "--force"])
+        assert result.exit_code == 0
+        assert "3 succeeded" in result.output
+        assert mock_install.call_count == 3
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli._install_strategy", return_value="bundled")
+    @patch("cli_hub.cli.get_installed", return_value={})
+    @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
+    def test_install_all_skips_bundled(self, mock_fetch, mock_installed, mock_strategy, mock_detect, mock_visit, mock_first_run):
+        """install-all skips bundled CLIs (cannot be installed independently)."""
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["install-all"])
+        assert result.exit_code == 0
+        assert "3 skipped" in result.output
+        assert "skipped (bundled)" in result.output
