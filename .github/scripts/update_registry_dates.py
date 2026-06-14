@@ -19,6 +19,34 @@ USER_AGENT = "CLI-Anything registry date updater"
 GITHUB_REPO_RE = re.compile(r"https://github\.com/([^/]+/[^/#?]+?)(?:\.git)?(?:[/?#].*)?$")
 GIT_URL_RE = re.compile(r"https://github\.com/[^\s#]+")
 SUBDIRECTORY_RE = re.compile(r"#subdirectory=([^\s]+)")
+PIP_OPTIONS_WITH_VALUES = {
+    "-c",
+    "--constraint",
+    "-r",
+    "--requirement",
+    "-i",
+    "--index-url",
+    "--extra-index-url",
+    "-f",
+    "--find-links",
+    "--trusted-host",
+    "--python-version",
+    "--platform",
+    "--implementation",
+    "--abi",
+    "--root",
+    "--prefix",
+    "--src",
+    "--target",
+    "--upgrade-strategy",
+    "-C",
+    "--config-settings",
+    "--cert",
+    "--client-cert",
+    "--cache-dir",
+    "--log",
+    "--report",
+}
 
 
 def _fetch_json(url: str) -> dict | None:
@@ -123,8 +151,15 @@ def _extract_pypi_package(install_cmd: str) -> str | None:
     if install_index is None or install_index >= len(tokens) or tokens[install_index] != "install":
         return None
 
-    for token in tokens[install_index + 1 :]:
+    index = install_index + 1
+    while index < len(tokens):
+        token = tokens[index]
         if token.startswith("-"):
+            option_name = token.split("=", 1)[0]
+            if option_name in PIP_OPTIONS_WITH_VALUES and "=" not in token:
+                index += 2
+                continue
+            index += 1
             continue
         if "://" in token or token.startswith("git+"):
             return None

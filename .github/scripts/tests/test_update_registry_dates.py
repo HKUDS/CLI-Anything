@@ -60,3 +60,12 @@ def test_extract_pypi_package_supports_python_module_invocation():
     install_cmd = "python -m pip install py4csr"
 
     assert MODULE._extract_pypi_package(install_cmd) == "py4csr"
+
+
+def test_extract_pypi_package_skips_index_option_values():
+    install_cmd = (
+        "python -m pip install --index-url https://mirror.example/simple "
+        "--trusted-host mirror.example py4csr"
+    )
+
+    assert MODULE._extract_pypi_package(install_cmd) == "py4csr"
