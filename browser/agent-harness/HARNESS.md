@@ -75,15 +75,15 @@ absolute paths (leading `/`) are anchored at the tab root via
 `cd %here%` since DOMShell's lane cwd may have drifted; relative paths
 are passed through unchanged.
 
-| CLI Command (path is absolute) | Command string sent to `domshell_execute` |
+| CLI Command (path is absolute) | Calls sent to `domshell_execute` |
 |--------------------------------|--------------------------------------------|
-| `fs ls /<sub>` | `cd %here%/<sub>` then bare `ls`, then `cd <restore>` (single multi-line call) |
+| `fs ls /<sub>` | 3 calls: `cd %here%/<sub>` → `ls` → `cd <restore>`. Anchor `cd` is checked with `_is_error`; if it fails the remaining calls are skipped. |
 | `fs cd /<sub>` | `cd %here%/<sub>` (single line — `cd` is the desired new state) |
-| `fs cat /<sub>` | `cd %here%`, `cat <sub>`, `cd <restore>` (single multi-line call) |
-| `fs grep <pat>` | `grep <pat>` (operates on lane cwd) |
-| `fs grep <pat> /<sub>` | `cd %here%/<sub>`, `grep <pat>`, `cd <restore>` (single multi-line call) |
-| `act click /<sub>` | `cd %here%`, `click <sub>`, `cd <restore>` (single multi-line call) |
-| `act type /<sub> <text>` | `cd %here%`, `focus <sub>`, `cd <restore>` — then, on success, `type <text>` (two calls, shared lane via `group_id`) |
+| `fs cat /<sub>` | 3 calls: `cd %here%` → `cat <sub>` → `cd <restore>`. Anchor `cd` is checked with `_is_error`; if it fails the remaining calls are skipped. |
+| `fs grep <pat>` | `grep -r <pat>` (operates on lane cwd, single call) |
+| `fs grep <pat> /<sub>` | 3 calls: `cd %here%/<sub>` → `grep -r <pat>` → `cd <restore>`. Anchor `cd` is checked with `_is_error`; if it fails the remaining calls are skipped. |
+| `act click /<sub>` | 3 calls: `cd %here%` → `click <sub>` → `cd <restore>`. Anchor `cd` is checked with `_is_error`; if it fails the remaining calls are skipped. |
+| `act type /<sub> <text>` | Up to 4 calls: `cd %here%` → `focus <sub>` → `type <text>` → `cd <restore>`. Each step is error-gated: anchor failure skips all; focus failure skips `type` (round-6.1 safety-chain — `focus`/`type` must NOT use a single multi-line call because DOMShell's multi-line splitter continues past errors, so a failed `focus` would let `type` dispatch keys into whatever was previously focused). |
 | `page open <url>` | `open <url>` |
 | `page reload` | `refresh` |
 | `page back` | `back` |

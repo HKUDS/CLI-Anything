@@ -837,15 +837,12 @@ def grep(
     """Search for pattern in the accessibility tree.
 
     When ``path`` is provided and is not ``/``, the search is rooted at that
-    path: ``cd`` into it, ``grep``, then ``cd`` back to ``prev`` — sent as one
-    multi-line ``domshell_execute`` call so all three lines share an MCP
-    session (and therefore a DOMShell lane / cwd). Each ``_call_execute`` in
-    non-daemon mode opens a fresh stdio session that lands in its own
-    DOMShell 2.x lane, so splitting cd/grep/restore across separate calls
-    would lose the cwd between them. The trailing ``cd prev`` is delivered as
-    the final line of the same command and runs even if ``grep`` errors —
-    DOMShell's multi-line splitter continues past errors (see
-    `apireno/DOMShell#46 <https://github.com/apireno/DOMShell/issues/46>`_).
+    path using a 3-call split-and-check sequence: anchor ``cd`` into the
+    target path, ``grep -r``, then restore ``cd`` back to ``prev``. Each
+    step is a separate ``_call_execute`` call sharing the same DOMShell
+    lane via the ``session`` argument. The anchor ``cd`` result is checked
+    with ``_is_error``; if it fails, the remaining calls are skipped so
+    ``grep`` never runs against the wrong cwd.
 
     ``path``, ``prev``, and ``use_daemon`` are keyword-only to prevent silent
     breakage of callers written against the pre-migration positional
