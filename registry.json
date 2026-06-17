@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-06-10"
+    "updated": "2026-06-17"
   },
   "clis": [
     {
@@ -1454,6 +1454,26 @@
         {
           "name": "webdevtodayjason",
           "url": "https://github.com/webdevtodayjason"
+        }
+      ]
+    },
+    {
+      "name": "cli-anything-ljg-ppt-design",
+      "display_name": "ljg PPT Design",
+      "version": "0.1.0",
+      "description": "PPT design system — 4 presets (academic/consultant/business/tech) × 12 layouts × 4 talk types (conference/business/defense/school) × 5-dim quality review. Lighter alternative to cli-anything-libreoffice with built-in design system. Source: yb2460/harness-anything (WPS section) + ljg platform-neutral refactor.",
+      "requires": "Python >= 3.9; python-pptx (default); LibreOffice + HKUDS cli-anything-libreoffice (optional)",
+      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "source_url": "https://github.com/HKUDS/CLI-Anything",
+      "package_manager": "pip",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ljg-ppt-design",
+      "entry_point": "cli-anything-ljg-ppt-design",
+      "skill_md": "skills/cli-anything-ljg-ppt-design/SKILL.md",
+      "category": "office",
+      "contributors": [
+        {
+          "name": "ljg-ppt-design contributors",
+          "url": "https://github.com/HKUDS/CLI-Anything"
         }
       ]
     }
