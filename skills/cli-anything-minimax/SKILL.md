@@ -45,6 +45,13 @@ cli-anything-minimax tts --text "Hello world" --output hello.mp3
 cli-anything-minimax --json chat --prompt "Hello"
 ```
 
+#### TTS options
+
+`--text` (required) / `--model` / `--voice` / `--output` plus voice and audio
+controls: `--speed` (0.5..2.0), `--vol` (0..10), `--pitch` (-12..12),
+`--sample-rate` (8k/16k/22.05k/24k/32k/44.1k), `--bitrate` (32k/64k/128k/256k),
+`--format` (mp3/pcm/flac), `--channel` (1/2). See `tts --help` for defaults.
+
 ## Command Groups
 
 ### Chat

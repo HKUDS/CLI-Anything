@@ -56,9 +56,31 @@ cli-anything-minimax tts --text "Hello, world!" --output hello.mp3
 # Use turbo model
 cli-anything-minimax tts --text "Fast speech" --model speech-2.8-turbo --output fast.mp3
 
+# Fine-grained voice & audio control
+cli-anything-minimax tts --text "Slow and quiet" \
+    --speed 0.8 --vol 0.5 --pitch -2 \
+    --sample-rate 44100 --bitrate 256000 --format flac --channel 2 \
+    --output slow.flac
+
 # List available voices
 cli-anything-minimax voices
 ```
+
+#### TTS options
+
+| Option | Range / Choices | Default | Description |
+|--------|-----------------|---------|-------------|
+| `--text` / `-t` | (required) | — | Text to synthesize |
+| `--model` | model id | `speech-2.8-hd` | TTS model |
+| `--voice` | voice id | `English_Graceful_Lady` | Voice preset |
+| `--output` / `-o` | path | `output.mp3` | Output audio file |
+| `--speed` | 0.5 .. 2.0 | `1.0` | Speech speed multiplier |
+| `--vol` | 0.0 .. 10.0 | `1.0` | Volume |
+| `--pitch` | -12 .. 12 | `0` | Pitch shift in semitones |
+| `--sample-rate` | 8000 / 16000 / 22050 / 24000 / 32000 / 44100 | `32000` | Audio sample rate |
+| `--bitrate` | 32000 / 64000 / 128000 / 256000 | `128000` | Audio bitrate |
+| `--format` | mp3 / pcm / flac | `mp3` | Output container |
+| `--channel` | 1 / 2 | `1` | 1 = mono, 2 = stereo |
 
 ### Session & Config
 
