@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -52,6 +53,7 @@ from cli_hub.installer import (
     _load_installed,
     _save_installed,
     _run_command,
+    _pip_args_from_install_cmd,
     _install_strategy,
     _UV_INSTALL_HINT,
 )
@@ -944,6 +946,38 @@ class TestInstaller:
         success, msg = install_cli("gimp")
         assert not success
         assert "failed" in msg
+
+    def test_pip_args_from_python_module_install_cmd(self):
+        args = _pip_args_from_install_cmd(
+            "python3 -m pip install git+https://github.com/example/demo.git"
+        )
+        assert args == ["git+https://github.com/example/demo.git"]
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
+    def test_install_pip_accepts_python_module_install_cmd(self, mock_get_cli, mock_run):
+        mock_get_cli.return_value = {
+            "name": "demo",
+            "display_name": "Demo",
+            "version": "1.0.0",
+            "entry_point": "cli-anything-demo",
+            "_source": "harness",
+            "install_cmd": "python3 -m pip install git+https://github.com/example/demo.git",
+        }
+        mock_run.return_value = MagicMock(returncode=0)
+
+        success, msg = install_cli("demo")
+
+        assert success
+        assert "Demo" in msg
+        assert mock_run.call_args[0][0] == [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "git+https://github.com/example/demo.git",
+        ]
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")

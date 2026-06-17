@@ -181,10 +181,20 @@ def _bundled_update(cli):
 # ── pip operations (harness CLIs) ──
 
 
+def _pip_args_from_install_cmd(install_cmd):
+    """Return package arguments from a pip install command."""
+    parts = shlex.split(install_cmd)
+    if parts[:2] == ["pip", "install"]:
+        return parts[2:]
+    if len(parts) >= 4 and parts[1:4] == ["-m", "pip", "install"]:
+        return parts[4:]
+    return parts
+
+
 def _pip_install(cli):
     install_cmd = cli["install_cmd"]
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install"] + install_cmd.replace("pip install ", "").split(),
+        [sys.executable, "-m", "pip", "install"] + _pip_args_from_install_cmd(install_cmd),
         capture_output=True, text=True
     )
     if result.returncode == 0:
@@ -207,7 +217,7 @@ def _pip_update(cli):
     install_cmd = cli["install_cmd"]
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall"]
-        + install_cmd.replace("pip install ", "").split(),
+        + _pip_args_from_install_cmd(install_cmd),
         capture_output=True, text=True
     )
     if result.returncode == 0:
