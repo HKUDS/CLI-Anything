@@ -183,6 +183,13 @@ def tts_synthesize(
     model: str = "speech-2.8-hd",
     voice: str = "English_Graceful_Lady",
     output_path: Optional[str] = None,
+    speed: float = 1.0,
+    vol: float = 1.0,
+    pitch: int = 0,
+    sample_rate: int = 32000,
+    bitrate: int = 128000,
+    audio_format: str = "mp3",
+    channel: int = 1,
 ) -> bytes:
     """Synthesize text to speech using MiniMax TTS API (SSE stream, hex-encoded audio)."""
     api_key = _require_api_key(api_key)
@@ -193,15 +200,15 @@ def tts_synthesize(
         "stream": True,
         "voice_setting": {
             "voice_id": voice,
-            "speed": 1,
-            "vol": 1,
-            "pitch": 0,
+            "speed": speed,
+            "vol": vol,
+            "pitch": pitch,
         },
         "audio_setting": {
-            "sample_rate": 32000,
-            "bitrate": 128000,
-            "format": "mp3",
-            "channel": 1,
+            "sample_rate": sample_rate,
+            "bitrate": bitrate,
+            "format": audio_format,
+            "channel": channel,
         },
     }
     try:
