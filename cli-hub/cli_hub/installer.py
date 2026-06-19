@@ -56,12 +56,37 @@ def _find_uv():
 
 
 def _has_pip():
-    """True when the running interpreter has pip (the documented pip flow).
-
-    uv-tool and pipx-style deployments install cli-hub into a venv without pip,
-    so harness installs must fall back to `uv tool install` there.
-    """
+    """True when the running interpreter has pip importable."""
     return importlib.util.find_spec("pip") is not None
+
+
+def _running_in_pipx():
+    """True when cli-hub runs from a pipx-managed venv.
+
+    pipx exposes only the *primary* package's apps on PATH, so pip-installing an
+    extra harness package into that venv leaves its entry points unreachable.
+    """
+    return "pipx" in Path(sys.prefix).parts
+
+
+def _harness_backend():
+    """Pick a backend that installs harness CLIs with entry points on PATH.
+
+    Returns ``(kind, value)``:
+    - ``("uv", uv_path)``  — uv is available; ``uv tool install`` yields an
+      isolated tool whose apps land on PATH (correct for uv-tool, pipx, and
+      plain deployments alike).
+    - ``("pip", sys.executable)`` — no uv, and cli-hub runs from a plain
+      pip/venv (not pipx), where the interpreter's bin *is* the user's PATH.
+    - ``(None, hint)`` — nothing safe is available (e.g. pipx without uv);
+      ``value`` is the user-facing hint to print.
+    """
+    uv = _find_uv()
+    if uv is not None:
+        return "uv", uv
+    if _has_pip() and not _running_in_pipx():
+        return "pip", sys.executable
+    return None, _UV_INSTALL_HINT
 
 
 _UV_INSTALL_HINT = (
@@ -199,23 +224,14 @@ def _bundled_update(cli):
 
 def _pip_install(cli):
     spec = shlex.split(cli["install_cmd"].replace("pip install ", "", 1).strip())
-    # Documented flow is `pip install cli-anything-hub`: the current interpreter
-    # has pip, so use it. uv-tool / pipx venvs have no pip, so fall back to
-    # `uv tool install` (pip-free, entry points land on PATH — same as
-    # cli-anything-gimp). Avoids regressing pip-only environments.
-    if _has_pip():
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", *spec],
-            capture_output=True, text=True
-        )
+    kind, value = _harness_backend()
+    if kind == "uv":
+        cmd = [value, "tool", "install", "--force", *spec]
+    elif kind == "pip":
+        cmd = [value, "-m", "pip", "install", *spec]
     else:
-        uv = _find_uv()
-        if uv is None:
-            return False, _UV_INSTALL_HINT
-        result = subprocess.run(
-            [uv, "tool", "install", "--force", *spec],
-            capture_output=True, text=True
-        )
+        return False, value
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
     return False, f"install failed:\n{result.stderr or result.stdout}"
@@ -223,19 +239,14 @@ def _pip_install(cli):
 
 def _pip_uninstall(cli):
     pkg_name = f"cli-anything-{cli['name']}"
-    if _has_pip():
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "uninstall", "-y", pkg_name],
-            capture_output=True, text=True
-        )
+    kind, value = _harness_backend()
+    if kind == "uv":
+        cmd = [value, "tool", "uninstall", pkg_name]
+    elif kind == "pip":
+        cmd = [value, "-m", "pip", "uninstall", "-y", pkg_name]
     else:
-        uv = _find_uv()
-        if uv is None:
-            return False, _UV_INSTALL_HINT
-        result = subprocess.run(
-            [uv, "tool", "uninstall", pkg_name],
-            capture_output=True, text=True
-        )
+        return False, value
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
         return True, f"Uninstalled {cli['display_name']}"
     return False, f"uninstall failed:\n{result.stderr or result.stdout}"
@@ -243,19 +254,14 @@ def _pip_uninstall(cli):
 
 def _pip_update(cli):
     spec = shlex.split(cli["install_cmd"].replace("pip install ", "", 1).strip())
-    if _has_pip():
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", *spec],
-            capture_output=True, text=True
-        )
+    kind, value = _harness_backend()
+    if kind == "uv":
+        cmd = [value, "tool", "install", "--force", "--reinstall", *spec]
+    elif kind == "pip":
+        cmd = [value, "-m", "pip", "install", "--upgrade", "--force-reinstall", *spec]
     else:
-        uv = _find_uv()
-        if uv is None:
-            return False, _UV_INSTALL_HINT
-        result = subprocess.run(
-            [uv, "tool", "install", "--force", "--reinstall", *spec],
-            capture_output=True, text=True
-        )
+        return False, value
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
         return True, f"Updated {cli['display_name']} to {cli['version']}"
     return False, f"Update failed:\n{result.stderr or result.stdout}"
