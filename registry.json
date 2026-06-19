@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-06-10"
+    "updated": "2026-06-19"
   },
   "clis": [
     {
@@ -1473,6 +1473,25 @@
         {
           "name": "George-RD",
           "url": "https://github.com/George-RD"
+        }
+      ]
+    },
+    {
+      "name": "palmier",
+      "display_name": "Palmier Pro",
+      "version": "0.1.0",
+      "description": "Agent-native CLI harness for the Palmier Pro local MCP video editor — drive timeline editing, media, captions, and AI generation from the command line",
+      "requires": "Palmier Pro desktop app running its local MCP server at 127.0.0.1:19789, Python 3.10+",
+      "homepage": "https://palmier.com",
+      "source_url": "https://github.com/workcr/palmier-cli-anything",
+      "install_cmd": "pip install git+https://github.com/workcr/palmier-cli-anything.git",
+      "entry_point": "cli-anything-palmier",
+      "skill_md": "https://github.com/workcr/palmier-cli-anything/blob/main/skills/cli-anything-palmier/SKILL.md",
+      "category": "video",
+      "contributors": [
+        {
+          "name": "workcr",
+          "url": "https://github.com/workcr"
         }
       ]
     }
