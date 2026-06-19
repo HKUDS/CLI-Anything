@@ -1,9 +1,11 @@
 """Install, uninstall, and manage CLIs and matrices."""
 
+import importlib.util
 import json
 import shlex
 import shutil
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -51,6 +53,15 @@ def _find_npm():
 def _find_uv():
     """Find uv executable. Returns path or None."""
     return shutil.which("uv")
+
+
+def _has_pip():
+    """True when the running interpreter has pip (the documented pip flow).
+
+    uv-tool and pipx-style deployments install cli-hub into a venv without pip,
+    so harness installs must fall back to `uv tool install` there.
+    """
+    return importlib.util.find_spec("pip") is not None
 
 
 _UV_INSTALL_HINT = (
@@ -187,45 +198,64 @@ def _bundled_update(cli):
 
 
 def _pip_install(cli):
-    # uv tool environments have no pip; harness CLIs are standalone agent CLIs,
-    # so install them as uv tools (pip-free, entry points land on PATH — same
-    # deployment as cli-anything-gimp). install_cmd is "pip install <spec>".
-    uv = _find_uv()
-    if uv is None:
-        return False, _UV_INSTALL_HINT
     spec = shlex.split(cli["install_cmd"].replace("pip install ", "", 1).strip())
-    result = subprocess.run(
-        [uv, "tool", "install", "--force", *spec],
-        capture_output=True, text=True
-    )
+    # Documented flow is `pip install cli-anything-hub`: the current interpreter
+    # has pip, so use it. uv-tool / pipx venvs have no pip, so fall back to
+    # `uv tool install` (pip-free, entry points land on PATH — same as
+    # cli-anything-gimp). Avoids regressing pip-only environments.
+    if _has_pip():
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", *spec],
+            capture_output=True, text=True
+        )
+    else:
+        uv = _find_uv()
+        if uv is None:
+            return False, _UV_INSTALL_HINT
+        result = subprocess.run(
+            [uv, "tool", "install", "--force", *spec],
+            capture_output=True, text=True
+        )
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"uv tool install failed:\n{result.stderr or result.stdout}"
+    return False, f"install failed:\n{result.stderr or result.stdout}"
 
 
 def _pip_uninstall(cli):
-    uv = _find_uv()
-    if uv is None:
-        return False, _UV_INSTALL_HINT
     pkg_name = f"cli-anything-{cli['name']}"
-    result = subprocess.run(
-        [uv, "tool", "uninstall", pkg_name],
-        capture_output=True, text=True
-    )
+    if _has_pip():
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "uninstall", "-y", pkg_name],
+            capture_output=True, text=True
+        )
+    else:
+        uv = _find_uv()
+        if uv is None:
+            return False, _UV_INSTALL_HINT
+        result = subprocess.run(
+            [uv, "tool", "uninstall", pkg_name],
+            capture_output=True, text=True
+        )
     if result.returncode == 0:
         return True, f"Uninstalled {cli['display_name']}"
-    return False, f"uv tool uninstall failed:\n{result.stderr or result.stdout}"
+    return False, f"uninstall failed:\n{result.stderr or result.stdout}"
 
 
 def _pip_update(cli):
-    uv = _find_uv()
-    if uv is None:
-        return False, _UV_INSTALL_HINT
     spec = shlex.split(cli["install_cmd"].replace("pip install ", "", 1).strip())
-    result = subprocess.run(
-        [uv, "tool", "install", "--force", "--reinstall", *spec],
-        capture_output=True, text=True
-    )
+    if _has_pip():
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", *spec],
+            capture_output=True, text=True
+        )
+    else:
+        uv = _find_uv()
+        if uv is None:
+            return False, _UV_INSTALL_HINT
+        result = subprocess.run(
+            [uv, "tool", "install", "--force", "--reinstall", *spec],
+            capture_output=True, text=True
+        )
     if result.returncode == 0:
         return True, f"Updated {cli['display_name']} to {cli['version']}"
     return False, f"Update failed:\n{result.stderr or result.stdout}"
