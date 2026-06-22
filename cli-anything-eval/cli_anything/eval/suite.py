@@ -15,18 +15,48 @@ from cli_anything.eval.runner import iso_now, run_eval
 
 def discover_harness_task_packages() -> List[Tuple[str, str]]:
     import cli_anything  # the PEP 420 namespace package
-    found: List[Tuple[str, str]] = []
+
+    candidates: set = set()
+
+    # Strategy 1: directory-based namespace walk (works for normal site-packages installs).
     for mod in pkgutil.iter_modules(cli_anything.__path__):
-        if not mod.ispkg or mod.name == "eval":
+        if mod.ispkg and mod.name != "eval":
+            candidates.add(mod.name)
+
+    # Strategy 2: installed distributions named "cli-anything-<sw>" (covers PEP 660 editable
+    # installs, where cli_anything.__path__ holds finder hooks that pkgutil cannot walk).
+    try:
+        from importlib import metadata as _metadata
+        for dist in _metadata.distributions():
+            name = _metadata_name(dist)
+            if not name.startswith("cli-anything-"):
+                continue
+            suffix = name[len("cli-anything-"):]
+            if suffix in ("eval", "hub", "core"):
+                continue
+            candidates.add(suffix.replace("-", "_"))
+    except Exception:
+        pass
+
+    found: List[Tuple[str, str]] = []
+    for sw in sorted(candidates):
+        if sw == "eval":
             continue
-        tasks_pkg = f"cli_anything.{mod.name}.eval.tasks"
+        tasks_pkg = f"cli_anything.{sw}.eval.tasks"
         try:
             importlib.import_module(tasks_pkg)
         except Exception:
             continue
-        found.append((mod.name, tasks_pkg))
+        found.append((sw, tasks_pkg))
     found.sort()
     return found
+
+
+def _metadata_name(dist) -> str:
+    try:
+        return dist.metadata["Name"] or ""
+    except Exception:
+        return ""
 
 
 def run_suite(

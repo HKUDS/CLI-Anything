@@ -36,3 +36,40 @@ def test_suite_ranks_by_success_rate(tmp_path, monkeypatch):
 
     empty = run_suite(harnesses=[], output_dir=str(tmp_path / "empty_out"), now="t")
     assert empty["suite"]["harnesses"] == []
+
+
+def test_discover_uses_metadata_when_pkgutil_empty(tmp_path, monkeypatch):
+    """Strategy 2 (distribution metadata) discovers harnesses when pkgutil finds nothing."""
+    import types
+    from importlib import metadata as importlib_metadata
+
+    # Create a fake importable cli_anything.faketool.eval.tasks package under tmp_path.
+    base = tmp_path / "cli_anything" / "faketool" / "eval" / "tasks"
+    base.mkdir(parents=True)
+    (tmp_path / "cli_anything" / "faketool" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "cli_anything" / "faketool" / "eval" / "__init__.py").write_text("", encoding="utf-8")
+    (base / "__init__.py").write_text("", encoding="utf-8")
+    (base / "faketool.py").write_text('TASK = {"id": "t", "name": "T", "description": "d"}\n', encoding="utf-8")
+
+    # Add tmp_path to sys.path so the fake package is importable.
+    import sys
+    sys.path.insert(0, str(tmp_path))
+    importlib.invalidate_caches()
+
+    # Patch pkgutil.iter_modules to return nothing (simulates editable-install case).
+    monkeypatch.setattr("cli_anything.eval.suite.pkgutil.iter_modules", lambda path: iter([]))
+
+    # Build a fake Distribution whose metadata["Name"] == "cli-anything-faketool".
+    class FakeDist:
+        @property
+        def metadata(self):
+            return {"Name": "cli-anything-faketool"}
+
+    monkeypatch.setattr(
+        importlib_metadata,
+        "distributions",
+        lambda: [FakeDist()],
+    )
+
+    result = discover_harness_task_packages()
+    assert result == [("faketool", "cli_anything.faketool.eval.tasks")]
