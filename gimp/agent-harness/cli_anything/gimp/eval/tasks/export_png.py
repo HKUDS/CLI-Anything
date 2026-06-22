@@ -15,7 +15,7 @@ TASK = {
 def precheck(ctx):
     try:
         import PIL  # noqa: F401
-    except Exception:
+    except ImportError:
         return "Pillow not installed (pip install Pillow)"
     return None
 
