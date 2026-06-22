@@ -1672,7 +1672,7 @@ We welcome contributions! CLI-Anything is designed to be extensible:
 ### Roadmap
 
 - [ ] Support for more application categories (CAD, DAW, IDE, EDA, scientific tools)
-- [ ] Benchmark suite for agent task completion rates
+- [x] Benchmark suite for agent task completion rates
 - [ ] Community-contributed CLI harnesses for internal/custom software
 - [ ] Integration with additional agent frameworks beyond Claude Code
 - [ ] Support packaging APIs for closed-source software and web services into CLIs

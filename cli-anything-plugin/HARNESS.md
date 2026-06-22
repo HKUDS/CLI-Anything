@@ -745,3 +745,60 @@ based on the software you're building a harness for.
 | [`mcp-backend.md`](guides/mcp-backend.md) | Software has an MCP server, no native CLI | Phase 3 |
 | [`filter-translation.md`](guides/filter-translation.md) | Video/audio CLI with effects that need render-time translation | Phase 3 |
 | [`timecode-precision.md`](guides/timecode-precision.md) | Video/audio CLI with non-integer frame rates (29.97fps, etc.) | Phase 3, 5 |
+
+---
+
+## Eval / Benchmark Harness
+
+Every harness can ship an eval/benchmark suite via the shared `cli-anything-eval` package.
+This measures task completion rate per harness and supports baseline regression detection.
+
+### Setup
+
+1. Add `"cli-anything-eval>=0.1.0"` to the harness `setup.py` `install_requires`.
+2. Create `cli_anything/<software>/eval/__init__.py`, `cli_anything/<software>/eval/tasks/__init__.py`,
+   and one module per task under `eval/tasks/`.
+3. (Optional) register a subcommand at the end of `<software>_cli.py`:
+   ```python
+   try:
+       from cli_anything.eval.cli import build_eval_command
+   except ImportError:
+       build_eval_command = None
+   if build_eval_command is not None:
+       cli.add_command(build_eval_command("cli_anything.<software>.eval.tasks", "<Software>"))
+   ```
+
+### Task contract
+
+```python
+TASK = {"id": "...", "name": "...", "description": "...",
+        "prompt": "...",          # optional — natural-language instruction (future agent grading)
+        "requires": ["binary"]}   # optional — skip if a binary is absent (shutil.which)
+
+def run(ctx):                      # the scripted reference solution; writes to ctx artifact dirs
+    return {"metrics": {...}, "artifacts": [...]}
+
+def verify(ctx):                   # optional grader; if present it decides pass/fail
+    return {"ok": True, "metrics": {...}}
+
+def precheck(ctx):                 # optional — return a skip-reason string, or None to proceed
+    return None
+```
+
+If `verify` is present the verdict comes from it; otherwise from `run`'s returned `{"ok": ...}`.
+
+### Status model (IMPORTANT — differs from the test suite)
+
+Statuses are `pass`, `fail`, `error`, `skipped`. `success_rate = passed / (pass + fail + error)`;
+`skipped` is reported separately and excluded from the denominator.
+
+> Unlike the pytest **test** suite (which must *fail* when the backend is missing), the eval
+> harness reports a missing backend as `skipped`, so a benchmark's completion rate is not
+> polluted by environment gaps. Backend-free tasks must pass deterministically.
+
+### Running
+
+```bash
+cli-anything-eval run --harness cli_anything.<software>.eval.tasks --name <Software>
+cli-anything-eval suite          # cross-harness leaderboard (auto-discovers installed harnesses)
+```
