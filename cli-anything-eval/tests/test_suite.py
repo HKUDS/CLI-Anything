@@ -33,3 +33,6 @@ def test_suite_ranks_by_success_rate(tmp_path, monkeypatch):
     assert [h["harness"] for h in harnesses] == ["zzz", "aaa"]  # 1.0 before 0.0
     assert (out / "leaderboard.json").exists()
     assert (out / "leaderboard.md").exists()
+
+    empty = run_suite(harnesses=[], output_dir=str(tmp_path / "empty_out"), now="t")
+    assert empty["suite"]["harnesses"] == []

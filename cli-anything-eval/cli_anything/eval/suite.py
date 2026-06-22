@@ -36,7 +36,7 @@ def run_suite(
     now: Optional[str] = None,
 ) -> Dict[str, Any]:
     discovered = discover_harness_task_packages()
-    if harnesses:
+    if harnesses is not None:
         wanted = set(harnesses)
         discovered = [(sw, pkg) for sw, pkg in discovered if sw in wanted]
 
