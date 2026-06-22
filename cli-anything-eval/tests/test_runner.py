@@ -1,6 +1,8 @@
+import json as _json
+
 import pytest
 
-from cli_anything.eval.runner import build_summary, discover_tasks, run_task
+from cli_anything.eval.runner import build_summary, discover_tasks, run_eval, run_task
 from cli_anything.eval.contracts import EvalContext, Status, TaskSpec
 from tests._util import make_tasks_pkg
 
@@ -108,11 +110,6 @@ def test_build_summary():
     s = build_summary(results)
     assert s == {"total": 4, "attempted": 3, "passed": 1, "failed": 1,
                  "error": 1, "skipped": 1, "success_rate": round(1 / 3, 4)}
-
-
-import json as _json
-
-from cli_anything.eval.runner import run_eval
 
 
 def test_run_eval_writes_reports(tmp_path):

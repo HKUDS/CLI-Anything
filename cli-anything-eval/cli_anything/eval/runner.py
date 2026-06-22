@@ -5,13 +5,11 @@ from __future__ import annotations
 import importlib
 import pkgutil
 import shutil
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
-
-import tempfile
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from cli_anything.eval.baseline import compare_baseline, load_baseline
 from cli_anything.eval.contracts import EvalContext, Status, TaskSpec
