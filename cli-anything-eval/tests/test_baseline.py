@@ -16,6 +16,7 @@ def test_regression_pass_to_fail():
     cmp = compare_baseline(baseline, report)
     assert cmp["regression"] is True
     assert any(r["task_id"] == "a" for r in cmp["regressions"])
+    assert any(r["task_id"] == "__summary__" for r in cmp["regressions"])
     assert cmp["success_rate_delta"] == -0.5
 
 
@@ -24,6 +25,7 @@ def test_pass_to_error_is_regression():
     report = {"summary": {"success_rate": 0.0}, "tasks": [{"id": "a", "status": "error"}]}
     cmp = compare_baseline(baseline, report)
     assert any(r["task_id"] == "a" for r in cmp["regressions"])
+    assert cmp["regression"] is True
 
 
 def test_no_regression_when_stable():
