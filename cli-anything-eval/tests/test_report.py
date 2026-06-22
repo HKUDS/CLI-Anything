@@ -34,10 +34,10 @@ def test_report_to_baseline_shape():
 
 def test_leaderboard_markdown_ranks():
     suite = {"started_at": "t", "harnesses": [
-        {"harness": "gimp", "summary": {"passed": 2, "attempted": 2, "skipped": 0,
-                                        "success_rate": 1.0}, "duration_ms": 3},
         {"harness": "blender", "summary": {"passed": 1, "attempted": 2, "skipped": 1,
                                            "success_rate": 0.5}, "duration_ms": 9},
+        {"harness": "gimp", "summary": {"passed": 2, "attempted": 2, "skipped": 0,
+                                        "success_rate": 1.0}, "duration_ms": 3},
     ]}
     md = leaderboard_to_markdown(suite)
     assert "Leaderboard" in md

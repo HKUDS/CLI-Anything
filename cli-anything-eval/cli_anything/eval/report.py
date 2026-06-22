@@ -58,7 +58,10 @@ def leaderboard_to_markdown(suite: Dict[str, Any]) -> str:
         "| Rank | Harness | Passed/Attempted | Skipped | Success Rate | Duration (ms) |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
-    for i, h in enumerate(suite.get("harnesses", []), start=1):
+    ranked = sorted(suite.get("harnesses", []),
+                    key=lambda h: h.get("summary", {}).get("success_rate", 0.0),
+                    reverse=True)
+    for i, h in enumerate(ranked, start=1):
         s = h.get("summary", {})
         lines.append(
             f"| {i} | {h.get('harness', '')} | {s.get('passed', 0)}/{s.get('attempted', 0)} "
