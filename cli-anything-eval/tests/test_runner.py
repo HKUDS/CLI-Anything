@@ -108,3 +108,41 @@ def test_build_summary():
     s = build_summary(results)
     assert s == {"total": 4, "attempted": 3, "passed": 1, "failed": 1,
                  "error": 1, "skipped": 1, "success_rate": round(1 / 3, 4)}
+
+
+import json as _json
+
+from cli_anything.eval.runner import run_eval
+
+
+def test_run_eval_writes_reports(tmp_path):
+    pkg = make_tasks_pkg(tmp_path, {"m1": PASS_SRC, "m2": LEGACY_FAIL_SRC})
+    out = tmp_path / "out"
+    result = run_eval(pkg, display_name="Demo", output_dir=str(out),
+                      now="2026-06-22T00:00:00")
+    assert (out / "eval_report.json").exists()
+    assert (out / "eval_report.md").exists()
+    data = _json.loads((out / "eval_report.json").read_text(encoding="utf-8"))
+    assert data["schema_version"] == 2
+    assert data["display_name"] == "Demo"
+    s = data["summary"]
+    assert s["total"] == 2 and s["passed"] == 1 and s["failed"] == 1
+    assert "# Demo Eval Report" in (out / "eval_report.md").read_text(encoding="utf-8")
+
+
+def test_run_eval_no_tasks_raises(tmp_path):
+    pkg = make_tasks_pkg(tmp_path, {"empty": "X = 1\n"})
+    with pytest.raises(RuntimeError):
+        run_eval(pkg, output_dir=str(tmp_path / "o2"))
+
+
+def test_run_eval_update_and_compare_baseline(tmp_path):
+    pkg = make_tasks_pkg(tmp_path, {"m1": PASS_SRC})
+    base = tmp_path / "baseline.json"
+    run_eval(pkg, output_dir=str(tmp_path / "r1"), baseline_path=str(base),
+             update_baseline=True, now="t")
+    assert base.exists()
+    # Re-run against the written baseline: stable -> no regression.
+    result = run_eval(pkg, output_dir=str(tmp_path / "r2"),
+                      baseline_path=str(base), now="t")
+    assert result["comparison"]["regression"] is False

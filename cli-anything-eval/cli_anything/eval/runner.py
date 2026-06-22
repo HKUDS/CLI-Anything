@@ -10,7 +10,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
+import tempfile
+from typing import Optional
+
+from cli_anything.eval.baseline import compare_baseline, load_baseline
 from cli_anything.eval.contracts import EvalContext, Status, TaskSpec
+from cli_anything.eval.io import safe_write_json
+from cli_anything.eval.report import report_to_baseline, report_to_markdown
 
 
 def iso_now() -> str:
@@ -120,3 +126,68 @@ def build_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     success_rate = round(passed / attempted, 4) if attempted else 0.0
     return {"total": total, "attempted": attempted, "passed": passed, "failed": failed,
             "error": error, "skipped": skipped, "success_rate": success_rate}
+
+
+def run_eval(
+    tasks_package: str,
+    *,
+    display_name: str = "",
+    output_dir: Optional[str] = None,
+    baseline_path: Optional[str] = None,
+    update_baseline: bool = False,
+    now: Optional[str] = None,
+) -> Dict[str, Any]:
+    out_dir = Path(output_dir) if output_dir else default_output_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    artifacts_dir = out_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    tasks = discover_tasks(tasks_package)
+    if not tasks:
+        raise RuntimeError(f"No eval tasks discovered in {tasks_package}.")
+
+    started_at = now or iso_now()
+    results: List[Dict[str, Any]] = []
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        ctx = EvalContext(output_dir=out_dir, artifacts_dir=artifacts_dir,
+                          work_dir=Path(tmp_dir))
+        for task in tasks:
+            results.append(run_task(task, ctx))
+
+    report = {
+        "schema_version": 2,
+        "display_name": display_name,
+        "started_at": started_at,
+        "summary": build_summary(results),
+        "tasks": results,
+    }
+
+    comparison = None
+    if baseline_path and Path(baseline_path).exists():
+        baseline = load_baseline(baseline_path)
+        comparison = compare_baseline(baseline, report)
+        comparison["baseline_path"] = str(baseline_path)
+        report["baseline_comparison"] = comparison
+
+    report_json = out_dir / "eval_report.json"
+    report_md = out_dir / "eval_report.md"
+    safe_write_json(report_json, report, indent=2, default=str)
+    report_md.write_text(report_to_markdown(report, display_name), encoding="utf-8")
+
+    baseline_written = None
+    if update_baseline:
+        baseline_out = Path(baseline_path) if baseline_path else (out_dir / "baseline.json")
+        baseline_out.parent.mkdir(parents=True, exist_ok=True)
+        safe_write_json(baseline_out, report_to_baseline(report), indent=2, default=str)
+        baseline_written = str(baseline_out)
+
+    return {
+        "report": report,
+        "comparison": comparison,
+        "paths": {
+            "output_dir": str(out_dir),
+            "report_json": str(report_json),
+            "report_md": str(report_md),
+            "baseline_written": baseline_written,
+        },
+    }
