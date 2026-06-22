@@ -14,5 +14,6 @@ def make_tasks_pkg(tmp_path, modules):
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     for name, src in modules.items():
         (pkg / f"{name}.py").write_text(src, encoding="utf-8")
-    sys.path.insert(0, str(tmp_path))
+    if str(tmp_path) not in sys.path:
+        sys.path.insert(0, str(tmp_path))
     return pkg_name

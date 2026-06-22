@@ -72,8 +72,6 @@ def _new_result(task: TaskSpec, status: str, **kw) -> Dict[str, Any]:
 
 def run_task(task: TaskSpec, ctx: EvalContext) -> Dict[str, Any]:
     ctx.task_id = task.task_id
-    ctx.task_work_dir()
-    ctx.task_artifacts_dir()
 
     for binary in task.requires:
         if shutil.which(binary) is None:
@@ -88,6 +86,8 @@ def run_task(task: TaskSpec, ctx: EvalContext) -> Dict[str, Any]:
         if reason:
             return _new_result(task, Status.SKIPPED, skip_reason=str(reason))
 
+    ctx.task_work_dir()
+    ctx.task_artifacts_dir()
     started = time.time()
     try:
         run_result = task.run(ctx) or {}
