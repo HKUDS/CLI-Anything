@@ -1155,3 +1155,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Optional eval/benchmark subcommand (registered only when cli-anything-eval is installed).
+try:
+    from cli_anything.eval.cli import build_eval_command
+except ImportError:
+    build_eval_command = None
+if build_eval_command is not None:
+    cli.add_command(build_eval_command("cli_anything.blender.eval.tasks", "Blender"))

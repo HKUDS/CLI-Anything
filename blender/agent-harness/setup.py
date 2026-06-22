@@ -45,6 +45,7 @@ setup(
     install_requires=[
         "click>=8.1",
         "prompt-toolkit>=3.0",
+        "cli-anything-eval>=0.1.0",
     ],
 
     extras_require={
