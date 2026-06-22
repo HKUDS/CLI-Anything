@@ -768,6 +768,7 @@ This measures task completion rate per harness and supports baseline regression 
        cli.add_command(build_eval_command("cli_anything.<software>.eval.tasks", "<Software>"))
    ```
 
+
 ### Task contract
 
 ```python

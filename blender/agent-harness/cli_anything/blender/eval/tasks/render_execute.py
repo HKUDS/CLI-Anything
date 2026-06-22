@@ -1,6 +1,5 @@
 """Eval task: render one frame with the real Blender binary (skipped if absent)."""
 
-import shlex
 import subprocess
 
 from cli_anything.blender.core.scene import create_scene
@@ -21,8 +20,8 @@ def run(ctx):
     add_object(scene, mesh_type="cube", location=[0, 0, 0])
     out = ctx.task_artifact_path("render.png")
     result = render_scene(scene, str(out))
-    subprocess.run(shlex.split(result["command"]), check=True, timeout=600,
-                   capture_output=True)
+    subprocess.run(["blender", "--background", "--python", result["script_path"]],
+                   check=True, timeout=600, capture_output=True)
     return {"metrics": {"engine": result.get("engine")}, "artifacts": [str(out)]}
 
 

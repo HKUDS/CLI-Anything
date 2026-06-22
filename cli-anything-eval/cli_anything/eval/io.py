@@ -20,9 +20,9 @@ def safe_write_json(
     """
     path_str = str(path)
     try:
-        f = open(path_str, "r+")
+        f = open(path_str, "r+", encoding="utf-8")
     except FileNotFoundError:
-        f = open(path_str, "w")
+        f = open(path_str, "w", encoding="utf-8")
 
     with f:
         locked = False
