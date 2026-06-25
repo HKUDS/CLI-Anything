@@ -50,7 +50,7 @@ class sdist(_sdist):
 
 setup(
     name="cli-anything-hub",
-    version="0.3.0",
+    version="0.4.0",
     description="Package manager for CLI-Anything — browse, install, and manage 40+ agent-native CLI interfaces for GUI applications",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
