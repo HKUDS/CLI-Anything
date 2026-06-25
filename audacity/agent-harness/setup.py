@@ -37,6 +37,7 @@ setup(
         "click>=8.0.0",
         "prompt-toolkit>=3.0.0",
         "numpy>=1.24.0",
+        "cli-anything-eval>=0.1.0",
     ],
     extras_require={
         "dev": [

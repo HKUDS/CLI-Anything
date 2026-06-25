@@ -27,7 +27,8 @@ def test_run_eval_creates_reports(tmp_path):
     data = json.loads((out_dir / "eval_report.json").read_text(encoding="utf-8"))
     summary = data.get("summary", {})
     assert summary.get("total") == len(data.get("tasks", []))
-    assert summary.get("passed") + summary.get("failed") == summary.get("total")
+    assert (summary.get("passed") + summary.get("failed")
+            + summary.get("error") + summary.get("skipped")) == summary.get("total")
 
 
 def test_compare_baseline_detects_regression():
