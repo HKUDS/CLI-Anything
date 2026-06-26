@@ -36,6 +36,10 @@ from cli_hub.analytics import (
     track_first_run,
     track_install,
     track_launch,
+    track_matrix_discover,
+    track_matrix_info,
+    track_matrix_install,
+    track_matrix_preflight,
     track_uninstall,
     track_visit,
 )
@@ -409,6 +413,7 @@ def preview_open(preview_ref, output_path, poll_ms, port):
 def can(query, as_json):
     """Find a capability across all matrices for a task (e.g. cli-hub can "transcribe audio")."""
     hits = search_capabilities(query)
+    track_matrix_discover("can", query=query, results=len(hits))
 
     if as_json:
         click.echo(json_mod.dumps({"query": query, "matched_capabilities": hits}, indent=2))
@@ -460,6 +465,7 @@ def list_matrices(as_json):
         click.secho(f"Failed to fetch matrix registry: {e}", fg="red", err=True)
         raise SystemExit(1)
 
+    track_matrix_discover("list", results=len(matrices))
     installed = get_installed()
 
     if as_json:
@@ -489,6 +495,7 @@ def list_matrices(as_json):
 def matrix_search(query, as_json):
     """Search matrices by name, capabilities, providers, recipes, or gaps."""
     results = search_matrices(query)
+    track_matrix_discover("search", query=query, results=len(results))
     query_lower = query.lower()
 
     if as_json:
@@ -545,6 +552,7 @@ def matrix_info(name, as_json):
         click.secho(f"Matrix '{name}' not found.", fg="red", err=True)
         raise SystemExit(1)
 
+    track_matrix_info(matrix_item["name"], kind="info")
     installed = get_installed()
     cli_names = matrix_item.get("clis", [])
     installed_count = sum(1 for cli_name in cli_names if cli_name in installed)
@@ -666,6 +674,15 @@ def matrix_preflight(name, capability, recipe, offline, fix_hints, summary_only,
         matrix_item, capability_id=capability, offline=offline, capability_ids=capability_ids
     )
 
+    _preflight_summary = payload.get("summary", {})
+    track_matrix_preflight(
+        matrix_item["name"],
+        scope=_matrix_scope_kind(capability, recipe, None),
+        covered=_preflight_summary.get("covered", 0),
+        capabilities=_preflight_summary.get("capabilities", 0),
+        gaps=_preflight_summary.get("gaps", 0),
+    )
+
     if as_json:
         click.echo(json_mod.dumps(payload, indent=2))
         raise SystemExit(EXIT_PARTIAL if payload["summary"].get("gaps", 0) else EXIT_OK)
@@ -780,6 +797,17 @@ def _render_dry_run(payload):
                + _scope_args(payload["scope"]))
 
 
+def _matrix_scope_kind(capability, recipe, only):
+    """Compact scope label for analytics breakdowns (not the echoed flags)."""
+    if capability:
+        return "capability"
+    if recipe:
+        return "recipe"
+    if only:
+        return "only"
+    return "full"
+
+
 def _scope_args(scope):
     """Reconstruct the scope flags for an echoed command line."""
     scope_type = scope.get("type")
@@ -817,6 +845,11 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
             click.secho(f"Matrix '{name}' not found.", fg="red", err=True)
             raise SystemExit(EXIT_FAIL)
         rendered_skill_path = render_matrix_skill_file(matrix_item, installed=get_installed())
+        track_matrix_install(
+            matrix_item["name"],
+            scope=_matrix_scope_kind(capability, recipe, only),
+            status="skill_only",
+        )
         click.echo(f"  Local matrix skill: {rendered_skill_path}")
         click.echo(f"  Install CLIs: cli-hub matrix install {matrix_item['name']}")
         return
@@ -829,6 +862,12 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
             else:
                 click.secho(f"✗ {payload['error']}", fg="red", err=True)
             raise SystemExit(EXIT_USAGE if payload.get("arg_error") else EXIT_FAIL)
+        track_matrix_install(
+            payload["matrix"]["name"],
+            scope=_matrix_scope_kind(capability, recipe, only),
+            status="dry_run",
+            dry_run=True,
+        )
         if as_json:
             data = {k: payload[k] for k in ("scope", "scope_label", "plan", "not_managed", "summary")}
             data["matrix"] = payload["matrix"]["name"]
@@ -841,6 +880,11 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
         name, capability=capability, recipe=recipe, only=only, resume=resume
     )
     if payload.get("error"):
+        track_matrix_install(
+            name,
+            scope=_matrix_scope_kind(capability, recipe, only),
+            status="usage_error" if payload.get("arg_error") else "error",
+        )
         if as_json:
             click.echo(json_mod.dumps({"error": payload["error"]}, indent=2))
         else:
@@ -849,6 +893,21 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
 
     matrix_item = payload["matrix"]
     summary = payload["summary"]
+
+    if summary["failed"]:
+        _install_status = "partial" if (summary["installed"] or summary["skipped"]) else "failed"
+    elif payload.get("nothing_to_resume"):
+        _install_status = "noop"
+    else:
+        _install_status = "ok"
+    track_matrix_install(
+        matrix_item["name"],
+        scope=_matrix_scope_kind(capability, recipe, only),
+        status=_install_status,
+        installed=summary["installed"],
+        skipped=summary["skipped"],
+        failed=summary["failed"],
+    )
 
     if as_json:
         data = {
@@ -908,6 +967,8 @@ def matrix_doctor(name, as_json):
             click.secho(f"✗ {payload['error']}", fg="red", err=True)
         raise SystemExit(EXIT_FAIL)
 
+    track_matrix_info(payload["matrix"]["name"], kind="doctor")
+
     if as_json:
         data = {k: payload[k] for k in ("last_run", "checks", "summary")}
         data["matrix"] = payload["matrix"]["name"]
@@ -941,6 +1002,7 @@ def matrix_doctor(name, as_json):
 def matrix_recipes(query, as_json):
     """List task-oriented recipes across all matrices (F1.4)."""
     recipes = all_recipes(query)
+    track_matrix_discover("recipes", query=query or "", results=len(recipes))
 
     if as_json:
         click.echo(json_mod.dumps({"query": query, "recipes": recipes}, indent=2))

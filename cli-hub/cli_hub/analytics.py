@@ -308,6 +308,57 @@ def track_launch(cli_name):
     })
 
 
+def track_matrix_install(matrix_name, scope="full", status="ok",
+                         installed=0, skipped=0, failed=0, dry_run=False):
+    """Track a CLI-Matrix install. The headline conversion signal for matrices:
+    which matrix, the install scope (capability/recipe/only/full), and the outcome.
+    Matrix name and scope go in properties so the event catalog stays flat — dashboards
+    break down by properties.matrix / properties.scope, mirroring track_install."""
+    track_event("matrix-install", url=f"/cli-anything-hub/matrix/install/{matrix_name}", data={
+        "matrix": matrix_name,
+        "scope": scope,
+        "status": status,
+        "installed": installed,
+        "skipped": skipped,
+        "failed": failed,
+        "dry_run": dry_run,
+        "platform": platform.system().lower(),
+    })
+
+
+def track_matrix_preflight(matrix_name, scope="full", covered=0, capabilities=0, gaps=0):
+    """Track a CLI-Matrix preflight (capability-coverage check) — consideration signal
+    that precedes install. Captures how much of the matrix the environment already covers."""
+    track_event("matrix-preflight", url=f"/cli-anything-hub/matrix/preflight/{matrix_name}", data={
+        "matrix": matrix_name,
+        "scope": scope,
+        "covered": covered,
+        "capabilities": capabilities,
+        "gaps": gaps,
+        "platform": platform.system().lower(),
+    })
+
+
+def track_matrix_discover(kind, query="", results=0):
+    """Track CLI-Matrix discovery — `matrix list`, `matrix search`, `matrix recipes`,
+    and `cli-hub can`. `kind` distinguishes the surface; `results` is the hit count."""
+    track_event("matrix-discover", url="/cli-anything-hub/matrix/discover", data={
+        "kind": kind,
+        "query": (query or "")[:120],
+        "results": results,
+        "platform": platform.system().lower(),
+    })
+
+
+def track_matrix_info(matrix_name, kind="info"):
+    """Track inspecting a single CLI-Matrix — `matrix info` and `matrix doctor`."""
+    track_event("matrix-info", url=f"/cli-anything-hub/matrix/info/{matrix_name}", data={
+        "matrix": matrix_name,
+        "kind": kind,
+        "platform": platform.system().lower(),
+    })
+
+
 def track_visit(is_agent=False, command="root", detection=None):
     """Track a cli-hub invocation using the new cli-hub call event."""
     stdin_tty = _stdin_is_tty()
