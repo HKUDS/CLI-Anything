@@ -69,3 +69,15 @@ def test_extract_pypi_package_skips_index_option_values():
     )
 
     assert MODULE._extract_pypi_package(install_cmd) == "py4csr"
+
+
+def test_extract_pypi_package_skips_editable_option_value():
+    install_cmd = "pip install -e ./local/pkg py4csr"
+
+    assert MODULE._extract_pypi_package(install_cmd) == "py4csr"
+
+
+def test_extract_pypi_package_returns_none_for_editable_only_install():
+    install_cmd = "pip install -e ."
+
+    assert MODULE._extract_pypi_package(install_cmd) is None

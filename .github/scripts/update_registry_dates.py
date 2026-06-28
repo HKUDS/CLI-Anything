@@ -27,6 +27,8 @@ PIP_OPTIONS_WITH_VALUES = {
     "-i",
     "--index-url",
     "--extra-index-url",
+    "-e",
+    "--editable",
     "-f",
     "--find-links",
     "--trusted-host",
