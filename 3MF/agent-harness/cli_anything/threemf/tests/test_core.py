@@ -200,6 +200,31 @@ def _make_washer_mesh(
     )
 
 
+def _make_boss_on_plate_mesh(
+    boss_radius: float = 5.0, boss_height: float = 20.0,
+    plate_size: float = 50.0, plate_thickness: float = 4.0,
+) -> MeshData:
+    """A solid cylindrical boss standing on a wider flat plate (boss axis = Z).
+
+    Built by concatenation (no boolean backend needed).  Cross-sections through
+    the boss are circular so detection finds it, but the surrounding plate
+    material sits only at the base end -- so it must be classified as an exterior
+    contour, not an interior hole.
+    """
+    import trimesh
+
+    plate = trimesh.creation.box(extents=(plate_size, plate_size, plate_thickness))
+    boss = trimesh.creation.cylinder(radius=boss_radius, height=boss_height, sections=48)
+    boss.apply_translation([0, 0, plate_thickness / 2 + boss_height / 2])
+    tm = trimesh.util.concatenate([plate, boss])
+    return MeshData(
+        object_id="1",
+        name="boss",
+        vertices=np.asarray(tm.vertices, dtype=np.float64),
+        triangles=np.asarray(tm.faces, dtype=np.int32),
+    )
+
+
 # ===========================================================================
 # TestParser -- MeshData and ThreeMFData
 # ===========================================================================
@@ -899,6 +924,12 @@ class TestInspector:
             triangles=np.asarray(tm.faces, dtype=np.int32),
         )
         assert inspector.inspect_mesh(mesh, InspectParams(axis=2)) == []
+
+    def test_inspect_rejects_boss_on_wider_base(self) -> None:
+        """A solid boss on a wider plate is enclosed at only one end -- not a hole."""
+        mesh = _make_boss_on_plate_mesh(boss_radius=5.0, boss_height=20.0)
+        holes = inspector.inspect_mesh(mesh, InspectParams(axis=2))
+        assert not any(abs(h.diameter - 10.0) < 1.0 for h in holes)
 
     def test_inspect_through_hole_axial_extent_spans_part(self) -> None:
         """Axial extent comes from the wall vertices, spanning the full part thickness.

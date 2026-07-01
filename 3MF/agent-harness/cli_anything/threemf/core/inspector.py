@@ -157,13 +157,14 @@ def inspect_mesh(
         else:
             axis_min, axis_max = wall_min, wall_max
 
-        # Reject outer contours.  An interior hole has mesh material radially
-        # outside it (the surrounding body wall); the part's own outer boundary
-        # -- or a solid boss -- has nothing beyond its surface.  Splitting groups
-        # by radius surfaces such exterior circles as their own high-confidence
-        # group, so drop them here instead of emitting the body as a resizable
-        # hole.
-        if not _has_material_outside(
+        # Keep only interior holes, not exterior contours.  An interior hole is
+        # enclosed by body material at BOTH axial ends (a through hole exits at
+        # both faces; a blind hole's floor spans outside the radius).  An
+        # exterior circle has surrounding material at most at one end -- none for
+        # the part's outer boundary or a bare cylinder, only the base end for a
+        # solid boss -- so splitting groups by radius no longer leaks the body as
+        # a resizable hole.
+        if not _is_interior_hole(
             vertices, avg_center, mean_radius, axis, perp_axes, axis_min, axis_max,
         ):
             continue
@@ -332,7 +333,7 @@ def _wall_axial_extent(
     return float(np.min(axial)), float(np.max(axial))
 
 
-def _has_material_outside(
+def _is_interior_hole(
     vertices: np.ndarray,
     center: tuple[float, float],
     radius: float,
@@ -341,26 +342,36 @@ def _has_material_outside(
     axis_min: float,
     axis_max: float,
     tolerance: float = 0.06,
+    end_fraction: float = 0.25,
 ) -> bool:
-    """Whether the mesh has vertices radially beyond *radius* in the hole's band.
+    """Whether a detected circle is an interior hole rather than an exterior contour.
 
-    ``True`` for an interior hole (enclosed by the surrounding body wall);
-    ``False`` for the part's outer boundary, a solid boss, or a bare cylinder --
-    none of which have material beyond their own surface -- so the caller can
-    drop them rather than reporting the body itself as a hole.
+    An interior hole is enclosed by body material at **both** axial ends: a
+    through hole exits the part at both faces, and a blind hole's floor spans
+    outside the radius.  An exterior circle has surrounding material at most at
+    one end -- neither end for the part's outer boundary or a bare cylinder, only
+    the base end for a solid boss standing on a wider base.  We therefore require
+    mesh vertices radially beyond *radius* near **both** the ``axis_min`` and
+    ``axis_max`` ends of the hole's extent (each end being a slab of
+    ``end_fraction`` of the extent).
+
+    This is a geometric heuristic, not a topological guarantee -- perfect
+    hole/boss discrimination would need solid-containment queries (an extra
+    spatial-index dependency).  It covers interior holes, outer boundaries, bare
+    cylinders, and bosses-on-bases; users still choose which hole IDs to resize.
     """
 
     ax0, ax1 = perp_axes
-    in_band = (vertices[:, axis] >= axis_min - tolerance) & (
-        vertices[:, axis] <= axis_max + tolerance
-    )
-    if not np.any(in_band):
-        return False
-    subset = vertices[in_band]
-    dx = subset[:, ax0] - center[0]
-    dy = subset[:, ax1] - center[1]
+    dx = vertices[:, ax0] - center[0]
+    dy = vertices[:, ax1] - center[1]
     dist = np.sqrt(dx * dx + dy * dy)
-    return bool(np.any(dist > radius + tolerance))
+    outside = dist > radius + tolerance
+
+    axial = vertices[:, axis]
+    margin = max(tolerance, end_fraction * (axis_max - axis_min))
+    near_min = outside & (axial >= axis_min - tolerance) & (axial <= axis_min + margin)
+    near_max = outside & (axial >= axis_max - margin) & (axial <= axis_max + tolerance)
+    return bool(np.any(near_min) and np.any(near_max))
 
 
 def _count_wall_vertices(
