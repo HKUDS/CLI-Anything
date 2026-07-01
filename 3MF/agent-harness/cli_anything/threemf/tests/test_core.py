@@ -900,6 +900,27 @@ class TestInspector:
         assert holes and holes[0].vertex_count > 0
         assert holes[0].axis_max - holes[0].axis_min == pytest.approx(10.0, abs=0.2)
 
+    def test_wall_axial_extent_ignores_feature_outside_window(self) -> None:
+        """A coaxial same-radius feature outside the search window must not stretch the extent.
+
+        Regression: the extent was read from a global radius mask, so an
+        unrelated same-radius ring elsewhere on the axis inflated axis_min/max
+        and made resize move unrelated vertices.
+        """
+        r, n = 4.0, 24
+        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
+        ring = np.column_stack([r * np.cos(theta), r * np.sin(theta)])
+
+        def ring_at_z(z: float) -> np.ndarray:
+            return np.column_stack([ring[:, 0], ring[:, 1], np.full(n, z)])
+
+        # hole wall spans z in [0, 10]; an unrelated same-radius ring sits at z=50
+        verts = np.vstack([ring_at_z(0.0), ring_at_z(10.0), ring_at_z(50.0)])
+        lo, hi = inspector._wall_axial_extent(
+            verts, (0.0, 0.0), r, 2, (0, 1), search_lo=-0.5, search_hi=10.5,
+        )
+        assert (lo, hi) == pytest.approx((0.0, 10.0))
+
 
 # ===========================================================================
 # TestRepair -- repair_mesh, individual repair functions, fix_normals

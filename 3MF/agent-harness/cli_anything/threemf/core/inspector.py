@@ -136,18 +136,24 @@ def inspect_mesh(
         avg_center = (float(np.mean(centres[:, 0])), float(np.mean(centres[:, 1])))
 
         # Axis extent -- measured from the hole's actual wall vertices.  The
-        # cross-section planes are inset from the mesh bounds (2 % margin) and
-        # clamped to sampled levels, so their extent under-reports a through
-        # hole whose wall vertices sit exactly on the part faces.  That gap made
-        # resize's axial band miss the rim vertices and move nothing.  Fall back
-        # to the plane levels only when no wall vertices are found.
+        # cross-section planes are inset from the mesh bounds, so their levels
+        # under-report a through hole whose wall vertices sit exactly on the
+        # part faces; that gap made resize's axial band miss the rim vertices
+        # and move nothing.  We therefore read the extent from real wall
+        # vertices, but only within this group's detected span extended by one
+        # sampling inset (clamped to the mesh) -- so we recover the rims without
+        # letting an unrelated coaxial same-radius feature elsewhere along the
+        # axis stretch the extent.  Fall back to plane levels if none match.
+        group_levels = [c["level"] for c in group]
+        level_min, level_max = float(min(group_levels)), float(max(group_levels))
+        inset = (axis_hi - axis_lo) * backend.PLANE_INSET_FRACTION
+        search_lo = max(axis_lo, level_min - inset)
+        search_hi = min(axis_hi, level_max + inset)
         wall_min, wall_max = _wall_axial_extent(
-            vertices, avg_center, mean_radius, axis, perp_axes,
+            vertices, avg_center, mean_radius, axis, perp_axes, search_lo, search_hi,
         )
         if wall_min is None:
-            group_levels = [c["level"] for c in group]
-            axis_min = float(min(group_levels))
-            axis_max = float(max(group_levels))
+            axis_min, axis_max = level_min, level_max
         else:
             axis_min, axis_max = wall_min, wall_max
 
@@ -285,23 +291,33 @@ def _wall_axial_extent(
     radius: float,
     axis: int,
     perp_axes: tuple[int, int],
+    search_lo: float,
+    search_hi: float,
     tolerance: float = 0.06,
 ) -> tuple[float, float] | tuple[None, None]:
-    """Return the axial ``(min, max)`` of vertices lying on the hole wall.
+    """Return the axial ``(min, max)`` of the hole's wall vertices.
 
-    A vertex is on the wall when its radial distance from the hole axis is
-    within *tolerance* of *radius*.  Returns ``(None, None)`` when no wall
-    vertex matches, so the caller can fall back to the sampled plane levels.
+    A vertex counts as wall when its radial distance from the hole axis is
+    within *tolerance* of *radius* **and** its axial coordinate lies in
+    ``[search_lo, search_hi]``.  The axial window keeps a coaxial same-radius
+    feature elsewhere on the axis from stretching the extent.  Returns
+    ``(None, None)`` when no wall vertex matches, so the caller can fall back
+    to the sampled plane levels.
     """
 
     ax0, ax1 = perp_axes
     dx = vertices[:, ax0] - center[0]
     dy = vertices[:, ax1] - center[1]
     dist = np.sqrt(dx * dx + dy * dy)
-    on_wall = np.abs(dist - radius) < tolerance
+    axial_all = vertices[:, axis]
+    on_wall = (
+        (np.abs(dist - radius) < tolerance)
+        & (axial_all >= search_lo)
+        & (axial_all <= search_hi)
+    )
     if not np.any(on_wall):
         return None, None
-    axial = vertices[on_wall, axis]
+    axial = axial_all[on_wall]
     return float(np.min(axial)), float(np.max(axial))
 
 

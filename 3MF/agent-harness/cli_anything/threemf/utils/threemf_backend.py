@@ -212,6 +212,13 @@ def fit_circle_least_squares(
 # Cross-section analysis
 # ---------------------------------------------------------------------------
 
+# Cross-section planes are inset from the mesh bounds by this fraction of the
+# axis span, to avoid degenerate slices exactly at the faces.  The inspector
+# reuses it to recover a through hole's rim vertices, which sit up to one inset
+# beyond the outermost sampled plane.
+PLANE_INSET_FRACTION = 0.02
+
+
 def _axis_plane_normal(axis: int) -> np.ndarray:
     """Return a unit normal vector for the given axis index (0=X, 1=Y, 2=Z)."""
     normal = np.zeros(3, dtype=np.float64)
@@ -288,7 +295,7 @@ def cross_section_circles(
         return []
 
     # Inset slightly to avoid degenerate boundary slices
-    margin = span * 0.02
+    margin = span * PLANE_INSET_FRACTION
     plane_values = np.linspace(axis_min + margin, axis_max - margin, num_planes)
 
     results: list[dict[str, Any]] = []
