@@ -926,10 +926,30 @@ class TestInspector:
         assert inspector.inspect_mesh(mesh, InspectParams(axis=2)) == []
 
     def test_inspect_rejects_boss_on_wider_base(self) -> None:
-        """A solid boss on a wider plate is enclosed at only one end -- not a hole."""
+        """A solid boss on a wider plate faces outward -- not a hole."""
         mesh = _make_boss_on_plate_mesh(boss_radius=5.0, boss_height=20.0)
         holes = inspector.inspect_mesh(mesh, InspectParams(axis=2))
         assert not any(abs(h.diameter - 10.0) < 1.0 for h in holes)
+
+    def test_inspect_keeps_blind_hole(self) -> None:
+        """A blind cylindrical pocket faces inward and must still be detected as a hole."""
+        trimesh = pytest.importorskip("trimesh")
+        box = trimesh.creation.box(extents=(30, 30, 20))
+        drill = trimesh.creation.cylinder(radius=4.0, height=18.0, sections=48)
+        drill.apply_translation([0, 0, 1])  # pocket from the top face, leaving a ~2mm floor
+        try:
+            blind = box.difference(drill)
+        except Exception:
+            pytest.skip("no boolean backend available for blind-hole fixture")
+        if not getattr(blind, "is_watertight", False) or len(blind.faces) <= len(box.faces):
+            pytest.skip("boolean backend produced no pocket")
+        mesh = MeshData(
+            object_id="1", name="blind",
+            vertices=np.asarray(blind.vertices, dtype=np.float64),
+            triangles=np.asarray(blind.faces, dtype=np.int32),
+        )
+        holes = inspector.inspect_mesh(mesh, InspectParams(axis=2, min_confidence=0.5))
+        assert any(abs(h.diameter - 8.0) < 1.0 for h in holes)
 
     def test_inspect_through_hole_axial_extent_spans_part(self) -> None:
         """Axial extent comes from the wall vertices, spanning the full part thickness.

@@ -109,6 +109,7 @@ def inspect_mesh(
     num_planes = params.num_planes
     holes: list[DetectedHole] = []
     hole_id = 0
+    hole_mesh = backend.mesh_to_trimesh(mesh_data) if groups else None
 
     for group in groups:
         radii = np.array([c["radius"] for c in group])
@@ -157,15 +158,14 @@ def inspect_mesh(
         else:
             axis_min, axis_max = wall_min, wall_max
 
-        # Keep only interior holes, not exterior contours.  An interior hole is
-        # enclosed by body material at BOTH axial ends (a through hole exits at
-        # both faces; a blind hole's floor spans outside the radius).  An
-        # exterior circle has surrounding material at most at one end -- none for
-        # the part's outer boundary or a bare cylinder, only the base end for a
-        # solid boss -- so splitting groups by radius no longer leaks the body as
-        # a resizable hole.
+        # Keep only interior holes, not exterior contours.  A hole's cylindrical
+        # wall faces the void, so its surface normals point toward the axis; the
+        # part's outer boundary, a bare cylinder, or a solid boss all face
+        # outward.  Classifying by wall-normal orientation keeps through *and*
+        # blind holes while rejecting the exterior circles that splitting groups
+        # by radius would otherwise surface as resizable holes.
         if not _is_interior_hole(
-            vertices, avg_center, mean_radius, axis, perp_axes, axis_min, axis_max,
+            hole_mesh, avg_center, mean_radius, axis, perp_axes, axis_min, axis_max,
         ):
             continue
 
@@ -334,7 +334,7 @@ def _wall_axial_extent(
 
 
 def _is_interior_hole(
-    vertices: np.ndarray,
+    tm,
     center: tuple[float, float],
     radius: float,
     axis: int,
@@ -342,36 +342,41 @@ def _is_interior_hole(
     axis_min: float,
     axis_max: float,
     tolerance: float = 0.06,
-    end_fraction: float = 0.25,
 ) -> bool:
-    """Whether a detected circle is an interior hole rather than an exterior contour.
+    """Whether a detected circle bounds an interior hole rather than an exterior contour.
 
-    An interior hole is enclosed by body material at **both** axial ends: a
-    through hole exits the part at both faces, and a blind hole's floor spans
-    outside the radius.  An exterior circle has surrounding material at most at
-    one end -- neither end for the part's outer boundary or a bare cylinder, only
-    the base end for a solid boss standing on a wider base.  We therefore require
-    mesh vertices radially beyond *radius* near **both** the ``axis_min`` and
-    ``axis_max`` ends of the hole's extent (each end being a slab of
-    ``end_fraction`` of the extent).
+    A hole's cylindrical wall faces the void, so its outward surface normals
+    point *toward* the axis; the part's outer boundary, a bare cylinder, or a
+    solid boss all face *away* from the axis.  We classify by the mean radial
+    component of the wall-face normals -- which keeps through **and** blind holes
+    (a vertex-enclosure test fails on a blind hole's floor end, where no material
+    lies beyond the radius).
 
-    This is a geometric heuristic, not a topological guarantee -- perfect
-    hole/boss discrimination would need solid-containment queries (an extra
-    spatial-index dependency).  It covers interior holes, outer boundaries, bare
-    cylinders, and bosses-on-bases; users still choose which hole IDs to resize.
+    Needs consistent winding, which valid 3MF provides.  If the winding is
+    inconsistent or the wall can't be sampled we keep the candidate rather than
+    risk dropping a real hole.
     """
 
-    ax0, ax1 = perp_axes
-    dx = vertices[:, ax0] - center[0]
-    dy = vertices[:, ax1] - center[1]
-    dist = np.sqrt(dx * dx + dy * dy)
-    outside = dist > radius + tolerance
+    if tm is None or not tm.is_winding_consistent:
+        return True
 
-    axial = vertices[:, axis]
-    margin = max(tolerance, end_fraction * (axis_max - axis_min))
-    near_min = outside & (axial >= axis_min - tolerance) & (axial <= axis_min + margin)
-    near_max = outside & (axial >= axis_max - margin) & (axial <= axis_max + tolerance)
-    return bool(np.any(near_min) and np.any(near_max))
+    ax0, ax1 = perp_axes
+    centroids = tm.triangles_center
+    du = centroids[:, ax0] - center[0]
+    dv = centroids[:, ax1] - center[1]
+    dist = np.sqrt(du * du + dv * dv)
+
+    band = (centroids[:, axis] >= axis_min - tolerance) & (
+        centroids[:, axis] <= axis_max + tolerance
+    )
+    on_wall = band & (np.abs(dist - radius) < max(0.15 * radius, 0.2))
+    if not np.any(on_wall):
+        return True
+
+    safe_dist = np.where(dist > 1e-12, dist, 1.0)
+    normals = tm.face_normals
+    radial_dot = normals[:, ax0] * (du / safe_dist) + normals[:, ax1] * (dv / safe_dist)
+    return bool(np.mean(radial_dot[on_wall]) < 0.0)
 
 
 def _count_wall_vertices(
