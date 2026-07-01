@@ -9,6 +9,7 @@ import numpy as np
 from cli_anything.threemf.core.parser import MeshData, ThreeMFData
 from cli_anything.threemf.core.inspector import (
     DetectedHole,
+    InspectParams,
     inspect_mesh,
 )
 
@@ -29,8 +30,20 @@ def resize_holes(
     hole_ids: list[int],
     target_diameter: float,
     mesh_index: int = 0,
+    params: InspectParams | None = None,
 ) -> tuple[ThreeMFData, list[dict]]:
     """Resize specified holes to *target_diameter* and return a **new** ``ThreeMFData``.
+
+    Parameters
+    ----------
+    params:
+        Hole-detection parameters.  ``resize_holes`` re-detects the mesh's
+        holes to resolve *hole_ids* to geometry, so *params* **must match the
+        parameters used to inspect the mesh** (especially ``axis``) -- the
+        ``hole_id`` numbering is only meaningful relative to one detection
+        run.  When ``None`` the inspector defaults are used (axis=0/X), which
+        only find *hole_ids* that ``inspect`` surfaces with those same
+        defaults.
 
     Returns
     -------
@@ -48,7 +61,7 @@ def resize_holes(
     _validate_resize_inputs(threemf_data, hole_ids, target_diameter, mesh_index)
 
     mesh = threemf_data.meshes[mesh_index]
-    detected_holes = inspect_mesh(mesh)
+    detected_holes = inspect_mesh(mesh, params)
 
     detected_ids = {h.hole_id for h in detected_holes}
     unknown = set(hole_ids) - detected_ids

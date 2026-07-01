@@ -43,7 +43,7 @@ class InspectParams:
 # Constants
 # ---------------------------------------------------------------------------
 
-_GROUP_DISTANCE_MM = 0.5  # max center-to-center distance to merge circles
+_GROUP_DISTANCE_MM = 0.5  # max (centre, radius) distance to merge circles into one hole
 
 
 # ---------------------------------------------------------------------------
@@ -131,14 +131,25 @@ def inspect_mesh(
         if confidence < params.min_confidence:
             continue
 
-        # Axis extent
-        group_levels = [c["level"] for c in group]
-        axis_min = float(min(group_levels))
-        axis_max = float(max(group_levels))
-
         # Centre (average across all detections)
         centres = np.array([c["center"] for c in group])
         avg_center = (float(np.mean(centres[:, 0])), float(np.mean(centres[:, 1])))
+
+        # Axis extent -- measured from the hole's actual wall vertices.  The
+        # cross-section planes are inset from the mesh bounds (2 % margin) and
+        # clamped to sampled levels, so their extent under-reports a through
+        # hole whose wall vertices sit exactly on the part faces.  That gap made
+        # resize's axial band miss the rim vertices and move nothing.  Fall back
+        # to the plane levels only when no wall vertices are found.
+        wall_min, wall_max = _wall_axial_extent(
+            vertices, avg_center, mean_radius, axis, perp_axes,
+        )
+        if wall_min is None:
+            group_levels = [c["level"] for c in group]
+            axis_min = float(min(group_levels))
+            axis_max = float(max(group_levels))
+        else:
+            axis_min, axis_max = wall_min, wall_max
 
         # Step 6 -- count wall vertices
         vertex_count = _count_wall_vertices(
@@ -240,17 +251,25 @@ def _perpendicular_axes(axis: int) -> tuple[int, int]:
 
 
 def _group_circles(circles: list[dict]) -> list[list[dict]]:
-    """Group circles from different planes by centre proximity.
+    """Group circles from different planes into distinct holes.
 
-    Uses scipy hierarchical clustering with a distance threshold of
-    ``_GROUP_DISTANCE_MM``.
+    Circles belonging to the same hole share both a centre **and** a radius
+    across cross-section planes.  Concentric features with different radii --
+    e.g. a hole bored through a solid body, whose section also yields the
+    body's outer contour -- must therefore stay in separate groups; otherwise
+    their radii get averaged into a meaningless diameter (the inner hole and
+    outer wall collapse into one bogus circle).  We cluster on the
+    ``(centre_x, centre_y, radius)`` feature vector via scipy hierarchical
+    clustering with a distance threshold of ``_GROUP_DISTANCE_MM``.
     """
 
     if len(circles) == 1:
         return [circles]
 
-    centres = np.array([c["center"] for c in circles])
-    link = linkage(centres, method="single", metric="euclidean")
+    features = np.array(
+        [[c["center"][0], c["center"][1], c["radius"]] for c in circles]
+    )
+    link = linkage(features, method="single", metric="euclidean")
     labels = fcluster(link, t=_GROUP_DISTANCE_MM, criterion="distance")
 
     groups: dict[int, list[dict]] = {}
@@ -258,6 +277,32 @@ def _group_circles(circles: list[dict]) -> list[list[dict]]:
         groups.setdefault(int(label), []).append(circle)
 
     return list(groups.values())
+
+
+def _wall_axial_extent(
+    vertices: np.ndarray,
+    center: tuple[float, float],
+    radius: float,
+    axis: int,
+    perp_axes: tuple[int, int],
+    tolerance: float = 0.06,
+) -> tuple[float, float] | tuple[None, None]:
+    """Return the axial ``(min, max)`` of vertices lying on the hole wall.
+
+    A vertex is on the wall when its radial distance from the hole axis is
+    within *tolerance* of *radius*.  Returns ``(None, None)`` when no wall
+    vertex matches, so the caller can fall back to the sampled plane levels.
+    """
+
+    ax0, ax1 = perp_axes
+    dx = vertices[:, ax0] - center[0]
+    dy = vertices[:, ax1] - center[1]
+    dist = np.sqrt(dx * dx + dy * dy)
+    on_wall = np.abs(dist - radius) < tolerance
+    if not np.any(on_wall):
+        return None, None
+    axial = vertices[on_wall, axis]
+    return float(np.min(axial)), float(np.max(axial))
 
 
 def _count_wall_vertices(

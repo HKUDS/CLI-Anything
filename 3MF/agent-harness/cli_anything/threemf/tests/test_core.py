@@ -178,6 +178,28 @@ def _make_fake_hole(
     )
 
 
+def _make_washer_mesh(
+    r_inner: float = 4.0, r_outer: float = 20.0, height: float = 10.0
+) -> MeshData:
+    """A washer (hollow cylinder) whose axis runs along Z.
+
+    Its cross-section perpendicular to Z is an annulus -- two *concentric*
+    circles (inner hole ``r_inner``, outer wall ``r_outer``).  This is the
+    minimal fixture that reproduces the concentric-circle bugs: a real hole
+    bored through a body always yields both the hole contour and the body
+    contour in the same section.
+    """
+    import trimesh
+
+    tm = trimesh.creation.annulus(r_min=r_inner, r_max=r_outer, height=height)
+    return MeshData(
+        object_id="1",
+        name="washer",
+        vertices=np.asarray(tm.vertices, dtype=np.float64),
+        triangles=np.asarray(tm.faces, dtype=np.int32),
+    )
+
+
 # ===========================================================================
 # TestParser -- MeshData and ThreeMFData
 # ===========================================================================
@@ -827,6 +849,57 @@ class TestInspector:
         result = inspector.inspect_mesh(mesh, params)
         assert result == []
 
+    # --- _group_circles: concentric circles must not merge --------------------
+
+    def test_group_circles_keeps_concentric_different_radii_separate(self) -> None:
+        """Concentric circles of very different radii are distinct holes.
+
+        Regression: grouping by centre only merged a hole's inner circle with
+        the body's outer contour (both centred on the axis) and averaged their
+        radii into a meaningless diameter.
+        """
+        circles = [
+            {"center": (0.0, 0.0), "radius": 4.0, "fit_error": 0.0, "level": z}
+            for z in (-2.0, -1.0, 0.0, 1.0, 2.0)
+        ] + [
+            {"center": (0.0, 0.0), "radius": 20.0, "fit_error": 0.0, "level": z}
+            for z in (-2.0, -1.0, 0.0, 1.0, 2.0)
+        ]
+        groups = inspector._group_circles(circles)
+        mean_radii = sorted(round(float(np.mean([c["radius"] for c in g])), 1) for g in groups)
+        assert mean_radii == [4.0, 20.0]
+
+    def test_group_circles_merges_same_hole_across_planes(self) -> None:
+        """Circles from one hole (small centre/radius jitter) stay in one group."""
+        circles = [
+            {"center": (0.01 * i, -0.01 * i), "radius": 4.0 + 0.002 * i,
+             "fit_error": 0.0, "level": float(i)}
+            for i in range(6)
+        ]
+        groups = inspector._group_circles(circles)
+        assert len(groups) == 1
+
+    def test_inspect_concentric_reports_true_inner_diameter(self) -> None:
+        """A washer's inner hole is measured accurately, not merged with the outer wall."""
+        mesh = _make_washer_mesh(r_inner=4.0, r_outer=20.0, height=10.0)
+        holes = inspector.inspect_mesh(mesh, InspectParams(axis=2))
+        diameters = [round(h.diameter, 1) for h in holes]
+        assert 8.0 in diameters                                    # inner Ø8 detected
+        assert not any(abs(h.diameter - 24.0) < 1.0 for h in holes)  # no bogus merged Ø24
+
+    def test_inspect_through_hole_axial_extent_spans_part(self) -> None:
+        """Axial extent comes from the wall vertices, spanning the full part thickness.
+
+        Regression: the extent was taken from the inset sampling planes, so a
+        through hole's rim vertices fell outside the band and resize moved
+        nothing (vertex_count was 0).
+        """
+        mesh = _make_washer_mesh(r_inner=4.0, r_outer=20.0, height=10.0)
+        holes = [h for h in inspector.inspect_mesh(mesh, InspectParams(axis=2))
+                 if abs(h.diameter - 8.0) < 1.0]
+        assert holes and holes[0].vertex_count > 0
+        assert holes[0].axis_max - holes[0].axis_min == pytest.approx(10.0, abs=0.2)
+
 
 # ===========================================================================
 # TestRepair -- repair_mesh, individual repair functions, fix_normals
@@ -1082,3 +1155,21 @@ class TestModifier:
         )
         resize_single_hole(mesh, hole, target_diameter=3.0)
         np.testing.assert_array_equal(mesh.vertices, original)
+
+    # --- resize_holes respects detection params (axis parity with inspect) -----
+
+    def test_resize_holes_default_params_miss_non_default_axis_hole(self) -> None:
+        """Without params, resize re-detects on axis 0 and can't see a Z-axis hole."""
+        data = _make_threemf_data(_make_washer_mesh(r_inner=4.0, r_outer=20.0))
+        with pytest.raises(ValueError, match="Unknown hole_ids"):
+            resize_holes(data, [0], 12.0, mesh_index=0)
+
+    def test_resize_holes_with_axis_params_resizes_non_default_axis_hole(self) -> None:
+        """With matching params (axis=2), the hole is detected and its wall vertices move."""
+        data = _make_threemf_data(_make_washer_mesh(r_inner=4.0, r_outer=20.0))
+        new_data, changes = resize_holes(
+            data, [0], 12.0, mesh_index=0, params=InspectParams(axis=2),
+        )
+        assert changes and changes[0]["vertices_moved"] > 0
+        # the modified mesh is a genuinely new object (resize actually happened)
+        assert new_data.meshes[0] is not data.meshes[0]
