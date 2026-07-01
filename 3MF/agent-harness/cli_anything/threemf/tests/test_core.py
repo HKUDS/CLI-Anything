@@ -879,13 +879,26 @@ class TestInspector:
         groups = inspector._group_circles(circles)
         assert len(groups) == 1
 
-    def test_inspect_concentric_reports_true_inner_diameter(self) -> None:
-        """A washer's inner hole is measured accurately, not merged with the outer wall."""
+    def test_inspect_concentric_reports_only_true_inner_hole(self) -> None:
+        """A washer yields exactly its inner Ø8 hole -- not the merged Ø24, nor the Ø40 outer wall."""
         mesh = _make_washer_mesh(r_inner=4.0, r_outer=20.0, height=10.0)
         holes = inspector.inspect_mesh(mesh, InspectParams(axis=2))
-        diameters = [round(h.diameter, 1) for h in holes]
-        assert 8.0 in diameters                                    # inner Ø8 detected
-        assert not any(abs(h.diameter - 24.0) < 1.0 for h in holes)  # no bogus merged Ø24
+        diameters = sorted(round(h.diameter, 1) for h in holes)
+        assert diameters == [8.0]                                    # only the inner hole
+        assert not any(abs(h.diameter - 40.0) < 1.0 for h in holes)  # outer wall rejected
+        assert not any(abs(h.diameter - 24.0) < 1.0 for h in holes)  # not the merged blob
+
+    def test_inspect_rejects_solid_cylinder_surface(self) -> None:
+        """A solid cylinder's outer surface is a boundary, not a hole -- it must not be reported."""
+        import trimesh
+
+        tm = trimesh.creation.cylinder(radius=3.0, height=10.0, sections=48)
+        mesh = MeshData(
+            object_id="1", name="cyl",
+            vertices=np.asarray(tm.vertices, dtype=np.float64),
+            triangles=np.asarray(tm.faces, dtype=np.int32),
+        )
+        assert inspector.inspect_mesh(mesh, InspectParams(axis=2)) == []
 
     def test_inspect_through_hole_axial_extent_spans_part(self) -> None:
         """Axial extent comes from the wall vertices, spanning the full part thickness.

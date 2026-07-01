@@ -157,6 +157,17 @@ def inspect_mesh(
         else:
             axis_min, axis_max = wall_min, wall_max
 
+        # Reject outer contours.  An interior hole has mesh material radially
+        # outside it (the surrounding body wall); the part's own outer boundary
+        # -- or a solid boss -- has nothing beyond its surface.  Splitting groups
+        # by radius surfaces such exterior circles as their own high-confidence
+        # group, so drop them here instead of emitting the body as a resizable
+        # hole.
+        if not _has_material_outside(
+            vertices, avg_center, mean_radius, axis, perp_axes, axis_min, axis_max,
+        ):
+            continue
+
         # Step 6 -- count wall vertices
         vertex_count = _count_wall_vertices(
             vertices, avg_center, mean_radius, axis, perp_axes, axis_min, axis_max,
@@ -319,6 +330,37 @@ def _wall_axial_extent(
         return None, None
     axial = axial_all[on_wall]
     return float(np.min(axial)), float(np.max(axial))
+
+
+def _has_material_outside(
+    vertices: np.ndarray,
+    center: tuple[float, float],
+    radius: float,
+    axis: int,
+    perp_axes: tuple[int, int],
+    axis_min: float,
+    axis_max: float,
+    tolerance: float = 0.06,
+) -> bool:
+    """Whether the mesh has vertices radially beyond *radius* in the hole's band.
+
+    ``True`` for an interior hole (enclosed by the surrounding body wall);
+    ``False`` for the part's outer boundary, a solid boss, or a bare cylinder --
+    none of which have material beyond their own surface -- so the caller can
+    drop them rather than reporting the body itself as a hole.
+    """
+
+    ax0, ax1 = perp_axes
+    in_band = (vertices[:, axis] >= axis_min - tolerance) & (
+        vertices[:, axis] <= axis_max + tolerance
+    )
+    if not np.any(in_band):
+        return False
+    subset = vertices[in_band]
+    dx = subset[:, ax0] - center[0]
+    dy = subset[:, ax1] - center[1]
+    dist = np.sqrt(dx * dx + dy * dy)
+    return bool(np.any(dist > radius + tolerance))
 
 
 def _count_wall_vertices(
