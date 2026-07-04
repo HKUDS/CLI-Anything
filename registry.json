@@ -1456,6 +1456,25 @@
           "url": "https://github.com/webdevtodayjason"
         }
       ]
+    },
+    {
+      "name": "meerk40t",
+      "display_name": "MeerK40t",
+      "version": "1.0.0",
+      "description": "Laser cutting/engraving job preparation via the real MeerK40t kernel — elements, operations, SVG/G-code export with --json output",
+      "requires": "MeerK40t (installed automatically)",
+      "homepage": "https://github.com/meerk40t/meerk40t",
+      "source_url": "https://github.com/George-RD/cli-anything-meerk40t",
+      "install_cmd": "pip install cli-anything-meerk40t",
+      "entry_point": "cli-anything-meerk40t",
+      "skill_md": "https://github.com/George-RD/cli-anything-meerk40t/blob/main/skills/cli-anything-meerk40t/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "George-RD",
+          "url": "https://github.com/George-RD"
+        }
+      ]
     }
   ]
 }
