@@ -17,7 +17,7 @@ ANALYTICS_PROVIDER = "posthog"
 UMAMI_URL = "https://cloud.umami.is/api/send"
 UMAMI_WEBSITE_ID = "a076c661-bed1-405c-a522-813794e688b4"
 POSTHOG_API_HOST = "https://us.i.posthog.com"
-POSTHOG_PROJECT_TOKEN = "phc_ovP8d5bmjpn8YZnTo7pb6rE3TikcAMgmNVt75o3Ywejz"
+POSTHOG_PROJECT_TOKEN = os.environ.get("CLI_HUB_POSTHOG_PROJECT_TOKEN", "")
 HOSTNAME = "clianything.cc"
 USER_AGENT = f"Mozilla/5.0 (compatible; cli-anything-hub/{__version__})"
 ANALYTICS_ID_FILE = ".analytics_id"
@@ -230,7 +230,7 @@ def _build_umami_payload(event_name, url, data):
 
 def _build_posthog_payload(event_name, url, data):
     return {
-        "api_key": os.environ.get("CLI_HUB_POSTHOG_PROJECT_TOKEN", POSTHOG_PROJECT_TOKEN),
+        "api_key": POSTHOG_PROJECT_TOKEN,
         "event": event_name,
         "distinct_id": _get_distinct_id(),
         "properties": {
