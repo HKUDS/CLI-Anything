@@ -451,14 +451,53 @@ def _parse_execute_result(result: Any, command: str) -> dict:
 
     if command == "ls":
         lines = [ln for ln in text.splitlines() if ln.strip()]
-        entries = [
-            {"name": ln.strip(), "role": "", "path": ln.strip()}
-            for ln in lines
-        ]
+        entries = []
+        for ln in lines:
+            line_str = ln.strip()
+            match = re.match(r'^\[(.*?)\]\s+(.+?)\s+\(([^)]+)\)(?:\s+→\s+(.+))?$', line_str)
+            if match:
+                name = match.group(2).strip()
+                role = match.group(3).strip()
+                path = match.group(4).strip() if match.group(4) else name
+            else:
+                name = line_str
+                role = ""
+                path = line_str
+                
+            is_directory = False
+            if name.endswith("/"):
+                name = name[:-1]
+                is_directory = True
+            if path.endswith("/"):
+                path = path[:-1]
+                
+            entry = {"name": name, "role": role, "path": path}
+            if is_directory:
+                entry["is_directory"] = True
+            entries.append(entry)
         return {"entries": entries, "raw": text}
 
     if command == "grep":
-        matches = [ln for ln in text.splitlines() if ln.strip()]
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        matches = []
+        for ln in lines:
+            line_str = ln.strip()
+            match = re.match(r'^\[(.*?)\]\s+(.+?)\s+\(([^)]+)\)(?:\s+→\s+(.+))?$', line_str)
+            if match:
+                type_marker = match.group(1).strip()
+                type_str = "directory" if type_marker == "d" else "interactive" if type_marker == "x" else "static"
+                name = match.group(2).strip()
+                role = match.group(3).strip()
+                path = match.group(4).strip() if match.group(4) else name
+                
+                if name.endswith("/"):
+                    name = name[:-1]
+                if path.endswith("/"):
+                    path = path[:-1]
+                    
+                matches.append({"name": name, "role": role, "path": path, "type": type_str})
+            else:
+                matches.append(line_str)
         return {"matches": matches, "raw": text}
 
     if command in ("back", "forward", "navigate", "open"):
