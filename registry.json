@@ -777,6 +777,7 @@
       "homepage": "https://www.sketch.com",
       "source_url": null,
       "install_cmd": "cd sketch/agent-harness && npm install && npm link",
+      "install_strategy": "command",
       "entry_point": "sketch-cli",
       "skill_md": null,
       "category": "design",
