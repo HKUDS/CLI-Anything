@@ -196,13 +196,7 @@ def _extract_lane_id(result: Any) -> Optional[str]:
     empty, or the marker reports the default "shared" lane (which is
     DOMShell's no-isolation sentinel and not something we want to pin to).
     """
-    text = ""
-    content = getattr(result, "content", None)
-    if content:
-        for c in content:
-            piece = getattr(c, "text", None)
-            if piece:
-                text += piece
+    text = _extract_text(result)
     if not text:
         return None
     m = _LANE_LINE.search(text.strip())
