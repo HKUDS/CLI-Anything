@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-06-03"
+    "updated": "2026-06-19"
   },
   "clis": [
     {
@@ -471,6 +471,25 @@
         {
           "name": "Uname58",
           "url": "https://github.com/Uname58"
+        }
+      ]
+    },
+    {
+      "name": "pieces",
+      "display_name": "Pieces OS CLI",
+      "version": "1.0.0",
+      "description": "Agent-native CLI for Pieces OS — persistent long-term memory for developers. Search, create, and manage memory assets, snippets, and models via Pieces OS REST API.",
+      "category": "productivity",
+      "requires": "Pieces OS running locally (http://localhost:39300)",
+      "homepage": "https://pieces.app",
+      "source_url": "https://github.com/goddardoven110907/cli-anything-pieces",
+      "install_cmd": "pip install git+https://github.com/goddardoven110907/cli-anything-pieces.git",
+      "entry_point": "cli-anything-pieces",
+      "skill_md": "https://github.com/goddardoven110907/cli-anything-pieces/blob/master/README.md",
+      "contributors": [
+        {
+          "name": "goddardoven110907",
+          "url": "https://github.com/goddardoven110907"
         }
       ]
     }
