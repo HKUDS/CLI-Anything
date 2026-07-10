@@ -973,9 +973,51 @@ class TestInstaller:
         }
         mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
 
-        success, msg = install_cli("onepassword-cli")
+        success, msg = install_cli(
+            "onepassword-cli", command_approver=lambda display_name, command: True
+        )
         assert success
         assert "1Password CLI" in msg
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_install_command_strategy_requires_approval(self, mock_get_cli, mock_run):
+        install_cmd = "brew install --cask 1password-cli"
+        mock_get_cli.return_value = {
+            "name": "onepassword-cli",
+            "display_name": "1Password CLI",
+            "version": "latest",
+            "entry_point": "op",
+            "_source": "public",
+            "install_strategy": "command",
+            "install_cmd": install_cmd,
+        }
+
+        success, msg = install_cli("onepassword-cli")
+
+        assert not success
+        assert "approval is required" in msg
+        assert install_cmd in msg
+        mock_run.assert_not_called()
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_unknown_install_strategy_fails_closed(self, mock_get_cli, mock_run):
+        mock_get_cli.return_value = {
+            "name": "future-tool",
+            "display_name": "Future Tool",
+            "version": "latest",
+            "entry_point": "future-tool",
+            "_source": "public",
+            "install_strategy": "future-strategy",
+            "install_cmd": "future-installer --install",
+        }
+
+        success, msg = install_cli("future-tool")
+
+        assert not success
+        assert "approval is required" in msg
+        mock_run.assert_not_called()
 
     @patch("cli_hub.installer.subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "brew"))
     @patch("cli_hub.installer.get_cli")
@@ -993,7 +1035,9 @@ class TestInstaller:
             "install_cmd": "brew install --cask 1password-cli",
         }
 
-        success, msg = install_cli("onepassword-cli")
+        success, msg = install_cli(
+            "onepassword-cli", command_approver=lambda display_name, command: True
+        )
         assert not success
         assert "Command not found: brew" in msg
 
@@ -1053,6 +1097,9 @@ class TestUvStrategy:
         success, msg = install_cli("generate-veo-video")
         assert success
         assert "Generate Veo Video" in msg
+        args, kwargs = mock_run.call_args
+        assert args[0][0] == "/usr/bin/uv"
+        assert kwargs["shell"] is False
 
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer._find_uv", return_value=None)
@@ -1063,6 +1110,40 @@ class TestUvStrategy:
         assert "uv is not installed" in msg
         assert "astral.sh/uv" in msg
         assert "brew install uv" in msg
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
+    def test_uv_strategy_cannot_smuggle_a_shell_command(
+        self, mock_find_uv, mock_get_cli, mock_run
+    ):
+        mock_get_cli.return_value = {
+            **GENERATE_VEO_CLI,
+            "install_cmd": "curl -s https://example.com/install.sh | bash",
+        }
+
+        success, msg = install_cli("generate-veo-video")
+
+        assert not success
+        assert "expected the command to start with 'uv tool install'" in msg
+        mock_run.assert_not_called()
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
+    def test_uv_strategy_rejects_non_install_subcommands(
+        self, mock_find_uv, mock_get_cli, mock_run
+    ):
+        mock_get_cli.return_value = {
+            **GENERATE_VEO_CLI,
+            "install_cmd": "uv run -- bash -c 'echo compromised'",
+        }
+
+        success, msg = install_cli("generate-veo-video")
+
+        assert not success
+        assert "expected the command to start with 'uv tool install'" in msg
+        mock_run.assert_not_called()
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
@@ -1178,7 +1259,9 @@ class TestScriptStrategy:
         mock_get_cli.return_value = JIMENG_CLI
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
-        success, msg = install_cli("jimeng")
+        success, msg = install_cli(
+            "jimeng", command_approver=lambda display_name, command: True
+        )
 
         assert success, f"Expected success but got: {msg}"
         assert "Jimeng" in msg
@@ -1198,7 +1281,9 @@ class TestScriptStrategy:
             returncode=1, stdout="", stderr="curl: (6) Could not resolve host"
         )
 
-        success, msg = install_cli("jimeng")
+        success, msg = install_cli(
+            "jimeng", command_approver=lambda display_name, command: True
+        )
 
         assert not success
         assert "failed" in msg.lower()
@@ -1216,6 +1301,52 @@ class TestScriptStrategy:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
+    def test_install_jimeng_rejected_without_execution(self, mock_get_cli, mock_run):
+        """A rejected registry command never reaches subprocess."""
+        mock_get_cli.return_value = JIMENG_CLI
+
+        success, msg = install_cli(
+            "jimeng", command_approver=lambda display_name, command: False
+        )
+
+        assert not success
+        assert "cancelled" in msg.lower()
+        mock_run.assert_not_called()
+
+    def test_matrix_authorizes_commands_before_any_install(self):
+        """Rejecting a later command entry leaves earlier safe members untouched."""
+        matrix_item = {"name": "demo", "display_name": "Demo", "clis": ["gimp", "jimeng"]}
+        safe_cli = {
+            "name": "gimp",
+            "display_name": "GIMP",
+            "version": "1.0.0",
+            "entry_point": "cli-anything-gimp",
+            "_source": "harness",
+            "install_cmd": "pip install cli-anything-gimp",
+        }
+        cli_entries = {"gimp": safe_cli, "jimeng": JIMENG_CLI}
+
+        with (
+            patch("cli_hub.installer.get_matrix", return_value=matrix_item),
+            patch("cli_hub.installer.get_cli", side_effect=cli_entries.get),
+            patch("cli_hub.installer.get_installed", return_value={}),
+            patch("cli_hub.installer._load_matrix_state", return_value={}),
+            patch("cli_hub.installer._save_matrix_state") as mock_save_state,
+            patch("cli_hub.installer.render_matrix_skill_file") as mock_render,
+            patch("cli_hub.installer.subprocess.run") as mock_run,
+        ):
+            success, payload = install_matrix(
+                "demo", command_approver=lambda display_name, command: False
+            )
+
+        assert not success
+        assert payload["cancelled"] is True
+        mock_run.assert_not_called()
+        mock_save_state.assert_not_called()
+        mock_render.assert_not_called()
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_jimeng_recorded_in_installed_json(self, mock_get_cli, mock_run):
         """After a successful install, jimeng appears in installed.json."""
@@ -1224,7 +1355,9 @@ class TestScriptStrategy:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         with patch("cli_hub.installer.INSTALLED_FILE", installed_file):
-            success, _ = install_cli("jimeng")
+            success, _ = install_cli(
+                "jimeng", command_approver=lambda display_name, command: True
+            )
             assert success
             data = json.loads(installed_file.read_text())
             assert "jimeng" in data
@@ -1697,6 +1830,85 @@ class TestCLI:
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
     @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_matrix_install")
+    @patch("cli_hub.cli.install_matrix")
+    def test_matrix_install_yes_approves_command_without_prompt(
+        self,
+        mock_install_matrix,
+        mock_track_matrix,
+        mock_detect,
+        mock_visit,
+        mock_first_run,
+    ):
+        mock_detect.return_value = self.agent_detection
+
+        def guarded_matrix_install(name, **kwargs):
+            assert kwargs["command_approver"](
+                JIMENG_CLI["display_name"], JIMENG_CLI["install_cmd"]
+            )
+            return True, {
+                "matrix": {"name": name},
+                "scope": {"type": "all"},
+                "results": [{
+                    "name": "jimeng",
+                    "status": "installed",
+                    "message": "Installed Jimeng / Dreamina CLI (dreamina)",
+                }],
+                "summary": {"installed": 1, "skipped": 0, "failed": 0},
+            }
+
+        mock_install_matrix.side_effect = guarded_matrix_install
+        result = self.runner.invoke(
+            main, ["matrix", "install", "video-creation", "--yes"]
+        )
+
+        assert result.exit_code == 0
+        assert "curl -s https://jimeng.jianying.com/cli | bash" in result.output
+        assert "Execute this command?" not in result.output
+        mock_track_matrix.assert_called_once()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_matrix_install")
+    @patch("cli_hub.cli.install_matrix")
+    def test_matrix_install_json_requires_yes_without_corrupting_stdout(
+        self,
+        mock_install_matrix,
+        mock_track_matrix,
+        mock_detect,
+        mock_visit,
+        mock_first_run,
+    ):
+        mock_detect.return_value = self.agent_detection
+
+        def guarded_matrix_install(name, **kwargs):
+            approved = kwargs["command_approver"](
+                JIMENG_CLI["display_name"], JIMENG_CLI["install_cmd"]
+            )
+            assert not approved
+            return False, {"error": "Installation cancelled; use --yes after review."}
+
+        mock_install_matrix.side_effect = guarded_matrix_install
+        try:
+            runner = click.testing.CliRunner(mix_stderr=False)
+        except TypeError:  # Click 8.2+ always captures the streams separately.
+            runner = click.testing.CliRunner()
+        result = runner.invoke(
+            main, ["matrix", "install", "video-creation", "--json"]
+        )
+
+        assert result.exit_code == 1
+        assert json.loads(result.stdout) == {
+            "error": "Installation cancelled; use --yes after review."
+        }
+        assert "curl -s https://jimeng.jianying.com/cli | bash" in result.stderr
+        assert "re-run with --yes" in result.stderr
+        mock_track_matrix.assert_called_once()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.install_matrix", return_value=(False, {"error": "Matrix 'missing' not found."}))
     def test_matrix_install_command_not_found(self, mock_install_matrix, mock_detect, mock_visit, mock_first_run):
         mock_detect.return_value = self.human_detection
@@ -1774,6 +1986,145 @@ class TestCLI:
         assert result.exit_code == 0
         assert "Installed" in result.output
         mock_track.assert_called_once()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    def test_install_help_documents_yes_option(
+        self, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.human_detection
+
+        install_help = self.runner.invoke(main, ["install", "--help"])
+        matrix_help = self.runner.invoke(main, ["matrix", "install", "--help"])
+
+        assert install_help.exit_code == 0
+        assert "-y, --yes" in install_help.output
+        assert matrix_help.exit_code == 0
+        assert "-y, --yes" in matrix_help.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
+    @patch("cli_hub.cli.install_cli")
+    def test_command_install_defaults_to_no(
+        self, mock_install, mock_get, mock_track, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.human_detection
+
+        def guarded_install(name, command_approver):
+            if not command_approver(JIMENG_CLI["display_name"], JIMENG_CLI["install_cmd"]):
+                return False, "Installation cancelled; the registry command was not executed."
+            return True, "Installed Jimeng / Dreamina CLI (dreamina)"
+
+        mock_install.side_effect = guarded_install
+        with patch("cli_hub.cli._approval_streams_are_interactive", return_value=True):
+            result = self.runner.invoke(main, ["install", "jimeng"], input="\n")
+
+        assert result.exit_code == 1
+        assert "curl -s https://jimeng.jianying.com/cli | bash" in result.output
+        assert "Execute this command? [y/N]" in result.output
+        assert "cancelled" in result.output.lower()
+        mock_track.assert_not_called()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
+    @patch("cli_hub.cli.install_cli")
+    def test_command_install_accepts_interactive_confirmation(
+        self, mock_install, mock_get, mock_track, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.human_detection
+
+        def guarded_install(name, command_approver):
+            assert command_approver(JIMENG_CLI["display_name"], JIMENG_CLI["install_cmd"])
+            return True, "Installed Jimeng / Dreamina CLI (dreamina)"
+
+        mock_install.side_effect = guarded_install
+        with patch("cli_hub.cli._approval_streams_are_interactive", return_value=True):
+            result = self.runner.invoke(main, ["install", "jimeng"], input="y\n")
+
+        assert result.exit_code == 0
+        assert "curl -s https://jimeng.jianying.com/cli | bash" in result.output
+        assert "Execute this command? [y/N]" in result.output
+        mock_track.assert_called_once()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
+    @patch("cli_hub.cli.install_cli")
+    def test_command_install_yes_skips_prompt_but_shows_command(
+        self, mock_install, mock_get, mock_track, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.agent_detection
+
+        def guarded_install(name, command_approver):
+            assert command_approver(JIMENG_CLI["display_name"], JIMENG_CLI["install_cmd"])
+            return True, "Installed Jimeng / Dreamina CLI (dreamina)"
+
+        mock_install.side_effect = guarded_install
+        result = self.runner.invoke(main, ["install", "jimeng", "--yes"])
+
+        assert result.exit_code == 0
+        assert "curl -s https://jimeng.jianying.com/cli | bash" in result.output
+        assert "Execute this command?" not in result.output
+        mock_track.assert_called_once()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
+    @patch("cli_hub.cli.install_cli")
+    def test_command_warning_escapes_registry_control_characters(
+        self, mock_install, mock_get, mock_track, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.agent_detection
+        display_name = "Spoofed\n\x1b[2JName"
+        command = "echo safe\n\x1b[2Jfake prompt"
+
+        def guarded_install(name, command_approver):
+            assert command_approver(display_name, command)
+            return True, "Installed test command"
+
+        mock_install.side_effect = guarded_install
+        result = self.runner.invoke(main, ["install", "jimeng", "--yes"])
+
+        assert result.exit_code == 0
+        assert "\\n" in result.output
+        assert "\\u001b" in result.output
+        assert "\x1b" not in result.output
+        mock_track.assert_called_once()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
+    @patch("cli_hub.cli.install_cli")
+    def test_command_install_noninteractive_fails_closed(
+        self, mock_install, mock_get, mock_track, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.agent_detection
+
+        def guarded_install(name, command_approver):
+            if not command_approver(JIMENG_CLI["display_name"], JIMENG_CLI["install_cmd"]):
+                return False, "Installation cancelled; the registry command was not executed."
+            return True, "Installed Jimeng / Dreamina CLI (dreamina)"
+
+        mock_install.side_effect = guarded_install
+        result = self.runner.invoke(main, ["install", "jimeng"])
+
+        assert result.exit_code == 1
+        assert "re-run with --yes" in result.output
+        assert "Execute this command?" not in result.output
+        mock_track.assert_not_called()
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")

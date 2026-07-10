@@ -107,12 +107,57 @@ def _plural(count, singular, plural=None):
     return f"{count} {singular if count == 1 else (plural or singular + 's')}"
 
 
+def _approval_streams_are_interactive():
+    """Return whether the approval prompt can be both seen and answered."""
+    try:
+        return sys.stdin.isatty() and sys.stderr.isatty()
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def _approve_registry_command(display_name, command, assume_yes=False, allow_prompt=True):
+    """Show a registry-provided install command and request approval."""
+    click.secho(
+        f"Warning: installing {json_mod.dumps(display_name)} will execute a command "
+        "provided by the CLI registry:",
+        fg="yellow",
+        bold=True,
+        err=True,
+    )
+    # JSON string escaping keeps control characters from spoofing the prompt
+    # while preserving a complete, reviewable representation of the command.
+    click.echo(f"  {json_mod.dumps(command)}", err=True)
+    if assume_yes:
+        return True
+    if not allow_prompt or not _approval_streams_are_interactive():
+        click.secho(
+            "Refusing to run a registry command non-interactively. "
+            "After reviewing it, re-run with --yes.",
+            fg="yellow",
+            err=True,
+        )
+        return False
+    return click.confirm("Execute this command?", default=False, err=True)
+
+
 @main.command()
 @click.argument("name")
-def install(name):
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided install commands without prompting.",
+)
+def install(name, assume_yes):
     """Install a CLI by name."""
     click.echo(f"Installing {name}...")
-    success, msg = install_cli(name)
+    success, msg = install_cli(
+        name,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes
+        ),
+    )
     if success:
         cli = get_cli(name)
         track_install(name, cli["version"] if cli else "unknown")
@@ -832,8 +877,15 @@ def _scope_args(scope):
     is_flag=True,
     help="Render the matrix skill (SKILL.md + references/ + scripts/) without installing member CLIs.",
 )
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided install commands without prompting.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Output the plan or result as JSON.")
-def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, as_json):
+def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, assume_yes, as_json):
     """Install the CLIs in a matrix (optionally scoped to a capability, recipe, or subset).
 
     Exit codes: 0 success · 3 partial failure · 1 total failure or not found ·
@@ -877,7 +929,14 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
         return
 
     success, payload = install_matrix(
-        name, capability=capability, recipe=recipe, only=only, resume=resume
+        name,
+        capability=capability,
+        recipe=recipe,
+        only=only,
+        resume=resume,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes, allow_prompt=not as_json
+        ),
     )
     if payload.get("error"):
         track_matrix_install(

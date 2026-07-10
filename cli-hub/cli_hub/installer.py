@@ -72,7 +72,8 @@ def _run_command(cmd):
 
     Uses shell=True when the command contains shell operators (pipes, &&, etc.)
     so that script-type installs like ``curl … | bash`` work correctly.
-    Commands come from the trusted registry, not from user input.
+    Callers must obtain approval before passing a free-form registry install
+    command here.
     """
     use_shell = any(c in cmd for c in _SHELL_METACHARACTERS)
     try:
@@ -117,6 +118,15 @@ def _install_strategy(cli):
     if cli.get("package_manager") == "bundled":
         return "bundled"
     return "command"
+
+
+def _requires_command_approval(cli):
+    """Return whether installing this entry uses the free-form command handler."""
+    if not cli.get("install_cmd"):
+        return False
+    strategy = _install_strategy(cli)
+    handlers = _STRATEGY_ACTIONS.get(strategy, _STRATEGY_ACTIONS["command"])
+    return handlers["install"] is _generic_install
 
 
 def _generic_install(cli):
@@ -218,34 +228,64 @@ def _pip_update(cli):
 # ── uv operations (public CLIs) ──
 
 
+def _run_uv_command(cmd, expected_action):
+    """Run a registry uv command as validated argv, never through a shell."""
+    uv = _find_uv()
+    if uv is None:
+        return None
+    try:
+        args = shlex.split(cmd)
+    except ValueError as exc:
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=2, stdout="", stderr=f"Invalid uv command: {exc}"
+        )
+    valid_prefix = (
+        len(args) >= 3
+        and Path(args[0]).name.lower() in {"uv", "uv.exe"}
+        and args[1:3] == ["tool", expected_action]
+    )
+    if not valid_prefix:
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=2,
+            stdout="",
+            stderr=(
+                "Invalid uv command: expected the command to start with "
+                f"'uv tool {expected_action}'."
+            ),
+        )
+    args[0] = uv
+    return subprocess.run(args, capture_output=True, text=True, shell=False)
+
+
 def _uv_install(cli):
-    if _find_uv() is None:
+    result = _run_uv_command(cli["install_cmd"], "install")
+    if result is None:
         return False, _UV_INSTALL_HINT
-    result = _run_command(cli["install_cmd"])
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
     return False, f"uv install failed:\n{result.stderr or result.stdout}"
 
 
 def _uv_uninstall(cli):
-    if _find_uv() is None:
-        return False, _UV_INSTALL_HINT
     uninstall_cmd = cli.get("uninstall_cmd")
     if not uninstall_cmd:
         return False, f"No uninstall command is defined for {cli['display_name']}."
-    result = _run_command(uninstall_cmd)
+    result = _run_uv_command(uninstall_cmd, "uninstall")
+    if result is None:
+        return False, _UV_INSTALL_HINT
     if result.returncode == 0:
         return True, f"Uninstalled {cli['display_name']}"
     return False, f"uv uninstall failed:\n{result.stderr or result.stdout}"
 
 
 def _uv_update(cli):
-    if _find_uv() is None:
-        return False, _UV_INSTALL_HINT
     update_cmd = cli.get("update_cmd")
     if not update_cmd:
         return False, f"No update command is defined for {cli['display_name']}."
-    result = _run_command(update_cmd)
+    result = _run_uv_command(update_cmd, "upgrade")
+    if result is None:
+        return False, _UV_INSTALL_HINT
     if result.returncode == 0:
         return True, f"Updated {cli['display_name']}"
     return False, f"uv update failed:\n{result.stderr or result.stdout}"
@@ -298,17 +338,28 @@ def _npm_update(cli):
     return False, f"Update failed:\n{result.stderr}"
 
 
+_STRATEGY_ACTIONS = {
+    "pip": {"install": _pip_install, "uninstall": _pip_uninstall, "update": _pip_update},
+    "npm": {"install": _npm_install, "uninstall": _npm_uninstall, "update": _npm_update},
+    "uv": {"install": _uv_install, "uninstall": _uv_uninstall, "update": _uv_update},
+    "command": {
+        "install": _generic_install,
+        "uninstall": _generic_uninstall,
+        "update": _generic_update,
+    },
+    "bundled": {
+        "install": _bundled_install,
+        "uninstall": _bundled_uninstall,
+        "update": _bundled_update,
+    },
+}
+
+
 def _perform_action(cli, action):
     """Dispatch install/uninstall/update based on CLI strategy."""
     strategy = _install_strategy(cli)
-    actions = {
-        "pip": {"install": _pip_install, "uninstall": _pip_uninstall, "update": _pip_update},
-        "npm": {"install": _npm_install, "uninstall": _npm_uninstall, "update": _npm_update},
-        "uv": {"install": _uv_install, "uninstall": _uv_uninstall, "update": _uv_update},
-        "command": {"install": _generic_install, "uninstall": _generic_uninstall, "update": _generic_update},
-        "bundled": {"install": _bundled_install, "uninstall": _bundled_uninstall, "update": _bundled_update},
-    }
-    handler = actions.get(strategy, actions["command"]).get(action)
+    handlers = _STRATEGY_ACTIONS.get(strategy, _STRATEGY_ACTIONS["command"])
+    handler = handlers.get(action)
     return strategy, handler(cli)
 
 
@@ -336,11 +387,25 @@ def _installed_entry(cli, source, strategy):
 # ── Unified interface ──
 
 
-def install_cli(name):
-    """Install a CLI by name. Dispatches to pip or npm based on source. Returns (success, message)."""
-    cli = get_cli(name)
-    if cli is None:
-        return False, f"CLI '{name}' not found in registry. Use 'cli-hub list' to see available CLIs."
+def _approve_command_install(cli, command_approver):
+    """Obtain approval for a free-form command install."""
+    if _requires_command_approval(cli):
+        if command_approver is None:
+            return False, (
+                "Explicit approval is required before running this registry install command:\n"
+                f"  {json.dumps(cli['install_cmd'])}"
+            )
+        if not command_approver(cli["display_name"], cli["install_cmd"]):
+            return False, "Installation cancelled; the registry command was not executed."
+    return True, ""
+
+
+def _install_cli_entry(cli, command_approver=None, command_approved=False):
+    """Install one already-resolved registry entry."""
+    if not command_approved:
+        approved, message = _approve_command_install(cli, command_approver)
+        if not approved:
+            return False, message
 
     source = cli.get("_source", "harness")
     strategy, (success, msg) = _perform_action(cli, "install")
@@ -351,6 +416,21 @@ def install_cli(name):
         _save_installed(installed)
 
     return success, msg
+
+
+def install_cli(name, command_approver=None):
+    """Install a CLI by name.
+
+    Registry entries using the ``command`` strategy may execute arbitrary
+    commands, including remote scripts.  They therefore require an explicit
+    approval callback before the command is dispatched. The callback receives
+    ``(display_name, install_cmd)``. Keeping this check at the installer
+    boundary also protects non-CLI callers and matrix installs.
+    """
+    cli = get_cli(name)
+    if cli is None:
+        return False, f"CLI '{name}' not found in registry. Use 'cli-hub list' to see available CLIs."
+    return _install_cli_entry(cli, command_approver=command_approver)
 
 
 def uninstall_cli(name):
@@ -460,12 +540,15 @@ def plan_matrix_install(name, capability=None, recipe=None, only=None):
     return True, payload
 
 
-def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
+def install_matrix(
+    name, capability=None, recipe=None, only=None, resume=False, command_approver=None
+):
     """Install the CLIs in a named matrix, optionally scoped (F2.2) or resumed (F2.3).
 
     Returns ``(success, payload)``. ``payload['arg_error']`` marks usage errors.
     Records per-CLI outcomes to ``matrix_state.json`` so ``--resume`` and
-    ``matrix doctor`` can act on them.
+    ``matrix doctor`` can act on them. Free-form commands are all approved via
+    ``command_approver(display_name, install_cmd)`` before any member runs.
     """
     matrix_item = get_matrix(name)
     if matrix_item is None:
@@ -497,28 +580,58 @@ def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
         scope = scope_info["scope"]
 
     installed = set(get_installed())
-    results = []
-
+    install_items = []
     for cli_name in target_names:
         cli = get_cli(cli_name)
         display_name = cli["display_name"] if cli else cli_name
         via = _install_strategy(cli) if cli else None
 
         if cli_name in installed:
-            results.append({"name": cli_name, "display_name": display_name,
-                            "status": "skipped", "via": via, "message": "Already installed"})
-            continue
+            action = "skip"
+        elif cli is None:
+            action = "error"
+        else:
+            action = "install"
+        install_items.append({
+            "name": cli_name,
+            "display_name": display_name,
+            "via": via,
+            "cli": cli,
+            "action": action,
+        })
 
-        if cli is None:
-            results.append({"name": cli_name, "display_name": display_name,
-                            "status": "failed", "via": via, "message": "CLI not found in registry"})
+    # Authorize every free-form command before installing any matrix member, so
+    # declining a later command cannot leave an unexpectedly partial install.
+    for item in install_items:
+        if item["action"] != "install":
             continue
+        approved, message = _approve_command_install(item["cli"], command_approver)
+        if not approved:
+            return False, {
+                "error": message,
+                "matrix": matrix_item,
+                "scope": scope,
+                "cancelled": True,
+            }
 
-        success, msg = install_cli(cli_name)
-        results.append({"name": cli_name, "display_name": display_name,
-                        "status": "installed" if success else "failed", "via": via, "message": msg})
-        if success:
-            installed.add(cli_name)
+    results = []
+    for item in install_items:
+        if item["action"] == "skip":
+            status, message = "skipped", "Already installed"
+        elif item["action"] == "error":
+            status, message = "failed", "CLI not found in registry"
+        else:
+            success, message = _install_cli_entry(item["cli"], command_approved=True)
+            status = "installed" if success else "failed"
+            if success:
+                installed.add(item["name"])
+        results.append({
+            "name": item["name"],
+            "display_name": item["display_name"],
+            "status": status,
+            "via": item["via"],
+            "message": message,
+        })
 
     summary = {
         "total": len(results),
