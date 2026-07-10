@@ -55,7 +55,7 @@ cli-anything-macrocli backends --json
 |------|-------------|
 | `--json` | Machine-readable JSON output on stdout |
 | `--dry-run` | Simulate all steps, skip side effects |
-| `--session-id <id>` | Resume or create a named session |
+| `--session-id <id>` | Resume or create a named session; use 1-128 ASCII letters, digits, `_`, or `-` |
 
 ### `macro` group
 
