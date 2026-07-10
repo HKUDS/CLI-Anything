@@ -132,6 +132,19 @@ class TestWavIO:
         corr = np.corrcoef(original[:min_len], loaded[:min_len])[0, 1]
         assert corr > 0.99
 
+    def test_write_read_roundtrip_8bit(self, tmp_dir):
+        # 8-bit WAV PCM is unsigned (0..255, silence == 128). A signed encoder
+        # makes silence (0.0) read back as full-scale (-1.0). Assert every value
+        # round-trips within the 8-bit quantization step (1/128 ~= 0.0078).
+        path = os.path.join(tmp_dir, "rt8.wav")
+        original = [0.0, 0.5, 1.0, -0.5, -1.0, 0.25]
+        write_wav(path, original, 44100, 1, 8)
+        loaded, sr, ch, bd = read_wav(path)
+        assert bd == 8
+        assert len(loaded) == len(original)
+        for o, l in zip(original, loaded):
+            assert abs(o - l) < 0.02, f"{o} -> {l}"
+
     def test_wav_file_properties(self, sine_wav):
         with wave.open(sine_wav, "r") as wf:
             assert wf.getframerate() == 44100
