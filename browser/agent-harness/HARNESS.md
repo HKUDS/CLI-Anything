@@ -37,30 +37,61 @@ DOMShell is an npm package that exposes Chrome's Accessibility Tree via MCP:
 
 ### Installation
 
+**Requires `@apireno/domshell` 2.0.2 or newer.** The harness uses
+`group_id="new"` to declare lane intent explicitly on the first call of
+each session and reuses the captured lane id on subsequent calls (silences
+the deprecation warning that 2.0.2 added for omitted `group_id`; will
+become a hard error in DOMShell 3.0.0). For direct daemon-mode callers
+without a harness `Session`, the same scheme runs at module level — the
+first call captures a lane id into `_daemon_lane_id` and subsequent calls
+reuse it, preserving browser state across daemon-mode no-session calls
+(see `domshell_backend.py`'s `_daemon_lane_id` declaration for the
+stale-lane failure mode).
+
 ```bash
-# Verify DOMShell is available
-npx @apireno/domshell --version
+npx @apireno/domshell --version   # should report 2.0.2 or higher
 
 # Install Chrome extension
 # https://chromewebstore.google.com/detail/domshell
 ```
 
-### MCP Tools
+The standard `npx @apireno/domshell` invocation pulls the latest published
+version automatically; no manual pinning is required.
 
-DOMShell exposes these MCP tools:
+DOMShell 2.0.0 (May 2026) consolidated the MCP tool surface from 38
+per-command tools to a single `domshell_execute` tool. The harness targets
+this consolidated tool, so no opt-in `--granular` server flag is required.
 
-| Tool | Description | CLI Command |
-|------|-------------|-------------|
-| `domshell_ls` | List directory contents | `fs ls` |
-| `domshell_cd` | Change directory | `fs cd` |
-| `domshell_cat` | Read element content | `fs cat` |
-| `domshell_grep` | Search for pattern | `fs grep` |
-| `domshell_click` | Click element | `act click` |
-| `domshell_type` | Type text | `act type` |
-| `domshell_open` | Navigate to URL | `page open` |
-| `domshell_reload` | Reload page | `page reload` |
-| `domshell_back` | Navigate back | `page back` |
-| `domshell_forward` | Navigate forward | `page forward` |
+### MCP Tool
+
+DOMShell 2.0.2+ exposes a single MCP tool:
+
+| Tool | Description |
+|------|-------------|
+| `domshell_execute` | Runs a shell-style command string. Multi-line input is supported — each line runs in order in the same shell state. |
+
+The harness builds command strings from the public CLI commands. Harness
+absolute paths (leading `/`) are anchored at the tab root via
+`cd %here%` since DOMShell's lane cwd may have drifted; relative paths
+are passed through unchanged.
+
+| CLI Command (path is absolute) | Command string sent to `domshell_execute` |
+|--------------------------------|--------------------------------------------|
+| `fs ls /<sub>` | `cd %here%/<sub>` then bare `ls`, then `cd <restore>` (single multi-line call) |
+| `fs cd /<sub>` | `cd %here%/<sub>` (single line — `cd` is the desired new state) |
+| `fs cat /<sub>` | `cd %here%`, `cat <sub>`, `cd <restore>` (single multi-line call) |
+| `fs grep <pat>` | `grep <pat>` (operates on lane cwd) |
+| `fs grep <pat> /<sub>` | `cd %here%/<sub>`, `grep <pat>`, `cd <restore>` (single multi-line call) |
+| `act click /<sub>` | `cd %here%`, `click <sub>`, `cd <restore>` (single multi-line call) |
+| `act type /<sub> <text>` | `cd %here%`, `focus <sub>`, `cd <restore>` — then, on success, `type <text>` (two calls, shared lane via `group_id`) |
+| `page open <url>` | `open <url>` |
+| `page reload` | `refresh` |
+| `page back` | `back` |
+| `page forward` | `forward` |
+
+`<restore>` resolves to `cd %here%/<harness-working-dir>` (or `cd %here%`
+when the harness is at the tab root) so the lane's cwd ends up where
+the harness expects.
 
 ## Key Design Decisions
 

@@ -40,6 +40,7 @@ from cli_anything.audacity.core import export as export_mod
 _session: Optional[Session] = None
 _json_output = False
 _repl_mode = False
+_dry_run = False
 
 
 def get_session() -> Session:
@@ -61,6 +62,15 @@ def output(data, message: str = ""):
             _print_list(data)
         else:
             click.echo(str(data))
+
+
+def autosave_session_if_needed() -> None:
+    """Persist one-shot mutations immediately when working from a project file."""
+    if _repl_mode or _dry_run:
+        return
+    sess = get_session()
+    if sess.has_project() and sess._modified and sess.project_path:
+        sess.save_session()
 
 
 def _print_dict(d: dict, indent: int = 0):
@@ -129,8 +139,9 @@ def cli(ctx, use_json, project_path, dry_run):
 
     Run without a subcommand to enter interactive REPL mode.
     """
-    global _json_output
+    global _json_output, _dry_run
     _json_output = use_json
+    _dry_run = dry_run
 
     if project_path:
         sess = get_session()
@@ -229,6 +240,7 @@ def project_settings(sample_rate, bit_depth, channels):
         sess.snapshot("Change settings")
         result = proj_mod.set_settings(proj, sample_rate, bit_depth, channels)
         output(result, "Settings updated:")
+        autosave_session_if_needed()
     else:
         output(proj.get("settings", {}), "Project settings:")
 
@@ -264,6 +276,7 @@ def track_add(name, track_type, volume, pan):
         volume=volume, pan=pan,
     )
     output(result, f"Added track: {result['name']}")
+    autosave_session_if_needed()
 
 
 @track.command("remove")
@@ -275,6 +288,7 @@ def track_remove(index):
     sess.snapshot(f"Remove track {index}")
     removed = track_mod.remove_track(sess.get_project(), index)
     output(removed, f"Removed track: {removed.get('name', '')}")
+    autosave_session_if_needed()
 
 
 @track.command("list")
@@ -298,6 +312,7 @@ def track_set(index, prop, value):
     result = track_mod.set_track_property(sess.get_project(), index, prop, value)
     output({"track": index, "property": prop, "value": value},
            f"Set track {index} {prop} = {value}")
+    autosave_session_if_needed()
 
 
 # -- Clip Commands ---------------------------------------------------------
@@ -336,6 +351,7 @@ def clip_add(track_index, source, name, start, end, trim_start, trim_end, volume
         trim_start=trim_start, trim_end=trim_end, volume=volume,
     )
     output(result, f"Added clip: {result['name']}")
+    autosave_session_if_needed()
 
 
 @clip.command("remove")
@@ -348,6 +364,7 @@ def clip_remove(track_index, clip_index):
     sess.snapshot(f"Remove clip {clip_index} from track {track_index}")
     removed = clip_mod.remove_clip(sess.get_project(), track_index, clip_index)
     output(removed, f"Removed clip: {removed.get('name', '')}")
+    autosave_session_if_needed()
 
 
 @clip.command("trim")
@@ -365,6 +382,7 @@ def clip_trim(track_index, clip_index, trim_start, trim_end):
         trim_start=trim_start, trim_end=trim_end,
     )
     output(result, "Clip trimmed")
+    autosave_session_if_needed()
 
 
 @clip.command("split")
@@ -380,6 +398,7 @@ def clip_split(track_index, clip_index, split_time):
         sess.get_project(), track_index, clip_index, split_time,
     )
     output(result, f"Split clip into 2 parts at {split_time}s")
+    autosave_session_if_needed()
 
 
 @clip.command("move")
@@ -395,6 +414,7 @@ def clip_move(track_index, clip_index, new_start):
         sess.get_project(), track_index, clip_index, new_start,
     )
     output(result, f"Moved clip to {new_start}s")
+    autosave_session_if_needed()
 
 
 @clip.command("list")
@@ -455,6 +475,7 @@ def effect_add(name, track_index, param):
     sess.snapshot(f"Add effect {name} to track {track_index}")
     result = fx_mod.add_effect(sess.get_project(), name, track_index, params)
     output(result, f"Added effect: {name}")
+    autosave_session_if_needed()
 
 
 @effect_group.command("remove")
@@ -467,6 +488,7 @@ def effect_remove(effect_index, track_index):
     sess.snapshot(f"Remove effect {effect_index} from track {track_index}")
     result = fx_mod.remove_effect(sess.get_project(), effect_index, track_index)
     output(result, f"Removed effect {effect_index}")
+    autosave_session_if_needed()
 
 
 @effect_group.command("set")
@@ -486,6 +508,7 @@ def effect_set(effect_index, param, value, track_index):
     fx_mod.set_effect_param(sess.get_project(), effect_index, param, value, track_index)
     output({"effect": effect_index, "param": param, "value": value},
            f"Set effect {effect_index} {param} = {value}")
+    autosave_session_if_needed()
 
 
 @effect_group.command("list")
@@ -514,6 +537,7 @@ def selection_set(start, end):
     sess = get_session()
     result = sel_mod.set_selection(sess.get_project(), start, end)
     output(result, f"Selection: {start}s - {end}s")
+    autosave_session_if_needed()
 
 
 @selection.command("all")
@@ -523,6 +547,7 @@ def selection_all():
     sess = get_session()
     result = sel_mod.select_all(sess.get_project())
     output(result, "Selected all")
+    autosave_session_if_needed()
 
 
 @selection.command("none")
@@ -532,6 +557,7 @@ def selection_none():
     sess = get_session()
     result = sel_mod.select_none(sess.get_project())
     output(result, "Selection cleared")
+    autosave_session_if_needed()
 
 
 @selection.command("info")
@@ -561,6 +587,7 @@ def label_add(start, end, text):
     sess.snapshot(f"Add label at {start}")
     result = label_mod.add_label(sess.get_project(), start, end, text)
     output(result, f"Added label: {text or f'at {start}s'}")
+    autosave_session_if_needed()
 
 
 @label.command("remove")
@@ -572,6 +599,7 @@ def label_remove(index):
     sess.snapshot(f"Remove label {index}")
     removed = label_mod.remove_label(sess.get_project(), index)
     output(removed, f"Removed label: {removed.get('text', '')}")
+    autosave_session_if_needed()
 
 
 @label.command("list")
@@ -671,6 +699,7 @@ def session_undo():
     sess = get_session()
     desc = sess.undo()
     output({"undone": desc}, f"Undone: {desc}")
+    autosave_session_if_needed()
 
 
 @session_group.command("redo")
@@ -680,6 +709,7 @@ def session_redo():
     sess = get_session()
     desc = sess.redo()
     output({"redone": desc}, f"Redone: {desc}")
+    autosave_session_if_needed()
 
 
 @session_group.command("history")

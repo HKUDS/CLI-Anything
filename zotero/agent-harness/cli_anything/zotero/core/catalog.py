@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import parse as _defused_parse
 from pathlib import Path
 from typing import Any
 
@@ -236,7 +237,7 @@ def list_styles(runtime: RuntimeContext) -> list[dict[str, Any]]:
     styles: list[dict[str, Any]] = []
     for path in sorted(styles_dir.glob("*.csl")):
         try:
-            root = ET.parse(path).getroot()
+            root = _defused_parse(path).getroot()
         except ET.ParseError:
             styles.append({"path": str(path), "id": None, "title": path.stem, "valid": False})
             continue

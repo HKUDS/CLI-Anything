@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+  <title>Real-World Demos — CLI-Anything Hub</title>
+  <meta name="description" content="Watch AI agents drive generated CLIs to produce complete, useful artifacts — CAD models, 3D scenes, diagrams, gameplay, captioned video, and live GIS — no GUI needed.">
+  <meta name="author" content="HKUDS and Yuhao Yang">
+  <meta name="copyright" content="Copyright: HKUDS. Lead author: Yuhao Yang (yuhao.page).">
+  <link rel="canonical" href="https://clianything.cc/demos.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="CLI-Anything Hub">
+  <meta property="og:title" content="Real-World Demos — CLI-Anything Hub">
+  <meta property="og:description" content="AI agents using generated CLIs to produce complete artifacts — no GUI needed.">
+  <meta property="og:url" content="https://clianything.cc/demos.html">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Real-World Demos — CLI-Anything Hub">
+  <meta name="twitter:description" content="Watch AI agents drive generated CLIs to produce real artifacts.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&display=swap" rel="stylesheet">
+  <style>
+    /* ===================== Tokens — shared with the Hub (Steel Sky default; set by JS per palette×theme) ===================== */
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117; --surface: #151b24;
+      --ink: #e8edf4; --ink-2: #9fb0c4; --ink-3: #647488;
+      --line: rgba(255,255,255,0.08);
+      --accent: #46b2f4; --accent2: #6cc6f8; --accent-rgb: 70,178,244;
+      --surface-rgb: 21,27,36; --accent-band: 203;
+      --ok: #54d196; --radius: 22px; --radius-sm: 13px;
+      --accent-ink: var(--accent2);
+      --glass-bg: linear-gradient(158deg, rgba(255,255,255,0.075), rgba(255,255,255,0.024) 46%, rgba(255,255,255,0.010));
+      --glass-bg-fallback: rgba(var(--surface-rgb), 0.86);
+      --glass-border: var(--line);
+      --glass-edge: rgba(255,255,255,0.14);
+      --glass-shadow: 0 24px 60px -22px rgba(0,0,0,0.62), 0 2px 8px -2px rgba(0,0,0,0.48);
+      --glass-shadow-hi: 0 38px 90px -28px rgba(0,0,0,0.70), 0 4px 14px -4px rgba(0,0,0,0.52);
+      --chip-bg: rgba(255,255,255,0.055);
+      --cmd-bg: rgba(0,0,0,0.30); --cmd-line: rgba(255,255,255,0.08);
+      --tint-s: 52%; --tint-l: 62%;
+      --ease: cubic-bezier(.22,.61,.36,1);
+      --spring: cubic-bezier(.34,1.32,.5,1);
+      --palette-transition: background .45s var(--ease), color .45s var(--ease), border-color .45s var(--ease);
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f4f6f9; --surface: #ffffff;
+      --ink: #14181f; --ink-2: #4a5568; --ink-3: #8595a8;
+      --line: rgba(20,40,80,0.10);
+      --accent: #1c8ee0; --accent2: #1573bd; --accent-rgb: 28,142,224;
+      --surface-rgb: 255,255,255;
+      --accent-ink: var(--accent2);
+      --glass-bg: linear-gradient(158deg, rgba(255,255,255,0.92), rgba(255,255,255,0.62) 48%, rgba(255,255,255,0.42));
+      --glass-bg-fallback: rgba(var(--surface-rgb), 0.92);
+      --glass-edge: rgba(255,255,255,0.96);
+      --glass-shadow: 0 22px 50px -24px rgba(30,44,70,0.22), 0 2px 6px -2px rgba(30,44,70,0.12);
+      --glass-shadow-hi: 0 34px 80px -28px rgba(30,44,70,0.28), 0 4px 12px -4px rgba(30,44,70,0.16);
+      --chip-bg: rgba(20,40,80,0.045);
+      --cmd-bg: rgba(20,40,80,0.05); --cmd-line: rgba(20,40,80,0.08);
+      --tint-s: 46%; --tint-l: 44%;
+    }
+    body, .nav.scrolled, .ed-media .media, .seg-btn { transition: var(--palette-transition); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 84px; -webkit-text-size-adjust: 100%; }
+    body { font-family: 'Hanken Grotesk', sans-serif; background: var(--bg); color: var(--ink);
+      line-height: 1.6; font-size: 16px; letter-spacing: -0.004em;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; min-height: 100vh; overflow-x: hidden; }
+    ::selection { background: rgba(var(--accent-rgb), 0.30); color: var(--ink); }
+    a { color: inherit; }
+    button { font-family: inherit; }
+    h1,h2,h3 { letter-spacing: -0.022em; line-height: 1.1; font-weight: 700; }
+    code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ambient + grain + glass (shared) */
+    .ambient { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+    .ambient i { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.7; }
+    .ambient .a { width: 60vw; max-width: 760px; aspect-ratio: 1; top: -18vw; right: -10vw;
+      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), transparent 64%); }
+    .ambient .b { width: 50vw; max-width: 620px; aspect-ratio: 1; bottom: -16vw; left: -12vw;
+      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), transparent 62%); }
+    .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.04; mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    .glass { position: relative; background: var(--glass-bg-fallback); border: 1px solid var(--glass-border); border-radius: var(--radius); box-shadow: var(--glass-shadow); }
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      .glass { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); } }
+    .glass::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 0 0 1px rgba(255,255,255,0.02); }
+
+    /* ===================== Nav (shared with Hub) ===================== */
+    .nav { position: sticky; top: 0; z-index: 40; border-bottom: 1px solid transparent; transition: border-color .3s, background .3s, backdrop-filter .3s; }
+    .nav.scrolled { border-color: var(--line); background: color-mix(in oklab, var(--bg) 78%, transparent);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); }
+    .nav-in { max-width: 1180px; margin: 0 auto; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; gap: 14px; height: 64px; }
+    .nav-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-weight: 800; font-size: 1.08rem; letter-spacing: -0.02em; }
+    .nav-brand-badge { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; flex-shrink: 0;
+      border: 1px solid var(--glass-border); background: var(--chip-bg); box-shadow: var(--glass-shadow); }
+    .nav-brand-badge svg { width: 64%; height: 64%; }
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-link { padding: 7px 11px; border-radius: 10px; text-decoration: none; color: var(--ink-2); font-size: 0.84rem; font-weight: 500;
+      transition: color .18s, background .18s; display: inline-flex; align-items: center; gap: 6px; }
+    .nav-link:hover { color: var(--ink); background: var(--chip-bg); }
+    .nav-link.active { color: var(--ink); background: var(--chip-bg); }
+    .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+    .nav-link-stars { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600; color: var(--accent-ink);
+      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 7px; padding: 1px 7px; font-variant-numeric: tabular-nums; }
+    .theme-toggle { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 11px;
+      border: 1px solid var(--line); background: var(--chip-bg); color: var(--ink-2); cursor: pointer; transition: color .18s, border-color .18s; }
+    .theme-toggle:hover { color: var(--ink); border-color: var(--ink-3); }
+    .theme-toggle svg { width: 17px; height: 17px; }
+    .theme-toggle .icon-moon { display: none; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: block; }
+    [data-theme="light"] .theme-toggle .icon-sun { display: none; }
+
+    /* Mobile nav drawer */
+    .nav-menu { display: flex; align-items: center; gap: 4px; }
+    .nav-toggle { display: none; position: relative; z-index: 70; place-items: center; width: 38px; height: 38px;
+      border-radius: 11px; border: 1px solid var(--line); background: var(--chip-bg); color: var(--ink); cursor: pointer;
+      transition: color .18s, border-color .18s; }
+    .nav-toggle:hover { border-color: var(--ink-3); }
+    .nav-toggle svg { width: 19px; height: 19px; }
+    .nav-toggle .icon-x { display: none; }
+    .nav-toggle.open .icon-bars { display: none; }
+    .nav-toggle.open .icon-x { display: block; }
+    .nav-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(2,5,10,0.5);
+      -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); opacity: 0; visibility: hidden;
+      transition: opacity .3s var(--ease), visibility .3s; }
+    .nav-scrim.open { opacity: 1; visibility: visible; }
+    .nav-menu.open { transform: none; }
+    @media (max-width: 860px) {
+      .nav-toggle { display: inline-grid; }
+      .nav-menu { position: fixed; top: 0; right: 0; height: 100dvh; width: min(82vw, 320px);
+        flex-direction: column; align-items: stretch; gap: 6px; padding: 80px 16px 28px;
+        background: var(--glass-bg-fallback); border-left: 1px solid var(--line);
+        box-shadow: -24px 0 64px -28px rgba(0,0,0,0.6); transform: translateX(106%);
+        transition: transform .34s var(--ease); overflow-y: auto; z-index: 60; }
+      .nav-menu .nav-link { padding: 12px 14px; font-size: 0.98rem; border-radius: 11px; color: var(--ink-2); }
+      .nav-menu .nav-link.active { color: var(--ink); background: var(--chip-bg); }
+      .nav-menu .nav-link svg { width: 19px; height: 19px; }
+      .nav-menu .nav-link-stars { margin-left: auto; }
+    }
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      @media (max-width: 860px) {
+        .nav-menu { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.4); backdrop-filter: blur(22px) saturate(1.4); }
+      }
+    }
+
+    .reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+    .reveal.in { opacity: 1; transform: none; }
+    [style*="--d"] { transition-delay: var(--d); }
+
+    /* ===================== Page header ===================== */
+    .phead { max-width: 1100px; margin: 0 auto; padding: 64px 22px 8px; text-align: center; }
+    .klabel { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-ink); }
+    .phead h1 { font-family: 'Newsreader', serif; font-weight: 400; color: var(--ink);
+      font-size: clamp(2.5rem, 7vw, 4.4rem); letter-spacing: -0.018em; line-height: 1.02; margin-top: 14px; }
+    .phead h1 em { font-style: italic; font-weight: 300; color: var(--accent2); }
+    [data-theme="dark"] .phead h1 em { color: var(--accent); }
+    .phead p { max-width: 60ch; margin: 20px auto 0; color: var(--ink-2); font-size: clamp(1rem, 2.2vw, 1.18rem); text-wrap: pretty; }
+    .phead p .lead { color: var(--ink); font-weight: 600; }
+    .phead-meta { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+    .phead-meta .stat { padding: 11px 20px; border-radius: 15px; text-align: center; min-width: 110px;
+      background: var(--glass-bg-fallback); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); position: relative; }
+    @supports ((backdrop-filter: blur(1px))) { .phead-meta .stat { background: var(--glass-bg); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); } }
+    .phead-meta .stat-num { font-family: 'Newsreader', serif; font-size: 2rem; line-height: 1; color: var(--accent2); }
+    [data-theme="dark"] .phead-meta .stat-num { color: var(--accent); }
+    .phead-meta .stat-label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-top: 7px; }
+
+    /* ===================== Editorial gallery ===================== */
+    .editorial { max-width: 1100px; margin: 56px auto 0; padding: 0 22px; display: flex; flex-direction: column; gap: 64px; }
+    .ed-row { display: grid; grid-template-columns: 1.22fr 1fr; gap: 40px; align-items: center; }
+    .ed-row:nth-child(even) .ed-media { order: 2; }
+    @media (max-width: 840px) { .ed-row { grid-template-columns: 1fr; gap: 22px; } .ed-row:nth-child(even) .ed-media { order: 0; } }
+    .ed-num { font-family: 'Newsreader', serif; font-style: italic; font-size: 1.05rem; color: var(--ink-3); }
+    .d-cat { display: inline-flex; align-items: center; gap: 7px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; color: hsl(var(--ch) var(--tint-s) 74%);
+      background: hsl(var(--ch) var(--tint-s) 52% / 0.14); border: 1px solid hsl(var(--ch) var(--tint-s) 55% / 0.3); vertical-align: middle; }
+    [data-theme="light"] .d-cat { color: hsl(var(--ch) calc(var(--tint-s) + 12%) 36%); }
+    .d-cat svg { width: 13px; height: 13px; }
+    .d-title { font-family: 'Newsreader', serif; font-weight: 400; font-size: clamp(1.7rem, 3.6vw, 2.3rem); line-height: 1.1; margin-top: 14px; letter-spacing: -0.01em; }
+    .d-title .app { font-style: italic; color: var(--accent-ink); }
+    .d-blurb { color: var(--ink-2); font-size: 1rem; margin-top: 14px; text-wrap: pretty; max-width: 46ch; }
+    .d-meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 18px; }
+    .d-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; padding: 5px 10px; border-radius: 8px;
+      background: var(--chip-bg); border: 1px solid var(--line); color: var(--ink-2); }
+    .d-pill b { color: var(--ink); font-weight: 600; }
+    .d-pill code { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--accent-ink); }
+    .d-foot { display: flex; align-items: center; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+    .d-contrib { display: inline-flex; align-items: center; gap: 9px; font-size: 0.82rem; color: var(--ink-2); text-decoration: none; }
+    .d-contrib:hover { color: var(--ink); }
+    .d-av { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-size: 0.64rem; font-weight: 700; text-transform: uppercase;
+      background: hsl(var(--ch) var(--tint-s) 52% / 0.2); color: hsl(var(--ch) var(--tint-s) 74%); border: 1px solid hsl(var(--ch) var(--tint-s) 55% / 0.35); }
+    [data-theme="light"] .d-av { color: hsl(var(--ch) calc(var(--tint-s) + 12%) 36%); }
+    .d-contrib b { color: var(--ink); font-weight: 600; }
+    /* Install command — parallel, low-key info (same code styling as the Hub, kept small). */
+    .ed-install { display: flex; align-items: center; gap: 10px; margin-top: 16px; max-width: 440px; }
+    .ed-install .lbl { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); flex-shrink: 0; }
+    .ed-cmd { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: var(--cmd-bg);
+      border: 1px solid var(--cmd-line); border-radius: 9px; padding: 7px 11px; }
+    .ed-cmd code { font-family: 'JetBrains Mono', monospace; font-size: 0.74rem; color: var(--accent-ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+    .ed-copy { border: 0; background: transparent; color: var(--ink-3); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; cursor: pointer; font-family: inherit; padding: 3px 5px; border-radius: 6px; flex-shrink: 0; transition: color .15s; }
+    .ed-copy:hover { color: var(--ink); }
+
+    /* media frame + chrome */
+    .ed-media { position: relative; }
+    .media { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: #05070b; box-shadow: var(--glass-shadow-hi); }
+    [data-theme="light"] .media { background: #e9edf3; }
+    .media-chrome { display: flex; align-items: center; gap: 7px; padding: 9px 13px; background: var(--cmd-bg); border-bottom: 1px solid var(--cmd-line); }
+    .media-chrome .dots { display: inline-flex; gap: 5px; }
+    .media-chrome .dots i { width: 9px; height: 9px; border-radius: 50%; }
+    .media-chrome .dots i:nth-child(1) { background: hsl(8 60% 60%); }
+    .media-chrome .dots i:nth-child(2) { background: hsl(45 70% 58%); }
+    .media-chrome .dots i:nth-child(3) { background: hsl(140 45% 55%); }
+    .media-chrome .url { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--ink-3); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .media-chrome .live { display: inline-flex; align-items: center; gap: 5px; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
+    .media-chrome .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+    .media-stage { position: relative; cursor: zoom-in; display: block; }
+    .media-stage img { display: block; width: 100%; height: auto; }
+    .media-zoom { position: absolute; bottom: 10px; right: 10px; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
+      background: rgba(0,0,0,0.5); color: #fff; opacity: 0; transition: opacity .2s; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    .media-stage:hover .media-zoom { opacity: 1; }
+    .media-zoom svg { width: 16px; height: 16px; }
+    .ba-pair { display: grid; grid-template-columns: 1fr 1fr; }
+    .ba-pair .media-stage:first-child { border-right: 1px solid var(--cmd-line); }
+    .ba-label { position: absolute; top: 9px; left: 9px; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #fff;
+      background: rgba(0,0,0,0.55); padding: 3px 8px; border-radius: 6px; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+    .artifact-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 0.78rem; font-weight: 600; cursor: pointer; margin-top: 14px;
+      border: 1px solid var(--line); background: var(--chip-bg); color: var(--accent-ink); padding: 8px 13px; border-radius: 10px; font-family: inherit; transition: border-color .18s; }
+    .artifact-toggle:hover { border-color: var(--accent); }
+    .artifact-toggle svg { width: 15px; height: 15px; transition: transform .3s; }
+    .artifact-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+    .artifact-panel { display: none; margin-top: 14px; }
+    .artifact-panel.open { display: block; animation: fade .35s var(--ease); }
+    @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* ===================== Closing CTA ===================== */
+    .demos-end { max-width: 1100px; margin: 72px auto 0; padding: 0 22px; }
+    .demos-end .inner { padding: 36px; border-radius: var(--radius); text-align: center;
+      background: var(--glass-bg-fallback); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); position: relative; overflow: hidden; }
+    @supports ((backdrop-filter: blur(1px))) { .demos-end .inner { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); } }
+    .demos-end .soon { font-family: 'Newsreader', serif; font-style: italic; color: var(--ink-3); font-size: 1.1rem; }
+    .demos-end h2 { font-family: 'Newsreader', serif; font-weight: 400; font-size: clamp(1.6rem, 3.6vw, 2.2rem); margin-top: 8px; }
+    .demos-end h2 em { font-style: italic; color: var(--accent-ink); }
+    .demos-end p { color: var(--ink-2); max-width: 56ch; margin: 12px auto 0; }
+    .demos-end .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
+    .btn-primary, .btn-secondary { display: inline-flex; align-items: center; gap: 9px; padding: 12px 20px; border-radius: 13px; text-decoration: none; font-weight: 700; font-size: 0.9rem; transition: transform .18s var(--ease), box-shadow .18s, border-color .18s; }
+    .btn-primary { color: #fff; background: linear-gradient(120deg, var(--accent2), var(--accent)); box-shadow: 0 12px 30px -14px rgba(var(--accent-rgb), 0.7); }
+    [data-theme="light"] .btn-primary { color: #fff; }
+    .btn-primary:hover { transform: translateY(-2px); }
+    .btn-secondary { color: var(--ink); border: 1px solid var(--glass-border); background: var(--chip-bg); }
+    .btn-secondary:hover { transform: translateY(-2px); border-color: var(--ink-3); }
+    .btn-primary svg, .btn-secondary svg { width: 17px; height: 17px; }
+
+    .footer { border-top: 1px solid var(--line); margin: 72px auto 0; max-width: 1180px; padding: 32px 22px 56px;
+      font-size: 0.84rem; color: var(--ink-3); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .footer a { color: var(--accent-ink); text-decoration: none; font-weight: 600; }
+    .footer a:hover { text-decoration: underline; }
+
+    /* lightbox */
+    .lightbox { position: fixed; inset: 0; z-index: 100; display: none; place-items: center; padding: 4vmin;
+      background: rgba(3,5,9,0.86); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); cursor: zoom-out; }
+    .lightbox.on { display: grid; animation: fade .25s var(--ease); }
+    .lightbox img { max-width: 94vw; max-height: 90vh; border-radius: 14px; box-shadow: 0 40px 120px -30px rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.12); }
+    .lightbox .lb-close { position: fixed; top: 18px; right: 22px; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+      background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.18); cursor: pointer; }
+    .lightbox .lb-close svg { width: 20px; height: 20px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001ms !important; scroll-behavior: auto !important; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+      .media-chrome .live i { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient"><i class="a"></i><i class="b"></i></div>
+  <div class="grain"></div>
+
+  <!-- Nav (shared with the Hub) -->
+  <nav class="nav" id="nav">
+    <div class="nav-in">
+      <a class="nav-brand" href="index.html" aria-label="Back to CLI-Anything Hub home"><span class="nav-brand-badge" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M8 16.5 18.5 24 8 31.5" stroke="currentColor" stroke-width="3.9" stroke-linecap="square" stroke-linejoin="miter" style="color: var(--accent);"/><path d="M24 29.2h16" stroke="currentColor" stroke-width="3.9" stroke-linecap="square" style="color: var(--ink);"/></svg></span>CLI-Hub</a>
+      <div class="nav-links">
+        <div class="nav-menu" id="navMenu">
+        <a class="nav-link" href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+          Home
+        </a>
+        <a class="nav-link active" href="demos.html" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="m10 9 4 2.5L10 14z" fill="currentColor" stroke="none"/></svg>
+          Demos
+        </a>
+        <a class="nav-link" href="index.html#matrices">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>
+          Matrices
+        </a>
+        <a class="nav-link" href="docs.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4.8A1.8 1.8 0 0 1 5.8 3H12v17H5.8A1.8 1.8 0 0 0 4 21.8z"/><path d="M20 4.8A1.8 1.8 0 0 0 18.2 3H12v17h6.2A1.8 1.8 0 0 1 20 21.8z"/></svg>
+          Docs
+        </a>
+        <a class="nav-link" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="m5.5 18.5 9.8-9.8"/><path d="m13.7 6.9 3.4 3.4"/><path d="M18 4v2.4"/><path d="M16.8 5.2h2.4"/><path d="M7.5 4.8v2"/><path d="M6.5 5.8h2"/><path d="M18.2 15.8v2"/><path d="M17.2 16.8h2"/></svg>
+          SKILL
+        </a>
+        <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
+          <svg viewBox="0 0 98 96" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
+          GitHub
+          <span class="nav-link-stars" data-github-stars aria-label="GitHub star count">--</span>
+        </a>
+        <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contribute</a>
+        </div>
+        <button class="theme-toggle keep" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="nav-toggle keep" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="navMenu">
+          <svg class="icon-bars" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <svg class="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="nav-scrim" id="navScrim"></div>
+  </nav>
+
+  <!-- Page header -->
+  <header class="phead">
+    <span class="klabel">Real-World Demos</span>
+    <h1>Agents, doing <em>real work</em></h1>
+    <p><span class="lead">AI agents using generated CLIs to produce complete, useful artifacts — no GUI needed.</span> Each run below is a real session: the agent reads state, issues commands, and ships an artifact you can open.</p>
+  </header>
+
+  <!-- Editorial gallery -->
+  <main class="editorial" id="editorial"></main>
+
+  <!-- Closing CTA -->
+  <section class="demos-end">
+    <div class="inner glass-none">
+      <div class="soon">More CLI demos coming soon.</div>
+      <h2>Built something with a CLI-Anything harness? <em>Show it off.</em></h2>
+      <p>Record a short run of your agent driving a generated CLI, and add it here. The Contributing Guide and PR Template walk you through it.</p>
+      <div class="actions">
+        <a class="btn-primary" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add your demo
+        </a>
+        <a class="btn-secondary" href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
+          Back to the Hub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>CLI-Anything Hub — agent-friendly CLI registry.</span>
+    <span><a href="index.html">Home</a> · <a href="index.html#matrices">Matrices</a> · <a href="https://github.com/HKUDS/CLI-Anything" target="_blank">GitHub</a></span>
+  </footer>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox">
+    <button class="lb-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <img id="lb-img" src="" alt="">
+  </div>
+
+  <script>
+    // ===================== Palette + theme (shared with the Hub) =====================
+    const PALETTES = {
+      steel: { label:'Steel', accentBand:209,
+        light:{ bg:'#f4f6f9', surface:'#ffffff', ink:'#14181f', ink2:'#4a5568', ink3:'#8595a8', line:'rgba(20,40,80,.10)', accent:'#2f6fb0', accent2:'#1f5793', accentRgb:'47,111,176', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0d1117', surface:'#151b24', ink:'#e8edf4', ink2:'#9fb0c4', ink3:'#647488', line:'rgba(255,255,255,.08)', accent:'#5b9bd6', accent2:'#7db4e6', accentRgb:'91,155,214', surfaceRgb:'21,27,36' } },
+      steelsky: { label:'Steel Sky', accentBand:203,
+        light:{ bg:'#f4f6f9', surface:'#ffffff', ink:'#14181f', ink2:'#4a5568', ink3:'#8595a8', line:'rgba(20,40,80,.10)', accent:'#1c8ee0', accent2:'#1573bd', accentRgb:'28,142,224', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0d1117', surface:'#151b24', ink:'#e8edf4', ink2:'#9fb0c4', ink3:'#647488', line:'rgba(255,255,255,.08)', accent:'#46b2f4', accent2:'#6cc6f8', accentRgb:'70,178,244', surfaceRgb:'21,27,36' } },
+      sky: { label:'Sky', accentBand:203,
+        light:{ bg:'#f4f9fe', surface:'#ffffff', ink:'#0f1f2d', ink2:'#465a6b', ink3:'#8299ac', line:'rgba(20,70,115,.10)', accent:'#1c8ee0', accent2:'#1573bd', accentRgb:'28,142,224', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0a1320', surface:'#121e2d', ink:'#e9f3fb', ink2:'#9bb4c9', ink3:'#5f7689', line:'rgba(255,255,255,.08)', accent:'#46b2f4', accent2:'#6cc6f8', accentRgb:'70,178,244', surfaceRgb:'18,30,45' } },
+      sage: { label:'Sage', accentBand:160,
+        light:{ bg:'#f3f8f4', surface:'#ffffff', ink:'#13211b', ink2:'#475a51', ink3:'#7f968a', line:'rgba(20,65,48,.10)', accent:'#2c9b78', accent2:'#1d8062', accentRgb:'44,155,120', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0b1410', surface:'#121d18', ink:'#e7f2eb', ink2:'#9ab4a7', ink3:'#5e7568', line:'rgba(255,255,255,.07)', accent:'#48c29c', accent2:'#67d0b1', accentRgb:'72,194,156', surfaceRgb:'18,29,24' } },
+      sand: { label:'Sand', accentBand:175,
+        light:{ bg:'#f8f5ef', surface:'#fffdf8', ink:'#221d15', ink2:'#585044', ink3:'#948979', line:'rgba(75,58,30,.12)', accent:'#1d7a71', accent2:'#145d57', accentRgb:'29,122,113', surfaceRgb:'255,253,248' },
+        dark:{ bg:'#13110b', surface:'#1b1811', ink:'#f1ece1', ink2:'#b2a797', ink3:'#796e5e', line:'rgba(255,255,255,.07)', accent:'#3eb2a4', accent2:'#5cc3b6', accentRgb:'62,178,164', surfaceRgb:'27,24,17' } },
+      blush: { label:'Blush', accentBand:3,
+        light:{ bg:'#faf6f4', surface:'#fffefd', ink:'#271d1c', ink2:'#5e504e', ink3:'#9b8a87', line:'rgba(90,50,45,.11)', accent:'#c25e5a', accent2:'#a4453f', accentRgb:'194,94,90', surfaceRgb:'255,254,253' },
+        dark:{ bg:'#140f0e', surface:'#1c1615', ink:'#f3eae8', ink2:'#b6a4a1', ink3:'#7d6b68', line:'rgba(255,255,255,.07)', accent:'#df8480', accent2:'#e89f9b', accentRgb:'223,132,128', surfaceRgb:'28,22,21' } },
+      mist: { label:'Mist', accentBand:222,
+        light:{ bg:'#f6f8fb', surface:'#ffffff', ink:'#171b22', ink2:'#4e586a', ink3:'#8893a6', line:'rgba(25,35,60,.09)', accent:'#3b6ef0', accent2:'#2f57cf', accentRgb:'59,110,240', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0a0d14', surface:'#12161f', ink:'#eef1f7', ink2:'#9aa6bd', ink3:'#606b82', line:'rgba(255,255,255,.07)', accent:'#5b8bff', accent2:'#789fff', accentRgb:'91,139,255', surfaceRgb:'18,22,31' } },
+    };
+    const DEFAULT_PALETTE = 'steelsky';
+    function getPalette() { const s = localStorage.getItem('palette'); return (s && PALETTES[s]) ? s : DEFAULT_PALETTE; }
+    function applyPalette(name) {
+      const p = PALETTES[name] || PALETTES[DEFAULT_PALETTE];
+      const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+      const t = (theme === 'light') ? p.light : p.dark;
+      const r = document.documentElement.style;
+      r.setProperty('--bg', t.bg); r.setProperty('--surface', t.surface);
+      r.setProperty('--ink', t.ink); r.setProperty('--ink-2', t.ink2); r.setProperty('--ink-3', t.ink3);
+      r.setProperty('--line', t.line); r.setProperty('--accent', t.accent); r.setProperty('--accent2', t.accent2);
+      r.setProperty('--accent-rgb', t.accentRgb); r.setProperty('--surface-rgb', t.surfaceRgb);
+      r.setProperty('--accent-band', String(p.accentBand));
+      document.documentElement.setAttribute('data-palette', name);
+    }
+    function getPreferredTheme() { const s = localStorage.getItem('theme'); if (s) return s; return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }
+    function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); applyPalette(getPalette()); }
+    function toggleTheme() { const cur = document.documentElement.getAttribute('data-theme') || 'dark'; const next = cur === 'dark' ? 'light' : 'dark'; applyTheme(next); localStorage.setItem('theme', next); }
+    applyTheme(getPreferredTheme());
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => { if (!localStorage.getItem('theme')) applyTheme(e.matches ? 'light' : 'dark'); });
+
+    // nav scrolled
+    (function () { const nav = document.getElementById('nav'); const on = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+      window.addEventListener('scroll', on, { passive: true }); on(); })();
+
+    // mobile nav drawer
+    (function () {
+      const toggle = document.getElementById('navToggle');
+      const menu = document.getElementById('navMenu');
+      const scrim = document.getElementById('navScrim');
+      if (!toggle || !menu) return;
+      function setOpen(open) {
+        menu.classList.toggle('open', open);
+        toggle.classList.toggle('open', open);
+        if (scrim) scrim.classList.toggle('open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+        document.body.style.overflow = open ? 'hidden' : '';
+      }
+      toggle.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
+      if (scrim) scrim.addEventListener('click', () => setOpen(false));
+      menu.addEventListener('click', (e) => { if (e.target.closest('a')) setOpen(false); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+      window.addEventListener('resize', () => { if (window.innerWidth > 860) setOpen(false); });
+    })();
+
+    // GitHub stars — shields.io badge first (CORS-friendly, no rate limit), API fallback. Matches the Hub.
+    const GITHUB_REPO_API = 'https://api.github.com/repos/HKUDS/CLI-Anything';
+    const GITHUB_STARS_BADGE_API = 'https://img.shields.io/github/stars/HKUDS/CLI-Anything.json';
+    function renderGitHubStars(label, title) {
+      document.querySelectorAll('[data-github-stars]').forEach(el => { el.textContent = label; el.setAttribute('aria-label', title); el.title = title; });
+    }
+    function formatCompactCount(value) {
+      return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: value >= 10000 ? 0 : 1 }).format(value);
+    }
+    function formatBadgeCount(value) {
+      if (typeof value !== 'string') return null;
+      const label = value.trim();
+      return label ? label.toUpperCase() : null;
+    }
+    (async function loadGitHubStars() {
+      try {
+        try {
+          const badgeResp = await fetch(GITHUB_STARS_BADGE_API);
+          if (badgeResp.ok) {
+            const badge = await badgeResp.json();
+            const badgeLabel = formatBadgeCount(badge.message || badge.value);
+            if (badgeLabel) { renderGitHubStars(badgeLabel, `${badgeLabel} GitHub stars`); return; }
+          }
+        } catch (_) {}
+        const resp = await fetch(GITHUB_REPO_API, { headers: { 'Accept': 'application/vnd.github+json' } });
+        if (!resp.ok) return;
+        const repo = await resp.json();
+        const stars = repo.stargazers_count;
+        if (typeof stars !== 'number') return;
+        renderGitHubStars(formatCompactCount(stars), `${stars.toLocaleString('en-US')} GitHub stars`);
+      } catch (_) {}
+    })();
+
+    // ===================== Demo data (verbatim from README · Real-World Demos) =====================
+    const A = 'assets/demos/';
+    const DEMOS = [
+      { id:'freecad', app:'FreeCAD', cat:'3D / CAD', hue:210, glyph:'cube',
+        title:'Curiosity Rover via Preview, Live Preview, and Trajectory',
+        blurb:'An agent incrementally assembles a Curiosity-inspired rover while publishing real FreeCAD preview bundles, refreshing a live preview session, and recording command-to-preview history for later replay.',
+        meta:[['Harness','cli-anything-freecad','code'],['Preview Stack','preview · live · trajectory'],['Artifact','Curiosity-style rover']],
+        media:{type:'gif', src:'freecad-curiosity-preview-trajectory.gif', url:'cli-anything-freecad · preview live', live:true},
+        contrib:{name:'Core team', sub:'CLI-Anything'} },
+      { id:'blender', app:'Blender', cat:'3D · Hard-surface', hue:28, glyph:'cube',
+        title:'Orbital Relay Drone via Preview, Live Preview, and Trajectory',
+        blurb:'An agent grows a hard-surface orbital relay drone under a real preview loop: each stage pushes new render-backed bundles, the live session tracks the current head, and the trajectory ties every command to its visual state.',
+        meta:[['Harness','cli-anything-blender','code'],['Preview Stack','preview · live · trajectory'],['Artifact','Orbital relay drone']],
+        media:{type:'gif', src:'blender-orbital-relay-drone-preview-trajectory.gif', url:'cli-anything-blender · preview live', live:true},
+        contrib:{name:'Core team', sub:'CLI-Anything'} },
+      { id:'drawio', app:'Draw.io', cat:'Diagramming', hue:250, glyph:'diagram',
+        title:'HTTPS Handshake Diagram',
+        blurb:'An agent creates a full HTTPS connection lifecycle diagram from scratch — TCP three-way handshake, TLS negotiation, encrypted data exchange, and TCP four-way termination — entirely through CLI commands.',
+        meta:[['Harness','cli-anything-drawio','code'],['Time','~4 min'],['Artifact','.drawio + .png']],
+        media:{type:'gif', src:'drawio-demo.gif', url:'cli-anything-drawio · build', live:true},
+        artifact:{label:'Final artifact', src:'drawio-https-handshake.png', alt:'HTTPS handshake sequence diagram'},
+        contrib:{name:'@zhangxilong-43', url:'https://github.com/zhangxilong-43'} },
+      { id:'sts2', app:'Slay the Spire II', cat:'Games', hue:350, glyph:'game',
+        title:'Game Automation',
+        blurb:'An agent plays through a Slay the Spire II run using the CLI harness — reading game state, selecting cards, choosing paths, and making strategic decisions in real-time.',
+        meta:[['Harness','cli-anything-slay-the-spire-ii','code'],['Artifact','Automated gameplay session']],
+        media:{type:'gif', src:'slay-the-spire-ii-gameplay.gif', url:'cli-anything-slay-the-spire-ii', live:true},
+        contrib:{name:'@TianyuFan0504', url:'https://github.com/TianyuFan0504'} },
+      { id:'videocaptioner', app:'VideoCaptioner', cat:'Video', hue:280, glyph:'video',
+        title:'Auto-Generated Subtitles',
+        blurb:'An agent uses the VideoCaptioner CLI to automatically generate and overlay styled subtitles onto video content, with bilingual text rendering and customizable formatting.',
+        meta:[['Harness','cli-anything-videocaptioner','code'],['Artifact','Captioned video frames']],
+        media:{type:'ba', a:{src:'videocaptioner-before.png', label:'Sub A'}, b:{src:'videocaptioner-after.png', label:'Sub B'}, url:'cli-anything-videocaptioner · before / after'},
+        contrib:{name:'@WEIFENG2333', url:'https://github.com/WEIFENG2333'} },
+      { id:'arcgis', app:'ArcGIS Pro', cat:'GIS · Live bridge', hue:160, glyph:'map',
+        title:'Live Agent Cartography via the MCP Bridge',
+        blurb:'An agent drives a live, open ArcGIS Pro session through an MCP bridge — reading the project, zooming to feature layers, running geoprocessing, and exporting layouts — each step executing inside Pro as you watch.',
+        meta:[['Harness','arcgis-pro','code'],['Mode','live-Pro MCP bridge'],['Artifact','Agent-driven map navigation']],
+        media:{type:'gif', src:'arcgis-pro-live-bridge-demo.gif', url:'arcgis-pro · MCP bridge', live:true},
+        contrib:{name:'@Jasper0122', url:'https://github.com/Jasper0122'} },
+    ];
+    // Install command per demo (CLI-Hub registry names) — parallel info on each card.
+    const DEMO_INSTALL = {
+      freecad: 'cli-hub install freecad', blender: 'cli-hub install blender', drawio: 'cli-hub install drawio',
+      sts2: 'cli-hub install slay_the_spire_ii', videocaptioner: 'cli-hub install videocaptioner', arcgis: 'cli-hub install arcgis-pro',
+    };
+    function installRow(d) {
+      const cmd = DEMO_INSTALL[d.id]; if (!cmd) return '';
+      return `<div class="ed-install"><span class="lbl">Install</span><span class="ed-cmd"><code>${cmd}</code>` +
+        `<button class="ed-copy" onclick="copyEd(this, '${cmd}')" aria-label="Copy install command">Copy</button></span></div>`;
+    }
+    function copyEd(btn, cmd) {
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(cmd).then(() => { const o = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = o; }, 1200); }).catch(() => {});
+    }
+    const GLYPHS = {
+      cube:'<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>',
+      diagram:'<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v4a2 2 0 0 0 2 2h9"/>',
+      game:'<rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 11v2M6 12h2"/><circle cx="16" cy="11.5" r=".6" fill="currentColor"/><circle cx="18" cy="13.5" r=".6" fill="currentColor"/>',
+      video:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none"/>',
+      map:'<path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v16M15 6v16"/>',
+    };
+    const svg = (g) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPHS[g]}</svg>`;
+    const ZOOM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>';
+
+    function pills(d) { return d.meta.map(([k,v,c]) => `<span class="d-pill"><b>${k}</b> ${c?`<code>${v}</code>`:v}</span>`).join(''); }
+    function contrib(d) {
+      const c = d.contrib;
+      const initials = c.url ? c.name.replace('@','').slice(0,2) : 'CA';
+      const inner = `<span class="d-av">${initials}</span><span>${c.url ? 'Contributed by <b>'+c.name+'</b>' : '<b>Core team</b> · '+c.sub}</span>`;
+      return c.url ? `<a class="d-contrib" href="${c.url}" target="_blank" rel="noopener">${inner}</a>` : `<span class="d-contrib">${inner}</span>`;
+    }
+    function media(m, id) {
+      const chrome = `<div class="media-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">${m.url||''}</span>${m.live?'<span class="live"><i></i>live</span>':''}</div>`;
+      if (m.type === 'ba') {
+        return `<div class="media">${chrome}<div class="ba-pair">
+          <div class="media-stage" data-full="${A+m.a.src}"><span class="ba-label">${m.a.label}</span><img loading="lazy" src="${A+m.a.src}" alt="${id} before"><span class="media-zoom">${ZOOM}</span></div>
+          <div class="media-stage" data-full="${A+m.b.src}"><span class="ba-label">${m.b.label}</span><img loading="lazy" src="${A+m.b.src}" alt="${id} after"><span class="media-zoom">${ZOOM}</span></div></div></div>`;
+      }
+      return `<div class="media">${chrome}<div class="media-stage" data-full="${A+m.src}"><img loading="lazy" src="${A+m.src}" alt="${id} demo"><span class="media-zoom">${ZOOM}</span></div></div>`;
+    }
+    function artifact(d) {
+      if (!d.artifact) return '';
+      return `<button class="artifact-toggle" aria-expanded="false" onclick="toggleArtifact(this)">${d.artifact.label}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="artifact-panel"><div class="media"><div class="media-stage" data-full="${A+d.artifact.src}"><img loading="lazy" src="${A+d.artifact.src}" alt="${d.artifact.alt}"><span class="media-zoom">${ZOOM}</span></div></div></div>`;
+    }
+    function toggleArtifact(btn) {
+      const open = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!open));
+      btn.nextElementSibling.classList.toggle('open', !open);
+    }
+
+    document.getElementById('editorial').innerHTML = DEMOS.map((d,i) => `
+      <article class="ed-row reveal" id="${d.id}" style="--ch:${d.hue}">
+        <div class="ed-media">${media(d.media, d.id)}${artifact(d)}</div>
+        <div class="ed-text">
+          <span class="d-cat">${svg(d.glyph)}${d.cat}</span>
+          <h2 class="d-title"><span class="app">${d.app}</span> — ${d.title}</h2>
+          <p class="d-blurb">${d.blurb}</p>
+          <div class="d-meta">${pills(d)}</div>
+          ${installRow(d)}
+          <div class="d-foot">${contrib(d)}</div>
+        </div>
+      </article>`).join('');
+
+    // reveal on scroll
+    (function () {
+      const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' });
+      document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+    })();
+
+    // lightbox
+    const lb = document.getElementById('lightbox'), lbImg = document.getElementById('lb-img');
+    document.addEventListener('click', (e) => {
+      const stage = e.target.closest('.media-stage');
+      if (stage && stage.dataset.full) { lbImg.src = stage.dataset.full; lb.classList.add('on'); return; }
+      if (e.target.closest('.lb-close') || e.target === lb) { lb.classList.remove('on'); lbImg.src = ''; }
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && lb.classList.contains('on')) { lb.classList.remove('on'); lbImg.src = ''; } });
+  </script>
+</body>
+</html>

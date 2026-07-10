@@ -45,7 +45,7 @@ Our CLI wraps the Obsidian Local REST API plugin with:
 | `/vault/{path}` | PUT | Create/update note |
 | `/vault/{path}` | DELETE | Delete note |
 | `/vault/{path}` | PATCH | Append/prepend to note |
-| `/search/` | POST | Search with Obsidian syntax |
+| `/search/` | POST | Structured search — Dataview DQL (`application/vnd.olrapi.dataview.dql+txt`) or JsonLogic (`application/vnd.olrapi.jsonlogic+json`) |
 | `/search/simple/` | POST | Plain text search |
 | `/active/` | GET | Get active note |
 | `/active/` | PUT | Open a note |
@@ -68,7 +68,7 @@ All requests use HTTPS with a self-signed certificate (`verify=False`).
 | `vault update <path>` | `PUT /vault/{path}` |
 | `vault delete <path>` | `DELETE /vault/{path}` |
 | `vault append <path>` | `PATCH /vault/{path}` |
-| `search query <q>` | `POST /search/` |
+| `search query <q> [--type dql\|jsonlogic]` | `POST /search/` (raw body, vendor Content-Type) |
 | `search simple <q>` | `POST /search/simple/` |
 | `note active` | `GET /active/` |
 | `note open <path>` | `PUT /active/` |

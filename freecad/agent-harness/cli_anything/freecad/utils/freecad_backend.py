@@ -47,10 +47,11 @@ _INSTALL_INSTRUCTIONS = textwrap.dedent("""\
 """)
 
 # Executable names to search for, in priority order
-_FREECAD_NAMES = ["freecadcmd", "FreeCADCmd", "freecad", "FreeCAD"]
+_FREECAD_CMD_NAMES = ["freecadcmd", "FreeCADCmd", "freecad", "FreeCAD"]
+_FREECAD_GUI_NAMES = ["freecad", "FreeCAD", "freecadcmd", "FreeCADCmd"]
 
 
-def find_freecad() -> str:
+def find_freecad(gui_required: bool = False) -> str:
     """Locate the FreeCAD console executable on the system.
 
     Search order:
@@ -76,8 +77,10 @@ def find_freecad() -> str:
     if env_path and os.path.isfile(env_path):
         return os.path.abspath(env_path)
 
+    names = _FREECAD_GUI_NAMES if gui_required else _FREECAD_CMD_NAMES
+
     # 2. On PATH
-    for name in _FREECAD_NAMES:
+    for name in names:
         which = shutil.which(name)
         if which:
             return os.path.abspath(which)
@@ -131,14 +134,19 @@ def _run(
     *,
     timeout: int = 120,
     check: bool = False,
+    env: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Run a subprocess and return a normalised result dict."""
     try:
+        proc_env = os.environ.copy()
+        if env:
+            proc_env.update(env)
         proc = subprocess.run(
             args,
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=proc_env,
         )
         result: Dict[str, Any] = {
             "ok": proc.returncode == 0,
@@ -178,6 +186,31 @@ def _write_temp_script(content: str) -> str:
     finally:
         os.close(fd)
     return path
+
+
+def _is_gui_wrapper_script(path: str) -> bool:
+    """Return True when *path* looks like the local GUI-launch wrapper.
+
+    On this machine the `freecad` command is a shell wrapper that dispatches to
+    either the GUI binary or `freecadcmd`. When a Python script path is passed,
+    the wrapper defaults to console mode unless we explicitly ask for the GUI
+    binary.
+    """
+    try:
+        resolved = Path(path).resolve()
+        if not resolved.is_file():
+            return False
+        head = resolved.read_bytes()[:4096]
+    except OSError:
+        return False
+    return b"SCRIPT_MODE" in head and b"xvfb-run" in head and b"freecadcmd" in head
+
+
+def _macro_command(freecad: str, script_path: str, *, gui_required: bool) -> list[str]:
+    """Build the argv used to execute a FreeCAD macro script."""
+    if gui_required and _is_gui_wrapper_script(freecad):
+        return [freecad, "freecad", script_path]
+    return [freecad, script_path]
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +257,8 @@ def get_version() -> str:
 def run_macro(
     script_path: str,
     timeout: int = 120,
+    gui_required: bool = False,
+    env: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Execute a FreeCAD Python macro script headlessly.
 
@@ -239,10 +274,10 @@ def run_macro(
     dict
         ``{"command": str, "returncode": int, "stdout": str, "stderr": str}``
     """
-    freecad = find_freecad()
+    freecad = find_freecad(gui_required=gui_required)
     script_path = str(Path(script_path).resolve())
 
-    result = _run([freecad, script_path], timeout=timeout)
+    result = _run(_macro_command(freecad, script_path, gui_required=gui_required), timeout=timeout, env=env)
 
     return {
         "command": result["command"],
@@ -250,6 +285,28 @@ def run_macro(
         "stdout": result["stdout"],
         "stderr": result["stderr"],
     }
+
+
+def run_macro_content(
+    script_content: str,
+    timeout: int = 120,
+    gui_required: bool = False,
+    env: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """Execute macro content by writing it to a temp file first."""
+    script_path = _write_temp_script(script_content)
+    try:
+        return run_macro(
+            script_path,
+            timeout=timeout,
+            gui_required=gui_required,
+            env=env,
+        )
+    finally:
+        try:
+            os.unlink(script_path)
+        except OSError:
+            pass
 
 
 def export_headless(
@@ -287,15 +344,7 @@ def export_headless(
     output_path = os.path.abspath(output_path)
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-    script_path = _write_temp_script(macro_content)
-    try:
-        result = run_macro(script_path, timeout=timeout)
-    finally:
-        # Best-effort cleanup of the temp script
-        try:
-            os.unlink(script_path)
-        except OSError:
-            pass
+    result = run_macro_content(macro_content, timeout=timeout)
 
     if result["returncode"] != 0:
         raise RuntimeError(

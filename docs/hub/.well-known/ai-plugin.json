@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "CLI-Anything Hub",
+  "name_for_model": "cli_anything_hub",
+  "description_for_human": "Discover, install, and launch agent-friendly CLI tools for GUI applications, developer tools, creative software, web APIs, and public SaaS platforms.",
+  "description_for_model": "Use CLI-Anything Hub to find CLI tools by software name, category, or use case. The hub exposes public read-only registries and install guidance. Install with pip install cli-anything-hub, then use cli-hub list, cli-hub search, cli-hub info, cli-hub install, and cli-hub launch.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://clianything.cc/openapi.json",
+    "is_user_authenticated": false
+  },
+  "logo_url": "https://github.com/HKUDS.png",
+  "contact_email": "yuhao@yuhao.page",
+  "legal_info_url": "https://clianything.cc/pricing.md"
+}

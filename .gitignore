@@ -13,8 +13,10 @@
 # Step 2: Allow .gitignore, README, assets, and marketplace
 !.gitignore
 !/README.md
+!/CITATION.cff
 !/CONTRIBUTING.md
 !/SECURITY.md
+!/FIX_NOTES.md
 !/assets/
 !/.pi-extension/
 /.pi-extension/cli-anything/node_modules
@@ -23,31 +25,16 @@
 /.github/*
 !/.github/workflows/
 !/.github/scripts/
+!/.github/CODEOWNERS
+!/.github/labeler.yml
 !/.github/PULL_REQUEST_TEMPLATE.md
 !/.github/ISSUE_TEMPLATE/
-
-# Allow examples directory
-!/examples/
-# Ignore everything inside examples first
-/examples/*
-# Then allow only the subdirs and files we need
-!/examples/README.md
-!/examples/drawio/
-!/examples/slay_the_spire_ii/
-!/examples/videocaptioner/
-# Inside each subdir, ignore everything then allow specific files
-/examples/drawio/*
-!/examples/drawio/drawio_demo.gif
-!/examples/drawio/https_handshake.png
-/examples/slay_the_spire_ii/*
-!/examples/slay_the_spire_ii/example_preview.gif
-/examples/videocaptioner/*
-!/examples/videocaptioner/videocaptioner_before.png
-!/examples/videocaptioner/videocaptioner_after.png
 
 # Step 3: Allow cli-anything-plugin, codex-skill, and skill_generation tests
 !/cli-anything-plugin/
 !/codex-skill/
+!/hermes-skill/
+!/reasonix-skill/
 !/skill_generation/
 !/openclaw-skill/
 !/cli-hub-meta-skill/
@@ -68,6 +55,7 @@
 !/zotero/
 !/mubu/
 !/obs-studio/
+!/nslogger/
 !/kdenlive/
 !/shotcut/
 !/anygen/
@@ -80,8 +68,10 @@
 !/dify-workflow/
 !/adguardhome/
 !/novita/
+!/minimax/
 !/ollama/
 !/browser/
+!/web-yu-pri/
 !/seaclip/
 !/pm2/
 !/chromadb/
@@ -98,7 +88,23 @@
 !/QGIS/
 !/n8n/
 !/obsidian/
-
+!/joplin/
+!/unrealinsights/
+!/firefly-iii/
+!/nsight-graphics/
+!/lldb/
+!/macrocli/
+!/sbox/
+!/quietshrink/
+!/mailchimp/
+!/3MF/
+!/calibre/
+!/rekordbox/
+!/eez-studio/
+!/live2d/
+!/tigris/
+!/cc-switch/
+!/siyuan/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
 /gimp/.*
@@ -116,6 +122,8 @@
 /mubu/.*
 /obs-studio/*
 /obs-studio/.*
+/nslogger/*
+/nslogger/.*
 /kdenlive/*
 /kdenlive/.*
 /shotcut/*
@@ -142,6 +150,8 @@
 /ollama/.*
 /browser/*
 /browser/.*
+/web-yu-pri/*
+/web-yu-pri/.*
 /seaclip/*
 /seaclip/.*
 /pm2/*
@@ -170,6 +180,8 @@
 /openscreen/.*
 /QGIS/*
 /QGIS/.*
+/3MF/*
+/3MF/.*
 /cloudanalyzer/*
 /cloudanalyzer/.*
 /wiremock/*
@@ -180,16 +192,49 @@
 /n8n/.*
 /obsidian/*
 /obsidian/.*
+/joplin/*
+/joplin/.*
+/unrealinsights/*
+/unrealinsights/.*
+/nsight-graphics/*
+/nsight-graphics/.*
+/lldb/*
+/lldb/.*
+/macrocli/*
+/macrocli/.*
+/sbox/*
+/sbox/.*
+/quietshrink/*
+/quietshrink/.*
+/mailchimp/*
+/mailchimp/.*
+/calibre/*
+/calibre/.*
+/rekordbox/*
+/rekordbox/.*
+/eez-studio/*
+/eez-studio/.*
+/live2d/*
+/live2d/.*
+/tigris/*
+/tigris/.*
+/cc-switch/*
+/cc-switch/.*
+/siyuan/*
+/siyuan/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
 !/blender/agent-harness/
 !/inkscape/agent-harness/
 !/audacity/agent-harness/
+!/wavetone/
+!/wavetone/agent-harness/
 !/libreoffice/agent-harness/
 !/zotero/agent-harness/
 !/mubu/agent-harness/
 !/obs-studio/agent-harness/
+!/nslogger/agent-harness/
 !/kdenlive/agent-harness/
 !/shotcut/agent-harness/
 !/anygen/agent-harness/
@@ -202,8 +247,10 @@
 !/dify-workflow/agent-harness/
 !/adguardhome/agent-harness/
 !/novita/agent-harness/
+!/minimax/agent-harness/
 !/ollama/agent-harness/
 !/browser/agent-harness/
+!/web-yu-pri/agent-harness/
 !/seaclip/agent-harness/
 !/pm2/agent-harness/
 !/chromadb/agent-harness/
@@ -218,6 +265,7 @@
 !/renderdoc/agent-harness/
 !/cloudcompare/agent-harness/
 !/openscreen/agent-harness/
+!/3MF/agent-harness/
 !/cloudanalyzer/
 !/cloudanalyzer/agent-harness/
 !/wiremock/
@@ -226,8 +274,30 @@
 !/QGIS/agent-harness/
 !/n8n/agent-harness/
 !/obsidian/agent-harness/
+!/joplin/agent-harness/
+!/calibre/agent-harness/
 !/safari/
 !/safari/agent-harness/
+!/unrealinsights/agent-harness/
+!/firefly-iii/agent-harness/
+!/nsight-graphics/agent-harness/
+!/lldb/agent-harness/
+!/macrocli/agent-harness/
+!/sbox/agent-harness/
+!/quietshrink/agent-harness/
+!/mailchimp/agent-harness/
+!/live2d/agent-harness/
+!/rekordbox/agent-harness/
+!/eez-studio/agent-harness/
+!/tigris/agent-harness/
+!/cc-switch/agent-harness/
+!/siyuan/agent-harness/
+
+# Exclude non-gedit demo macros from macrocli (local only)
+/macrocli/agent-harness/cli_anything/macrocli/macro_definitions/demo/flameshot*
+/macrocli/agent-harness/cli_anything/macrocli/macro_definitions/demo/kolourpaint*
+/macrocli/agent-harness/cli_anything/macrocli/macro_definitions/demo/snapshots/
+
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
@@ -248,6 +318,7 @@
 
 assets/gen_typing_gif.py
 !README_CN.md
+!README_DE.md
 !opencode-commands/
 !/qoder-plugin/
 
@@ -255,13 +326,20 @@ assets/gen_typing_gif.py
 !/registry.json
 !/public_registry.json
 !/matrix_registry.json
-!/docs/
-/docs/*
-!/docs/hub/
-/docs/hub/registry-dates.json
+# docs/* is always ignored — working documents stay local and are never committed.
+# (Previously-tracked files under docs/ remain in the index until explicitly removed.)
+/docs/
+# CLI-Matrix is unshipped/confidential — never track anything under docs/cli-matrix/.
+/docs/cli-matrix/
+
+# Build-time vendored matrix skill content (generated by cli-hub setup.py build_py/sdist)
+/cli-hub/cli_hub/_matrix_data/
 !/notebooklm/
 /notebooklm/*
 /notebooklm/.*
 !/notebooklm/agent-harness/
 !/intelwatch/
 !/intelwatch/agent-harness/
+!/jumpserver/
+!/jumpserver/agent-harness/
+!/cli_anything/jumpserver/

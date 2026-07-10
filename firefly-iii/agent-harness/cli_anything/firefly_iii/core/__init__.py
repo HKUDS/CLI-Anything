@@ -1,0 +1,3 @@
+r"""
+Core functionality package
+"""

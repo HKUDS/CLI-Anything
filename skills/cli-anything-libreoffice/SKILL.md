@@ -59,7 +59,9 @@ Document management commands.
 | Command | Description |
 |---------|-------------|
 | `new` | Create a new document |
-| `open` | Open an existing project file |
+| `open` | Open project JSON, or import an existing Office/ODF file |
+| `import` | Import an existing Office/ODF file to project JSON |
+| `import-formats` | List supported import formats |
 | `save` | Save the current document |
 | `info` | Show document information |
 | `profiles` | List available page profiles |
@@ -188,6 +190,7 @@ The CLI maintains session state with:
 
 - **Undo/Redo**: Up to 50 levels of history
 - **Project persistence**: Save/load project state as JSON
+- **Existing file import**: Convert ODF/DOCX/XLSX/PPTX and related formats into editable project JSON
 - **Session tracking**: Track modifications and changes
 
 ## Output Formats
@@ -213,7 +216,8 @@ When using this CLI programmatically:
 2. **Check return codes** - 0 for success, non-zero for errors
 3. **Parse stderr** for error messages on failure
 4. **Use absolute paths** for all file operations
-5. **Verify outputs exist** after export operations
+5. **Import existing Office files to JSON first** with `document import input.docx -o work.json`
+6. **Verify outputs exist** after export operations
 
 ## More Information
 

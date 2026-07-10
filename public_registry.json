@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-04-18"
+    "updated": "2026-06-19"
   },
   "clis": [
     {
@@ -337,6 +337,159 @@
         {
           "name": "yanmingyu92",
           "url": "https://github.com/yanmingyu92"
+        }
+      ]
+    },
+    {
+      "name": "deployhq",
+      "display_name": "DeployHQ CLI",
+      "version": "0.16.3",
+      "description": "Deploy code, manage projects/servers, run and monitor deployments via the DeployHQ platform — for humans and AI agents",
+      "category": "devops",
+      "requires": "DeployHQ account (free tier available); Homebrew for the default install path",
+      "homepage": "https://www.deployhq.com",
+      "source_url": "https://github.com/deployhq/deployhq-cli",
+      "package_manager": "brew",
+      "install_strategy": "command",
+      "install_cmd": "brew install deployhq/tap/dhq",
+      "uninstall_cmd": "brew uninstall dhq",
+      "update_cmd": "brew upgrade dhq",
+      "skill_md": "https://github.com/deployhq/deployhq-cli/blob/main/skills/deployhq/SKILL.md",
+      "entry_point": "dhq",
+      "contributors": [
+        {
+          "name": "MartaKar",
+          "url": "https://github.com/MartaKar"
+        }
+      ]
+    },
+    {
+      "name": "obsidian-agent-cli",
+      "display_name": "Obsidian CLI",
+      "version": "0.1.1",
+      "description": "Full-featured CLI for Obsidian — manage notes, canvases, Excalidraw diagrams, Kanban boards, periodic notes, git, tasks, and more. Includes an AI agent skill for persistent knowledge capture and project memory.",
+      "category": "productivity",
+      "requires": "Obsidian desktop app, Local REST API community plugin",
+      "homepage": "https://obsidian.md",
+      "source_url": "https://github.com/ProxyLandLLC/obsidian-agent-cli",
+      "install_cmd": "pip install obsidian-agent-cli",
+      "entry_point": "obsidian-agent",
+      "skill_md": "https://github.com/ProxyLandLLC/obsidian-agent-cli/blob/v0.1.1/SKILL.md",
+      "contributors": [
+        {
+          "url": "https://github.com/ProxyLandLLC",
+          "name": "ProxyLandLLC"
+        }
+      ]
+    },
+    {
+      "name": "arcgis-pro",
+      "display_name": "ArcGIS Pro",
+      "version": "0.1.0",
+      "description": "Agent-native CLI for ArcGIS Pro (ArcPy): professional cartography (layouts + map series), geoprocessing, and feature query/edit — plus a live-Pro MCP bridge that drives the open session.",
+      "category": "scientific",
+      "platform": "windows",
+      "requires": "Windows only — ArcGIS Pro is Windows-only. Needs a licensed ArcGIS Pro install with ArcPy (its bundled arcgispro-py3 Python); the optional live-Pro MCP bridge additionally needs the .NET 8 SDK.",
+      "homepage": "https://www.esri.com/en-us/arcgis/products/arcgis-pro/overview",
+      "source_url": "https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro",
+      "package_manager": "pip",
+      "install_cmd": "pip install git+https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro.git@v0.1.0",
+      "entry_point": "cli-anything-arcgis-pro",
+      "skill_md": "https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro/blob/v0.1.0/SKILL.md",
+      "contributors": [
+        {
+          "name": "Jasper0122",
+          "url": "https://github.com/Jasper0122"
+        }
+      ]
+    },
+    {
+      "name": "cloakbrowser",
+      "display_name": "CloakBrowser CLI",
+      "version": "latest",
+      "description": "Agent-friendly CLI for CloakBrowser — stealth Chromium that passes every bot detection test. Covers fingerprint flags, humanize behaviors, page operations, content extraction, cookies, storage, network, multi-page sessions, and CDP gateway.",
+      "category": "web",
+      "requires": "Node.js >= 20, cloakbrowser >= 0.3.0, playwright-core >= 1.40.0",
+      "homepage": "https://github.com/dreamor/cloakbrowser-cli",
+      "source_url": "https://github.com/dreamor/cloakbrowser-cli",
+      "package_manager": "npm",
+      "npm_package": "@dreamor/cloakbrowser-cli",
+      "install_cmd": "npm install -g @dreamor/cloakbrowser-cli cloakbrowser playwright-core",
+      "npx_cmd": "npx @dreamor/cloakbrowser-cli",
+      "skill_md": "https://github.com/dreamor/cloakbrowser-cli/blob/main/SKILL.md",
+      "entry_point": "cloak",
+      "contributors": [
+        {
+          "name": "dreamor",
+          "url": "https://github.com/dreamor"
+        }
+      ]
+    },
+    {
+      "name": "smithue-cli",
+      "display_name": "SmithUE CLI",
+      "version": "0.8.0",
+      "description": "CLI tool for controlling Unreal Engine editor via SmithUE plugin. Enables AI agents to execute editor commands, list tools, search capabilities, and monitor editor status.",
+      "category": "devtools",
+      "platform": "windows",
+      "requires": "Node.js >=18; Unreal Engine with SmithUE plugin running (Windows only)",
+      "homepage": "https://github.com/123dx-svg/smithue-cli",
+      "source_url": "https://github.com/123dx-svg/smithue-cli",
+      "package_manager": "npm",
+      "npm_package": "smithue-cli",
+      "install_cmd": "npm install -g smithue-cli",
+      "npx_cmd": "npx smithue-cli",
+      "entry_point": "smithue-cli",
+      "skill_md": "https://raw.githubusercontent.com/123dx-svg/smithue-cli/970f4b86b8b0671728585979b3c974829b4f47d0/skills/SKILL.md",
+      "engines": {
+        "node": ">=18"
+      },
+      "contributors": [
+        {
+          "name": "123dx-svg",
+          "url": "https://github.com/123dx-svg"
+        }
+      ]
+    },
+    {
+      "name": "browser-cdp",
+      "display_name": "Browser CDP",
+      "version": "0.1.0",
+      "description": "Browser automation via raw Chrome DevTools Protocol — connects to YOUR existing Chrome, no extensions, no new browser, inherits all cookies and sessions",
+      "category": "web",
+      "requires": "Chrome/Chromium with --remote-debugging-port=9222, Python >= 3.10",
+      "homepage": "https://github.com/Uname58/cdp-agent-kit",
+      "source_url": "https://github.com/Uname58/cdp-agent-kit",
+      "package_manager": "pip",
+      "install_strategy": "command",
+      "install_cmd": "pip install git+https://github.com/Uname58/cdp-agent-kit.git#subdirectory=contrib/cli-anything-harness/agent-harness",
+      "uninstall_cmd": "pip uninstall -y cli-anything-browser-cdp",
+      "update_cmd": "pip install --upgrade --force-reinstall git+https://github.com/Uname58/cdp-agent-kit.git#subdirectory=contrib/cli-anything-harness/agent-harness",
+      "skill_md": "https://raw.githubusercontent.com/Uname58/cdp-agent-kit/master/contrib/cli-anything-harness/agent-harness/SKILL.md",
+      "entry_point": "cli-anything-browser-cdp",
+      "contributors": [
+        {
+          "name": "Uname58",
+          "url": "https://github.com/Uname58"
+        }
+      ]
+    },
+    {
+      "name": "pieces",
+      "display_name": "Pieces OS CLI",
+      "version": "1.0.0",
+      "description": "Agent-native CLI for Pieces OS — persistent long-term memory for developers. Search, create, and manage memory assets, snippets, and models via Pieces OS REST API.",
+      "category": "productivity",
+      "requires": "Pieces OS running locally (http://localhost:39300)",
+      "homepage": "https://pieces.app",
+      "source_url": "https://github.com/goddardoven110907/cli-anything-pieces",
+      "install_cmd": "pip install git+https://github.com/goddardoven110907/cli-anything-pieces.git",
+      "entry_point": "cli-anything-pieces",
+      "skill_md": "https://github.com/goddardoven110907/cli-anything-pieces/blob/master/README.md",
+      "contributors": [
+        {
+          "name": "goddardoven110907",
+          "url": "https://github.com/goddardoven110907"
         }
       ]
     }

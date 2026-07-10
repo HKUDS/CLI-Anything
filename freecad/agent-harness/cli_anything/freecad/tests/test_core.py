@@ -8,6 +8,7 @@ beyond pytest.
 import json
 import math
 import os
+from pathlib import Path
 
 import pytest
 
@@ -22,9 +23,11 @@ from cli_anything.freecad.core.document import (
 from cli_anything.freecad.core.parts import (
     PRIMITIVES,
     add_part,
+    align_part,
     boolean_op,
     get_part,
     list_parts,
+    part_bounds,
     remove_part,
     transform_part,
 )
@@ -40,6 +43,9 @@ from cli_anything.freecad.core.sketch import (
     list_sketches,
 )
 from cli_anything.freecad.core.body import (
+    additive_box,
+    additive_cone,
+    additive_cylinder,
     chamfer,
     create_body,
     datum_plane,
@@ -48,11 +54,14 @@ from cli_anything.freecad.core.body import (
     fillet,
     get_body,
     hole_feature,
+    linear_pattern,
     list_bodies,
     local_coordinate_system,
     pad,
     pocket,
+    polar_pattern,
     revolution,
+    subtractive_box,
     toggle_freeze,
 )
 from cli_anything.freecad.core.materials import (
@@ -64,7 +73,10 @@ from cli_anything.freecad.core.materials import (
     list_presets,
     set_material_property,
 )
+from cli_anything.freecad.core import preview as preview_mod
+from cli_anything.freecad.core import motion as motion_mod
 from cli_anything.freecad.core.session import Session
+from cli_anything.freecad.utils import freecad_backend
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +89,16 @@ def _make_project(**overrides):
     proj = create_document(name="TestProject")
     proj.update(overrides)
     return proj
+
+
+def _make_wrapper_script(path: Path) -> Path:
+    path.write_text(
+        "#!/bin/bash\n"
+        "SCRIPT_MODE=1\n"
+        "xvfb-run freecadcmd \"$@\"\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 # ===========================================================================
@@ -140,6 +162,7 @@ class TestDocument:
         assert info["sketches_count"] == 0
         assert info["bodies_count"] == 0
         assert info["materials_count"] == 0
+        assert info["motions_count"] == 0
 
     def test_get_info_with_data(self):
         proj = create_document(name="DataTest")
@@ -213,6 +236,71 @@ class TestParts:
         proj = _make_project()
         with pytest.raises(ValueError, match="Unknown part_type"):
             add_part(proj, "hexagon")
+
+    def test_part_bounds_reports_world_space_box(self):
+        proj = _make_project()
+        add_part(
+            proj,
+            "box",
+            name="BoundsBox",
+            params={"length": 20.0, "width": 8.0, "height": 6.0},
+            position=[5.0, 10.0, 15.0],
+        )
+        bounds = part_bounds(proj, 0)
+        assert bounds["local_bounding_box"]["min"] == {"x": 0.0, "y": 0.0, "z": 0.0}
+        assert bounds["local_bounding_box"]["max"] == {"x": 20.0, "y": 8.0, "z": 6.0}
+        assert bounds["world_bounding_box"]["min"] == {"x": 5.0, "y": 10.0, "z": 15.0}
+        assert bounds["world_bounding_box"]["max"] == {"x": 25.0, "y": 18.0, "z": 21.0}
+
+    def test_align_part_matches_bbox_faces(self):
+        proj = _make_project()
+        add_part(
+            proj,
+            "box",
+            name="Base",
+            params={"length": 20.0, "width": 10.0, "height": 6.0},
+            position=[0.0, 0.0, 0.0],
+        )
+        add_part(
+            proj,
+            "box",
+            name="Cap",
+            params={"length": 8.0, "width": 6.0, "height": 4.0},
+            position=[100.0, 50.0, 20.0],
+        )
+
+        result = align_part(
+            proj,
+            1,
+            0,
+            x="min",
+            to_x="max",
+            y="center",
+            to_y="center",
+            z="min",
+            to_z="max",
+        )
+
+        assert result["placement"]["position"] == [20.0, 2.0, 6.0]
+        aligned = part_bounds(proj, 1)["world_bounding_box"]
+        target = part_bounds(proj, 0)["world_bounding_box"]
+        assert aligned["min"]["x"] == pytest.approx(target["max"]["x"])
+        assert aligned["center"]["y"] == pytest.approx(target["center"]["y"])
+        assert aligned["min"]["z"] == pytest.approx(target["max"]["z"])
+
+    def test_align_part_requires_supported_bounds(self):
+        proj = _make_project()
+        add_part(proj, "box", name="Base")
+        add_part(
+            proj,
+            "cylinder",
+            name="Tool",
+            params={"radius": 2.0, "height": 12.0},
+            position=[4.0, 4.0, -1.0],
+        )
+        boolean_op(proj, "cut", 0, 1, name="CutResult")
+        with pytest.raises(ValueError, match="does not support bounding-box alignment"):
+            align_part(proj, 2, 0, x="min", to_x="max")
 
     def test_remove_part(self):
         proj = _make_project()
@@ -521,6 +609,81 @@ class TestBody:
 
         with pytest.raises(ValueError, match="Invalid revolution axis"):
             revolution(proj, body_index=0, sketch_index=0, axis="W")
+
+    def test_additive_primitive_placement_and_patterns(self):
+        proj = _make_project()
+        create_body(proj, name="TowerBody")
+
+        base = additive_box(
+            proj,
+            body_index=0,
+            length=12.0,
+            width=10.0,
+            height=18.0,
+            position=[1.0, 2.0, 3.0],
+            rotation=[0.0, 0.0, 15.0],
+        )
+        assert base["type"] == "additive_box"
+        assert base["placement"]["position"] == [1.0, 2.0, 3.0]
+        assert base["placement"]["rotation"] == [0.0, 0.0, 15.0]
+
+        rib = additive_cylinder(
+            proj,
+            body_index=0,
+            radius=2.5,
+            height=6.0,
+            position=[8.0, 0.0, 9.0],
+        )
+        assert rib["type"] == "additive_cylinder"
+        assert rib["placement"]["position"] == [8.0, 0.0, 9.0]
+
+        cone = additive_cone(
+            proj,
+            body_index=0,
+            radius1=3.0,
+            radius2=1.0,
+            height=8.0,
+            position=[0.0, 0.0, 18.0],
+        )
+        assert cone["type"] == "additive_cone"
+
+        linear = linear_pattern(
+            proj,
+            body_index=0,
+            direction=[0.0, 0.0, 1.0],
+            length=24.0,
+            occurrences=4,
+        )
+        assert linear["type"] == "linear_pattern"
+        assert linear["direction"] == [0.0, 0.0, 1.0]
+        assert linear["occurrences"] == 4
+
+        polar = polar_pattern(
+            proj,
+            body_index=0,
+            axis="Z",
+            angle=360.0,
+            occurrences=4,
+        )
+        assert polar["type"] == "polar_pattern"
+        assert polar["axis"] == "Z"
+        assert polar["occurrences"] == 4
+
+    def test_subtractive_primitive_placement(self):
+        proj = _make_project()
+        create_body(proj, name="CutBody")
+        additive_box(proj, body_index=0, length=20.0, width=20.0, height=20.0)
+
+        cut = subtractive_box(
+            proj,
+            body_index=0,
+            length=6.0,
+            width=6.0,
+            height=10.0,
+            position=[0.0, 0.0, 5.0],
+        )
+        assert cut["type"] == "subtractive_box"
+        assert cut["placement"]["position"] == [0.0, 0.0, 5.0]
 
     def test_list_and_get_body(self):
         proj = self._project_with_sketch()
@@ -869,3 +1032,408 @@ class TestFreeCAD11Features:
         create_body(proj, name="FreezeBody2")
         with pytest.raises(IndexError):
             toggle_freeze(proj, 0, 99)
+
+
+class TestPreview:
+    @staticmethod
+    def _fake_bundle(tmp_path, bundle_id):
+        bundle_dir = tmp_path / bundle_id
+        artifacts_dir = bundle_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        for artifact_id in ("hero", "front", "top", "right"):
+            (artifacts_dir / f"{artifact_id}.png").write_bytes(b"\x89PNG\r\n\x1a\npreview")
+        summary_path = bundle_dir / "summary.json"
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "headline": "FreeCAD quick preview",
+                    "facts": {"views": 4, "units": "mm"},
+                }
+            )
+        )
+        manifest_path = bundle_dir / "manifest.json"
+        manifest_path.write_text(json.dumps({"bundle_id": bundle_id, "status": "ok"}))
+        return {
+            "bundle_id": bundle_id,
+            "status": "ok",
+            "_bundle_dir": str(bundle_dir),
+            "_manifest_path": str(manifest_path),
+            "_summary_path": str(summary_path),
+            "cached": False,
+        }
+
+    def test_list_recipes(self):
+        recipes = preview_mod.list_recipes()
+        assert recipes
+        assert recipes[0]["name"] == "quick"
+
+    def test_capture_bundle(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="PreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        sess.set_project(proj, str(tmp_path / "project.json"))
+
+        def fake_capture(script_content, timeout=120, gui_required=False, env=None):
+            marker = "artifacts/"
+            for line in script_content.splitlines():
+                if marker in line and ".png" in line:
+                    path = line.split("'")[3]
+                    Path(path).parent.mkdir(parents=True, exist_ok=True)
+                    Path(path).write_bytes(b"\x89PNG\r\n\x1a\npreview")
+            return {"returncode": 0, "stdout": "", "stderr": ""}
+
+        monkeypatch.setattr(freecad_backend, "run_macro_content", fake_capture)
+
+        manifest = preview_mod.capture(sess, root_dir=str(tmp_path))
+        assert manifest["software"] == "freecad"
+        assert manifest["recipe"] == "quick"
+        assert any(item["role"] == "hero" for item in manifest["artifacts"])
+        assert len(manifest["artifacts"]) >= 4
+
+    def test_latest_bundle(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="PreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        sess.set_project(proj)
+
+        def fake_capture(script_content, timeout=120, gui_required=False, env=None):
+            for line in script_content.splitlines():
+                if "artifacts/" in line and ".png" in line:
+                    path = line.split("'")[3]
+                    Path(path).parent.mkdir(parents=True, exist_ok=True)
+                    Path(path).write_bytes(b"\x89PNG\r\n\x1a\npreview")
+            return {"returncode": 0, "stdout": "", "stderr": ""}
+
+        monkeypatch.setattr(freecad_backend, "run_macro_content", fake_capture)
+
+        created = preview_mod.capture(sess, root_dir=str(tmp_path))
+        latest = preview_mod.latest(root_dir=str(tmp_path))
+        assert latest["bundle_id"] == created["bundle_id"]
+
+    def test_live_start_publishes_session(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="LivePreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        project_path = tmp_path / "live-demo.json"
+        save_document(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        def fake_capture(*args, **kwargs):
+            return dict(bundle_manifest)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        live = preview_mod.live_start(
+            sess,
+            root_dir=str(tmp_path),
+            refresh_hint_ms=900,
+            live_mode="poll",
+            source_poll_ms=420,
+        )
+        assert live["protocol_version"] == preview_mod.LIVE_PROTOCOL_VERSION
+        assert live["current_bundle_id"] == "bundle-a"
+        assert live["refresh_hint_ms"] == 900
+        assert live["live_mode"] == "poll"
+        assert live["source_poll_ms"] == 420
+        assert live["source_state"]["project_path"] == str(project_path)
+        assert live["source_state"]["last_rendered_fingerprint"].startswith("sha256:")
+        assert Path(live["_session_path"]).is_file()
+        assert Path(live["_trajectory_path"]).is_file()
+        assert (Path(live["_session_dir"]) / "current" / "manifest.json").is_file()
+        trajectory = json.loads(Path(live["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert trajectory["step_count"] == 1
+        assert trajectory["steps"][0]["bundle_id"] == "bundle-a"
+        assert live["trajectory_step_count"] == 1
+
+    def test_live_push_updates_history(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="LivePreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        project_path = tmp_path / "live-demo.json"
+        save_document(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_a = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+        bundle_b = self._fake_bundle(tmp_path / "bundles", "bundle-b")
+        manifests = [dict(bundle_a), dict(bundle_b)]
+
+        def fake_capture(*args, **kwargs):
+            return manifests.pop(0)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        started = preview_mod.live_start(sess, root_dir=str(tmp_path))
+        pushed = preview_mod.live_push(sess, root_dir=str(tmp_path))
+        assert started["current_bundle_id"] == "bundle-a"
+        assert pushed["current_bundle_id"] == "bundle-b"
+        assert pushed["history"][0]["bundle_id"] == "bundle-b"
+        assert pushed["history"][1]["bundle_id"] == "bundle-a"
+        trajectory = json.loads(Path(pushed["_trajectory_path"]).read_text(encoding="utf-8"))
+        assert trajectory["step_count"] == 2
+        assert [step["bundle_id"] for step in trajectory["steps"]] == ["bundle-a", "bundle-b"]
+        assert pushed["current_step_id"] == "step-0002"
+
+    def test_live_status_includes_trajectory_summary(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="LivePreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        project_path = tmp_path / "live-demo.json"
+        save_document(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        monkeypatch.setattr(preview_mod, "capture", lambda *args, **kwargs: dict(bundle_manifest))
+
+        preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        status = preview_mod.live_status(sess, root_dir=str(tmp_path))
+        summary = status["trajectory_summary"]
+        assert summary["step_count"] == 1
+        assert summary["latest_bundle_id"] == "bundle-a"
+        assert summary["latest_publish_reason"] == "live-start"
+        assert summary["recent_steps"][0]["step_id"] == "step-0001"
+
+    def test_live_push_records_publish_time_when_bundle_is_reused(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="LivePreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        project_path = tmp_path / "live-demo.json"
+        save_document(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+        bundle_manifest["created_at"] = "2025-01-01T00:00:00Z"
+        publish_times = [
+            "2026-04-23T10:00:00Z",
+            "2026-04-23T10:05:00Z",
+        ]
+
+        monkeypatch.setattr(preview_mod, "capture", lambda *args, **kwargs: dict(bundle_manifest))
+        monkeypatch.setattr(preview_mod, "_now_iso", lambda: publish_times.pop(0))
+
+        preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        pushed = preview_mod.live_push(sess, root_dir=str(tmp_path))
+        trajectory = json.loads(Path(pushed["_trajectory_path"]).read_text(encoding="utf-8"))
+
+        assert len(pushed["history"]) == 1
+        assert [step["bundle_id"] for step in trajectory["steps"]] == ["bundle-a", "bundle-a"]
+        assert [step["command_finished_at"] for step in trajectory["steps"]] == [
+            "2026-04-23T10:00:00Z",
+            "2026-04-23T10:05:00Z",
+        ]
+        assert all(step["created_at"] == "2025-01-01T00:00:00Z" for step in trajectory["steps"])
+
+    def test_live_stop_marks_session_stopped(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="LivePreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        project_path = tmp_path / "live-demo.json"
+        save_document(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        def fake_capture(*args, **kwargs):
+            return dict(bundle_manifest)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        preview_mod.live_start(sess, root_dir=str(tmp_path))
+        stopped = preview_mod.live_stop(sess, root_dir=str(tmp_path))
+        assert stopped["status"] == "stopped"
+        assert "stopped_at" in stopped
+
+    def test_live_session_name_is_stable_for_same_project_path(self, tmp_path):
+        project_path = tmp_path / "stable-demo.json"
+        proj = create_document(name="StablePreviewDoc")
+        save_document(proj, str(project_path))
+
+        session_a = Session()
+        session_a.set_project(proj, str(project_path))
+
+        session_b = Session()
+        session_b.set_project(open_document(str(project_path)), str(project_path))
+
+        name_a = preview_mod._live_session_name(session_a, "quick")
+        name_b = preview_mod._live_session_name(session_b, "quick")
+        assert name_a == name_b
+
+    def test_project_fingerprint_is_stable_across_sessions_for_saved_project(self, tmp_path):
+        project_path = tmp_path / "stable-project.json"
+        proj = create_document(name="StablePreviewDoc")
+        save_document(proj, str(project_path))
+
+        session_a = Session()
+        session_a.set_project(proj, str(project_path))
+
+        session_b = Session()
+        session_b.set_project(open_document(str(project_path)), str(project_path))
+
+        assert preview_mod._project_fingerprint(session_a) == preview_mod._project_fingerprint(session_b)
+
+    def test_poll_live_session_once_captures_after_source_change(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="PollingPreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        project_path = tmp_path / "polling-demo.json"
+        save_document(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_a = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+        bundle_b = self._fake_bundle(tmp_path / "bundles", "bundle-b")
+        manifests = [dict(bundle_a), dict(bundle_b)]
+
+        def fake_capture(*args, **kwargs):
+            return manifests.pop(0)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        started = preview_mod.live_start(
+            sess,
+            root_dir=str(tmp_path),
+            live_mode="poll",
+            source_poll_ms=500,
+        )
+        started_session_dir = Path(started["_session_dir"])
+
+        updated = open_document(str(project_path))
+        add_part(updated, "cylinder", name="ChangedPart")
+        save_document(updated, str(project_path))
+
+        result = preview_mod.poll_live_session_once(str(started_session_dir))
+        payload = json.loads((started_session_dir / "session.json").read_text(encoding="utf-8"))
+        trajectory = json.loads((started_session_dir / "trajectory.json").read_text(encoding="utf-8"))
+        assert result["action"] == "captured"
+        assert result["bundle_id"] == "bundle-b"
+        assert payload["bundle_count"] >= 2
+        assert payload["source_state"]["last_publish_reason"] == "auto-poll"
+        assert trajectory["step_count"] == 2
+        assert trajectory["steps"][-1]["publish_reason"] == "auto-poll"
+
+    def test_poll_live_session_once_exits_for_manual_mode(self, tmp_path, monkeypatch):
+        sess = Session()
+        proj = create_document(name="ManualPreviewDoc")
+        add_part(proj, "box", name="HeroBox")
+        project_path = tmp_path / "manual-demo.json"
+        save_document(proj, str(project_path))
+        sess.set_project(proj, str(project_path))
+        bundle_manifest = self._fake_bundle(tmp_path / "bundles", "bundle-a")
+
+        def fake_capture(*args, **kwargs):
+            return dict(bundle_manifest)
+
+        monkeypatch.setattr(preview_mod, "capture", fake_capture)
+
+        started = preview_mod.live_start(sess, root_dir=str(tmp_path), live_mode="manual")
+        result = preview_mod.poll_live_session_once(started["_session_dir"])
+        assert result["action"] == "exit"
+        assert result["reason"] == "mode:manual"
+
+
+class TestMotion:
+    """Tests for motion sequencing and interpolation."""
+
+    def test_create_motion_defaults(self):
+        proj = _make_project()
+        motion = motion_mod.create_motion(proj, name="Drive")
+        assert motion["name"] == "Drive"
+        assert motion["duration"] == 2.0
+        assert motion["fps"] == 24
+        assert motion["camera"] == "hero"
+        assert motion["fit_mode"] == "initial"
+        assert motion["tracks"] == []
+        assert len(proj["motions"]) == 1
+
+    def test_add_keyframes_and_sample_interpolates(self):
+        proj = _make_project()
+        add_part(proj, "box", name="RoverBody", position=[0.0, 0.0, 0.0])
+        motion_mod.create_motion(proj, name="Drive", duration=2.0, fps=10)
+        motion_mod.add_keyframe(
+            proj,
+            0,
+            target_kind="part",
+            target_index=0,
+            time_value=0.0,
+            position=[0.0, 0.0, 0.0],
+            rotation=[0.0, 0.0, 0.0],
+        )
+        motion_mod.add_keyframe(
+            proj,
+            0,
+            target_kind="part",
+            target_index=0,
+            time_value=2.0,
+            position=[20.0, 10.0, 0.0],
+            rotation=[0.0, 0.0, 90.0],
+        )
+
+        sample = motion_mod.sample_motion(proj, 0, 1.0)
+        assert sample["time"] == 1.0
+        assert len(sample["placements"]) == 1
+        placement = sample["placements"][0]
+        assert placement["position"] == [10.0, 5.0, 0.0]
+        assert placement["rotation"] == [0.0, 0.0, 45.0]
+
+    def test_apply_motion_returns_project_copy(self):
+        proj = _make_project()
+        add_part(proj, "box", name="Wheel", position=[1.0, 2.0, 3.0], rotation=[0.0, 0.0, 0.0])
+        motion_mod.create_motion(proj, duration=1.0, fps=5)
+        motion_mod.add_keyframe(proj, 0, target_kind="part", target_index=0, time_value=0.0)
+        motion_mod.add_keyframe(
+            proj,
+            0,
+            target_kind="part",
+            target_index=0,
+            time_value=1.0,
+            position=[11.0, 2.0, 3.0],
+            rotation=[0.0, 30.0, 0.0],
+        )
+
+        animated = motion_mod.apply_motion(proj, 0, 0.5)
+        assert animated is not proj
+        assert animated["parts"][0]["placement"]["position"] == [6.0, 2.0, 3.0]
+        assert animated["parts"][0]["placement"]["rotation"] == [0.0, 15.0, 0.0]
+        assert proj["parts"][0]["placement"]["position"] == [1.0, 2.0, 3.0]
+
+    def test_render_video_requires_supported_extension(self, tmp_path):
+        proj = _make_project()
+        add_part(proj, "box", name="Box")
+        motion_mod.create_motion(proj, duration=1.0, fps=5)
+        motion_mod.add_keyframe(proj, 0, target_kind="part", target_index=0, time_value=0.0)
+        with pytest.raises(ValueError, match="supports .mp4, .webm, and .gif"):
+            motion_mod.render_video(proj, 0, str(tmp_path / "bad.avi"))
+
+
+class TestFreeCADBackend:
+    """Tests for backend command selection and wrapper handling."""
+
+    def test_detects_gui_wrapper_script(self, tmp_path):
+        wrapper = _make_wrapper_script(tmp_path / "freecad-wrapper")
+        assert freecad_backend._is_gui_wrapper_script(str(wrapper)) is True
+
+    def test_macro_command_forces_gui_branch_for_wrapper(self, tmp_path):
+        wrapper = _make_wrapper_script(tmp_path / "freecad-wrapper")
+        script_path = tmp_path / "macro.py"
+        script_path.write_text("print('ok')\n", encoding="utf-8")
+
+        argv = freecad_backend._macro_command(str(wrapper), str(script_path), gui_required=True)
+        assert argv == [str(wrapper), "freecad", str(script_path)]
+
+    def test_run_macro_uses_wrapper_gui_override(self, tmp_path, monkeypatch):
+        wrapper = _make_wrapper_script(tmp_path / "freecad-wrapper")
+        script_path = tmp_path / "macro.py"
+        script_path.write_text("print('ok')\n", encoding="utf-8")
+        captured = {}
+
+        monkeypatch.setattr(freecad_backend, "find_freecad", lambda gui_required=False: str(wrapper))
+
+        def fake_run(args, *, timeout=120, check=False, env=None):
+            captured["args"] = args
+            captured["timeout"] = timeout
+            captured["env"] = env
+            return {"command": " ".join(args), "returncode": 0, "stdout": "", "stderr": "", "ok": True}
+
+        monkeypatch.setattr(freecad_backend, "_run", fake_run)
+
+        result = freecad_backend.run_macro(str(script_path), timeout=55, gui_required=True, env={"QT_QPA_PLATFORM": "offscreen"})
+
+        assert result["returncode"] == 0
+        assert captured["args"] == [str(wrapper), "freecad", str(script_path.resolve())]
+        assert captured["timeout"] == 55
+        assert captured["env"] == {"QT_QPA_PLATFORM": "offscreen"}

@@ -1,0 +1,204 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CLI-Anything Hub Read-Only Registry",
+    "version": "0.3.0",
+    "description": "Read-only machine-readable resources for CLI-Anything Hub, an agent-friendly registry and package manager for CLI tools.",
+    "contact": {
+      "name": "HKUDS",
+      "url": "https://github.com/HKUDS/CLI-Anything"
+    },
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://github.com/HKUDS/CLI-Anything/blob/main/LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://clianything.cc"
+    }
+  ],
+  "paths": {
+    "/registry.json": {
+      "get": {
+        "operationId": "getHarnessRegistry",
+        "summary": "Get generated harness CLI registry",
+        "description": "Returns generated CLI-Anything harness entries with names, descriptions, categories, install commands, entry points, requirements, and skill links.",
+        "responses": {
+          "200": {
+            "description": "Harness registry JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Registry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public_registry.json": {
+      "get": {
+        "operationId": "getPublicRegistry",
+        "summary": "Get public CLI registry",
+        "description": "Returns public and third-party CLI entries managed by CLI-Anything Hub.",
+        "responses": {
+          "200": {
+            "description": "Public registry JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Registry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/registry-dates.json": {
+      "get": {
+        "operationId": "getRegistryDates",
+        "summary": "Get registry update dates",
+        "description": "Returns last-known update dates for registry entries.",
+        "responses": {
+          "200": {
+            "description": "Registry date metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "operationId": "getLlmsTxt",
+        "summary": "Get short LLM context",
+        "responses": {
+          "200": {
+            "description": "Plain text LLM context",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llms-full.txt": {
+      "get": {
+        "operationId": "getLlmsFullTxt",
+        "summary": "Get full LLM context",
+        "responses": {
+          "200": {
+            "description": "Plain text full LLM context",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pricing.md": {
+      "get": {
+        "operationId": "getPricingMarkdown",
+        "summary": "Get machine-readable pricing",
+        "responses": {
+          "200": {
+            "description": "Markdown pricing information",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Registry": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "clis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CliEntry"
+            }
+          }
+        },
+        "required": [
+          "clis"
+        ],
+        "additionalProperties": true
+      },
+      "CliEntry": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "entry_point": {
+            "type": "string"
+          },
+          "install_cmd": {
+            "type": "string"
+          },
+          "package_manager": {
+            "type": "string"
+          },
+          "homepage": {
+            "type": "string",
+            "format": "uri"
+          },
+          "docs_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "skill_md": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "category"
+        ],
+        "additionalProperties": true
+      }
+    }
+  }
+}

@@ -12,7 +12,7 @@ with open("cli_anything/obsidian/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-obsidian",
-    version="1.0.0",
+    version="1.1.0",
     author="Doruk Ozgen",
     author_email="",
     description="CLI harness for Obsidian — Knowledge management and note-taking via Obsidian Local REST API. Recommended: Obsidian with Local REST API plugin enabled",

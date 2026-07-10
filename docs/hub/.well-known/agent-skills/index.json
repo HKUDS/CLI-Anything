@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "cli-anything-hub",
+      "description": "Browse, search, install, and launch agent-friendly CLI tools from the CLI-Anything registry.",
+      "type": "skill-md",
+      "url": "https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md",
+      "digest": "sha256:d7bdfd1d7b8457be6973ee48829e4d78582f812e5ea7f010c86355cbb6da65aa",
+      "latest_url": "https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md",
+      "digest_note": "The digest is a standards-compliant SHA-256 integrity pin for the current published artifact. Fetch latest_url for the newest generated SKILL.md when strict digest verification is not required."
+    }
+  ]
+}

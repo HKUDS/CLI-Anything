@@ -1,0 +1,4 @@
+interface:
+  display_name: "CLI-Anything"
+  short_description: "Build, refine, test, or validate a CLI-Anything harness for a GUI application or source repository from Reasonix."
+  default_prompt: "Use CLI-Anything to build, refine, test, or validate a harness for the user's target software or source repository."

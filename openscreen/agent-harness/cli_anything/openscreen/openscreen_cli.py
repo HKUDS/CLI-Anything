@@ -19,6 +19,7 @@ from .core import project as proj_mod
 from .core import timeline as tl_mod
 from .core import export as export_mod
 from .core import media as media_mod
+from .core import preview as preview_mod
 
 # ── Global state ──────────────────────────────────────────────────────────
 
@@ -462,6 +463,12 @@ def export():
     pass
 
 
+@cli.group()
+def preview():
+    """Preview bundle capture and inspection."""
+    pass
+
+
 @export.command("presets")
 @handle_error
 def export_presets():
@@ -481,6 +488,42 @@ def export_render(output_path):
 
     result = export_mod.render(_session, output_path, on_progress)
     output(result, f"Exported to: {output_path}")
+
+
+@preview.command("recipes")
+@handle_error
+def preview_recipes():
+    """List available preview recipes."""
+    output(preview_mod.list_recipes(), "Preview recipes")
+
+
+@preview.command("capture")
+@click.option("--recipe", default="quick", help="Preview recipe name")
+@click.option("--force", is_flag=True, help="Bypass preview cache")
+@click.option("--root-dir", default=None, help="Override preview bundle root directory")
+@handle_error
+def preview_capture(recipe, force, root_dir):
+    """Capture a preview bundle for the active project."""
+    result = preview_mod.capture(
+        _session,
+        recipe=recipe,
+        force=force,
+        root_dir=root_dir,
+        command=f"cli-anything-openscreen --project {_session.project_path or ''} preview capture --recipe {recipe}".strip(),
+    )
+    bundle_dir = result.get("_bundle_dir", result.get("bundle_dir", ""))
+    status = "Reused preview bundle" if result.get("cached") else "Created preview bundle"
+    output(result, f"{status}: {bundle_dir}")
+
+
+@preview.command("latest")
+@click.option("--recipe", default=None, help="Filter by recipe name")
+@click.option("--root-dir", default=None, help="Override preview bundle root directory")
+@handle_error
+def preview_latest(recipe, root_dir):
+    """Show the latest preview bundle manifest."""
+    result = preview_mod.latest(project_path=_session.project_path, recipe=recipe, root_dir=root_dir)
+    output(result, f"Latest preview bundle: {result.get('_bundle_dir', '')}")
 
 
 # ── Session commands ──────────────────────────────────────────────────────
@@ -574,6 +617,8 @@ def repl():
         "crop set":       "Set crop (prompts)",
         "probe <path>":   "Probe a video file",
         "export <path>":  "Render and export video",
+        "preview [recipe]": "Capture a preview bundle",
+        "preview-latest [recipe]": "Show the latest preview bundle",
     }
 
     while True:
@@ -700,6 +745,16 @@ def repl():
                     skin.info(f"[{stage}] {msg}")
                 result = export_mod.render(_session, parts[1], on_prog)
                 skin.success(f"Exported: {result['output']} ({result['file_size']} bytes)")
+
+            elif cmd == "preview":
+                recipe = parts[1] if len(parts) > 1 else "quick"
+                result = preview_mod.capture(_session, recipe=recipe)
+                output(result, f"Preview bundle: {result.get('_bundle_dir', '')}")
+
+            elif cmd == "preview-latest":
+                recipe = parts[1] if len(parts) > 1 else None
+                result = preview_mod.latest(project_path=_session.project_path, recipe=recipe)
+                output(result, f"Latest preview bundle: {result.get('_bundle_dir', '')}")
 
             else:
                 skin.warning(f"Unknown command: {cmd}. Type 'help' for commands.")

@@ -1,0 +1,43 @@
+name: PR Labeler Tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/labeler.yml"
+      - ".github/scripts/pr-labeler.js"
+      - ".github/scripts/tests/pr-labeler-fixtures.json"
+      - ".github/scripts/tests/pr-labeler.test.js"
+      - ".github/workflows/pr-labeler.yml"
+      - ".github/workflows/pr-labeler-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/labeler.yml"
+      - ".github/scripts/pr-labeler.js"
+      - ".github/scripts/tests/pr-labeler-fixtures.json"
+      - ".github/scripts/tests/pr-labeler.test.js"
+      - ".github/workflows/pr-labeler.yml"
+      - ".github/workflows/pr-labeler-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate PR labeler script
+        run: node --check .github/scripts/pr-labeler.js
+
+      - name: Run PR labeler tests
+        run: node .github/scripts/tests/pr-labeler.test.js

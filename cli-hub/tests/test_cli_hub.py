@@ -12,8 +12,41 @@ import requests
 
 from cli_hub import __version__
 from cli_hub.registry import fetch_registry, fetch_all_clis, get_cli, search_clis, list_categories
+from cli_hub.matrix import (
+    _package_available,
+    all_recipes,
+    capability_matches,
+    check_provider_requirements,
+    fetch_matrix_registry,
+    fetch_all_matrices,
+    get_matrix,
+    preflight_matrix,
+    provider_cli_name,
+    provider_install_hint,
+    resolve_install_scope,
+    search_capabilities,
+    search_matrices,
+    unmanaged_providers,
+)
+from cli_hub.matrix_skill import (
+    resolve_local_skill_path,
+    render_matrix_skill_file,
+    _render_capability_tooling,
+    _render_stage_tooling,
+    _render_discovery_section,
+)
+from cli_hub.preview import (
+    inspect_bundle,
+    inspect_session,
+    open_in_browser,
+    render_html,
+    render_inspect_text,
+    render_live_html,
+    render_session_text,
+)
 from cli_hub.installer import (
     install_cli,
+    install_matrix,
     uninstall_cli,
     get_installed,
     _load_installed,
@@ -22,7 +55,7 @@ from cli_hub.installer import (
     _install_strategy,
     _UV_INSTALL_HINT,
 )
-from cli_hub.analytics import _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent
+from cli_hub.analytics import _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent, detect_invocation_context
 from cli_hub.cli import main
 
 
@@ -76,6 +109,268 @@ SAMPLE_REGISTRY = {
     ],
 }
 
+SAMPLE_MATRIX_REGISTRY = {
+    "meta": {"repo": "https://github.com/HKUDS/CLI-Anything", "description": "test matrices"},
+    "matrices": [
+        {
+            "name": "video-creation",
+            "display_name": "Video Creation & Editing",
+            "description": "Curated video workflow matrix",
+            "category": "video",
+            "matrix": "cli-matrix",
+            "matrix_id": "S1",
+            "schema_version": "2",
+            "skill_md": "cli-hub-matrix/video-creation/SKILL.md",
+            "clis": ["gimp", "blender", "audacity"],
+            "stages": [
+                {
+                    "name": "Thumbnail",
+                    "clis": ["gimp"],
+                    "goal": "Create a thumbnail image",
+                    "alternatives": {"python": ["Pillow"], "native": ["ImageMagick convert"]},
+                    "skill_search_hints": ["thumbnail", "image editing"],
+                },
+                {"name": "3D", "clis": ["blender"]},
+                {
+                    "name": "Audio",
+                    "clis": ["audacity"],
+                    "goal": "Edit and process audio",
+                    "alternatives": {"python": ["pydub"], "native": ["sox"]},
+                    "skill_search_hints": ["audio editing"],
+                },
+            ],
+            "capabilities": [
+                {
+                    "id": "package.thumbnail",
+                    "intent": "Create a thumbnail image",
+                    "inputs": ["concept:text"],
+                    "outputs": ["image:path"],
+                    "skill_search_hints": ["thumbnail", "image editing"],
+                    "providers": [
+                        {
+                            "kind": "harness-cli",
+                            "name": "cli-anything-gimp",
+                            "requires": {"binary": ["cli-anything-gimp"]},
+                            "cost_tier": "free",
+                            "quality_tier": "high",
+                            "offline": True,
+                        },
+                        {
+                            "kind": "python",
+                            "name": "Pillow",
+                            "requires": {"package": ["PIL"]},
+                            "cost_tier": "free",
+                            "quality_tier": "good",
+                            "offline": True,
+                        },
+                    ],
+                },
+                {
+                    "id": "audio.capture",
+                    "intent": "Edit and process audio",
+                    "inputs": ["source:mic|file"],
+                    "outputs": ["audio_clip:path"],
+                    "skill_search_hints": ["audio editing"],
+                    "providers": [
+                        {
+                            "kind": "harness-cli",
+                            "name": "cli-anything-audacity",
+                            "requires": {"binary": ["cli-anything-audacity"]},
+                            "cost_tier": "free",
+                            "quality_tier": "high",
+                            "offline": True,
+                        },
+                        {
+                            "kind": "native",
+                            "name": "sox",
+                            "requires": {"binary": ["sox"]},
+                            "cost_tier": "free",
+                            "quality_tier": "high",
+                            "offline": True,
+                        },
+                    ],
+                },
+            ],
+            "recipes": [
+                {
+                    "id": "social-short",
+                    "description": "Create a short with a thumbnail and cleaned audio.",
+                    "capabilities_used": ["package.thumbnail", "audio.capture"],
+                }
+            ],
+            "known_gaps": [
+                {
+                    "capability": "publish.upload",
+                    "reason": "No platform upload CLI yet.",
+                    "workaround": "Ask the user to upload manually.",
+                }
+            ],
+        }
+    ],
+}
+
+
+def _make_preview_bundle(tmp_path: Path, *, with_trajectory: bool = False) -> Path:
+    bundle_dir = tmp_path / "preview-bundle"
+    artifacts_dir = bundle_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+    (artifacts_dir / "hero.png").write_bytes(b"\x89PNG\r\n\x1a\npreview")
+    (artifacts_dir / "preview.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    summary = {
+        "headline": "Quick preview rendered",
+        "facts": {
+            "duration_s": 6.0,
+            "resolution": "640x360",
+        },
+        "warnings": [],
+    }
+    manifest = {
+        "protocol_version": "preview-bundle/v1",
+        "bundle_id": "20260419T104530Z_deadbeef_quick",
+        "bundle_kind": "capture",
+        "software": "shotcut",
+        "recipe": "quick",
+        "status": "ok",
+        "created_at": "2026-04-19T10:45:30Z",
+        "generator": {"entry_point": "cli-anything-shotcut", "command": "cli-anything-shotcut preview capture --recipe quick"},
+        "source": {"project_path": "/tmp/demo.mlt", "project_fingerprint": "sha256:test"},
+        "summary_path": "summary.json",
+        "artifacts": [
+            {
+                "artifact_id": "hero",
+                "role": "hero",
+                "kind": "image",
+                "label": "Midpoint frame",
+                "media_type": "image/png",
+                "path": "artifacts/hero.png",
+                "width": 960,
+                "height": 540,
+                "bytes": (artifacts_dir / "hero.png").stat().st_size,
+            },
+            {
+                "artifact_id": "clip",
+                "role": "preview-clip",
+                "kind": "clip",
+                "label": "Preview clip",
+                "media_type": "video/mp4",
+                "path": "artifacts/preview.mp4",
+                "width": 640,
+                "height": 360,
+                "duration_s": 6.0,
+                "bytes": (artifacts_dir / "preview.mp4").stat().st_size,
+            },
+        ],
+    }
+    if with_trajectory:
+        trajectory = {
+            "protocol_version": "preview-trajectory/v1",
+            "step_count": 1,
+            "current_step_id": "step-001",
+            "steps": [
+                {
+                    "step_id": "step-001",
+                    "step_index": 1,
+                    "bundle_id": "20260419T104530Z_deadbeef_quick",
+                    "bundle_dir": str(bundle_dir),
+                    "manifest_path": str(bundle_dir / "manifest.json"),
+                    "summary_path": str(bundle_dir / "summary.json"),
+                    "created_at": "2026-04-19T10:45:30Z",
+                    "status": "ok",
+                    "cached": False,
+                    "publish_reason": "capture",
+                    "command": "cli-anything-shotcut preview capture --recipe quick",
+                }
+            ],
+        }
+        (tmp_path / "trajectory.json").write_text(json.dumps(trajectory, indent=2))
+        manifest["context"] = {"trajectory_path": "../trajectory.json"}
+    (bundle_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+    (bundle_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    return bundle_dir
+
+
+def _make_preview_session(tmp_path: Path, *, with_trajectory: bool = False) -> Path:
+    bundle_dir = _make_preview_bundle(tmp_path)
+    session_dir = tmp_path / "live-session"
+    session_dir.mkdir()
+    (session_dir / "current").symlink_to(bundle_dir, target_is_directory=True)
+    session = {
+        "protocol_version": "preview-live/v1",
+        "software": "shotcut",
+        "recipe": "quick",
+        "status": "active",
+        "session_name": "demo-live",
+        "project_path": "/tmp/demo.mlt",
+        "project_name": "demo.mlt",
+        "updated_at": "2026-04-20T09:00:00Z",
+        "current_link": "current",
+        "current_bundle_id": "20260419T104530Z_deadbeef_quick",
+        "watch_command": "cli-hub previews watch /tmp/live-session --open",
+        "publish_command": "cli-anything-shotcut preview live push --recipe quick",
+        "inspect_command": "cli-hub previews inspect /tmp/live-session",
+        "history": [
+            {
+                "bundle_id": "20260419T104530Z_deadbeef_quick",
+                "bundle_dir": str(bundle_dir),
+                "created_at": "2026-04-19T10:45:30Z",
+                "status": "ok",
+            }
+        ],
+    }
+    if with_trajectory:
+        trajectory = {
+            "protocol_version": "preview-trajectory/v1",
+            "step_count": 2,
+            "current_step_id": "step-002",
+            "steps": [
+                {
+                    "step_id": "step-001",
+                    "step_index": 0,
+                    "bundle_id": "20260419T104530Z_deadbeef_quick",
+                    "bundle_dir": str(bundle_dir),
+                    "manifest_path": str(bundle_dir / "manifest.json"),
+                    "summary_path": str(bundle_dir / "summary.json"),
+                    "created_at": "2026-04-19T10:45:30Z",
+                    "status": "ok",
+                    "cached": False,
+                    "publish_reason": "live-start",
+                    "command": "cli-anything-shotcut preview live start --recipe quick",
+                    "command_started_at": "2026-04-19T10:45:28Z",
+                    "command_finished_at": "2026-04-19T10:45:30Z",
+                    "source_fingerprint": "sha256:test-a",
+                },
+                {
+                    "step_id": "step-002",
+                    "step_index": 1,
+                    "bundle_id": "20260419T104530Z_deadbeef_quick",
+                    "bundle_dir": str(bundle_dir),
+                    "manifest_path": str(bundle_dir / "manifest.json"),
+                    "summary_path": str(bundle_dir / "summary.json"),
+                    "created_at": "2026-04-19T10:47:10Z",
+                    "status": "ok",
+                    "cached": True,
+                    "publish_reason": "manual-push",
+                    "command": "cli-anything-shotcut preview live push --recipe quick",
+                    "command_started_at": "2026-04-19T10:47:07Z",
+                    "command_finished_at": "2026-04-19T10:47:10Z",
+                    "source_fingerprint": "sha256:test-b",
+                },
+            ],
+        }
+        (session_dir / "trajectory.json").write_text(json.dumps(trajectory, indent=2))
+        session.update(
+            {
+                "trajectory_path": "trajectory.json",
+                "trajectory_protocol_version": "preview-trajectory/v1",
+                "trajectory_step_count": 2,
+                "current_step_id": "step-002",
+                "latest_command": "cli-anything-shotcut preview live push --recipe quick",
+                "latest_publish_reason": "manual-push",
+            }
+        )
+    (session_dir / "session.json").write_text(json.dumps(session, indent=2))
+    return session_dir
+
 
 # ─── Registry tests ───────────────────────────────────────────────────
 
@@ -106,6 +401,20 @@ class TestRegistry:
 
         assert result["clis"][0]["name"] == "gimp"
         mock_get.assert_called_once()
+
+    @patch("cli_hub.registry.fetch_public_registry", return_value=None)
+    @patch("cli_hub.registry.fetch_registry")
+    def test_fetch_all_clis_does_not_mutate_registry_entries(self, mock_fetch_registry, mock_fetch_public):
+        registry = {
+            "meta": SAMPLE_REGISTRY["meta"],
+            "clis": [dict(SAMPLE_REGISTRY["clis"][0])],
+        }
+        mock_fetch_registry.return_value = registry
+
+        result = fetch_all_clis()
+
+        assert result[0]["_source"] == "harness"
+        assert "_source" not in registry["clis"][0]
 
     @patch("cli_hub.registry.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
     def test_get_cli_found(self, mock_fetch):
@@ -151,6 +460,444 @@ class TestRegistry:
     def test_list_categories(self, mock_fetch):
         cats = list_categories()
         assert cats == ["3d", "audio", "image"]
+
+
+class TestMatrixRegistry:
+    """Tests for matrix.py — fetch, cache, search, and lookup."""
+
+    @patch("cli_hub.matrix.requests.get")
+    @patch("cli_hub.matrix.MATRIX_CACHE_FILE", Path(tempfile.mktemp()))
+    def test_fetch_matrix_registry_from_remote(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = SAMPLE_MATRIX_REGISTRY
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        result = fetch_matrix_registry(force_refresh=True)
+        assert result["matrices"][0]["name"] == "video-creation"
+        mock_get.assert_called_once()
+
+    @patch("cli_hub.matrix._load_local_registry", return_value=SAMPLE_MATRIX_REGISTRY)
+    @patch("cli_hub.matrix.requests.get", side_effect=requests.HTTPError("not found"))
+    def test_fetch_matrix_registry_falls_back_to_local_checkout(self, mock_get, mock_local, tmp_path):
+        with patch("cli_hub.matrix.MATRIX_CACHE_FILE", tmp_path / "matrix_cache.json"):
+            result = fetch_matrix_registry(force_refresh=True)
+        assert result["matrices"][0]["name"] == "video-creation"
+        mock_local.assert_called_once()
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_get_matrix_found(self, mock_fetch):
+        matrix_item = get_matrix("video-creation")
+        assert matrix_item is not None
+        assert matrix_item["display_name"] == "Video Creation & Editing"
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_search_matrices_matches_description(self, mock_fetch):
+        results = search_matrices("video")
+        assert len(results) == 1
+        assert results[0]["name"] == "video-creation"
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_search_matrices_matches_capability_provider(self, mock_fetch):
+        results = search_matrices("Pillow")
+        assert len(results) == 1
+        assert results[0]["name"] == "video-creation"
+
+    @patch("cli_hub.matrix.importlib.util.find_spec")
+    @patch("cli_hub.matrix.shutil.which")
+    def test_check_provider_requirements(self, mock_which, mock_find_spec):
+        provider = {
+            "name": "Pillow",
+            "kind": "python",
+            "requires": {"package": ["PIL"], "binary": ["ffmpeg"], "env": ["MISSING_KEY"]},
+            "cost_tier": "free",
+            "quality_tier": "good",
+            "offline": True,
+        }
+        mock_which.return_value = "/usr/bin/ffmpeg"
+        mock_find_spec.return_value = MagicMock()
+
+        result = check_provider_requirements(provider)
+        assert result["available"] is False
+        assert result["present"]["binary"] == ["ffmpeg"]
+        assert result["present"]["package"] == ["PIL"]
+        assert result["missing"]["env"] == ["MISSING_KEY"]
+
+    @patch("cli_hub.matrix.importlib.util.find_spec")
+    @patch("cli_hub.matrix.shutil.which")
+    def test_check_provider_requirements_marks_agent_skill_installable(self, mock_which, mock_find_spec):
+        provider = {
+            "name": "video-scriptwriting skill",
+            "kind": "agent-skill",
+            "requires": {"binary": ["some-skill-cli"]},
+            "cost_tier": "free",
+            "quality_tier": "sota",
+            "offline": True,
+        }
+
+        result = check_provider_requirements(provider)
+        assert result["available"] is False
+        assert result["agent_installable"] is True
+        assert result["status"] == "agent-installable"
+        assert result["missing"] == {"env": [], "binary": [], "package": []}
+        mock_which.assert_not_called()
+        mock_find_spec.assert_not_called()
+
+    @patch("cli_hub.matrix.importlib.util.find_spec")
+    @patch("cli_hub.matrix.shutil.which")
+    def test_preflight_matrix_reports_provider_availability_without_recommendation(self, mock_which, mock_find_spec):
+        mock_which.side_effect = lambda binary: "/usr/bin/sox" if binary == "sox" else None
+        mock_find_spec.side_effect = lambda package: MagicMock() if package == "PIL" else None
+
+        payload = preflight_matrix(SAMPLE_MATRIX_REGISTRY["matrices"][0], capability_id="package.thumbnail")
+        assert payload["summary"]["capabilities"] == 1
+        assert payload["summary"]["available_providers"] == 1
+        assert "recommended" not in payload["capabilities"][0]
+        assert payload["capabilities"][0]["providers"][0]["name"] == "cli-anything-gimp"
+        assert payload["capabilities"][0]["providers"][0]["available"] is False
+        assert payload["capabilities"][0]["providers"][1]["name"] == "Pillow"
+        assert payload["capabilities"][0]["providers"][1]["available"] is True
+
+    @patch("cli_hub.matrix.shutil.which", return_value=None)
+    def test_preflight_matrix_keeps_agent_skills_out_of_available_counts(self, mock_which):
+        matrix_item = {
+            "name": "video-creation",
+            "display_name": "Video Creation & Editing",
+            "schema_version": "2",
+            "capabilities": [
+                {
+                    "id": "script.storyboard",
+                    "intent": "Plan a video",
+                    "providers": [
+                        {
+                            "kind": "agent-skill",
+                            "name": "video-scriptwriting skill",
+                            "requires": {},
+                            "cost_tier": "free",
+                            "quality_tier": "sota",
+                            "offline": True,
+                        },
+                        {
+                            "kind": "native",
+                            "name": "planner-cli",
+                            "requires": {"binary": ["planner-cli"]},
+                            "cost_tier": "free",
+                            "quality_tier": "good",
+                            "offline": True,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        payload = preflight_matrix(matrix_item, capability_id="script.storyboard")
+        assert payload["summary"]["available_providers"] == 0
+        assert payload["summary"]["agent_installable_providers"] == 1
+        assert payload["summary"]["with_agent_installable_provider"] == 1
+        assert payload["capabilities"][0]["available_count"] == 0
+        assert payload["capabilities"][0]["agent_installable_count"] == 1
+        assert "recommended" not in payload["capabilities"][0]
+        assert payload["capabilities"][0]["providers"][0]["status"] == "agent-installable"
+
+
+class TestPackageAvailable:
+    """Tests for _package_available() — import name, dist name, and error handling."""
+
+    def test_stdlib_import_name_detected(self):
+        assert _package_available("json") is True
+
+    @patch("cli_hub.matrix.importlib.util.find_spec", return_value=None)
+    @patch("cli_hub.matrix.importlib.metadata.version", return_value="7.2.3")
+    def test_dist_name_with_dash_detected_via_metadata(self, mock_version, mock_find_spec):
+        assert _package_available("edge-tts") is True
+        mock_version.assert_called_with("edge-tts")
+
+    @patch("cli_hub.matrix.importlib.util.find_spec")
+    @patch("cli_hub.matrix.importlib.metadata.version", side_effect=Exception("not found"))
+    def test_dash_normalized_to_underscore_detected_via_find_spec(self, mock_version, mock_find_spec):
+        mock_find_spec.side_effect = lambda n: MagicMock() if n == "edge_tts" else None
+        assert _package_available("edge-tts") is True
+
+    @patch("cli_hub.matrix.importlib.util.find_spec", return_value=None)
+    @patch("cli_hub.matrix.importlib.metadata.version", side_effect=Exception("not found"))
+    def test_uninstalled_garbage_name_returns_false(self, mock_version, mock_find_spec):
+        assert _package_available("xyzzy-totally-fake-pkg-99999") is False
+
+    @patch("cli_hub.matrix.importlib.util.find_spec", side_effect=RuntimeError("boom"))
+    @patch("cli_hub.matrix.importlib.metadata.version", side_effect=RuntimeError("boom"))
+    def test_exceptions_are_swallowed_returns_false(self, mock_version, mock_find_spec):
+        assert _package_available("some-pkg") is False
+
+    @patch("cli_hub.matrix.importlib.util.find_spec", return_value=MagicMock())
+    def test_plain_import_name_detected_via_find_spec(self, mock_find_spec):
+        assert _package_available("PIL") is True
+        mock_find_spec.assert_called_with("PIL")
+
+
+class TestMatrixSkill:
+    """Tests for matrix_skill.py — local skill resolution and rendering."""
+
+    @patch("cli_hub.matrix_skill.metadata.distribution")
+    def test_resolve_local_skill_path_from_distribution(self, mock_distribution, tmp_path):
+        class FakeDist:
+            files = [Path("cli_anything/audacity/skills/SKILL.md")]
+
+            def locate_file(self, file):
+                return tmp_path / file
+
+        mock_distribution.return_value = FakeDist()
+        cli = {"name": "audacity", "_source": "harness"}
+        resolved = resolve_local_skill_path(cli)
+        assert resolved == str((tmp_path / "cli_anything/audacity/skills/SKILL.md").resolve())
+
+    @patch("cli_hub.matrix_skill.MATRIX_SKILL_DIR", Path(tempfile.mkdtemp()))
+    @patch("cli_hub.matrix_skill.resolve_local_skill_path")
+    @patch("cli_hub.matrix_skill.get_cli")
+    def test_render_matrix_skill_file_injects_paths(self, mock_get_cli, mock_resolve):
+        mock_get_cli.side_effect = lambda name: next((c for c in SAMPLE_REGISTRY["clis"] if c["name"] == name), None)
+        mock_resolve.side_effect = lambda cli: f"/tmp/{cli['name']}/skills/SKILL.md" if cli["name"] != "blender" else None
+
+        rendered = render_matrix_skill_file(SAMPLE_MATRIX_REGISTRY["matrices"][0], installed={"gimp": {}, "audacity": {}})
+        content = Path(rendered).read_text()
+        assert "## Installed CLI Skills" in content
+        assert "/tmp/gimp/skills/SKILL.md" in content
+        assert "skills/cli-anything-gimp/SKILL.md" in content
+        assert "## Capability Provider Overview" in content
+        assert "not installed" in content
+
+    def test_render_capability_tooling_includes_providers_and_recipes(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_capability_tooling(matrix_item, installed={"gimp": {}})
+        assert "## Capability Provider Overview" in result
+        assert "`package.thumbnail`" in result
+        assert "`cli-anything-gimp`" in result
+        assert "binary: cli-anything-gimp" in result
+        assert "## Recipes" in result
+        assert "`social-short`" in result
+        assert "## Known Gaps" in result
+
+
+class TestMultiApproachRendering:
+    """Tests for multi-approach stage rendering in matrix_skill.py."""
+
+    def test_render_stage_tooling_includes_goals(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={"gimp": {}})
+        assert "## Stage Tooling Overview" in result
+        assert "Create a thumbnail image" in result
+        assert "Edit and process audio" in result
+
+    def test_render_stage_tooling_includes_alternatives(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={})
+        assert "Pillow" in result
+        assert "pydub" in result
+        assert "sox" in result
+        assert "ImageMagick convert" in result
+
+    def test_render_stage_tooling_shows_install_status(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={"gimp": {}})
+        assert "`gimp` (installed)" in result
+        assert "`audacity` (not installed)" in result
+
+    def test_render_stage_tooling_omits_skill_search_hints(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_stage_tooling(matrix_item, installed={})
+        assert "npx skills search" not in result
+        assert "Search for skills" not in result
+
+    def test_render_stage_tooling_backward_compat_no_goal(self):
+        """Stages without 'goal' field are skipped gracefully."""
+        matrix_no_goals = {
+            "name": "test",
+            "stages": [
+                {"name": "Stage1", "clis": ["foo"]},
+            ],
+        }
+        result = _render_stage_tooling(matrix_no_goals, installed={})
+        assert result == ""
+
+    def test_render_discovery_section(self):
+        matrix_item = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+        result = _render_discovery_section(matrix_item)
+        assert result == ""
+
+    def test_render_discovery_section_uses_capability_hints(self):
+        matrix_item = {
+            "name": "test",
+            "capabilities": [
+                {"id": "publish.upload", "skill_search_hints": ["youtube upload"]},
+            ],
+        }
+        result = _render_discovery_section(matrix_item)
+        assert result == ""
+
+    def test_render_discovery_section_empty_when_no_hints(self):
+        matrix_no_hints = {
+            "name": "test",
+            "stages": [{"name": "S1", "clis": ["foo"]}],
+        }
+        result = _render_discovery_section(matrix_no_hints)
+        assert result == ""
+
+    @patch("cli_hub.matrix_skill.MATRIX_SKILL_DIR", Path(tempfile.mkdtemp()))
+    @patch("cli_hub.matrix_skill.resolve_local_skill_path")
+    @patch("cli_hub.matrix_skill.get_cli")
+    def test_render_matrix_skill_file_includes_stage_tooling(self, mock_get_cli, mock_resolve):
+        mock_get_cli.side_effect = lambda name: next((c for c in SAMPLE_REGISTRY["clis"] if c["name"] == name), None)
+        mock_resolve.return_value = None
+
+        rendered = render_matrix_skill_file(SAMPLE_MATRIX_REGISTRY["matrices"][0], installed={"gimp": {}})
+        content = Path(rendered).read_text()
+        assert "## Stage Tooling Overview" in content
+        assert "## Skill Discovery Commands" not in content
+        assert "npx skills search" not in content
+        assert "Create a thumbnail image" in content
+
+
+class TestPreviewBundle:
+    """Tests for preview bundle inspection and HTML rendering."""
+
+    def test_inspect_bundle(self, tmp_path):
+        bundle_dir = _make_preview_bundle(tmp_path)
+        payload = inspect_bundle(str(bundle_dir))
+        assert payload["artifact_count"] == 2
+        assert payload["manifest"]["software"] == "shotcut"
+        assert payload["summary"]["headline"] == "Quick preview rendered"
+
+    def test_inspect_bundle_loads_trajectory_from_context_path(self, tmp_path):
+        bundle_dir = _make_preview_bundle(tmp_path, with_trajectory=True)
+        payload = inspect_bundle(str(bundle_dir))
+        assert payload["trajectory"]["protocol"] == "preview-trajectory/v1"
+        assert payload["trajectory"]["step_count"] == 1
+        assert payload["trajectory"]["recent_publish_reason"] == "capture"
+
+    def test_render_inspect_text(self, tmp_path):
+        bundle_dir = _make_preview_bundle(tmp_path)
+        text = render_inspect_text(str(bundle_dir))
+        assert "Bundle:" in text
+        assert "Artifacts" in text
+        assert "Midpoint frame" in text
+
+    def test_render_html(self, tmp_path):
+        bundle_dir = _make_preview_bundle(tmp_path)
+        output_path = tmp_path / "preview.html"
+        rendered = render_html(str(bundle_dir), str(output_path))
+        assert rendered == str(output_path.resolve())
+        content = output_path.read_text()
+        assert "CLI-Anything Preview Bundle" in content
+        assert "Quick preview rendered" in content
+        assert "artifacts/hero.png" in content
+        assert "artifacts/preview.mp4" in content
+
+    def test_previews_inspect_cli_command(self, tmp_path):
+        bundle_dir = _make_preview_bundle(tmp_path)
+        runner = click.testing.CliRunner()
+        result = runner.invoke(main, ["previews", "inspect", str(bundle_dir)])
+        assert result.exit_code == 0
+        assert "Quick preview rendered" in result.output
+
+    def test_previews_html_cli_command(self, tmp_path):
+        bundle_dir = _make_preview_bundle(tmp_path)
+        output_path = tmp_path / "bundle-preview.html"
+        runner = click.testing.CliRunner()
+        result = runner.invoke(main, ["previews", "html", str(bundle_dir), "-o", str(output_path)])
+        assert result.exit_code == 0
+        assert str(output_path) in result.output
+        assert output_path.is_file()
+
+    def test_inspect_session(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path)
+        payload = inspect_session(str(session_dir))
+        assert payload["session"]["software"] == "shotcut"
+        assert payload["current_bundle"]["manifest"]["bundle_id"] == "20260419T104530Z_deadbeef_quick"
+
+    def test_inspect_session_loads_trajectory(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path, with_trajectory=True)
+        payload = inspect_session(str(session_dir))
+        assert payload["trajectory"]["protocol"] == "preview-trajectory/v1"
+        assert payload["trajectory"]["step_count"] == 2
+        assert payload["trajectory"]["current_step_id"] == "step-002"
+        assert payload["trajectory"]["recent_publish_reason"] == "manual-push"
+
+    def test_render_session_text(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path)
+        text = render_session_text(str(session_dir))
+        assert "Live Session:" in text
+        assert "Watch:" in text
+        assert "History" in text
+
+    def test_render_session_text_with_trajectory(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path, with_trajectory=True)
+        text = render_session_text(str(session_dir))
+        assert "Trajectory" in text
+        assert "Current step: step-002" in text
+        assert "Recent publish: manual-push" in text
+        assert "cli-anything-shotcut preview live push --recipe quick" in text
+
+    def test_render_live_html(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path)
+        output_path = tmp_path / "live.html"
+        rendered = render_live_html(str(session_dir), str(output_path), poll_ms=800)
+        assert rendered == str(output_path.resolve())
+        content = output_path.read_text()
+        assert "CLI-Anything Live Preview Session" in content
+        assert 'const CURRENT_LINK = "current";' in content
+        assert "manifest = await fetchJson(`${CURRENT_LINK}/manifest.json`);" in content
+        assert "const POLL_MS = 800;" in content
+
+    def test_render_live_html_with_trajectory(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path, with_trajectory=True)
+        output_path = tmp_path / "live-trajectory.html"
+        render_live_html(str(session_dir), str(output_path), poll_ms=600)
+        content = output_path.read_text()
+        assert 'const TRAJECTORY_CANDIDATES = ["trajectory.json", "timeline.json"];' in content
+        assert "function normalizeTrajectory(session, payload)" in content
+        assert "Trajectory Timeline" in content
+        assert "trajectory_step_count" in content
+        assert "latest_publish_reason" in content
+
+    @patch("cli_hub.preview.subprocess.Popen")
+    @patch("cli_hub.preview.shutil.which")
+    def test_open_in_browser_prefers_app_mode(self, mock_which, mock_popen):
+        mock_which.side_effect = lambda binary: f"/usr/bin/{binary}" if binary == "chromium" else None
+        mock_popen.return_value = MagicMock(pid=4321)
+        result = open_in_browser("http://127.0.0.1:9933/live.html")
+        assert result["launched"] is True
+        assert result["browser"] == "chromium"
+        assert "--app=http://127.0.0.1:9933/live.html" in result["command"]
+
+    def test_previews_inspect_cli_handles_session(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path)
+        runner = click.testing.CliRunner()
+        result = runner.invoke(main, ["previews", "inspect", str(session_dir)])
+        assert result.exit_code == 0
+        assert "Live Session:" in result.output
+
+    def test_previews_html_cli_renders_session(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path)
+        output_path = tmp_path / "session-live.html"
+        runner = click.testing.CliRunner()
+        result = runner.invoke(main, ["previews", "html", str(session_dir), "-o", str(output_path), "--poll-ms", "700"])
+        assert result.exit_code == 0
+        assert output_path.is_file()
+        assert "const POLL_MS = 700;" in output_path.read_text()
+
+    def test_previews_help_and_cli(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path, with_trajectory=True)
+        runner = click.testing.CliRunner()
+        help_result = runner.invoke(main, ["--help"])
+        assert help_result.exit_code == 0
+        assert "previews" in help_result.output
+        assert "\n  review" not in help_result.output
+        assert "\n  open-preview" not in help_result.output
+
+        inspect_result = runner.invoke(main, ["previews", "inspect", str(session_dir)])
+        assert inspect_result.exit_code == 0
+        assert "Trajectory" in inspect_result.output
+        assert "Current step: step-002" in inspect_result.output
+
 
 # ─── Installer tests ──────────────────────────────────────────────────
 
@@ -510,8 +1257,9 @@ class TestAnalytics:
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "test-event"
-            assert payload["payload"]["hostname"] == "clianything.cc"
+            assert payload["event"] == "test-event"
+            assert payload["properties"]["hostname"] == "clianything.cc"
+            assert payload["properties"]["source"] == "cli"
 
     @patch("cli_hub.analytics._send_event")
     def test_track_event_noop_when_disabled(self, mock_send):
@@ -522,56 +1270,87 @@ class TestAnalytics:
             mock_send.assert_not_called()
 
     @patch("cli_hub.analytics._send_event")
-    def test_track_install_event_name_includes_cli(self, mock_send):
-        """cli-install event name must include CLI name for dashboard visibility."""
+    def test_track_event_supports_umami_provider(self, mock_send):
+        with patch.dict(os.environ, {"CLI_HUB_ANALYTICS_PROVIDER": "umami"}, clear=False):
+            track_event("test-event")
+            import time
+            time.sleep(0.2)
+            mock_send.assert_called_once()
+            payload = mock_send.call_args[0][0]
+            assert payload["payload"]["name"] == "test-event"
+            assert payload["payload"]["hostname"] == "clianything.cc"
+
+    @patch("cli_hub.analytics._send_event")
+    def test_track_install_event_name_is_flat(self, mock_send):
+        """cli-install event name is static; CLI name lives in properties.cli."""
         with patch.dict(os.environ, {}, clear=True):
             track_install("gimp", "1.0.0")
             import time
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "cli-install:gimp"
-            assert payload["payload"]["url"] == "/cli-anything-hub/install/gimp"
-            assert payload["payload"]["data"]["cli"] == "gimp"
-            assert payload["payload"]["data"]["version"] == "1.0.0"
-            assert "platform" in payload["payload"]["data"]
+            assert payload["event"] == "cli-install"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/install/gimp"
+            assert payload["properties"]["cli"] == "gimp"
+            assert payload["properties"]["version"] == "1.0.0"
+            assert "platform" in payload["properties"]
 
     @patch("cli_hub.analytics._send_event")
-    def test_track_uninstall_event_name_includes_cli(self, mock_send):
-        """cli-uninstall event name must include CLI name for dashboard visibility."""
+    def test_track_uninstall_event_name_is_flat(self, mock_send):
+        """cli-uninstall event name is static; CLI name lives in properties.cli."""
         with patch.dict(os.environ, {}, clear=True):
             analytics_track_uninstall("blender")
             import time
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "cli-uninstall:blender"
-            assert payload["payload"]["url"] == "/cli-anything-hub/uninstall/blender"
-            assert payload["payload"]["data"]["cli"] == "blender"
+            assert payload["event"] == "cli-uninstall"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/uninstall/blender"
+            assert payload["properties"]["cli"] == "blender"
+            assert "platform" in payload["properties"]
+
+    @patch("cli_hub.analytics._send_event")
+    def test_track_launch_fires(self, mock_send):
+        """cli-launch event fires with the CLI name in properties."""
+        from cli_hub.analytics import track_launch
+        with patch.dict(os.environ, {}, clear=True):
+            track_launch("gimp")
+            import time
+            time.sleep(0.2)
+            mock_send.assert_called_once()
+            payload = mock_send.call_args[0][0]
+            assert payload["event"] == "cli-launch"
+            assert payload["properties"]["cli"] == "gimp"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/launch/gimp"
 
     @patch("cli_hub.analytics._send_event")
     def test_track_visit_human(self, mock_send):
-        """visit-human event sent when not detected as agent."""
+        """cli-hub call event sent when not detected as agent."""
         with patch.dict(os.environ, {}, clear=True):
             track_visit(is_agent=False)
             import time
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "visit-human"
-            assert payload["payload"]["url"] == "/cli-anything-hub"
-            assert payload["payload"]["data"]["source"] == "cli-anything-hub"
+            assert payload["event"] == "cli-hub call"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/call"
+            assert payload["properties"]["command"] == "root"
+            assert payload["properties"]["is_agent"] is False
+            assert payload["properties"]["traffic_type"] == "human"
 
     @patch("cli_hub.analytics._send_event")
     def test_track_visit_agent(self, mock_send):
-        """visit-agent event sent when agent environment detected."""
+        """cli-hub call event captures the agent flag."""
         with patch.dict(os.environ, {}, clear=True):
-            track_visit(is_agent=True)
+            track_visit(is_agent=True, command="--version")
             import time
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "visit-agent"
+            assert payload["event"] == "cli-hub call"
+            assert payload["properties"]["command"] == "--version"
+            assert payload["properties"]["is_agent"] is True
+            assert payload["properties"]["traffic_type"] == "agent"
 
     def test_detect_agent_claude_code(self):
         with patch.dict(os.environ, {"CLAUDE_CODE": "1"}):
@@ -581,12 +1360,78 @@ class TestAnalytics:
         with patch.dict(os.environ, {"CODEX": "1"}):
             assert _detect_is_agent() is True
 
-    def test_detect_not_agent_clean_env(self):
+    @patch("cli_hub.analytics._parent_process_commands", return_value=["/usr/local/bin/codex --run"])
+    def test_detect_agent_from_parent_process(self, mock_cmds):
+        with patch.dict(os.environ, {}, clear=True):
+            context = detect_invocation_context()
+            assert context["is_agent"] is True
+            assert context["reason"] == "codex-process"
+            assert "codex-process" in context["signals"]
+
+    @pytest.mark.parametrize(
+        ("command", "expected_reason"),
+        [
+            ("/usr/local/bin/gemini --prompt fix tests", "gemini-process"),
+            ("/usr/local/bin/copilot agent", "copilot-process"),
+            ("/usr/local/bin/auggie --print review", "auggie-process"),
+            ("/opt/augment/bin/augment", "augment-process"),
+            ("/usr/local/bin/ampcode fix build", "amp-process"),
+            ("/usr/local/bin/opencode agent create", "opencode-process"),
+            ("/usr/local/bin/kilo auth", "kilo-process"),
+            ("/usr/local/bin/qodo chat", "qodo-process"),
+            ("/usr/local/bin/kiro /agent create", "kiro-process"),
+        ],
+    )
+    @patch("cli_hub.analytics._parent_process_commands")
+    def test_detect_agent_from_expanded_parent_process_names(self, mock_cmds, command, expected_reason):
+        mock_cmds.return_value = [command]
+        with patch.dict(os.environ, {}, clear=True):
+            context = detect_invocation_context()
+            assert context["is_agent"] is True
+            assert context["reason"] == expected_reason
+            assert expected_reason in context["signals"]
+
+    @patch("cli_hub.analytics._parent_process_commands", return_value=[])
+    def test_detect_not_agent_clean_env(self, mock_cmds):
         """Clean env with a tty should not detect as agent."""
         with patch.dict(os.environ, {}, clear=True):
             with patch("sys.stdin") as mock_stdin:
                 mock_stdin.isatty.return_value = True
                 assert _detect_is_agent() is False
+
+    @patch("cli_hub.analytics._parent_process_commands", return_value=[])
+    def test_detect_non_tty_is_agent(self, mock_cmds):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("sys.stdin") as mock_stdin:
+                mock_stdin.isatty.return_value = False
+                context = detect_invocation_context()
+                assert context["is_agent"] is True
+                assert context["traffic_type"] == "agent"
+                assert context["category"] == "scripted_client"
+                assert context["reason"] == "stdin-not-tty"
+
+    @patch("cli_hub.analytics._send_event")
+    def test_track_visit_uses_detection_context(self, mock_send):
+        detection = {
+            "is_agent": True,
+            "traffic_type": "agent",
+            "category": "agent_tool",
+            "reason": "codex-process",
+            "signals": ["codex-process", "stdin-not-tty"],
+            "stdin_tty": False,
+            "is_interactive": False,
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            track_visit(command="search", detection=detection)
+            import time
+            time.sleep(0.2)
+            payload = mock_send.call_args[0][0]
+            assert payload["properties"]["command"] == "search"
+            assert payload["properties"]["agent_reason"] == "codex-process"
+            assert payload["properties"]["agent_category"] == "agent_tool"
+            assert payload["properties"]["agent_signals"] == ["codex-process", "stdin-not-tty"]
+            assert payload["properties"]["stdin_tty"] is False
+            assert payload["properties"]["is_interactive"] is False
 
     @patch("cli_hub.analytics._send_event")
     def test_first_run_sends_event(self, mock_send, tmp_path):
@@ -597,8 +1442,8 @@ class TestAnalytics:
             time.sleep(0.2)
             mock_send.assert_called_once()
             payload = mock_send.call_args[0][0]
-            assert payload["payload"]["name"] == "cli-anything-hub-installed"
-            assert payload["payload"]["url"] == "/cli-anything-hub/installed"
+            assert payload["event"] == "cli-anything-hub-installed"
+            assert payload["properties"]["$current_url"] == "https://clianything.cc/cli-anything-hub/installed"
             # Marker file should now exist
             assert (tmp_path / ".cli-hub" / ".first_run_sent").exists()
 
@@ -623,32 +1468,250 @@ class TestCLI:
 
     def setup_method(self):
         self.runner = click.testing.CliRunner()
+        self.human_detection = {
+            "is_agent": False,
+            "traffic_type": "human",
+            "category": "human",
+            "reason": "human",
+            "signals": [],
+            "stdin_tty": True,
+            "is_interactive": True,
+        }
+        self.agent_detection = {
+            "is_agent": True,
+            "traffic_type": "agent",
+            "category": "agent_tool",
+            "reason": "codex-env",
+            "signals": ["codex-env"],
+            "stdin_tty": False,
+            "is_interactive": False,
+        }
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     def test_version(self, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["--version"])
         assert __version__ in result.output
         assert result.exit_code == 0
-        mock_visit.assert_called_once_with(is_agent=False)
+        mock_visit.assert_called_once_with(command="--version", detection=self.human_detection)
         mock_first_run.assert_called_once()
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     def test_help(self, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["--help"])
         assert "cli-hub" in result.output
+        assert "matrix" in result.output
+        assert "previews" in result.output
         assert result.exit_code == 0
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}})
+    def test_matrix_list_command(self, mock_installed, mock_fetch_matrices, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "list"])
+        assert "video-creation" in result.output
+        assert "1/3" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.search_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}})
+    def test_matrix_search_command(self, mock_installed, mock_search, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "search", "video"])
+        assert "video-creation" in result.output
+        assert "1/3" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.search_matrices", return_value=[])
+    def test_matrix_search_no_results(self, mock_search, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "search", "nonexistent"])
+        assert "No matrices matching" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}})
+    @patch("cli_hub.cli.get_rendered_matrix_skill_path", return_value=Path("/tmp/video-creation.SKILL.md"))
+    @patch("pathlib.Path.exists", return_value=True)
+    def test_matrix_info_command(
+        self,
+        mock_exists,
+        mock_rendered,
+        mock_installed,
+        mock_get_matrix,
+        mock_detect,
+        mock_visit,
+        mock_first_run,
+    ):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "info", "video-creation"])
+        assert "Video Creation & Editing" in result.output
+        assert "cli-hub matrix install video-creation" in result.output
+        assert "cli-hub-matrix/video-creation/SKILL.md" in result.output
+        assert "Local skill: /tmp/video-creation.SKILL.md" in result.output
+        assert "Capabilities:" in result.output
+        assert "package.thumbnail" in result.output
+        assert "Known Gaps:" in result.output
+        assert result.exit_code == 0
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
+    @patch("cli_hub.cli.preflight_matrix")
+    def test_matrix_preflight_command(self, mock_preflight, mock_get_matrix, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        mock_preflight.return_value = {
+            "matrix": {"display_name": "Video Creation & Editing"},
+            "offline": False,
+            "summary": {
+                "capabilities": 1,
+                "with_available_provider": 1,
+                "providers": 2,
+                "available_providers": 1,
+                "covered": 1,
+                "gaps": 0,
+            },
+            "capabilities": [
+                {
+                    "id": "package.thumbnail",
+                    "intent": "Create a thumbnail image",
+                    "providers": [
+                        {
+                            "name": "Pillow",
+                            "kind": "python",
+                            "available": True,
+                            "quality_tier": "good",
+                            "cost_tier": "free",
+                            "missing": {"env": [], "binary": [], "package": []},
+                        }
+                    ],
+                }
+            ],
+        }
+        result = self.runner.invoke(main, ["matrix", "preflight", "video-creation"])
+        assert result.exit_code == 0
+        assert "Video Creation & Editing Preflight" in result.output
+        assert "Recommended:" not in result.output
+        assert "Pillow [python; good; free]" in result.output
+        mock_preflight.assert_called_once_with(
+            SAMPLE_MATRIX_REGISTRY["matrices"][0],
+            capability_id=None,
+            offline=False,
+            capability_ids=None,
+        )
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
+    @patch("cli_hub.cli.preflight_matrix")
+    def test_matrix_preflight_command_renders_agent_skills_separately(
+        self,
+        mock_preflight,
+        mock_get_matrix,
+        mock_detect,
+        mock_visit,
+        mock_first_run,
+    ):
+        mock_detect.return_value = self.human_detection
+        mock_preflight.return_value = {
+            "matrix": {"display_name": "Video Creation & Editing"},
+            "offline": False,
+            "summary": {
+                "capabilities": 1,
+                "with_available_provider": 0,
+                "with_agent_installable_provider": 1,
+                "providers": 1,
+                "available_providers": 0,
+                "agent_installable_providers": 1,
+                "covered": 1,
+                "gaps": 0,
+            },
+            "capabilities": [
+                {
+                    "id": "script.storyboard",
+                    "intent": "Plan a video",
+                    "providers": [
+                        {
+                            "name": "video-scriptwriting skill",
+                            "kind": "agent-skill",
+                            "available": False,
+                            "agent_installable": True,
+                            "quality_tier": "sota",
+                            "cost_tier": "free",
+                            "missing": {"env": [], "binary": [], "package": []},
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = self.runner.invoke(main, ["matrix", "preflight", "video-creation"])
+        assert result.exit_code == 0
+        assert "1 agent-installable skill provider is not counted as installed or missing" in result.output
+        assert "Recommended:" not in result.output
+        assert "Agent-installable:" not in result.output
+        assert "video-scriptwriting skill [agent-skill; sota; free] agent-installable" in result.output
+        assert "missing:" not in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.install_matrix", return_value=(False, {
+        "matrix": SAMPLE_MATRIX_REGISTRY["matrices"][0],
+        "results": [
+            {"name": "gimp", "status": "skipped", "message": "Already installed"},
+            {"name": "blender", "status": "installed", "message": "Installed Blender"},
+            {"name": "audacity", "status": "failed", "message": "Install failed"},
+        ],
+        "summary": {"installed": 1, "skipped": 1, "failed": 1},
+        "rendered_skill_path": "/tmp/video-creation.SKILL.md",
+    }))
+    def test_matrix_install_command_partial_failure(self, mock_install_matrix, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "install", "video-creation"])
+        # Partial failure (some installed, some failed) → exit code 3 per the contract.
+        assert result.exit_code == 3
+        assert "Summary: 1 installed, 1 skipped, 1 failed" in result.output
+        assert "Matrix skill: cli-hub-matrix/video-creation/SKILL.md" in result.output
+        assert "Local matrix skill: /tmp/video-creation.SKILL.md" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.install_matrix", return_value=(False, {"error": "Matrix 'missing' not found."}))
+    def test_matrix_install_command_not_found(self, mock_install_matrix, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "install", "missing"])
+        assert result.exit_code == 1
+        assert "not found" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
     @patch("cli_hub.cli.list_categories", return_value=["3d", "audio", "image"])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_list_command(self, mock_installed, mock_categories, mock_fetch, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["list"])
         assert "gimp" in result.output
         assert "blender" in result.output
@@ -656,31 +1719,34 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.fetch_all_clis", return_value=SAMPLE_REGISTRY["clis"])
     @patch("cli_hub.cli.list_categories", return_value=["3d", "audio", "image"])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_list_with_category(self, mock_installed, mock_categories, mock_fetch, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["list", "-c", "image"])
         assert "gimp" in result.output
         assert "blender" not in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.search_clis", return_value=[SAMPLE_REGISTRY["clis"][0]])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_search_command(self, mock_installed, mock_search, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["search", "gimp"])
         assert "gimp" in result.output
         assert result.exit_code == 0
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.get_cli", return_value=SAMPLE_REGISTRY["clis"][0])
     @patch("cli_hub.cli.get_installed", return_value={})
     def test_info_command(self, mock_installed, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["info", "gimp"])
         assert "GIMP" in result.output
         assert "image" in result.output
@@ -689,19 +1755,21 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.get_cli", return_value=None)
     def test_info_not_found(self, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["info", "nonexistent"])
         assert result.exit_code == 1
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.track_install")
     @patch("cli_hub.cli.install_cli", return_value=(True, "Installed GIMP (cli-anything-gimp)"))
     @patch("cli_hub.cli.get_cli", return_value=SAMPLE_REGISTRY["clis"][0])
     def test_install_command(self, mock_get, mock_install, mock_track, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["install", "gimp"])
         assert result.exit_code == 0
         assert "Installed" in result.output
@@ -709,30 +1777,33 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.track_uninstall")
     @patch("cli_hub.cli.uninstall_cli", return_value=(True, "Uninstalled GIMP"))
     def test_uninstall_command(self, mock_uninstall, mock_track, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["uninstall", "gimp"])
         assert result.exit_code == 0
         mock_track.assert_called_once()
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=True)
+    @patch("cli_hub.cli.detect_invocation_context")
     def test_visit_agent_on_invocation(self, mock_detect, mock_visit, mock_first_run):
-        """When agent env detected, track_visit is called with is_agent=True."""
+        """When agent env detected, track_visit is called with the new cli-hub call metadata."""
+        mock_detect.return_value = self.agent_detection
         result = self.runner.invoke(main, ["--version"])
-        mock_visit.assert_called_once_with(is_agent=True)
+        mock_visit.assert_called_once_with(command="--version", detection=self.agent_detection)
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.install_cli", return_value=(True, "Installed Jimeng / Dreamina CLI (dreamina)"))
     @patch("cli_hub.cli.get_cli", return_value={**SAMPLE_REGISTRY["clis"][0], "entry_point": "dreamina", "name": "jimeng", "display_name": "Jimeng / Dreamina CLI", "version": "latest", "_source": "public"})
     @patch("cli_hub.cli.track_install")
     def test_install_shows_launch_hint(self, mock_track, mock_get, mock_install, mock_detect, mock_visit, mock_first_run):
         """Post-install output includes both entry point and cli-hub launch hint."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["install", "jimeng"])
         assert result.exit_code == 0
         assert "dreamina" in result.output
@@ -740,32 +1811,211 @@ class TestCLI:
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.shutil.which", return_value="/usr/bin/dreamina")
     @patch("cli_hub.cli.os.execvp")
     @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
     def test_launch_execs_entry_point(self, mock_get, mock_execvp, mock_which, mock_detect, mock_visit, mock_first_run):
         """launch execs the CLI entry point, passing through extra args."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["launch", "jimeng", "login"])
         mock_execvp.assert_called_once_with("dreamina", ["dreamina", "login"])
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.shutil.which", return_value=None)
     @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
     def test_launch_not_on_path_shows_install_hint(self, mock_get, mock_which, mock_detect, mock_visit, mock_first_run):
         """launch fails gracefully when entry point not on PATH."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["launch", "jimeng"])
         assert result.exit_code == 1
         assert "cli-hub install jimeng" in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
-    @patch("cli_hub.cli._detect_is_agent", return_value=False)
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.get_cli", return_value=None)
     def test_launch_unknown_cli(self, mock_get, mock_detect, mock_visit, mock_first_run):
         """launch with an unknown CLI name exits with error."""
+        mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["launch", "nonexistent"])
         assert result.exit_code == 1
         assert "not found" in result.output
+
+
+SAMPLE_MATRIX = SAMPLE_MATRIX_REGISTRY["matrices"][0]
+
+
+class TestMatrixScopeHelpers:
+    """Pure-function tests for provider↔CLI resolution and install scoping (F2.2)."""
+
+    def test_provider_cli_name_strips_harness_prefix(self):
+        gimp = SAMPLE_MATRIX["capabilities"][0]["providers"][0]
+        assert provider_cli_name(gimp, SAMPLE_MATRIX["clis"]) == "gimp"
+
+    def test_provider_cli_name_none_for_non_installable(self):
+        pillow = SAMPLE_MATRIX["capabilities"][0]["providers"][1]  # python
+        assert provider_cli_name(pillow, SAMPLE_MATRIX["clis"]) is None
+
+    def test_provider_cli_name_explicit_field_wins(self):
+        provider = {"kind": "public-cli", "name": "Whatever", "cli": "blender"}
+        assert provider_cli_name(provider, SAMPLE_MATRIX["clis"]) == "blender"
+
+    def test_scope_all_returns_every_cli(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX)
+        assert scope["error"] is None
+        assert scope["cli_names"] == ["gimp", "blender", "audacity"]
+        assert scope["scope"]["type"] == "all"
+
+    def test_scope_capability_maps_to_clis(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, capability="package.thumbnail")
+        assert scope["error"] is None
+        assert scope["cli_names"] == ["gimp"]
+
+    def test_scope_recipe_unions_capability_clis(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, recipe="social-short")
+        assert scope["error"] is None
+        # social-short uses package.thumbnail (gimp) + audio.capture (audacity), in clis[] order
+        assert scope["cli_names"] == ["gimp", "audacity"]
+
+    def test_scope_only_validates_membership(self):
+        ok = resolve_install_scope(SAMPLE_MATRIX, only="gimp,audacity")
+        assert ok["error"] is None
+        assert ok["cli_names"] == ["gimp", "audacity"]
+        bad = resolve_install_scope(SAMPLE_MATRIX, only="gimp,bogus")
+        assert bad["error"] is not None and "bogus" in bad["error"]
+
+    def test_scope_mutually_exclusive(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, capability="package.thumbnail", only="gimp")
+        assert scope["error"] is not None
+
+    def test_scope_unknown_capability_errors(self):
+        scope = resolve_install_scope(SAMPLE_MATRIX, capability="nope")
+        assert scope["error"] is not None and "nope" in scope["error"]
+
+    def test_unmanaged_providers_groups_by_kind(self):
+        groups = unmanaged_providers(SAMPLE_MATRIX)
+        assert groups.get("python") == ["Pillow"]
+        assert groups.get("native") == ["sox"]
+
+    def test_provider_install_hint_derives_cli_hub_command(self):
+        gimp = SAMPLE_MATRIX["capabilities"][0]["providers"][0]
+        assert provider_install_hint(gimp, SAMPLE_MATRIX["clis"]) == "cli-hub install gimp"
+
+    def test_provider_install_hint_prefers_explicit(self):
+        provider = {"kind": "public-cli", "name": "tool", "install_hint": "brew install tool"}
+        assert provider_install_hint(provider, SAMPLE_MATRIX["clis"]) == "brew install tool"
+
+
+class TestCapabilitySearch:
+    """Capability-level search powering matrix search matched_in and `cli-hub can` (F1.1)."""
+
+    def test_capability_matches_by_intent(self):
+        matches = capability_matches(SAMPLE_MATRIX, "thumbnail")
+        ids = {m["capability_id"] for m in matches}
+        assert "package.thumbnail" in ids
+        hit = next(m for m in matches if m["capability_id"] == "package.thumbnail")
+        assert hit["match_field"] in {"id", "intent", "hint"}
+        assert "cli-anything-gimp" in hit["providers_summary"]
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_search_capabilities_includes_availability(self, mock_fetch):
+        with patch("cli_hub.matrix.shutil.which", return_value=None), \
+             patch("cli_hub.matrix._package_available", return_value=False):
+            hits = search_capabilities("audio")
+        assert hits
+        hit = hits[0]
+        assert "providers" in hit and "available" in hit["providers"][0]
+
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_all_recipes_filters_by_query(self, mock_fetch):
+        assert {r["id"] for r in all_recipes()} == {"social-short"}
+        assert all_recipes("nonexistent-recipe-xyz") == []
+
+
+class TestMatrixF1F2Commands:
+    """CLI-level tests for the F1/F2 matrix commands."""
+
+    def setup_method(self):
+        self.runner = click.testing.CliRunner()
+        self.human_detection = {"is_agent": False, "agent": None, "source": "tty"}
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_can_command_finds_capability(self, mock_fetch, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        with patch("cli_hub.matrix.shutil.which", return_value=None), \
+             patch("cli_hub.matrix._package_available", return_value=False):
+            result = self.runner.invoke(main, ["can", "thumbnail"])
+        assert result.exit_code == 0
+        assert "package.thumbnail" in result.output
+        assert "cli-hub matrix preflight video-creation -c package.thumbnail" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_can_command_no_match_exits_1(self, mock_fetch, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["can", "zzz-no-such-capability"])
+        assert result.exit_code == 1
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.matrix.fetch_all_matrices", return_value=SAMPLE_MATRIX_REGISTRY["matrices"])
+    def test_recipes_command_lists_recipes(self, mock_fetch, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "recipes"])
+        assert result.exit_code == 0
+        assert "social-short" in result.output
+        assert "preflight video-creation --recipe social-short" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_installed", return_value={})
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.get_matrix", return_value=SAMPLE_MATRIX)
+    def test_install_dry_run_no_side_effects(self, mock_get_matrix, mock_get_cli,
+                                             mock_installed, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        mock_get_cli.side_effect = lambda n: {"name": n, "display_name": n.title(),
+                                              "_source": "harness", "entry_point": n}
+        with patch("cli_hub.installer.install_cli") as mock_install:
+            result = self.runner.invoke(
+                main, ["matrix", "install", "video-creation", "--capability", "package.thumbnail", "--dry-run"])
+        mock_install.assert_not_called()
+        assert result.exit_code == 0
+        assert "Install plan" in result.output
+        assert "gimp" in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.installer.get_matrix", return_value=SAMPLE_MATRIX)
+    def test_install_unknown_capability_exits_2(self, mock_get_matrix, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(
+            main, ["matrix", "install", "video-creation", "--capability", "nope", "--dry-run"])
+        assert result.exit_code == 2
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.doctor_matrix", return_value=(False, {
+        "matrix": SAMPLE_MATRIX,
+        "last_run": "2026-06-14T10:00:00",
+        "checks": [{"name": "gimp", "entry_point": "gimp", "status": "not_installed",
+                    "detail": "Not installed", "fix": "cli-hub install gimp"}],
+        "summary": {"total": 1, "ok": 0, "broken": 0, "not_installed": 1},
+    }))
+    def test_doctor_command_reports_gaps_exit_3(self, mock_doctor, mock_detect, mock_visit, mock_first):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["matrix", "doctor", "video-creation"])
+        assert result.exit_code == 3
+        assert "cli-hub install gimp" in result.output

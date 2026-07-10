@@ -9,9 +9,10 @@ CLI-Anything: AIエージェントと世界のソフトウェアの架け橋</st
 
 <p align="center">
   <a href="#-クイックスタート"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="クイックスタート"></a>
-  <a href="#-デモンストレーション"><img src="https://img.shields.io/badge/Demos-11_Apps-green?style=for-the-badge" alt="デモ"></a>
-  <a href="#-テスト結果"><img src="https://img.shields.io/badge/Tests-1%2C508_Passing-brightgreen?style=for-the-badge" alt="テスト"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="ライセンス"></a>
+  <a href="#-デモンストレーション"><img src="https://img.shields.io/badge/Demos-12_Apps-green?style=for-the-badge" alt="デモ"></a>
+  <a href="#-テスト結果"><img src="https://img.shields.io/badge/Tests-1%2C540_Passing-brightgreen?style=for-the-badge" alt="テスト"></a>
+  <a href="https://arxiv.org/abs/2606.03854"><img src="https://img.shields.io/badge/Tech_Report-arXiv%3A2606.03854-b31b1b?style=for-the-badge" alt="技術レポート"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow?style=for-the-badge" alt="ライセンス"></a>
 </p>
 
 <p align="center">
@@ -24,7 +25,7 @@ CLI-Anything: AIエージェントと世界のソフトウェアの架け橋</st
 <a href="https://github.com/HKUDS/.github/blob/main/profile/README.md"><img src="https://img.shields.io/badge/WeChat-Group-C5EAB4?style=flat&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
-**ワンコマンド**: あらゆるソフトウェアをOpenClaw、nanobot、Cursor、Claude Codeなどのエージェント対応に。&nbsp;&nbsp;[**English**](README.md) | [**中文文档**](README_CN.md)
+**ワンコマンド**: あらゆるソフトウェアをOpenClaw、nanobot、Cursor、Claude Codeなどのエージェント対応に。&nbsp;&nbsp;[**English**](README.md) | [**中文文档**](README_CN.md) | [**Deutsch**](README_DE.md)
 
 <p align="center">
   <img src="assets/cli-typing.gif" alt="CLI-Anything タイピングデモ" width="800">
@@ -456,7 +457,7 @@ CLI-Anythingは**GUIベースのエージェントアプローチを完全に置
 CLI-Anythingはコードベースを持つあらゆるソフトウェアで動作します — ドメインの制限やアーキテクチャの制約はありません。
 
 ### 🏭 プロフェッショナルグレードのテスト
-クリエイティブ、生産性、コミュニケーション、ダイアグラム、AIコンテンツ生成など、以前はAIエージェントがアクセスできなかった11の多様で複雑なアプリケーションでテスト済み。
+クリエイティブ、生産性、コミュニケーション、ダイアグラム、AIコンテンツ生成、GPUデバッグなど、以前はAIエージェントがアクセスできなかった12の多様で複雑なアプリケーションでテスト済み。
 
 ### 🎨 多様なドメインカバレッジ
 クリエイティブワークフロー（画像編集、3Dモデリング、ベクターグラフィックス）からプロダクションツール（オーディオ、オフィス、ライブストリーミング、動画編集）まで。
@@ -550,12 +551,26 @@ CLI-Anythingはコードベースを持つあらゆるソフトウェアで動�
 <td align="center">✅ 50</td>
 </tr>
 <tr>
+<td align="center"><strong>🟩 <a href="nsight-graphics/agent-harness/">Nsight Graphics CLI</a></strong></td>
+<td>GPUデバッグ & プロファイリング</td>
+<td><code>cli-anything-nsight-graphics</code></td>
+<td>公式 ngfx / ngfx-capture オーケストレーション + GPU Trace サマリー</td>
+<td align="center">✅ 40</td>
+</tr>
+<tr>
+<td align="center"><strong>📓 <a href="joplin/agent-harness/">Joplin</a></strong></td>
+<td>ノートとToDo管理</td>
+<td><code>cli-anything-joplin</code></td>
+<td>Joplinターミナルクライアント（サブプロセス）</td>
+<td align="center">✅ 134</td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>合計</strong></td>
-<td align="center"><strong>✅ 1,508</strong></td>
+<td align="center"><strong>✅ 1,681</strong></td>
 </tr>
 </table>
 
-> **全1,508テストで100%パス** — 1,073ユニットテスト + 435エンドツーエンドテスト。
+> **全1,681テストで100%パス** — 1,215ユニットテスト + 466エンドツーエンドテスト。
 
 ---
 
@@ -583,8 +598,10 @@ shotcut       154 passed  ✅   (110 unit + 44 e2e)
 zoom           22 passed  ✅   (22 unit + 0 e2e)
 drawio        138 passed  ✅   (116 unit + 22 e2e)
 anygen         50 passed  ✅   (40 unit + 10 e2e)
+nsight-graphics 40 passed ✅   (36 unit + 4 e2e)
+joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
 ──────────────────────────────────────────────────────────────────────────────
-合計         1,508 passed  ✅   100% パス率
+合計         1,681 passed  ✅   100% パス率
 ```
 
 ---
@@ -643,7 +660,9 @@ cli-anything/
 ├── 🎬 shotcut/agent-harness/            # Shotcut CLI (154テスト)
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22テスト)
 ├── 📐 drawio/agent-harness/             # Draw.io CLI (138テスト)
-└── ✨ anygen/agent-harness/             # AnyGen CLI (50テスト)
+├── ✨ anygen/agent-harness/             # AnyGen CLI (50テスト)
+├── 📓 joplin/agent-harness/             # Joplin CLI (134テスト: 107 unit + 27 e2e, 新規)
+└── 🟩 nsight-graphics/agent-harness/    # Nsight Graphics CLI (40テスト)
 ```
 
 各`agent-harness/`にはClick CLI、コアモジュール、ユーティリティ（`repl_skin.py`とバックエンドラッパーを含む）、包括的なテストを備えた`cli_anything.<software>/`配下のインストール可能なPythonパッケージが含まれています。
@@ -859,9 +878,27 @@ CLI-Anythingがあなたのソフトウェアをエージェントネイティ�
 
 ---
 
+## 📚 引用
+
+CLI-Anything が役立つ場合は、技術レポートを引用してください：
+
+```bibtex
+@misc{yang2026clianythingagentnativecomputeruse,
+      title={CLI-Anything: Towards Agent-Native Computer Use}, 
+      author={Yuhao Yang and Tianyu Fan and Chao Huang},
+      year={2026},
+      eprint={2606.03854},
+      archivePrefix={arXiv},
+      primaryClass={cs.HC},
+      url={https://arxiv.org/abs/2606.03854}, 
+}
+```
+
+---
+
 ## 📄 ライセンス
 
-MITライセンス — 自由に使用、変更、配布できます。
+Apache License 2.0 — 自由に使用、変更、配布できます。
 
 ---
 

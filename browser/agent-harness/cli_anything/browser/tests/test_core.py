@@ -7,12 +7,10 @@ Usage:
 """
 
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page, fs
-from cli_anything.browser.utils import domshell_backend as backend_mod
 
 
 # ── Session Tests ────────────────────────────────────────────────
@@ -218,7 +216,7 @@ class TestFsModule:
 
             result = fs.list_elements(sess)
 
-            mock_ls.assert_called_once_with("/main", use_daemon=False)
+            mock_ls.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_list_elements_with_path(self):
         """Listing elements with explicit path overrides working_dir."""
@@ -230,7 +228,7 @@ class TestFsModule:
 
             result = fs.list_elements(sess, "/div")
 
-            mock_ls.assert_called_once_with("/div", use_daemon=False)
+            mock_ls.assert_called_once_with("/div", use_daemon=False, session=sess)
 
     def test_list_elements_empty_path_uses_working_dir(self):
         """Listing with empty path uses session working_dir."""
@@ -242,7 +240,7 @@ class TestFsModule:
 
             result = fs.list_elements(sess, "")
 
-            mock_ls.assert_called_once_with("/main", use_daemon=False)
+            mock_ls.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_change_directory_absolute_path(self):
         """Changing to absolute path updates working_dir."""
@@ -254,7 +252,7 @@ class TestFsModule:
             result = fs.change_directory(sess, "/main")
 
             assert sess.working_dir == "/main"
-            mock_cd.assert_called_once_with("/main", use_daemon=False)
+            mock_cd.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_change_directory_relative_parent(self):
         """Changing to .. goes up one level."""
@@ -267,7 +265,7 @@ class TestFsModule:
             result = fs.change_directory(sess, "..")
 
             assert sess.working_dir == "/main"
-            mock_cd.assert_called_once_with("/main", use_daemon=False)
+            mock_cd.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_change_directory_parent_from_root(self):
         """Changing to .. from root stays at root."""
@@ -302,7 +300,7 @@ class TestFsModule:
             result = fs.change_directory(sess, "div[0]")
 
             assert sess.working_dir == "/main/div[0]"
-            mock_cd.assert_called_once_with("/main/div[0]", use_daemon=False)
+            mock_cd.assert_called_once_with("/main/div[0]", use_daemon=False, session=sess)
 
     def test_read_element(self):
         """Reading element calls backend."""
@@ -317,7 +315,7 @@ class TestFsModule:
 
             result = fs.read_element(sess, "/main/button[0]")
 
-            mock_cat.assert_called_once_with("/main/button[0]", use_daemon=False)
+            mock_cat.assert_called_once_with("/main/button[0]", use_daemon=False, session=sess)
 
     def test_read_element_empty_path_uses_working_dir(self):
         """Reading with empty path uses session working_dir."""
@@ -329,11 +327,11 @@ class TestFsModule:
 
             result = fs.read_element(sess, "")
 
-            mock_cat.assert_called_once_with("/main", use_daemon=False)
+            mock_cat.assert_called_once_with("/main", use_daemon=False, session=sess)
 
     def test_grep_elements(self):
-        """Grepping calls backend with pattern."""
-        sess = Session()
+        """Grepping calls backend with pattern and session cwd as path."""
+        sess = Session()  # working_dir defaults to "/"
 
         with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep:
             mock_grep.return_value = {
@@ -342,23 +340,22 @@ class TestFsModule:
 
             result = fs.grep_elements(sess, "Login")
 
-            mock_grep.assert_called_once_with("Login", use_daemon=False)
+            mock_grep.assert_called_once_with(
+                "Login", path="/", prev="/", use_daemon=False, session=sess
+            )
 
     def test_grep_elements_with_path(self):
-        """Grepping with path cds to that path first, then restores."""
+        """Grepping with an explicit path forwards it to backend.grep."""
         sess = Session()
 
-        with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep, \
-             patch("cli_anything.browser.core.fs.backend.cd") as mock_cd:
+        with patch("cli_anything.browser.core.fs.backend.grep") as mock_grep:
             mock_grep.return_value = {"matches": ["/main/button[0]"]}
-            mock_cd.return_value = {"path": "/main"}
 
             result = fs.grep_elements(sess, "Login", "/main")
 
-            mock_grep.assert_called_once_with("Login", use_daemon=False)
-            assert mock_cd.call_count == 2
-            mock_cd.assert_any_call("/main", use_daemon=False)
-            mock_cd.assert_any_call("/", use_daemon=False)
+            mock_grep.assert_called_once_with(
+                "Login", path="/main", prev="/", use_daemon=False, session=sess
+            )
 
 
 # ── Daemon Mode Tests ────────────────────────────────────────────
@@ -376,7 +373,7 @@ class TestDaemonMode:
 
             result = fs.list_elements(sess)
 
-            mock_ls.assert_called_once_with("/", use_daemon=True)
+            mock_ls.assert_called_once_with("/", use_daemon=True, session=sess)
 
     def test_normal_mode_does_not_use_daemon(self):
         """Commands don't use daemon mode when session.daemon_mode is False."""
@@ -388,321 +385,57 @@ class TestDaemonMode:
 
             result = fs.list_elements(sess)
 
-            mock_ls.assert_called_once_with("/", use_daemon=False)
+            mock_ls.assert_called_once_with("/", use_daemon=False, session=sess)
 
 
-class TestBackendTimeouts:
-    """Test backend timeout parsing and behavior."""
+# ── CLI-layer error surfacing (Codex P2 R4) ─────────────────────────
 
-    def test_timeout_default_value(self, monkeypatch):
-        """Timeout defaults to safe value when env var is unset."""
-        monkeypatch.delenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", raising=False)
-        assert backend_mod._get_tool_timeout_seconds() == 20.0
 
-    def test_timeout_invalid_env_falls_back_to_default(self, monkeypatch):
-        """Invalid timeout env var falls back to default."""
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "not-a-number")
-        assert backend_mod._get_tool_timeout_seconds() == 20.0
+class TestCLIErrorSurfacing:
+    """The non-JSON branches of `fs ls` and `fs grep` previously fell
+    straight into ``result.get("entries"/"matches", [])`` and surfaced
+    "No elements at …" / "No matches for …" for DOMShell errors. Codex
+    P2 R4 on PR #308 commit 5790651 required surfacing the error
+    message instead.
+    """
 
-    def test_timeout_is_clamped_to_minimum(self, monkeypatch):
-        """Timeout values below 1 second are clamped to 1 second."""
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "0")
-        assert backend_mod._get_tool_timeout_seconds() == 1.0
-
-    def test_init_timeout_default_value(self, monkeypatch):
-        """Init timeout defaults to 120s when env var is unset."""
-        monkeypatch.delenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", raising=False)
-        assert backend_mod._get_init_timeout_seconds() == 120.0
-
-    def test_init_timeout_invalid_env_falls_back_to_default(self, monkeypatch):
-        """Invalid init timeout env var falls back to default."""
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "not-a-number")
-        assert backend_mod._get_init_timeout_seconds() == 120.0
-
-    def test_init_timeout_is_clamped_to_minimum(self, monkeypatch):
-        """Init timeout values below 1 second are clamped to 1 second."""
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "0")
-        assert backend_mod._get_init_timeout_seconds() == 1.0
-
-    def test_init_timeout_is_independent_of_tool_timeout(self, monkeypatch):
-        """Init and tool timeouts are configured independently."""
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
-        assert backend_mod._get_tool_timeout_seconds() == 5.0
-        assert backend_mod._get_init_timeout_seconds() == 120.0
-
-    def test_call_tool_uses_init_timeout_for_session_initialize(self, monkeypatch):
-        """Non-daemon _call_tool must await session.initialize() with the init timeout."""
-        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
-
-        class _DummyStdioContext:
-            async def __aenter__(self):
-                return object(), object()
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-        class _DummyClientSession:
-            def __init__(self, _read, _write):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-            def initialize(self):
-                return object()
-
-            def call_tool(self, _tool_name, _arguments):
-                return object()
-
-        recorded_timeouts = []
-
-        async def _fake_await_with_timeout(_coro, operation, timeout_seconds=None):
-            if timeout_seconds is None:
-                timeout_seconds = (
-                    backend_mod._get_init_timeout_seconds()
-                    if "initialize" in operation
-                    else backend_mod._get_tool_timeout_seconds()
-                )
-            recorded_timeouts.append((operation, timeout_seconds))
-            return {"ok": True}
+    def _invoke(self, mod_target, error_result, argv):
+        """Mock the dependency check + the fs_mod target, invoke CLI."""
+        from click.testing import CliRunner
+        from cli_anything.browser.browser_cli import cli
 
         with patch(
-            "cli_anything.browser.utils.domshell_backend._await_with_timeout",
-            side_effect=_fake_await_with_timeout,
+            "cli_anything.browser.browser_cli.backend.is_available",
+            return_value=(True, "ok"),
         ), patch(
-            "cli_anything.browser.utils.domshell_backend.stdio_client",
-            return_value=_DummyStdioContext(),
-        ), patch(
-            "cli_anything.browser.utils.domshell_backend.ClientSession",
-            _DummyClientSession,
+            f"cli_anything.browser.browser_cli.fs_mod.{mod_target}",
+            return_value=error_result,
         ):
-            asyncio.run(
-                backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=False)
-            )
+            return CliRunner().invoke(cli, argv)
 
-        assert ("session initialize", 120.0) in recorded_timeouts
-        assert ("domshell_click", 5.0) in recorded_timeouts
+    def test_fs_ls_surfaces_error_in_non_json_output(self):
+        """`fs ls` on a path DOMShell errors against should display the
+        error message — not the misleading "No elements at <path>".
+        """
+        error_result = {
+            "error": "ls: nonexistent: No such directory",
+            "output": "ls: nonexistent: No such directory",
+        }
+        result = self._invoke(
+            "list_elements", error_result, ["fs", "ls", "/nonexistent"],
+        )
+        # click.echo(err=True) goes to stderr; CliRunner captures both.
+        assert "No such directory" in result.output
+        assert "No elements" not in result.output
 
-    def test_start_daemon_uses_init_timeout(self, monkeypatch):
-        """_start_daemon must await daemon initialize() with the init timeout, not the tool timeout."""
-        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
-
-        class _DummyStdioContext:
-            async def __aenter__(self):
-                return object(), object()
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-        class _DummyClientSession:
-            def __init__(self, _read, _write):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-            def initialize(self):
-                return object()
-
-        recorded_timeouts = []
-
-        async def _fake_await_with_timeout(_coro, operation, timeout_seconds=None):
-            recorded_timeouts.append((operation, timeout_seconds))
-            return None
-
-        original_daemon = backend_mod._daemon_session
-        try:
-            backend_mod._daemon_session = None
-            with patch(
-                "cli_anything.browser.utils.domshell_backend._await_with_timeout",
-                side_effect=_fake_await_with_timeout,
-            ), patch(
-                "cli_anything.browser.utils.domshell_backend.stdio_client",
-                return_value=_DummyStdioContext(),
-            ), patch(
-                "cli_anything.browser.utils.domshell_backend.ClientSession",
-                _DummyClientSession,
-            ):
-                asyncio.run(backend_mod._start_daemon())
-
-            assert recorded_timeouts == [("daemon initialize", 120.0)]
-        finally:
-            backend_mod._daemon_session = original_daemon
-
-    def test_call_tool_captures_timeout_once_per_operation(self, monkeypatch):
-        """Timeout values are captured once per _call_tool invocation, not re-read per await."""
-        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
-
-        class _DummyStdioContext:
-            async def __aenter__(self):
-                return object(), object()
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-        class _DummyClientSession:
-            def __init__(self, _read, _write):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-            def initialize(self):
-                return object()
-
-            def call_tool(self, _tool_name, _arguments):
-                return object()
-
-        recorded_timeouts = []
-
-        async def _fake_await_with_timeout(_coro, operation, timeout_seconds=None):
-            # Simulate the env var mutating mid-operation (e.g. another thread/test).
-            # A per-call env read would pick this up; a captured-once value would not.
-            monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "999")
-            monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "999")
-            recorded_timeouts.append((operation, timeout_seconds))
-            return {"ok": True}
-
-        with patch(
-            "cli_anything.browser.utils.domshell_backend._await_with_timeout",
-            side_effect=_fake_await_with_timeout,
-        ), patch(
-            "cli_anything.browser.utils.domshell_backend.stdio_client",
-            return_value=_DummyStdioContext(),
-        ), patch(
-            "cli_anything.browser.utils.domshell_backend.ClientSession",
-            _DummyClientSession,
-        ):
-            asyncio.run(
-                backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=False)
-            )
-
-        # Both calls within this single _call_tool invocation must use the timeouts
-        # captured before the env var was mutated mid-operation.
-        assert recorded_timeouts == [
-            ("session initialize", 120.0),
-            ("domshell_click", 5.0),
-        ]
-
-    def test_await_with_timeout_passes_fast_calls(self, monkeypatch):
-        """Fast operations should complete without timeout errors."""
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
-
-        async def _fast():
-            return {"ok": True}
-
-        result = asyncio.run(backend_mod._await_with_timeout(_fast(), "unit-test"))
-        assert result == {"ok": True}
-
-    def test_await_with_timeout_raises_runtime_error_on_timeout(self, monkeypatch):
-        """Slow operations should raise actionable RuntimeError."""
-        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "1")
-
-        async def _slow():
-            await asyncio.sleep(2)
-            return {"ok": True}
-
-        with pytest.raises(RuntimeError, match="timed out"):
-            asyncio.run(backend_mod._await_with_timeout(_slow(), "unit-test"))
-
-    def test_daemon_timeout_is_not_retried_in_non_daemon_mode(self):
-        """Daemon timeout should reset daemon, bubble up, and avoid duplicate reissue."""
-        class _DummyDaemonSession:
-            def call_tool(self, _tool_name, _arguments):
-                return object()
-
-        original_daemon = backend_mod._daemon_session
-        try:
-            backend_mod._daemon_session = _DummyDaemonSession()
-
-            with patch(
-                "cli_anything.browser.utils.domshell_backend._await_with_timeout",
-                side_effect=backend_mod.MCPToolTimeoutError("timed out"),
-            ) as mock_await, patch(
-                "cli_anything.browser.utils.domshell_backend._stop_daemon",
-                new_callable=AsyncMock,
-            ) as mock_stop, patch(
-                "cli_anything.browser.utils.domshell_backend.stdio_client",
-            ) as mock_stdio:
-                with pytest.raises(RuntimeError, match="timed out"):
-                    asyncio.run(backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=True))
-
-                mock_await.assert_called_once()
-                mock_stop.assert_awaited_once()
-                mock_stdio.assert_not_called()
-        finally:
-            backend_mod._daemon_session = original_daemon
-
-    def test_daemon_runtime_error_falls_back_to_non_daemon_mode(self, monkeypatch):
-        """Non-timeout daemon RuntimeError should stop daemon and fallback once."""
-        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
-        class _BrokenDaemonSession:
-            def call_tool(self, _tool_name, _arguments):
-                raise RuntimeError("loop mismatch")
-
-        class _DummyStdioContext:
-            async def __aenter__(self):
-                return object(), object()
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-        class _DummyClientSession:
-            def __init__(self, _read, _write):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return False
-
-            def initialize(self):
-                return object()
-
-            def call_tool(self, _tool_name, _arguments):
-                return object()
-
-        original_daemon = backend_mod._daemon_session
-        try:
-            backend_mod._daemon_session = _BrokenDaemonSession()
-
-            with patch(
-                "cli_anything.browser.utils.domshell_backend._await_with_timeout",
-                side_effect=[None, {"ok": True}],
-            ) as mock_await, patch(
-                "cli_anything.browser.utils.domshell_backend._stop_daemon",
-                new_callable=AsyncMock,
-            ) as mock_stop, patch(
-                "cli_anything.browser.utils.domshell_backend.stdio_client",
-                return_value=_DummyStdioContext(),
-            ) as mock_stdio, patch(
-                "cli_anything.browser.utils.domshell_backend.ClientSession",
-                _DummyClientSession,
-            ):
-                result = asyncio.run(
-                    backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=True)
-                )
-
-                assert result == {"ok": True}
-                mock_stop.assert_awaited_once()
-                assert mock_await.call_count == 2
-                mock_stdio.assert_called_once()
-        finally:
-            backend_mod._daemon_session = original_daemon
+    def test_fs_grep_surfaces_error_in_non_json_output(self):
+        """Mirror for `fs grep`. Codex P2 R4 regression test."""
+        error_result = {
+            "error": "cd: /nonexistent: No such directory",
+            "output": "cd: /nonexistent: No such directory",
+        }
+        result = self._invoke(
+            "grep_elements", error_result, ["fs", "grep", "Login", "/nonexistent"],
+        )
+        assert "No such directory" in result.output
+        assert "No matches" not in result.output

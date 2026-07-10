@@ -4,23 +4,35 @@
 
 | File | Test Classes | Test Count | Focus |
 |------|-------------|------------|-------|
-| `test_core.py` | 6 | 96 | Unit tests for document, Writer, Calc, Impress, styles, session |
-| `test_full_e2e.py` | 9 | 47 | E2E workflows: ODF ZIP structure, XML validity, export formats, CLI subprocess |
-| **Total** | **15** | **143** | |
+| `test_core.py` | 7 | 99 | Unit tests for document, import, Writer, Calc, Impress, styles, session |
+| `test_full_e2e.py` | 17 | 73 | E2E workflows: ODF ZIP structure, XML validity, import, export formats, CLI subprocess |
+| **Total** | **24** | **172** | |
 
 ## Unit Tests (`test_core.py`)
 
 All unit tests use synthetic/in-memory data only. No LibreOffice installation required.
 
-### TestDocument (15 tests)
+### TestDocument (16 tests)
 - Create Writer, Calc, and Impress documents
 - Create with custom name and named profile (A4, Letter)
 - Reject invalid document type and invalid profile
 - Save and open roundtrip
 - Open nonexistent file raises error; open invalid file raises error
+- Opening ODF as project JSON raises a helpful import hint
 - Get document info for Writer and Calc
 - List available profiles
 - Metadata populated on creation (title, created date)
+
+### TestImport (9 tests)
+- List supported import formats, including ODF and Microsoft Office extensions
+- Import generated ODT into Writer project content
+- Import generated ODS into Calc sheets and cells
+- Normalize imported Calc formulas before re-export
+- Import generated ODP into Impress slides
+- Route DOCX import through LibreOffice conversion without requiring LibreOffice in unit tests
+- Reject unsupported import formats
+- Reject invalid ODF files with a clean error
+- Reject malformed ODF meta.xml with a clean error
 
 ### TestWriter (18 tests)
 - Add paragraph with default and custom style
@@ -106,6 +118,11 @@ E2E tests produce real ODF files (ODT/ODS/ODP) and validate ZIP structure, XML c
 - Presentation with elements (textboxes, images) in ODP
 - Export to HTML produces slide content
 
+### TestOfficeImportE2E (3 tests)
+- Import existing DOCX through LibreOffice conversion into Writer project content
+- Import existing XLSX through LibreOffice conversion into Calc sheets and cells
+- Import existing PPTX through LibreOffice conversion into Impress slides
+
 ### TestExportEdgeCases (10 tests)
 - Overwrite protection prevents clobbering existing files
 - Overwrite allowed when force flag is set
@@ -133,12 +150,13 @@ E2E tests produce real ODF files (ODT/ODS/ODP) and validate ZIP structure, XML c
 - Undo reverses slide addition
 - Undo reverses style creation
 
-### TestCLISubprocess (8 tests)
+### TestCLISubprocess (9 tests)
 - `--help` prints usage
 - `document new` creates document
 - `document new --json` outputs valid JSON
 - `document profiles` lists profiles
 - `export presets` lists presets
+- `document open existing.odt -o imported.json` imports, edits, and re-exports
 - Full Writer workflow via JSON CLI
 - Calc workflow via JSON CLI
 - Impress workflow via JSON CLI
@@ -155,14 +173,6 @@ E2E tests produce real ODF files (ODT/ODS/ODP) and validate ZIP structure, XML c
 ## Test Results
 
 ```
-============================= test session starts ==============================
-platform linux -- Python 3.13.11, pytest-9.0.2, pluggy-1.5.0
-rootdir: /root/cli-anything
-plugins: langsmith-0.5.1, anyio-4.12.0
-collected 143 items
-
-test_core.py   96 passed
-test_full_e2e.py   47 passed
-
-============================= 143 passed in 2.25s ==============================
+test_core.py: 99 passed in 0.15s
+test_full_e2e.py: 73 passed in 58.33s
 ```

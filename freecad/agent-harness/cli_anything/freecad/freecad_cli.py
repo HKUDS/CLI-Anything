@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 from functools import wraps
 from typing import Any, Optional
@@ -22,6 +24,8 @@ from cli_anything.freecad.core import (
     body as body_mod,
     materials as mat_mod,
     export as export_mod,
+    motion as motion_mod,
+    preview as preview_mod,
     measure as measure_mod,
     spreadsheet as spread_mod,
     mesh as mesh_mod,
@@ -75,6 +79,77 @@ def output(data: Any, message: str = "") -> None:
                             click.echo(f"      {k}: {v}")
                 else:
                     click.echo(f"  [{i}] {item}")
+
+
+def _spawn_live_viewer(session_dir: str, poll_ms: int) -> dict:
+    """Launch cli-hub live preview watcher when available."""
+    hub = shutil.which("cli-hub")
+    command = [
+        hub or "cli-hub",
+        "previews",
+        "watch",
+        session_dir,
+        "--open",
+        "--poll-ms",
+        str(int(poll_ms)),
+    ]
+    if hub is None:
+        return {
+            "launched": False,
+            "command": command,
+            "reason": "cli-hub not found on PATH",
+        }
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return {
+        "launched": True,
+        "pid": process.pid,
+        "command": command,
+    }
+
+
+def _spawn_live_poller(session_dir: str) -> dict:
+    """Launch the FreeCAD live preview poller in the background."""
+    cli_path = shutil.which("cli-anything-freecad")
+    if cli_path:
+        command = [cli_path, "preview", "live", "monitor", "--session-dir", session_dir]
+    else:
+        command = [
+            sys.executable,
+            "-m",
+            "cli_anything.freecad.freecad_cli",
+            "preview",
+            "live",
+            "monitor",
+            "--session-dir",
+            session_dir,
+        ]
+    log_path = os.path.join(session_dir, "poller.log")
+    log_fh = open(log_path, "ab")
+    process = subprocess.Popen(
+        command,
+        stdout=log_fh,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+        close_fds=True,
+    )
+    log_fh.close()
+    preview_mod.record_live_poller_spawn(
+        session_dir,
+        pid=process.pid,
+        command=command,
+        log_path=log_path,
+    )
+    return {
+        "launched": True,
+        "pid": process.pid,
+        "command": command,
+        "log_path": log_path,
+    }
 
 
 def handle_error(f):
@@ -658,6 +733,64 @@ def part_info(index: int) -> None:
     proj = sess.get_project()
     result = parts_mod.part_info(proj, index)
     output_fn(result, f"Part #{index} info:")
+
+
+@part_group.command("bounds")
+@click.argument("index", type=int)
+@handle_error
+def part_bounds(index: int) -> None:
+    """Get local and world bounding boxes for a part."""
+    sess = get_session()
+    proj = sess.get_project()
+    result = parts_mod.part_bounds(proj, index)
+    output_fn(result, f"Part #{index} bounds:")
+
+
+@part_group.command("align")
+@click.argument("index", type=int)
+@click.argument("target_index", type=int)
+@click.option("--x", "x_anchor", type=str, help="Source anchor on x axis (min|center|max).")
+@click.option("--to-x", "to_x_anchor", type=str, help="Target anchor on x axis (min|center|max).")
+@click.option("--dx", default=0.0, type=float, help="Additional x offset after alignment.")
+@click.option("--y", "y_anchor", type=str, help="Source anchor on y axis (min|center|max).")
+@click.option("--to-y", "to_y_anchor", type=str, help="Target anchor on y axis (min|center|max).")
+@click.option("--dy", default=0.0, type=float, help="Additional y offset after alignment.")
+@click.option("--z", "z_anchor", type=str, help="Source anchor on z axis (min|center|max).")
+@click.option("--to-z", "to_z_anchor", type=str, help="Target anchor on z axis (min|center|max).")
+@click.option("--dz", default=0.0, type=float, help="Additional z offset after alignment.")
+@handle_error
+def part_align(
+    index: int,
+    target_index: int,
+    x_anchor: Optional[str],
+    to_x_anchor: Optional[str],
+    dx: float,
+    y_anchor: Optional[str],
+    to_y_anchor: Optional[str],
+    dy: float,
+    z_anchor: Optional[str],
+    to_z_anchor: Optional[str],
+    dz: float,
+) -> None:
+    """Align a part to another part using world bounding-box anchors."""
+    sess = get_session()
+    sess.snapshot(f"Align part #{index} to #{target_index}")
+    proj = sess.get_project()
+    result = parts_mod.align_part(
+        proj,
+        index,
+        target_index,
+        x=x_anchor,
+        to_x=to_x_anchor,
+        dx=dx,
+        y=y_anchor,
+        to_y=to_y_anchor,
+        dy=dy,
+        z=z_anchor,
+        to_z=to_z_anchor,
+        dz=dz,
+    )
+    output_fn(result, f"Aligned part #{index} to #{target_index}")
 
 
 # ── Sketch commands ──────────────────────────────────────────────────
@@ -1358,15 +1491,27 @@ def body_subtractive_helix(body_index: int, sketch_index: int, pitch: float,
 @click.option("--length", "-l", default=10.0, type=float)
 @click.option("--width", "-w", default=10.0, type=float)
 @click.option("--height", "-h", default=10.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
 def body_additive_box(body_index: int, length: float, width: float,
-                      height: float) -> None:
+                      height: float, position: Optional[str],
+                      rotation: Optional[str]) -> None:
     """Add an additive box primitive."""
     sess = get_session()
     sess.snapshot(f"Additive box body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.additive_box(proj, body_index, length=length, width=width,
-                                   height=height)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.additive_box(
+        proj,
+        body_index,
+        length=length,
+        width=width,
+        height=height,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added additive box")
 
 
@@ -1374,26 +1519,49 @@ def body_additive_box(body_index: int, length: float, width: float,
 @click.argument("body_index", type=int)
 @click.option("--radius", "-r", default=5.0, type=float)
 @click.option("--height", "-h", default=10.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
-def body_additive_cylinder(body_index: int, radius: float, height: float) -> None:
+def body_additive_cylinder(body_index: int, radius: float, height: float,
+                           position: Optional[str], rotation: Optional[str]) -> None:
     """Add an additive cylinder primitive."""
     sess = get_session()
     sess.snapshot(f"Additive cylinder body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.additive_cylinder(proj, body_index, radius=radius, height=height)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.additive_cylinder(
+        proj,
+        body_index,
+        radius=radius,
+        height=height,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added additive cylinder")
 
 
 @body_group.command("additive-sphere")
 @click.argument("body_index", type=int)
 @click.option("--radius", "-r", default=5.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
-def body_additive_sphere(body_index: int, radius: float) -> None:
+def body_additive_sphere(body_index: int, radius: float,
+                         position: Optional[str], rotation: Optional[str]) -> None:
     """Add an additive sphere primitive."""
     sess = get_session()
     sess.snapshot(f"Additive sphere body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.additive_sphere(proj, body_index, radius=radius)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.additive_sphere(
+        proj,
+        body_index,
+        radius=radius,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added additive sphere")
 
 
@@ -1402,15 +1570,27 @@ def body_additive_sphere(body_index: int, radius: float) -> None:
 @click.option("--radius1", default=5.0, type=float)
 @click.option("--radius2", default=0.0, type=float)
 @click.option("--height", "-h", default=10.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
 def body_additive_cone(body_index: int, radius1: float, radius2: float,
-                       height: float) -> None:
+                       height: float, position: Optional[str],
+                       rotation: Optional[str]) -> None:
     """Add an additive cone primitive."""
     sess = get_session()
     sess.snapshot(f"Additive cone body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.additive_cone(proj, body_index, radius1=radius1,
-                                    radius2=radius2, height=height)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.additive_cone(
+        proj,
+        body_index,
+        radius1=radius1,
+        radius2=radius2,
+        height=height,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added additive cone")
 
 
@@ -1418,28 +1598,50 @@ def body_additive_cone(body_index: int, radius1: float, radius2: float,
 @click.argument("body_index", type=int)
 @click.option("--radius1", default=10.0, type=float)
 @click.option("--radius2", default=2.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
-def body_additive_torus(body_index: int, radius1: float, radius2: float) -> None:
+def body_additive_torus(body_index: int, radius1: float, radius2: float,
+                        position: Optional[str], rotation: Optional[str]) -> None:
     """Add an additive torus primitive."""
     sess = get_session()
     sess.snapshot(f"Additive torus body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.additive_torus(proj, body_index, radius1=radius1,
-                                     radius2=radius2)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.additive_torus(
+        proj,
+        body_index,
+        radius1=radius1,
+        radius2=radius2,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added additive torus")
 
 
 @body_group.command("additive-wedge")
 @click.argument("body_index", type=int)
 @click.option("--param", "-P", multiple=True, help="Wedge param as key=value.")
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
-def body_additive_wedge(body_index: int, param: tuple) -> None:
+def body_additive_wedge(body_index: int, param: tuple,
+                        position: Optional[str], rotation: Optional[str]) -> None:
     """Add an additive wedge primitive."""
     sess = get_session()
     sess.snapshot(f"Additive wedge body #{body_index}")
     proj = sess.get_project()
     params = _parse_params(param) or {}
-    result = body_mod.additive_wedge(proj, body_index, **params)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.additive_wedge(
+        proj,
+        body_index,
+        position=pos,
+        rotation=rot,
+        **params,
+    )
     output_fn(result, "Added additive wedge")
 
 
@@ -1450,15 +1652,27 @@ def body_additive_wedge(body_index: int, param: tuple) -> None:
 @click.option("--length", "-l", default=10.0, type=float)
 @click.option("--width", "-w", default=10.0, type=float)
 @click.option("--height", "-h", default=10.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
 def body_subtractive_box(body_index: int, length: float, width: float,
-                         height: float) -> None:
+                         height: float, position: Optional[str],
+                         rotation: Optional[str]) -> None:
     """Add a subtractive box primitive."""
     sess = get_session()
     sess.snapshot(f"Subtractive box body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.subtractive_box(proj, body_index, length=length, width=width,
-                                      height=height)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.subtractive_box(
+        proj,
+        body_index,
+        length=length,
+        width=width,
+        height=height,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added subtractive box")
 
 
@@ -1466,28 +1680,50 @@ def body_subtractive_box(body_index: int, length: float, width: float,
 @click.argument("body_index", type=int)
 @click.option("--radius", "-r", default=5.0, type=float)
 @click.option("--height", "-h", default=10.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
 def body_subtractive_cylinder(body_index: int, radius: float,
-                              height: float) -> None:
+                              height: float, position: Optional[str],
+                              rotation: Optional[str]) -> None:
     """Add a subtractive cylinder primitive."""
     sess = get_session()
     sess.snapshot(f"Subtractive cylinder body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.subtractive_cylinder(proj, body_index, radius=radius,
-                                           height=height)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.subtractive_cylinder(
+        proj,
+        body_index,
+        radius=radius,
+        height=height,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added subtractive cylinder")
 
 
 @body_group.command("subtractive-sphere")
 @click.argument("body_index", type=int)
 @click.option("--radius", "-r", default=5.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
-def body_subtractive_sphere(body_index: int, radius: float) -> None:
+def body_subtractive_sphere(body_index: int, radius: float,
+                            position: Optional[str], rotation: Optional[str]) -> None:
     """Add a subtractive sphere primitive."""
     sess = get_session()
     sess.snapshot(f"Subtractive sphere body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.subtractive_sphere(proj, body_index, radius=radius)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.subtractive_sphere(
+        proj,
+        body_index,
+        radius=radius,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added subtractive sphere")
 
 
@@ -1496,15 +1732,27 @@ def body_subtractive_sphere(body_index: int, radius: float) -> None:
 @click.option("--radius1", default=5.0, type=float)
 @click.option("--radius2", default=0.0, type=float)
 @click.option("--height", "-h", default=10.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
 def body_subtractive_cone(body_index: int, radius1: float, radius2: float,
-                          height: float) -> None:
+                          height: float, position: Optional[str],
+                          rotation: Optional[str]) -> None:
     """Add a subtractive cone primitive."""
     sess = get_session()
     sess.snapshot(f"Subtractive cone body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.subtractive_cone(proj, body_index, radius1=radius1,
-                                       radius2=radius2, height=height)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.subtractive_cone(
+        proj,
+        body_index,
+        radius1=radius1,
+        radius2=radius2,
+        height=height,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added subtractive cone")
 
 
@@ -1512,29 +1760,51 @@ def body_subtractive_cone(body_index: int, radius1: float, radius2: float,
 @click.argument("body_index", type=int)
 @click.option("--radius1", default=10.0, type=float)
 @click.option("--radius2", default=2.0, type=float)
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
 def body_subtractive_torus(body_index: int, radius1: float,
-                           radius2: float) -> None:
+                           radius2: float, position: Optional[str],
+                           rotation: Optional[str]) -> None:
     """Add a subtractive torus primitive."""
     sess = get_session()
     sess.snapshot(f"Subtractive torus body #{body_index}")
     proj = sess.get_project()
-    result = body_mod.subtractive_torus(proj, body_index, radius1=radius1,
-                                        radius2=radius2)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.subtractive_torus(
+        proj,
+        body_index,
+        radius1=radius1,
+        radius2=radius2,
+        position=pos,
+        rotation=rot,
+    )
     output_fn(result, "Added subtractive torus")
 
 
 @body_group.command("subtractive-wedge")
 @click.argument("body_index", type=int)
 @click.option("--param", "-P", multiple=True, help="Wedge param as key=value.")
+@click.option("--position", default=None, help="Placement position as x,y,z.")
+@click.option("--rotation", default=None, help="Placement rotation as rx,ry,rz degrees.")
 @handle_error
-def body_subtractive_wedge(body_index: int, param: tuple) -> None:
+def body_subtractive_wedge(body_index: int, param: tuple,
+                           position: Optional[str], rotation: Optional[str]) -> None:
     """Add a subtractive wedge primitive."""
     sess = get_session()
     sess.snapshot(f"Subtractive wedge body #{body_index}")
     proj = sess.get_project()
     params = _parse_params(param) or {}
-    result = body_mod.subtractive_wedge(proj, body_index, **params)
+    pos = _parse_vec3(position) if position else None
+    rot = _parse_vec3(rotation) if rotation else None
+    result = body_mod.subtractive_wedge(
+        proj,
+        body_index,
+        position=pos,
+        rotation=rot,
+        **params,
+    )
     output_fn(result, "Added subtractive wedge")
 
 
@@ -1947,6 +2217,365 @@ def export_presets() -> None:
     """List available export presets."""
     result = export_mod.list_presets()
     output_fn(result, "Export presets:")
+
+
+@cli.group("preview")
+def preview_group():
+    """Preview bundle capture and inspection."""
+    pass
+
+
+@preview_group.group("live")
+def preview_live_group():
+    """Live preview session commands."""
+    pass
+
+
+@preview_group.command("recipes")
+@handle_error
+def preview_recipes() -> None:
+    """List available preview recipes."""
+    result = preview_mod.list_recipes()
+    output_fn(result, "Preview recipes:")
+
+
+@preview_group.command("capture")
+@click.option("--recipe", default="quick", help="Preview recipe name.")
+@click.option("--force", is_flag=True, help="Bypass preview cache.")
+@click.option("--root-dir", default=None, help="Override preview bundle root directory.")
+@handle_error
+def preview_capture(recipe: str, force: bool, root_dir: Optional[str]) -> None:
+    """Capture a preview bundle for the active project."""
+    sess = get_session()
+    result = preview_mod.capture(
+        sess,
+        recipe=recipe,
+        force=force,
+        root_dir=root_dir,
+        command=f"cli-anything-freecad --project {sess.project_path or ''} preview capture --recipe {recipe}".strip(),
+    )
+    bundle_dir = result.get("_bundle_dir", result.get("bundle_dir", ""))
+    status = "Reused preview bundle" if result.get("cached") else "Created preview bundle"
+    output_fn(result, f"{status}: {bundle_dir}")
+
+
+@preview_group.command("latest")
+@click.option("--recipe", default=None, help="Filter by recipe name.")
+@click.option("--root-dir", default=None, help="Override preview bundle root directory.")
+@handle_error
+def preview_latest(recipe: Optional[str], root_dir: Optional[str]) -> None:
+    """Show the latest preview bundle manifest."""
+    sess = get_session()
+    result = preview_mod.latest(project_path=sess.project_path, recipe=recipe, root_dir=root_dir)
+    output_fn(result, f"Latest preview bundle: {result.get('_bundle_dir', '')}")
+
+
+@preview_live_group.command("start")
+@click.option("--recipe", default="quick", help="Preview recipe name.")
+@click.option("--force", is_flag=True, help="Bypass preview cache.")
+@click.option("--root-dir", default=None, help="Override preview root directory.")
+@click.option("--poll-ms", default=1500, show_default=True, help="Suggested viewer polling interval.")
+@click.option("--mode", type=click.Choice(["poll", "manual"]), default="poll", show_default=True,
+              help="Live preview mode. Poll mode auto-captures when the project file changes.")
+@click.option("--source-poll-ms", default=500, show_default=True,
+              help="Polling interval for source project changes in poll mode.")
+@click.option("--open", "open_window", is_flag=True, help="Launch cli-hub live viewer in a separate window.")
+@handle_error
+def preview_live_start(
+    recipe: str,
+    force: bool,
+    root_dir: Optional[str],
+    poll_ms: int,
+    mode: str,
+    source_poll_ms: int,
+    open_window: bool,
+) -> None:
+    """Start a live preview session and publish the latest bundle."""
+    sess = get_session()
+    result = preview_mod.live_start(
+        sess,
+        recipe=recipe,
+        force=force,
+        root_dir=root_dir,
+        refresh_hint_ms=poll_ms,
+        live_mode=mode,
+        source_poll_ms=source_poll_ms,
+        command=(
+            f"cli-anything-freecad -p {sess.project_path or ''} "
+            f"preview live start --recipe {recipe}"
+        ).strip(),
+    )
+    if result.get("live_mode") == "poll" and not result.get("poller", {}).get("running"):
+        result["poller"] = _spawn_live_poller(result["_session_dir"])
+    if open_window:
+        result["viewer"] = _spawn_live_viewer(result["_session_dir"], poll_ms)
+    output_fn(result, f"Started live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("push")
+@click.option("--recipe", default="quick", help="Preview recipe name.")
+@click.option("--force", is_flag=True, help="Bypass preview cache.")
+@click.option("--root-dir", default=None, help="Override preview root directory.")
+@click.option("--poll-ms", default=1500, show_default=True, help="Suggested viewer polling interval.")
+@handle_error
+def preview_live_push(recipe: str, force: bool, root_dir: Optional[str], poll_ms: int) -> None:
+    """Publish a fresh bundle into the live preview session."""
+    sess = get_session()
+    result = preview_mod.live_push(
+        sess,
+        recipe=recipe,
+        force=force,
+        root_dir=root_dir,
+        refresh_hint_ms=poll_ms,
+        source_poll_ms=preview_mod.DEFAULT_SOURCE_POLL_MS,
+        command=(
+            f"cli-anything-freecad -p {sess.project_path or ''} "
+            f"preview live push --recipe {recipe}"
+        ).strip(),
+    )
+    output_fn(result, f"Updated live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("status")
+@click.option("--recipe", default="quick", help="Preview recipe name.")
+@click.option("--root-dir", default=None, help="Override preview root directory.")
+@handle_error
+def preview_live_status(recipe: str, root_dir: Optional[str]) -> None:
+    """Show live preview session metadata."""
+    sess = get_session()
+    result = preview_mod.live_status(sess, recipe=recipe, root_dir=root_dir)
+    output_fn(result, f"Live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("stop")
+@click.option("--recipe", default="quick", help="Preview recipe name.")
+@click.option("--root-dir", default=None, help="Override preview root directory.")
+@handle_error
+def preview_live_stop(recipe: str, root_dir: Optional[str]) -> None:
+    """Stop the live preview session without deleting artifacts."""
+    sess = get_session()
+    result = preview_mod.live_stop(sess, recipe=recipe, root_dir=root_dir)
+    output_fn(result, f"Stopped live preview session: {result.get('_session_dir', '')}")
+
+
+@preview_live_group.command("monitor", hidden=True)
+@click.option("--session-dir", required=True, help="Live session directory to monitor.")
+@handle_error
+def preview_live_monitor(session_dir: str) -> None:
+    """Internal background poller for live preview sessions."""
+    result = preview_mod.run_live_poller(session_dir)
+    output_fn(result, "")
+
+
+# ── Motion commands ──────────────────────────────────────────────────
+
+@cli.group("motion")
+def motion_group():
+    """Motion sequencing and final showcase rendering commands."""
+    pass
+
+
+@motion_group.command("new")
+@click.option("--name", default=None, help="Motion sequence name.")
+@click.option("--duration", type=float, default=2.0, help="Motion duration in seconds.")
+@click.option("--fps", type=int, default=24, help="Frames per second.")
+@click.option("--camera", type=click.Choice(sorted(motion_mod.CAMERA_PRESETS)), default="hero",
+              help="Camera preset for rendering.")
+@click.option("--width", type=int, default=1280, help="Output frame width.")
+@click.option("--height", type=int, default=960, help="Output frame height.")
+@click.option("--background", default="White", help="Viewport background color.")
+@click.option("--fit-mode", type=click.Choice(sorted(motion_mod.FIT_MODES)), default="initial",
+              help="Whether to fit camera only once or on every frame.")
+@handle_error
+def motion_new(
+    name: Optional[str],
+    duration: float,
+    fps: int,
+    camera: str,
+    width: int,
+    height: int,
+    background: str,
+    fit_mode: str,
+) -> None:
+    """Create a new motion sequence."""
+    sess = get_session()
+    sess.snapshot("New motion sequence")
+    proj = sess.get_project()
+    result = motion_mod.create_motion(
+        proj,
+        name=name,
+        duration=duration,
+        fps=fps,
+        camera=camera,
+        width=width,
+        height=height,
+        background=background,
+        fit_mode=fit_mode,
+    )
+    output_fn(result, f"Created motion: {result.get('name', '')}")
+
+
+@motion_group.command("list")
+@handle_error
+def motion_list() -> None:
+    """List motion sequences in the project."""
+    sess = get_session()
+    proj = sess.get_project()
+    result = motion_mod.list_motions(proj)
+    output_fn(result, f"{len(result)} motion sequence(s):")
+
+
+@motion_group.command("get")
+@click.argument("motion_index", type=int)
+@handle_error
+def motion_get(motion_index: int) -> None:
+    """Show motion sequence details."""
+    sess = get_session()
+    proj = sess.get_project()
+    result = motion_mod.get_motion(proj, motion_index)
+    output_fn(result, f"Motion #{motion_index}")
+
+
+@motion_group.command("delete")
+@click.argument("motion_index", type=int)
+@handle_error
+def motion_delete(motion_index: int) -> None:
+    """Delete a motion sequence."""
+    sess = get_session()
+    sess.snapshot(f"Delete motion #{motion_index}")
+    proj = sess.get_project()
+    result = motion_mod.delete_motion(proj, motion_index)
+    output_fn(result, f"Deleted motion: {result.get('name', '')}")
+
+
+@motion_group.command("keyframe")
+@click.argument("motion_index", type=int)
+@click.argument("target_kind", type=click.Choice(sorted(motion_mod.TARGET_KINDS)))
+@click.argument("target_index", type=int)
+@click.argument("time_value", type=float)
+@click.option("--position", default=None, help="Position as x,y,z. Defaults to the current placement.")
+@click.option("--rotation", default=None, help="Rotation as rx,ry,rz. Defaults to the current placement.")
+@handle_error
+def motion_keyframe(
+    motion_index: int,
+    target_kind: str,
+    target_index: int,
+    time_value: float,
+    position: Optional[str],
+    rotation: Optional[str],
+) -> None:
+    """Add or replace a motion keyframe for a target object."""
+    sess = get_session()
+    sess.snapshot(f"Motion keyframe on {target_kind} #{target_index}")
+    proj = sess.get_project()
+    result = motion_mod.add_keyframe(
+        proj,
+        motion_index,
+        target_kind=target_kind,
+        target_index=target_index,
+        time_value=time_value,
+        position=_parse_vec3(position) if position else None,
+        rotation=_parse_vec3(rotation) if rotation else None,
+    )
+    output_fn(result, f"Updated motion #{motion_index}")
+
+
+@motion_group.command("sample")
+@click.argument("motion_index", type=int)
+@click.argument("time_value", type=float)
+@handle_error
+def motion_sample(motion_index: int, time_value: float) -> None:
+    """Sample interpolated motion placements at a given time."""
+    sess = get_session()
+    proj = sess.get_project()
+    result = motion_mod.sample_motion(proj, motion_index, time_value)
+    output_fn(result, f"Motion sample at t={result.get('time')}")
+
+
+@motion_group.command("render-frames")
+@click.argument("motion_index", type=int)
+@click.argument("output_dir", type=click.Path())
+@click.option("--overwrite", is_flag=True, help="Replace an existing output directory.")
+@click.option("--camera", type=click.Choice(sorted(motion_mod.CAMERA_PRESETS)), default=None,
+              help="Override the motion camera preset.")
+@click.option("--width", type=int, default=None, help="Override the frame width.")
+@click.option("--height", type=int, default=None, help="Override the frame height.")
+@click.option("--background", default=None, help="Override the viewport background.")
+@click.option("--fit-mode", type=click.Choice(sorted(motion_mod.FIT_MODES)), default=None,
+              help="Override the camera fit mode.")
+@handle_error
+def motion_render_frames(
+    motion_index: int,
+    output_dir: str,
+    overwrite: bool,
+    camera: Optional[str],
+    width: Optional[int],
+    height: Optional[int],
+    background: Optional[str],
+    fit_mode: Optional[str],
+) -> None:
+    """Render a motion sequence to real FreeCAD frame images."""
+    sess = get_session()
+    proj = sess.get_project()
+    result = motion_mod.render_frames(
+        proj,
+        motion_index,
+        output_dir,
+        overwrite=overwrite,
+        camera=camera,
+        width=width,
+        height=height,
+        background=background,
+        fit_mode=fit_mode,
+    )
+    output_fn(result, f"Rendered {result.get('frame_count', 0)} motion frame(s)")
+
+
+@motion_group.command("render-video")
+@click.argument("motion_index", type=int)
+@click.argument("output_path", type=click.Path())
+@click.option("--overwrite", is_flag=True, help="Replace an existing output file.")
+@click.option("--frames-dir", default=None, type=click.Path(),
+              help="Persist rendered frame images to this directory.")
+@click.option("--keep-frames", is_flag=True,
+              help="Keep rendered frames even when --frames-dir is not specified.")
+@click.option("--camera", type=click.Choice(sorted(motion_mod.CAMERA_PRESETS)), default=None,
+              help="Override the motion camera preset.")
+@click.option("--width", type=int, default=None, help="Override the frame width.")
+@click.option("--height", type=int, default=None, help="Override the frame height.")
+@click.option("--background", default=None, help="Override the viewport background.")
+@click.option("--fit-mode", type=click.Choice(sorted(motion_mod.FIT_MODES)), default=None,
+              help="Override the camera fit mode.")
+@handle_error
+def motion_render_video(
+    motion_index: int,
+    output_path: str,
+    overwrite: bool,
+    frames_dir: Optional[str],
+    keep_frames: bool,
+    camera: Optional[str],
+    width: Optional[int],
+    height: Optional[int],
+    background: Optional[str],
+    fit_mode: Optional[str],
+) -> None:
+    """Render a motion sequence to a final showcase video."""
+    sess = get_session()
+    proj = sess.get_project()
+    result = motion_mod.render_video(
+        proj,
+        motion_index,
+        output_path,
+        overwrite=overwrite,
+        frames_dir=frames_dir,
+        keep_frames=keep_frames,
+        camera=camera,
+        width=width,
+        height=height,
+        background=background,
+        fit_mode=fit_mode,
+    )
+    output_fn(result, f"Rendered motion video: {result.get('output', '')}")
 
 
 # ── Session commands ─────────────────────────────────────────────────
@@ -4211,11 +4840,13 @@ def repl(project_path: Optional[str]) -> None:
 
     _repl_commands = {
         "document": "new|open|save|info|profiles",
-        "part": "add|remove|list|get|transform|boolean|copy|mirror|scale|offset|thickness|compound|explode|fillet-3d|chamfer-3d|loft|sweep|revolve|extrude|section|slice|line-3d|wire|polygon-3d|info",
+        "part": "add|remove|list|get|transform|boolean|copy|mirror|scale|offset|thickness|compound|explode|fillet-3d|chamfer-3d|loft|sweep|revolve|extrude|section|slice|line-3d|wire|polygon-3d|info|bounds|align",
         "sketch": "new|add-line|add-circle|add-rect|add-arc|constrain|close|list|get|add-point|add-ellipse|add-polygon|add-bspline|add-slot|edit-element|remove-element|remove-constraint|edit-constraint|mirror|offset|trim|extend|validate|solve-status|set-construction|project-external|intersection|add-external-face",
         "body": "new|pad|pocket|fillet|chamfer|revolution|list|get|groove|additive-loft|additive-pipe|additive-helix|subtractive-loft|subtractive-pipe|subtractive-helix|additive-box|additive-cylinder|additive-sphere|additive-cone|additive-torus|additive-wedge|subtractive-box|subtractive-cylinder|subtractive-sphere|subtractive-cone|subtractive-torus|subtractive-wedge|draft-feature|thickness-feature|hole|linear-pattern|polar-pattern|mirrored|multi-transform|datum-plane|datum-line|datum-point|shape-binder|local-coordinate-system|toggle-freeze",
         "material": "create|assign|list|get|set|presets|import-material|export-material",
         "export": "render|info|presets",
+        "preview": "recipes|capture|latest|live",
+        "motion": "new|list|get|delete|keyframe|sample|render-frames|render-video",
         "session": "undo|redo|status|history",
         "measure": "distance|length|angle|area|volume|radius|diameter|position|center-of-mass|bounding-box|inertia|check-geometry",
         "spreadsheet": "new|set-cell|get-cell|set-alias|import-csv|export-csv|list",

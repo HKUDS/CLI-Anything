@@ -1,12 +1,12 @@
 ---
 name: "cli-anything-videocaptioner"
 description: >-
-  AI-powered video captioning — transcribe speech, optimize/translate subtitles, burn into video with beautiful customizable styles (ASS outline or rounded background). Free ASR and translation included.
+  AI-powered video captioning — transcribe speech, optimize/translate subtitles, and burn them into video via the stable VideoCaptioner backend. Free ASR and translation included.
 ---
 
 # cli-anything-videocaptioner
 
-AI-powered video captioning tool. Transcribe speech → optimize subtitles → translate → burn into video with beautiful styles.
+AI-powered video captioning tool. Transcribe speech → optimize subtitles → translate → burn into video.
 
 ## Installation
 
@@ -15,7 +15,7 @@ pip install cli-anything-videocaptioner
 ```
 
 **Prerequisites:**
-- Python 3.10-3.12 (`videocaptioner` 1.4.1 requires `>=3.10,<3.13`; prefer 3.12)
+- Python 3.10-3.12 (`videocaptioner` 1.4.1 requires `>=3.10,<3.13`)
 - `videocaptioner` must be installed (`pip install videocaptioner`)
 - FFmpeg required for video synthesis
 
@@ -42,14 +42,12 @@ cli-anything-videocaptioner process video.mp4 --asr bijian --translator bing --t
 # Review subtitle/script consistency before a final hard-burn
 cli-anything-videocaptioner synthesize video.mp4 -s subtitles.srt \
   --subtitle-mode hard \
-  --review-script approved_script.txt \
-  --max-script-diff-ratio 0.12
+  --review-script approved_script.txt
 
 # Render a one-frame subtitle preview for review
 cli-anything-videocaptioner review subtitles.srt \
   --script approved_script.txt \
   --preview-video video.mp4 \
-  --preview-at 00:00:05.000 \
   --preview-output review_5s.png
 
 # JSON output (for agent consumption)
@@ -87,12 +85,13 @@ subtitle <input.srt> [--translator llm|bing|google] [--target-language CODE] [--
 synthesize <video> -s <subtitle> [--subtitle-mode soft|hard] [--quality ultra|high|medium|low] [-o PATH] [--review-script PATH] [--max-script-diff-ratio FLOAT]
 ```
 - Mirrors the stable backend synthesize surface
+- Subtitle look is controlled by the subtitle asset/backend version, not extra harness flags
 - `--review-script` checks subtitle/script drift before the final export
-- Prefer reviewed subtitle assets over synthesize-time style tweaking
+- Lower `--max-script-diff-ratio` when copy accuracy matters more than resilience
 
 ### process — Full pipeline
 ```
-process <input> [--asr ...] [--translator ...] [--target-language ...] [--subtitle-mode ...] [--style ...] [--no-optimize] [--no-translate] [--no-synthesize] [-o PATH]
+process <input> [--asr ...] [--translator ...] [--target-language ...] [--subtitle-mode ...] [--layout ...] [--no-optimize] [--no-translate] [--no-synthesize] [-o PATH]
 ```
 
 ### review — Consistency check and preview
@@ -106,6 +105,7 @@ review <input.srt|input.ass> [--script PATH] [--max-diff-ratio FLOAT] [--preview
 ```
 styles
 ```
+- Reports whether the installed backend exposes preset styling support
 
 ### config — Manage settings
 ```
@@ -126,22 +126,11 @@ cli-anything-videocaptioner --json transcribe video.mp4 --asr bijian
 # {"output_path": "/path/to/output.srt"}
 ```
 
-## Style Presets
+## Backend Notes
 
-Style support depends on the installed backend version. Use `styles` to see what
-the backend actually exposes before relying on style-specific workflows.
-
-| Name | Mode | Description |
-|------|------|-------------|
-| `default` | ASS | White text, black outline — clean and universal |
-| `anime` | ASS | Warm white, orange outline — anime/cartoon style |
-| `vertical` | ASS | High bottom margin — for portrait/vertical videos |
-| `rounded` | Rounded | Dark text on semi-transparent rounded background |
-
-Compatibility flags such as `layout`, `render_mode`, `style`, `style_override`,
-and `font_file` are backend-version dependent. Do not assume the stable harness
-will forward them reliably during `synthesize`; prefer checked subtitle assets
-plus `review` before final export.
+- The upstream backend currently requires Python `>=3.10,<3.13`; prefer Python `3.12` for matrix runs.
+- Advanced synthesize-time style flags are backend-version dependent. Use `styles` to check whether the installed backend exposes them.
+- Compatibility flags such as `layout`, `render_mode`, `style`, `style_override`, and `font_file` should be treated as non-stable unless `styles` and the installed backend confirm they are supported.
 
 ## Target Languages
 

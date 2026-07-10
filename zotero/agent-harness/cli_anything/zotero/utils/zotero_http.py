@@ -63,6 +63,7 @@ def request(
         body_data = json.dumps(payload).encode("utf-8")
     elif data is not None:
         body_data = data.encode("utf-8") if isinstance(data, str) else data
+        request_headers.setdefault("Content-Type", "text/plain; charset=utf-8")
     req = urllib.request.Request(
         _build_url(port, path, params=params),
         data=body_data,
@@ -101,7 +102,7 @@ def get_selected_collection(port: int, timeout: int = 5) -> dict[str, Any]:
     return response.json()
 
 
-def connector_import_text(port: int, content: str, *, session_id: str | None = None, timeout: int = 20) -> list[dict[str, Any]]:
+def connector_import_text(port: int, content: str, *, session_id: str | None = None, timeout: int = 300) -> list[dict[str, Any]]:
     params = {"session": session_id} if session_id else None
     response = request(port, "/connector/import", method="POST", params=params, data=content, timeout=timeout)
     if response.status != 201:
@@ -110,7 +111,7 @@ def connector_import_text(port: int, content: str, *, session_id: str | None = N
     return parsed if isinstance(parsed, list) else [parsed]
 
 
-def connector_save_items(port: int, items: list[dict[str, Any]], *, session_id: str, timeout: int = 20) -> None:
+def connector_save_items(port: int, items: list[dict[str, Any]], *, session_id: str, timeout: int = 120) -> None:
     response = request(
         port,
         "/connector/saveItems",
@@ -161,7 +162,7 @@ def connector_update_session(
     session_id: str,
     target: str,
     tags: list[str] | tuple[str, ...] | None = None,
-    timeout: int = 15,
+    timeout: int = 60,
 ) -> dict[str, Any]:
     response = request(
         port,

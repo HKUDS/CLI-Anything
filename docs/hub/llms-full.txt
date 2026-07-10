@@ -1,0 +1,123 @@
+# CLI-Anything Full Agent Context
+
+CLI-Anything is an agent-friendly open source project and web hub for discovering, installing, and operating command-line interfaces built for AI agents. The public website is https://clianything.cc and the source repository is https://github.com/HKUDS/CLI-Anything.
+
+The project has three related surfaces:
+
+1. CLI-Anything framework: a system for generating stateful CLI harnesses for GUI applications and software workflows.
+2. CLI-Anything Hub: the `cli-hub` package manager for browsing, searching, installing, updating, uninstalling, and launching available CLIs.
+3. CLI registries: machine-readable JSON files that list generated harness CLIs and selected public third-party CLIs.
+
+## Install
+
+Install the hub package:
+
+```bash
+pip install cli-anything-hub
+```
+
+Install the agent meta-skill:
+
+```bash
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
+```
+
+## Core Commands
+
+```bash
+cli-hub list
+cli-hub search <query>
+cli-hub info <name>
+cli-hub install <name>
+cli-hub uninstall <name>
+cli-hub update <name>
+cli-hub launch <name> [args...]
+```
+
+Machine-readable mode:
+
+```bash
+cli-hub list --json
+cli-hub search <query> --json
+```
+
+## Agent Use Pattern
+
+1. Search for a tool: `cli-hub search image`, `cli-hub search browser`, `cli-hub search blender`, or another task-specific query.
+2. Inspect the result: `cli-hub info <name>`.
+3. Install the selected CLI: `cli-hub install <name>`.
+4. Launch it through the hub: `cli-hub launch <name> [args...]`, or call the installed entry point directly.
+5. Prefer JSON output when available.
+6. Read the CLI-specific SKILL.md or documentation before running workflows with external side effects.
+
+## Capabilities
+
+- Registry browsing for generated harness CLIs and public CLIs.
+- Agent-oriented installation instructions and entry points.
+- Stateful CLI harnesses for GUI applications.
+- REPL and one-shot command modes for harness CLIs.
+- JSON output for machine parsing.
+- Support for local software workflows where agents need command-line control over GUI tools.
+- Contribution flow for adding new harnesses and registry entries.
+
+## Common Use Cases
+
+- Find a CLI that lets an AI agent operate a GUI application.
+- Install a harness for tools such as image editors, 3D applications, office software, diagram tools, browsers, audio/video editors, and developer platforms.
+- Give an AI coding agent a canonical registry of available CLI capabilities.
+- Build or contribute a new harness for an application that does not already expose an agent-friendly CLI.
+- Bridge manual GUI workflows into repeatable CLI commands.
+
+## Public Machine-Readable URLs
+
+- Homepage: https://clianything.cc/
+- Markdown homepage: https://clianything.cc/index.md
+- Short LLM context: https://clianything.cc/llms.txt
+- Full LLM context: https://clianything.cc/llms-full.txt
+- Pricing: https://clianything.cc/pricing.md
+- Sitemap: https://clianything.cc/sitemap.xml
+- Crawler policy: https://clianything.cc/robots.txt
+- Harness registry: https://clianything.cc/registry.json
+- Public CLI registry: https://clianything.cc/public_registry.json
+- Registry dates: https://clianything.cc/registry-dates.json
+- OpenAPI: https://clianything.cc/openapi.json
+- Agent discovery: https://clianything.cc/.well-known/agent.json
+- A2A agent card: https://clianything.cc/.well-known/agent-card.json
+- OpenAI plugin-style manifest: https://clianything.cc/.well-known/ai-plugin.json
+- Agent Skills index: https://clianything.cc/.well-known/agent-skills/index.json
+- Agent Skills artifact: https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md
+
+## Registry Files
+
+The main registry describes generated harness CLIs:
+
+```text
+https://clianything.cc/registry.json
+```
+
+The public registry describes public and third-party CLIs:
+
+```text
+https://clianything.cc/public_registry.json
+```
+
+Agents can read these files directly to find CLI names, descriptions, categories, install commands, entry points, source links, docs links, requirements, and SKILL.md paths.
+
+## Constraints And Safety Notes
+
+- Installing CLIs can run package-manager commands such as `pip`, `npm`, `uv`, `brew`, or tool-specific installers.
+- Harness CLIs may require the real target application to be installed.
+- Some workflows require a desktop session, local files, network access, API credentials, or user approval.
+- Agents should inspect `cli-hub info <name>` before installation and should ask the user before destructive or credentialed operations.
+- CLI-Anything welcomes crawling by AI agents, search agents, and automation agents. The canonical files above are intended for machine use.
+
+## Contribution
+
+Repository: https://github.com/HKUDS/CLI-Anything
+Contributing guide: https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md
+Pull request template: https://github.com/HKUDS/CLI-Anything/blob/main/.github/PULL_REQUEST_TEMPLATE.md
+PyPI package: https://pypi.org/project/cli-anything-hub/
+
+## Copyright
+
+Copyright: HKUDS. Lead author: Yuhao Yang (yuhao.page).

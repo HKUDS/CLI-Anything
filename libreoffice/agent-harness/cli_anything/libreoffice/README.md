@@ -3,15 +3,17 @@
 A stateful command-line interface for document editing, producing real ODF
 files (ZIP archives with XML). Designed for AI agents and power users who
 need to create and manipulate Writer, Calc, and Impress documents without
-a GUI or LibreOffice installation.
+a GUI.
 
 ## Prerequisites
 
 - Python 3.10+
 - `click` (CLI framework)
+- LibreOffice/soffice for importing DOCX/XLSX/PPTX and exporting PDF or
+  Microsoft Office formats
 
-No other dependencies required -- uses Python stdlib (`zipfile`,
-`xml.etree.ElementTree`, `json`) for ODF generation.
+ODF import/export uses Python stdlib (`zipfile`, `xml.etree.ElementTree`,
+`json`). Microsoft Office conversion uses LibreOffice headless.
 
 ## Install Dependencies
 
@@ -31,6 +33,10 @@ python3 -m cli.libreoffice_cli --help
 
 # Create a new Writer document
 python3 -m cli.libreoffice_cli document new --type writer --name "Report" -o report.json
+
+# Import an existing Office/ODF document into editable project JSON
+python3 -m cli.libreoffice_cli document import existing.docx -o imported.json
+python3 -m cli.libreoffice_cli document open existing.odt -o imported.json
 
 # Create with a page profile
 python3 -m cli.libreoffice_cli document new --profile a4_portrait -o project.json
@@ -57,7 +63,9 @@ Inside the REPL, type `help` for all available commands.
 
 ```bash
 document new [--type writer|calc|impress] [--name N] [--profile P] [-o path]
-document open <path>
+document open <project.json|office-file> [-o project.json] [--name N]
+document import <office-file> -o project.json [--name N]
+document import-formats
 document save [path]
 document info
 document profiles
@@ -119,7 +127,7 @@ Style properties: `font_size`, `font_name`, `bold`, `italic`, `underline`,
 ```bash
 export presets
 export preset-info <name>
-export render <output> [--preset odt|ods|odp|html|text] [--overwrite]
+export render <output> [--preset odt|ods|odp|html|text|pdf|docx|xlsx|pptx|csv] [--overwrite]
 ```
 
 ### Session
@@ -181,3 +189,16 @@ Exported ODF files are valid ZIP archives containing:
 
 These files can be opened by LibreOffice, Apache OpenOffice, and other
 ODF-compatible applications.
+
+## Existing Files
+
+`document open` opens CLI project JSON directly. When the input is an Office or
+ODF file, it imports the file into the harness project model. Use `-o` for
+one-shot workflows so the imported project is saved as JSON before subsequent
+edit commands:
+
+```bash
+python3 -m cli.libreoffice_cli document open proposal.docx -o proposal.json
+python3 -m cli.libreoffice_cli --project proposal.json writer add-paragraph -t "Appendix"
+python3 -m cli.libreoffice_cli --project proposal.json export render proposal-updated.docx -p docx --overwrite
+```

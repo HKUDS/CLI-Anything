@@ -50,6 +50,44 @@ class TestBackend:
         with pytest.raises(RuntimeError, match="Cannot connect to Obsidian"):
             api_post("https://localhost:27124", "/search/", "test-key", data={"query": "test"})
 
+    @patch("cli_anything.obsidian.utils.obsidian_backend.requests.post")
+    def test_api_post_raw_sends_body_and_content_type(self, mock_post):
+        from cli_anything.obsidian.utils.obsidian_backend import api_post_raw
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b'[]'
+        mock_resp.headers = {"content-type": "application/json"}
+        mock_resp.json.return_value = []
+        mock_resp.raise_for_status.return_value = None
+        mock_post.return_value = mock_resp
+
+        api_post_raw(
+            "https://localhost:27124", "/search/", "test-key",
+            body='TABLE file.link FROM "x"',
+            content_type="application/vnd.olrapi.dataview.dql+txt",
+        )
+        mock_post.assert_called_once_with(
+            "https://localhost:27124/search/",
+            headers={
+                "Authorization": "Bearer test-key",
+                "Accept": "application/json",
+                "Content-Type": "application/vnd.olrapi.dataview.dql+txt",
+            },
+            data=b'TABLE file.link FROM "x"',
+            params=None,
+            timeout=30,
+            verify=False,
+        )
+
+    @patch("cli_anything.obsidian.utils.obsidian_backend.requests.post")
+    def test_api_post_raw_connection_error(self, mock_post):
+        from cli_anything.obsidian.utils.obsidian_backend import api_post_raw
+        import requests
+        mock_post.side_effect = requests.exceptions.ConnectionError()
+        with pytest.raises(RuntimeError, match="Cannot connect to Obsidian"):
+            api_post_raw("https://localhost:27124", "/search/", "test-key",
+                         body="x", content_type="text/plain")
+
     @patch("cli_anything.obsidian.utils.obsidian_backend.requests.delete")
     def test_api_delete_connection_error(self, mock_delete):
         from cli_anything.obsidian.utils.obsidian_backend import api_delete
@@ -199,15 +237,36 @@ class TestVaultModule:
 
 
 class TestSearchModule:
-    @patch("cli_anything.obsidian.core.search.api_post")
-    def test_search_query(self, mock_api):
+    @patch("cli_anything.obsidian.core.search.api_post_raw")
+    def test_search_query_default_dql(self, mock_api):
         from cli_anything.obsidian.core.search import search_query
         mock_api.return_value = [{"filename": "note.md", "score": 0.9}]
-        result = search_query("https://localhost:27124", "test-key", "test query")
+        search_query("https://localhost:27124", "test-key",
+                     'TABLE file.link FROM "90-System"')
         mock_api.assert_called_once_with(
             "https://localhost:27124", "/search/", "test-key",
-            data={"query": "test query"}
+            body='TABLE file.link FROM "90-System"',
+            content_type="application/vnd.olrapi.dataview.dql+txt",
         )
+
+    @patch("cli_anything.obsidian.core.search.api_post_raw")
+    def test_search_query_jsonlogic(self, mock_api):
+        from cli_anything.obsidian.core.search import search_query
+        mock_api.return_value = [{"filename": "note.md"}]
+        body = '{"==":[{"var":"frontmatter.status"},"active"]}'
+        search_query("https://localhost:27124", "test-key", body,
+                     query_type="jsonlogic")
+        mock_api.assert_called_once_with(
+            "https://localhost:27124", "/search/", "test-key",
+            body=body,
+            content_type="application/vnd.olrapi.jsonlogic+json",
+        )
+
+    def test_search_query_invalid_type_raises(self):
+        from cli_anything.obsidian.core.search import search_query
+        with pytest.raises(ValueError, match="Unsupported search query_type"):
+            search_query("https://localhost:27124", "test-key", "x",
+                         query_type="grep")
 
     @patch("cli_anything.obsidian.core.search.api_post")
     def test_search_simple(self, mock_api):
@@ -380,11 +439,27 @@ class TestVaultCommands:
 
 
 class TestSearchCommands:
-    @patch("cli_anything.obsidian.core.search.api_post")
+    @patch("cli_anything.obsidian.core.search.api_post_raw")
     def test_search_query_json(self, mock_api, runner):
         mock_api.return_value = [{"filename": "note.md", "score": 0.9}]
         result = runner.invoke(cli, ["--json", "--api-key", "k", "search", "query", "test"])
         assert result.exit_code == 0
+        # Default --type is dql; body should be sent verbatim
+        args, kwargs = mock_api.call_args
+        assert kwargs["body"] == "test"
+        assert kwargs["content_type"] == "application/vnd.olrapi.dataview.dql+txt"
+
+    @patch("cli_anything.obsidian.core.search.api_post_raw")
+    def test_search_query_jsonlogic_flag(self, mock_api, runner):
+        mock_api.return_value = [{"filename": "note.md"}]
+        body = '{"==":[{"var":"frontmatter.status"},"active"]}'
+        result = runner.invoke(cli, ["--json", "--api-key", "k",
+                                     "search", "query", body,
+                                     "--type", "jsonlogic"])
+        assert result.exit_code == 0
+        _, kwargs = mock_api.call_args
+        assert kwargs["content_type"] == "application/vnd.olrapi.jsonlogic+json"
+        assert kwargs["body"] == body
 
     @patch("cli_anything.obsidian.core.search.api_post")
     def test_search_simple_json(self, mock_api, runner):

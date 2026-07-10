@@ -5,7 +5,8 @@
 The LibreOffice CLI harness provides command-line document editing for
 Writer (word processor), Calc (spreadsheet), and Impress (presentations).
 It produces real ODF files (ZIP archives with XML) that can be opened by
-LibreOffice and other ODF-compatible applications.
+LibreOffice and other ODF-compatible applications. It can also import
+existing ODF and Office files into the harness JSON project model for editing.
 
 ## Architecture
 
@@ -17,6 +18,7 @@ cli/
   core/
     __init__.py
     document.py            # create/open/save/info/profiles
+    importer.py            # import existing ODF/Office files into project JSON
     writer.py              # paragraphs, headings, lists, tables, page breaks
     calc.py                # sheets, cells, formulas
     impress.py             # slides, elements
@@ -65,6 +67,14 @@ python3 -m cli.libreoffice_cli document new --type writer -n "Report" -o report.
 python3 -m cli.libreoffice_cli --project report.json writer add-heading -t "Title" -l 1
 python3 -m cli.libreoffice_cli --project report.json writer add-paragraph -t "Body text"
 python3 -m cli.libreoffice_cli --project report.json export render report.odt -p odt --overwrite
+```
+
+### Import an existing document, edit it, and export it
+
+```bash
+python3 -m cli.libreoffice_cli document import existing.docx -o existing.json
+python3 -m cli.libreoffice_cli --project existing.json writer add-paragraph -t "Added by CLI"
+python3 -m cli.libreoffice_cli --project existing.json export render existing-updated.docx -p docx --overwrite
 ```
 
 ### Create a spreadsheet

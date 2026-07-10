@@ -97,6 +97,30 @@ def _validate_sketch_index(project: Dict[str, Any], sketch_index: int) -> Dict[s
     return sketches[sketch_index]
 
 
+def _validate_vec3(value: Optional[List[float]], label: str) -> Optional[List[float]]:
+    """Validate and normalize a 3-component vector."""
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise ValueError(f"{label} must be a list of 3 numbers")
+    return [float(component) for component in value]
+
+
+def _normalize_feature_placement(
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
+) -> Optional[Dict[str, List[float]]]:
+    """Normalize optional position/rotation into a placement payload."""
+    pos = _validate_vec3(position, "position")
+    rot = _validate_vec3(rotation, "rotation")
+    if pos is None and rot is None:
+        return None
+    return {
+        "position": pos or [0.0, 0.0, 0.0],
+        "rotation": rot or [0.0, 0.0, 0.0],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -637,6 +661,8 @@ def _additive_primitive(
     body_index: int,
     primitive_type: str,
     params: Dict[str, Any],
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Internal helper to add an additive primitive feature."""
     _validate_project(project)
@@ -647,6 +673,9 @@ def _additive_primitive(
         "type": f"additive_{primitive_type}",
     }
     feature.update(params)
+    placement = _normalize_feature_placement(position=position, rotation=rotation)
+    if placement is not None:
+        feature["placement"] = placement
 
     body["features"].append(feature)
     return feature
@@ -658,6 +687,8 @@ def additive_box(
     length: float = 10.0,
     width: float = 10.0,
     height: float = 10.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add an additive box primitive to a body.
 
@@ -683,9 +714,14 @@ def additive_box(
     for name, val in [("length", length), ("width", width), ("height", height)]:
         if val <= 0:
             raise ValueError(f"Box {name} must be positive, got {val}")
-    return _additive_primitive(project, body_index, "box", {
-        "length": length, "width": width, "height": height,
-    })
+    return _additive_primitive(
+        project,
+        body_index,
+        "box",
+        {"length": length, "width": width, "height": height},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def additive_cylinder(
@@ -693,6 +729,8 @@ def additive_cylinder(
     body_index: int,
     radius: float = 5.0,
     height: float = 10.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add an additive cylinder primitive to a body.
 
@@ -717,15 +755,22 @@ def additive_cylinder(
         raise ValueError(f"Cylinder radius must be positive, got {radius}")
     if height <= 0:
         raise ValueError(f"Cylinder height must be positive, got {height}")
-    return _additive_primitive(project, body_index, "cylinder", {
-        "radius": radius, "height": height,
-    })
+    return _additive_primitive(
+        project,
+        body_index,
+        "cylinder",
+        {"radius": radius, "height": height},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def additive_sphere(
     project: Dict[str, Any],
     body_index: int,
     radius: float = 5.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add an additive sphere primitive to a body.
 
@@ -746,7 +791,14 @@ def additive_sphere(
     radius = float(radius)
     if radius <= 0:
         raise ValueError(f"Sphere radius must be positive, got {radius}")
-    return _additive_primitive(project, body_index, "sphere", {"radius": radius})
+    return _additive_primitive(
+        project,
+        body_index,
+        "sphere",
+        {"radius": radius},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def additive_cone(
@@ -755,6 +807,8 @@ def additive_cone(
     radius1: float = 5.0,
     radius2: float = 0.0,
     height: float = 10.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add an additive cone primitive to a body.
 
@@ -783,9 +837,14 @@ def additive_cone(
         raise ValueError(f"Cone radius2 must be non-negative, got {radius2}")
     if height <= 0:
         raise ValueError(f"Cone height must be positive, got {height}")
-    return _additive_primitive(project, body_index, "cone", {
-        "radius1": radius1, "radius2": radius2, "height": height,
-    })
+    return _additive_primitive(
+        project,
+        body_index,
+        "cone",
+        {"radius1": radius1, "radius2": radius2, "height": height},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def additive_torus(
@@ -793,6 +852,8 @@ def additive_torus(
     body_index: int,
     radius1: float = 10.0,
     radius2: float = 2.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add an additive torus primitive to a body.
 
@@ -817,9 +878,14 @@ def additive_torus(
         raise ValueError(f"Torus major radius must be positive, got {radius1}")
     if radius2 <= 0:
         raise ValueError(f"Torus minor radius must be positive, got {radius2}")
-    return _additive_primitive(project, body_index, "torus", {
-        "radius1": radius1, "radius2": radius2,
-    })
+    return _additive_primitive(
+        project,
+        body_index,
+        "torus",
+        {"radius1": radius1, "radius2": radius2},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def additive_wedge(
@@ -835,6 +901,8 @@ def additive_wedge(
     x2max: float = 8.0,
     z2min: float = 2.0,
     z2max: float = 8.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add an additive wedge primitive to a body.
 
@@ -854,13 +922,25 @@ def additive_wedge(
     Dict[str, Any]
         The newly created additive wedge feature dictionary.
     """
-    return _additive_primitive(project, body_index, "wedge", {
-        "xmin": float(xmin), "xmax": float(xmax),
-        "ymin": float(ymin), "ymax": float(ymax),
-        "zmin": float(zmin), "zmax": float(zmax),
-        "x2min": float(x2min), "x2max": float(x2max),
-        "z2min": float(z2min), "z2max": float(z2max),
-    })
+    return _additive_primitive(
+        project,
+        body_index,
+        "wedge",
+        {
+            "xmin": float(xmin),
+            "xmax": float(xmax),
+            "ymin": float(ymin),
+            "ymax": float(ymax),
+            "zmin": float(zmin),
+            "zmax": float(zmax),
+            "x2min": float(x2min),
+            "x2max": float(x2max),
+            "z2min": float(z2min),
+            "z2max": float(z2max),
+        },
+        position=position,
+        rotation=rotation,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1100,6 +1180,8 @@ def _subtractive_primitive(
     body_index: int,
     primitive_type: str,
     params: Dict[str, Any],
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Internal helper to add a subtractive primitive feature."""
     _validate_project(project)
@@ -1115,6 +1197,9 @@ def _subtractive_primitive(
         "type": f"subtractive_{primitive_type}",
     }
     feature.update(params)
+    placement = _normalize_feature_placement(position=position, rotation=rotation)
+    if placement is not None:
+        feature["placement"] = placement
 
     body["features"].append(feature)
     return feature
@@ -1126,6 +1211,8 @@ def subtractive_box(
     length: float = 10.0,
     width: float = 10.0,
     height: float = 10.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add a subtractive box primitive to a body.
 
@@ -1151,9 +1238,14 @@ def subtractive_box(
     for name, val in [("length", length), ("width", width), ("height", height)]:
         if val <= 0:
             raise ValueError(f"Box {name} must be positive, got {val}")
-    return _subtractive_primitive(project, body_index, "box", {
-        "length": length, "width": width, "height": height,
-    })
+    return _subtractive_primitive(
+        project,
+        body_index,
+        "box",
+        {"length": length, "width": width, "height": height},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def subtractive_cylinder(
@@ -1161,6 +1253,8 @@ def subtractive_cylinder(
     body_index: int,
     radius: float = 5.0,
     height: float = 10.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add a subtractive cylinder primitive to a body.
 
@@ -1185,15 +1279,22 @@ def subtractive_cylinder(
         raise ValueError(f"Cylinder radius must be positive, got {radius}")
     if height <= 0:
         raise ValueError(f"Cylinder height must be positive, got {height}")
-    return _subtractive_primitive(project, body_index, "cylinder", {
-        "radius": radius, "height": height,
-    })
+    return _subtractive_primitive(
+        project,
+        body_index,
+        "cylinder",
+        {"radius": radius, "height": height},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def subtractive_sphere(
     project: Dict[str, Any],
     body_index: int,
     radius: float = 5.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add a subtractive sphere primitive to a body.
 
@@ -1214,7 +1315,14 @@ def subtractive_sphere(
     radius = float(radius)
     if radius <= 0:
         raise ValueError(f"Sphere radius must be positive, got {radius}")
-    return _subtractive_primitive(project, body_index, "sphere", {"radius": radius})
+    return _subtractive_primitive(
+        project,
+        body_index,
+        "sphere",
+        {"radius": radius},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def subtractive_cone(
@@ -1223,6 +1331,8 @@ def subtractive_cone(
     radius1: float = 5.0,
     radius2: float = 0.0,
     height: float = 10.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add a subtractive cone primitive to a body.
 
@@ -1251,9 +1361,14 @@ def subtractive_cone(
         raise ValueError(f"Cone radius2 must be non-negative, got {radius2}")
     if height <= 0:
         raise ValueError(f"Cone height must be positive, got {height}")
-    return _subtractive_primitive(project, body_index, "cone", {
-        "radius1": radius1, "radius2": radius2, "height": height,
-    })
+    return _subtractive_primitive(
+        project,
+        body_index,
+        "cone",
+        {"radius1": radius1, "radius2": radius2, "height": height},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def subtractive_torus(
@@ -1261,6 +1376,8 @@ def subtractive_torus(
     body_index: int,
     radius1: float = 10.0,
     radius2: float = 2.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add a subtractive torus primitive to a body.
 
@@ -1285,9 +1402,14 @@ def subtractive_torus(
         raise ValueError(f"Torus major radius must be positive, got {radius1}")
     if radius2 <= 0:
         raise ValueError(f"Torus minor radius must be positive, got {radius2}")
-    return _subtractive_primitive(project, body_index, "torus", {
-        "radius1": radius1, "radius2": radius2,
-    })
+    return _subtractive_primitive(
+        project,
+        body_index,
+        "torus",
+        {"radius1": radius1, "radius2": radius2},
+        position=position,
+        rotation=rotation,
+    )
 
 
 def subtractive_wedge(
@@ -1303,6 +1425,8 @@ def subtractive_wedge(
     x2max: float = 8.0,
     z2min: float = 2.0,
     z2max: float = 8.0,
+    position: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add a subtractive wedge primitive to a body.
 
@@ -1322,13 +1446,25 @@ def subtractive_wedge(
     Dict[str, Any]
         The newly created subtractive wedge feature dictionary.
     """
-    return _subtractive_primitive(project, body_index, "wedge", {
-        "xmin": float(xmin), "xmax": float(xmax),
-        "ymin": float(ymin), "ymax": float(ymax),
-        "zmin": float(zmin), "zmax": float(zmax),
-        "x2min": float(x2min), "x2max": float(x2max),
-        "z2min": float(z2min), "z2max": float(z2max),
-    })
+    return _subtractive_primitive(
+        project,
+        body_index,
+        "wedge",
+        {
+            "xmin": float(xmin),
+            "xmax": float(xmax),
+            "ymin": float(ymin),
+            "ymax": float(ymax),
+            "zmin": float(zmin),
+            "zmax": float(zmax),
+            "x2min": float(x2min),
+            "x2max": float(x2max),
+            "z2min": float(z2min),
+            "z2max": float(z2max),
+        },
+        position=position,
+        rotation=rotation,
+    )
 
 
 # ---------------------------------------------------------------------------

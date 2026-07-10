@@ -2,9 +2,66 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-31"
+    "updated": "2026-06-19"
   },
   "clis": [
+    {
+      "name": "jumpserver",
+      "display_name": "JumpServer",
+      "version": "0.1.0",
+      "description": "Bastion host management — manage assets, users, permissions, sessions, accounts, and audit logs via JumpServer REST API",
+      "requires": "JumpServer v3.0+ instance",
+      "homepage": "https://www.jumpserver.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=jumpserver/agent-harness",
+      "entry_point": "cli-anything-jumpserver",
+      "skill_md": "skills/cli-anything-jumpserver/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "Ayasaz",
+          "url": "https://github.com/Ayasaz"
+        }
+      ]
+    },
+    {
+      "name": "openrefine",
+      "display_name": "OpenRefine",
+      "version": "1.0.0",
+      "description": "Agent-native CLI for OpenRefine import, operation-history cleaning, row inspection, export, and session undo/redo through the real local HTTP API.",
+      "requires": "OpenRefine 3.10.x or newer running as a local web server",
+      "homepage": "https://openrefine.org/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openrefine/agent-harness",
+      "entry_point": "cli-anything-openrefine",
+      "skill_md": "skills/cli-anything-openrefine/SKILL.md",
+      "category": "database",
+      "contributors": [
+        {
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
+      "name": "cc-switch",
+      "display_name": "CC Switch",
+      "version": "1.0.0",
+      "description": "Manage AI coding tool configurations - inspect providers, skills, MCP servers, usage stats, and proxy settings",
+      "requires": "CC Switch installed with active database",
+      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cc-switch/agent-harness",
+      "entry_point": "cli-anything-ccswitch",
+      "skill_md": "skills/cli-anything-ccswitch/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "computersniper",
+          "url": "https://github.com/computersniper"
+        }
+      ]
+    },
     {
       "name": "wiremock",
       "display_name": "WireMock",
@@ -21,6 +78,25 @@
         {
           "name": "fabiomantel",
           "url": "https://github.com/fabiomantel"
+        }
+      ]
+    },
+    {
+      "name": "nslogger",
+      "display_name": "NSLogger",
+      "version": "0.1.0",
+      "description": "Capture, parse, filter, export, and mirror NSLogger iOS/macOS logs from the CLI",
+      "requires": "macOS for native Bonjour live capture; Python 3.10+",
+      "homepage": "https://github.com/fpillet/NSLogger",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nslogger/agent-harness",
+      "entry_point": "cli-anything-nslogger",
+      "skill_md": "skills/cli-anything-nslogger/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "bazinga8023",
+          "url": "https://github.com/bazinga8023"
         }
       ]
     },
@@ -82,6 +158,25 @@
       ]
     },
     {
+      "name": "wavetone",
+      "display_name": "WaveTone",
+      "version": "1.0.0",
+      "description": "Prepare WaveTone 2.61 audio transcription manifests, probe audio files, and launch the real Windows WaveTone executable",
+      "requires": "WaveTone 2.61 extracted on Windows; set WAVETONE_EXE or WAVETONE_HOME",
+      "homepage": "http://ackiesound.ifdef.jp/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wavetone/agent-harness",
+      "entry_point": "cli-anything-wavetone",
+      "skill_md": "skills/cli-anything-wavetone/SKILL.md",
+      "category": "audio",
+      "contributors": [
+        {
+          "name": "Shuhan Zhang",
+          "url": "https://github.com/Manifold68575"
+        }
+      ]
+    },
+    {
       "name": "blender",
       "display_name": "Blender",
       "version": "1.0.0",
@@ -116,6 +211,25 @@
         {
           "name": "furkankoykiran",
           "url": "https://github.com/furkankoykiran"
+        }
+      ]
+    },
+    {
+      "name": "web-yu-pri",
+      "display_name": "Web Yu-pri",
+      "version": "0.1.0",
+      "description": "Japan Post Web Yu-pri browser workflow automation for login, inspection, screenshots, dry-run planning, and contents-form filling",
+      "requires": "Japan Post Web Yu-pri account, Playwright, Microsoft Edge/Chrome or Playwright Chromium",
+      "homepage": "https://mgr.post.japanpost.jp/C30P01Action.do",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=web-yu-pri/agent-harness",
+      "entry_point": "cli-anything-web-yu-pri",
+      "skill_md": "skills/cli-anything-web-yu-pri/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "shinpei710",
+          "url": "https://github.com/shinpei710"
         }
       ]
     },
@@ -158,6 +272,25 @@
       ]
     },
     {
+      "name": "eez-studio",
+      "display_name": "EEZ Studio",
+      "version": "0.1.0",
+      "description": "EEZ Studio project, LVGL UI, and SCPI command automation via native .eez-project JSON and real EEZ Studio backend hooks",
+      "requires": "EEZ Studio source checkout built with npm run build; Docker for full LVGL simulator builds",
+      "homepage": "https://www.envox.eu/studio/studio-introduction/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=eez-studio/agent-harness",
+      "entry_point": "cli-anything-eez-studio",
+      "skill_md": "skills/cli-anything-eez-studio/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
       "name": "eth2-quickstart",
       "display_name": "ETH2 QuickStart",
       "version": "1.0.0",
@@ -173,6 +306,25 @@
         {
           "name": "chimera-defi",
           "url": "https://github.com/chimera-defi"
+        }
+      ]
+    },
+    {
+      "name": "firefly-iii",
+      "display_name": "Firefly III",
+      "version": "1.0.0",
+      "description": "Personal finance management via the Firefly III REST API",
+      "requires": "Firefly III instance and personal access token",
+      "homepage": "https://www.firefly-iii.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=firefly-iii/agent-harness",
+      "entry_point": "cli-anything-firefly-iii",
+      "skill_md": "skills/cli-anything-firefly-iii/SKILL.md",
+      "category": "finance",
+      "contributors": [
+        {
+          "name": "joyous-coder",
+          "url": "https://github.com/joyous-coder"
         }
       ]
     },
@@ -253,9 +405,28 @@
       ]
     },
     {
+      "name": "calibre",
+      "display_name": "Calibre",
+      "version": "1.0.0",
+      "description": "E-book library management — list, search, metadata editing, format conversion via calibredb, ebook-convert, ebook-meta",
+      "requires": "Calibre (apt install calibre, brew install --cask calibre)",
+      "homepage": "https://calibre-ebook.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=calibre/agent-harness",
+      "entry_point": "cli-anything-calibre",
+      "skill_md": "calibre/agent-harness/cli_anything/calibre/skills/SKILL.md",
+      "category": "office",
+      "contributors": [
+        {
+          "name": "OGRLEAF",
+          "url": "https://github.com/OGRLEAF"
+        }
+      ]
+    },
+    {
       "name": "libreoffice",
       "display_name": "LibreOffice",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Create and manipulate ODF documents, export to PDF/DOCX/XLSX/PPTX via headless mode",
       "requires": "libreoffice",
       "homepage": "https://www.libreoffice.org",
@@ -268,6 +439,29 @@
         {
           "name": "CLI-Anything-Team",
           "url": "https://github.com/HKUDS/CLI-Anything"
+        },
+        {
+          "name": "Mubashirrrr",
+          "url": "https://github.com/Mubashirrrr"
+        }
+      ]
+    },
+    {
+      "name": "lldb",
+      "display_name": "LLDB",
+      "version": "1.0.0",
+      "description": "Stateful native debugging via LLDB with JSON CLI workflows and a stdio Debug Adapter Protocol server",
+      "requires": "LLDB installation with Python bindings available (for example LLVM.LLVM on Windows)",
+      "homepage": "https://lldb.llvm.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=lldb/agent-harness",
+      "entry_point": "cli-anything-lldb",
+      "skill_md": "lldb/agent-harness/cli_anything/lldb/skills/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
         }
       ]
     },
@@ -371,6 +565,25 @@
       ]
     },
     {
+      "name": "openwebui",
+      "display_name": "OpenWebUI",
+      "version": "1.0.0",
+      "description": "Operate a running OpenWebUI backend through an agent-friendly CLI",
+      "requires": "OpenWebUI instance running",
+      "homepage": "https://openwebui.com",
+      "source_url": "https://github.com/ashaiful/cli-anything-openwebui",
+      "install_cmd": "pip install git+https://github.com/ashaiful/cli-anything-openwebui.git",
+      "entry_point": "cli-anything-openwebui",
+      "skill_md": "https://github.com/ashaiful/cli-anything-openwebui/blob/main/cli_anything/openwebui/skills/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "ashaiful",
+          "url": "https://github.com/ashaiful"
+        }
+      ]
+    },
+    {
       "name": "obs-studio",
       "display_name": "OBS Studio",
       "version": "1.0.0",
@@ -430,7 +643,7 @@
     {
       "name": "zoom",
       "display_name": "Zoom",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Meeting management via Zoom REST API (OAuth2)",
       "requires": "Zoom account + OAuth app credentials",
       "homepage": "https://zoom.us",
@@ -670,6 +883,63 @@
       ]
     },
     {
+      "name": "unrealinsights",
+      "display_name": "Unreal Insights",
+      "version": "0.1.0",
+      "description": "Windows-first Unreal trace capture, background session control, engine-matched UnrealInsights builds, and headless Timing Insights export workflows",
+      "requires": "Windows + Unreal Engine source or installed build with UnrealEditor and Unreal trace support",
+      "homepage": "https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-in-unreal-engine",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unrealinsights/agent-harness",
+      "entry_point": "cli-anything-unrealinsights",
+      "skill_md": "unrealinsights/agent-harness/cli_anything/unrealinsights/skills/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
+        }
+      ]
+    },
+    {
+      "name": "ueatelier",
+      "display_name": "UEAtelier",
+      "version": "0.23.1",
+      "description": "Unreal Editor 5.6/5.7 MCP self-extension workbench - editor automation, build diagnostics, Task Atlas workflows, PIE smoke verification, scaffold pipeline",
+      "requires": "Unreal Engine 5.6 or 5.7 with the UEAtelier plugin extracted into <YourProject>/",
+      "homepage": "https://github.com/edwinmeng163-oss/UEAtelier",
+      "source_url": "https://github.com/edwinmeng163-oss/UEAtelier",
+      "install_cmd": "pip install git+https://github.com/edwinmeng163-oss/UEAtelier.git#subdirectory=Tools/UEAtelierCli",
+      "entry_point": "cli-anything-ueatelier",
+      "skill_md": "https://github.com/edwinmeng163-oss/UEAtelier/blob/main/Tools/UEAtelierCli/SKILL.md",
+      "category": "gamedev",
+      "contributors": [
+        {
+          "name": "edwinmeng163-oss",
+          "url": "https://github.com/edwinmeng163-oss"
+        }
+      ]
+    },
+    {
+      "name": "nsight-graphics",
+      "display_name": "Nsight Graphics CLI",
+      "version": "0.2.0",
+      "description": "Windows-first Nsight Graphics CLI for Graphics/OpenGL capture, GPU Trace summary, Generate C++ Capture, and ngfx-replay analysis",
+      "requires": "NVIDIA Nsight Graphics installation with ngfx.exe plus optional split capture/replay tools",
+      "homepage": "https://developer.nvidia.com/nsight-graphics",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nsight-graphics/agent-harness",
+      "entry_point": "cli-anything-nsight-graphics",
+      "skill_md": "skills/cli-anything-nsight-graphics/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
+        }
+      ]
+    },
+    {
       "name": "videocaptioner",
       "display_name": "VideoCaptioner",
       "version": "1.0.0",
@@ -784,6 +1054,25 @@
       ]
     },
     {
+      "name": "sbox",
+      "display_name": "s&box",
+      "version": "1.0.0",
+      "description": "Game engine project management for s&box (Source 2): scenes, prefabs, materials, sounds, codegen, asset graph, project validation",
+      "requires": "s&box installed via Steam (sbox.game)",
+      "homepage": "https://sbox.game",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=sbox/agent-harness",
+      "entry_point": "cli-anything-sbox",
+      "skill_md": "skills/cli-anything-sbox/SKILL.md",
+      "category": "gamedev",
+      "contributors": [
+        {
+          "name": "KarandeepSWranch",
+          "url": "https://github.com/KarandeepSWranch"
+        }
+      ]
+    },
+    {
       "name": "dify-workflow",
       "display_name": "Dify Workflow",
       "version": "0.1.0",
@@ -843,7 +1132,7 @@
     {
       "name": "obsidian",
       "display_name": "Obsidian",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "description": "Knowledge management and note-taking — manage notes, search vault, execute commands via Obsidian Local REST API",
       "requires": "Obsidian desktop app with Local REST API plugin enabled",
       "homepage": "https://obsidian.md",
@@ -856,6 +1145,29 @@
         {
           "name": "dorukozgen",
           "url": "https://github.com/dorukozgen"
+        },
+        {
+          "name": "Mubashirrrr",
+          "url": "https://github.com/Mubashirrrr"
+        }
+      ]
+    },
+    {
+      "name": "joplin",
+      "display_name": "Joplin",
+      "version": "1.0.0",
+      "description": "Note-taking and to-do automation — manage notebooks, notes, to-dos, tags, attachments, search, sync, and import/export via the Joplin terminal CLI",
+      "requires": "Joplin terminal CLI installed and available in PATH as `joplin` (npm install -g joplin)",
+      "homepage": "https://joplinapp.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=joplin/agent-harness",
+      "entry_point": "cli-anything-joplin",
+      "skill_md": "skills/cli-anything-joplin/SKILL.md",
+      "category": "knowledge",
+      "contributors": [
+        {
+          "name": "27494539a-hub",
+          "url": "https://github.com/27494539a-hub"
         }
       ]
     },
@@ -898,21 +1210,307 @@
       ]
     },
     {
-      "name": "openclaw-macro",
-      "display_name": "OpenClaw Macro System",
+      "name": "macrocli",
+      "display_name": "MacroCLI",
       "version": "1.0.0",
-      "description": "Layered CLI that converts GUI workflows into parameterized, agent-callable macros — with backend routing across native APIs, file transforms, accessibility controls, and compiled GUI replay",
+      "description": "Layered macro runtime that converts GUI workflows into parameterized, agent-callable macros — record once, run anywhere via CLI with backend routing across native APIs, file transforms, accessibility controls, and visual template matching",
       "requires": null,
-      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/tree/main/macrocli",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openclaw-skill/agent-harness",
-      "entry_point": "cli-anything-openclaw",
-      "skill_md": "openclaw-skill/agent-harness/cli_anything/openclaw/skills/SKILL.md",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=macrocli/agent-harness",
+      "entry_point": "cli-anything-macrocli",
+      "skill_md": "macrocli/agent-harness/cli_anything/macrocli/skills/SKILL.md",
       "category": "automation",
       "contributors": [
         {
           "name": "haorui-harry",
           "url": "https://github.com/haorui-harry"
+        }
+      ]
+    },
+    {
+      "name": "ve-twini",
+      "display_name": "VE Twini",
+      "version": "1.0.0",
+      "description": "Unified Twitter/X CLI bridging bird (GraphQL API) and opencli (browser automation)",
+      "requires": "Python 3.10+, bird (Twitter API), opencli",
+      "homepage": "https://x.com",
+      "source_url": "https://github.com/collectivewinca/ve-twini",
+      "install_cmd": "pip install git+https://github.com/collectivewinca/ve-twini.git#subdirectory=agent-harness",
+      "entry_point": "cli-anything-ve-twini",
+      "skill_md": "https://github.com/collectivewinca/ve-twini/blob/master/agent-harness/cli_anything/ve_twini/skills/SKILL.md",
+      "category": "communication",
+      "contributors": [
+        {
+          "name": "collectivewinca",
+          "url": "https://github.com/collectivewinca"
+        }
+      ]
+    },
+    {
+      "name": "quietshrink",
+      "display_name": "QuietShrink",
+      "version": "1.0.0",
+      "description": "Compress macOS screen recordings on Apple Silicon — 70-90% smaller files at visually lossless quality, hardware-encoded, computer stays silent",
+      "requires": "ffmpeg with hevc_videotoolbox + the quietshrink bash CLI (curl -fsSL https://raw.githubusercontent.com/achiya-automation/quietshrink/main/install.sh | bash)",
+      "homepage": "https://github.com/achiya-automation/quietshrink",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=quietshrink/agent-harness",
+      "entry_point": "cli-anything-quietshrink",
+      "skill_md": "skills/cli-anything-quietshrink/SKILL.md",
+      "category": "video",
+      "contributors": [
+        {
+          "name": "achiya-automation",
+          "url": "https://github.com/achiya-automation"
+        }
+      ]
+    },
+    {
+      "name": "stata",
+      "display_name": "Stata",
+      "version": "0.1.0",
+      "description": "Run Stata do-files, batch jobs, and reproducible econometric projects from the terminal with JSON output, log parsing, project scaffolding, and security guard",
+      "requires": "Licensed Stata installation (StataMP/SE/BE 15+), Python 3.10+",
+      "homepage": "https://www.stata.com",
+      "source_url": "https://github.com/LI-Meng420/stata-cli",
+      "install_cmd": "pip install git+https://github.com/LI-Meng420/stata-cli.git",
+      "entry_point": "cli-anything-stata",
+      "skill_md": "https://raw.githubusercontent.com/LI-Meng420/stata-cli/main/cli_anything/stata/skills/SKILL.md",
+      "category": "science",
+      "contributors": [
+        {
+          "name": "LI-Meng420",
+          "url": "https://github.com/LI-Meng420"
+        }
+      ]
+    },
+    {
+      "name": "inkstitch",
+      "display_name": "Ink/Stitch",
+      "version": "0.1.1",
+      "description": "Machine-embroidery digitization — set stitch params, validate, preview, and export to DST/PES/JEF/VP3 via Ink/Stitch",
+      "requires": "Ink/Stitch extension installed (https://inkstitch.org/docs/install/)",
+      "homepage": "https://inkstitch.org",
+      "source_url": "https://github.com/bobbymarko/cli-anything-inkstitch",
+      "install_cmd": "pip install cli-anything-inkstitch",
+      "entry_point": "cli-anything-inkstitch",
+      "skill_md": "https://github.com/bobbymarko/cli-anything-inkstitch/blob/main/skills/cli-anything-inkstitch/SKILL.md",
+      "category": "design",
+      "contributors": [
+        {
+          "name": "bobbymarko",
+          "url": "https://github.com/bobbymarko"
+        }
+      ]
+    },
+    {
+      "name": "hacker-feeds-cli",
+      "display_name": "Hacker Feeds CLI",
+      "version": "1.0.0",
+      "description": "CLI for GitHub Trending, Hacker News, Reddit, Product Hunt, DEV.to, Lobsters, EchoJS, and V2EX feeds",
+      "requires": "Python 3.10+, Node.js (hf CLI)",
+      "homepage": "https://github.com/collectivewinca/hacker-feeds-cli",
+      "source_url": "https://github.com/collectivewinca/hacker-feeds-cli",
+      "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git",
+      "entry_point": "cli-anything-hacker-feeds-cli",
+      "skill_md": "https://github.com/collectivewinca/hacker-feeds-cli/blob/main/cli_anything/hacker_feeds_cli/skills/SKILL.md",
+      "category": "search",
+      "contributors": [
+        {
+          "name": "collectivewinca",
+          "url": "https://github.com/collectivewinca"
+        }
+      ]
+    },
+    {
+      "name": "mailchimp",
+      "display_name": "Mailchimp",
+      "version": "0.1.0",
+      "description": "Mailchimp Marketing API v3.0 — manage audiences, campaigns, reports, automations, ecommerce, templates, and more from an agent-native CLI",
+      "requires": "MAILCHIMP_API_KEY",
+      "homepage": "https://mailchimp.com/developer/marketing/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=mailchimp/agent-harness",
+      "entry_point": "cli-anything-mailchimp",
+      "skill_md": "skills/cli-anything-mailchimp/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "iGodly",
+          "url": "https://github.com/iGodly"
+        }
+      ]
+    },
+    {
+      "name": "3mf",
+      "display_name": "3MF",
+      "version": "1.0.0",
+      "description": "Mesh geometry editor for 3D printing files — detect and resize cylindrical holes, repair meshes, compare 3MF files",
+      "requires": "Python 3.10+; numpy, scipy, trimesh",
+      "homepage": "https://3mf.io",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=3MF/agent-harness",
+      "entry_point": "cli-anything-3mf",
+      "skill_md": "3MF/agent-harness/cli_anything/threemf/skills/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "Gituheart",
+          "url": "https://github.com/Gituheart"
+        }
+      ]
+    },
+    {
+      "name": "minimax",
+      "display_name": "MiniMax",
+      "version": "1.1.0",
+      "description": "Chat and TTS via MiniMax AI API — MiniMax-M3 chat models and speech-2.8-hd TTS",
+      "requires": "MINIMAX_API_KEY",
+      "homepage": "https://platform.minimax.io",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=minimax/agent-harness",
+      "entry_point": "cli-anything-minimax",
+      "skill_md": "minimax/agent-harness/cli_anything/minimax/skills/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "octo-patch",
+          "url": "https://github.com/octo-patch"
+        }
+      ]
+    },
+    {
+      "name": "siyuan",
+      "display_name": "SiYuan CLI",
+      "version": "1.0.0",
+      "description": "Knowledge management and note-taking via SiYuan HTTP API — manage notebooks, documents, blocks, and search content from the command line",
+      "category": "knowledge-management",
+      "requires": "SiYuan running with HTTP API enabled (default http://127.0.0.1:6806)",
+      "homepage": "https://github.com/siyuan-note/siyuan",
+      "source_url": null,
+      "install_strategy": "pip",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=siyuan/agent-harness",
+      "skill_md": "skills/cli-anything-siyuan/SKILL.md",
+      "entry_point": "cli-anything-siyuan",
+      "contributors": [
+        {
+          "name": "hito0512",
+          "url": "https://github.com/hito0512"
+        }
+      ]
+    },
+    {
+      "name": "live2d",
+      "display_name": "Live2D Cubism",
+      "version": "0.3.0",
+      "description": "Inspect, validate, edit, lint, diff, batch-manage, and deploy Live2D Cubism models (.model3.json, .moc3, .motion3.json, .exp3.json) from the command line — 42 commands covering the full model lifecycle",
+      "requires": "Python 3.10+",
+      "homepage": "https://www.live2d.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=live2d/agent-harness",
+      "entry_point": "cli-anything-live2d",
+      "skill_md": "skills/cli-anything-live2d/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "zyzly0705",
+          "url": "https://github.com/zyzly0705"
+        }
+      ]
+    },
+    {
+      "name": "tigris",
+      "display_name": "Tigris",
+      "version": "1.0.0",
+      "description": "Object storage management — buckets, objects, presigned URLs, snapshots, IAM, scoped access keys. Wraps the official `tigris` CLI (S3-compatible, globally distributed, no egress fees)",
+      "requires": "Tigris CLI on PATH (`npm install -g @tigrisdata/cli` or `brew install tigrisdata/tap/tigris`) + `tigris login`",
+      "homepage": "https://www.tigrisdata.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=tigris/agent-harness",
+      "entry_point": "cli-anything-tigris",
+      "skill_md": "skills/cli-anything-tigris/SKILL.md",
+      "category": "storage",
+      "contributors": [
+        {
+          "name": "davidmyriel",
+          "url": "https://github.com/davidmyriel"
+        }
+      ]
+    },
+    {
+      "name": "tinyfish",
+      "display_name": "TinyFish Web Agent",
+      "version": "0.1.1",
+      "description": "All four TinyFish products from the terminal: web search, clean page extraction, natural-language browser automation, and remote CDP browser sessions — via the REST APIs.",
+      "requires": "TinyFish API key (free at https://agent.tinyfish.ai/api-keys)",
+      "homepage": "https://tinyfish.ai",
+      "source_url": "https://github.com/webdevtodayjason/cli-anything-tinyfish",
+      "install_cmd": "pip install cli-anything-tinyfish",
+      "entry_point": "cli-anything-tinyfish",
+      "skill_md": "https://github.com/webdevtodayjason/cli-anything-tinyfish/blob/main/cli_anything/tinyfish/skills/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "webdevtodayjason",
+          "url": "https://github.com/webdevtodayjason"
+        }
+      ]
+    },
+    {
+      "name": "meerk40t",
+      "display_name": "MeerK40t",
+      "version": "1.0.0",
+      "description": "Laser cutting/engraving job preparation via the real MeerK40t kernel — elements, operations, SVG/G-code export with --json output",
+      "requires": "MeerK40t (installed automatically)",
+      "homepage": "https://github.com/meerk40t/meerk40t",
+      "source_url": "https://github.com/George-RD/cli-anything-meerk40t",
+      "install_cmd": "pip install cli-anything-meerk40t",
+      "entry_point": "cli-anything-meerk40t",
+      "skill_md": "https://github.com/George-RD/cli-anything-meerk40t/blob/main/skills/cli-anything-meerk40t/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "George-RD",
+          "url": "https://github.com/George-RD"
+        }
+      ]
+    },
+    {
+      "name": "palmier",
+      "display_name": "Palmier Pro",
+      "version": "0.1.0",
+      "description": "Agent-native CLI harness for the Palmier Pro local MCP video editor — drive timeline editing, media, captions, and AI generation from the command line",
+      "requires": "Palmier Pro desktop app running its local MCP server at 127.0.0.1:19789, Python 3.10+",
+      "homepage": "https://palmier.com",
+      "source_url": "https://github.com/workcr/palmier-cli-anything",
+      "install_cmd": "pip install git+https://github.com/workcr/palmier-cli-anything.git",
+      "entry_point": "cli-anything-palmier",
+      "skill_md": "https://github.com/workcr/palmier-cli-anything/blob/main/skills/cli-anything-palmier/SKILL.md",
+      "category": "video",
+      "contributors": [
+        {
+          "name": "workcr",
+          "url": "https://github.com/workcr"
+        }
+      ]
+    },
+    {
+      "name": "magnific",
+      "display_name": "Magnific",
+      "version": "0.1.0",
+      "description": "Agent-native CLI harness for Magnific's remote MCP media-generation server — generate and upscale images and video via mcpc OAuth without loading the full MCP schema each turn",
+      "requires": "Node.js + npm (for the mcpc transport), Python 3.10+, Magnific account (OAuth)",
+      "homepage": "https://magnific.com",
+      "source_url": "https://github.com/workcr/magnific-cli-anything",
+      "install_cmd": "pip install git+https://github.com/workcr/magnific-cli-anything.git",
+      "entry_point": "cli-anything-magnific",
+      "skill_md": "https://github.com/workcr/magnific-cli-anything/blob/main/skills/cli-anything-magnific/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "workcr",
+          "url": "https://github.com/workcr"
         }
       ]
     }

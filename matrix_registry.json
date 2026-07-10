@@ -1,0 +1,1276 @@
+{
+  "meta": {
+    "repo": "https://github.com/HKUDS/CLI-Anything",
+    "description": "Curated CLI Matrix registry for CLI-Hub multi-CLI workflows (capability-based, v2 schema)",
+    "updated": "2026-06-11",
+    "schema_doc": "docs/cli-matrix/matrix_registry.schema.md"
+  },
+  "matrices": [
+    {
+      "name": "video-creation",
+      "display_name": "Video Creation & Editing",
+      "version": "3",
+      "schema_version": "2",
+      "description": "Capability-based matrix for end-to-end video production: storyboard planning, story/audio direction, internet video/music search/download with source triage, capture, generation, voice/music, sound design, footage analysis, transcription, high-end caption design, assembly, overlay, thumbnail, encode, and quality review with render-doctor investigation. Providers include harness CLIs, public CLIs, Python libs, native binaries, bundled scripts, agent skills, and cloud APIs.",
+      "category": "video",
+      "matrix": "cli-matrix",
+      "matrix_id": "S1",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix/cli-matrix-plan.md",
+      "skill_md": "cli-hub-matrix/video-creation/SKILL.md",
+      "clis": [
+        "generate-veo-video",
+        "jimeng",
+        "openscreen",
+        "obs-studio",
+        "audacity",
+        "minimax-cli",
+        "elevenlabs",
+        "suno",
+        "kdenlive",
+        "shotcut",
+        "videocaptioner",
+        "gimp",
+        "krita",
+        "inkscape"
+      ],
+      "capabilities": [
+        {
+          "id": "script.storyboard",
+          "intent": "Turn a brief into global creative direction, narrative/emotional arc, audio arc, script, shot list, timing map, storyboard, and asset requirements before production. Default to agent-native planning unless a focused external skill is clearly worth installing.",
+          "inputs": ["brief:text", "duration?:seconds", "audience?:text", "style?:text"],
+          "outputs": ["creative_direction:path", "script:path", "shot_list:path", "timing_map:path", "beat_map:path", "audio_plan:path", "asset_plan:path"],
+          "skill_search_hints": ["storyboard", "creative direction", "video scriptwriting", "shot list", "beat map", "audio arc", "animatic", "remotion storyboard"],
+          "providers": [
+            {"kind": "agent-native", "name": "Agent-native planning", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Default path for creative_direction.md, story arc, emotional curve, audio arc, beat map, scripts, shot lists, timing maps, storyboards, and asset plans; read cli-hub-matrix/video-creation/references/story-structure-audio.md for non-trivial videos."},
+            {"kind": "agent-skill", "name": "storyboard-creation skill", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Install with `pnpm dlx add-skill https://github.com/inference-sh/skills/tree/HEAD/guides/video/storyboard-creation`. Use only for shot grammar, camera angles, continuity, storyboard panels, and animatic planning."},
+            {"kind": "agent-skill", "name": "remotion-best-practices skill", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Install with `npx skills add https://github.com/remotion-dev/skills --skill remotion-best-practices`; SKILL.md: https://github.com/remotion-dev/skills/blob/main/skills/remotion/SKILL.md. Use when the storyboard will become Remotion/React motion-video code."}
+          ]
+        },
+        {
+          "id": "video.search",
+          "intent": "Discover candidate internet footage, stock clips, public-domain clips, or platform URLs before download.",
+          "inputs": ["query:text", "source_preference?:stock|public-domain|youtube|bilibili|web", "license_requirement?:text"],
+          "outputs": ["candidate_urls:json", "source_metadata:json"],
+          "skill_search_hints": ["video search", "stock footage", "public domain video", "bilibili search", "youtube creative commons"],
+          "providers": [
+            {"kind": "web-search", "name": "Web search + source filters", "requires": {}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Use site/source filters for YouTube, Bilibili, Wikimedia Commons, stock sites, and public-source searches; record URL, creator, license, and attribution before editing. For found-footage deliverables, read cli-hub-matrix/video-creation/references/source-triage.md and classify each candidate's platform-origin evidence."}
+          ]
+        },
+        {
+          "id": "video.download",
+          "intent": "Download or import selected web video URLs into the workspace with provenance metadata.",
+          "inputs": ["urls:string[]", "quality?:resolution", "cookies?:path", "license_metadata?:json"],
+          "outputs": ["video_clips:path[]", "sources_manifest:path"],
+          "skill_search_hints": ["video downloader", "yt-dlp", "bilibili downloader", "youtube downloader", "download video skill"],
+          "providers": [
+            {"kind": "public-cli", "name": "yt-dlp", "requires": {"binary": ["yt-dlp", "ffmpeg"]}, "install_hint": "pipx install yt-dlp  # or brew install yt-dlp", "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "General downloader for YouTube, Bilibili, and many sites; supports search, playlists, cookies, and quality filters."},
+            {"kind": "public-cli", "name": "you-get", "requires": {"binary": ["you-get"]}, "install_hint": "pipx install you-get  # or brew install you-get", "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Multi-site media downloader with Bilibili support."},
+            {"kind": "public-cli", "name": "lux", "requires": {"binary": ["lux", "ffmpeg"]}, "install_hint": "brew install lux  # or go install github.com/iawia002/lux@latest", "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Go CLI downloader with Bilibili, YouTube, Douyin, Youku, and other site support."},
+            {"kind": "public-cli", "name": "BBDown", "requires": {"binary": ["BBDown", "ffmpeg"]}, "install_hint": "dotnet tool install --global BBDown  # or brew install bbdown", "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Bilibili-focused CLI; useful for subtitles, danmaku, playlists, favorites, and high-quality streams."}
+          ]
+        },
+        {
+          "id": "music.search",
+          "intent": "Discover existing songs, BGM, soundtrack cues, platform audio, or specific music versions before download.",
+          "inputs": ["query:text", "version_requirement?:text", "license_requirement?:text", "platform_preference?:youtube|bilibili|soundcloud|bandcamp|spotify|web"],
+          "outputs": ["candidate_urls:json", "music_source_metadata:json"],
+          "skill_search_hints": ["music search", "existing song", "background music source", "official audio", "royalty free music"],
+          "providers": [
+            {"kind": "web-search", "name": "Web search + music source filters", "requires": {}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Search for official artist/label uploads, official audio/MV, verified lyric videos, royalty-free sources, or the exact requested cover/version; record rights and attribution metadata."},
+            {"kind": "public-cli", "name": "yt-dlp search extractors", "requires": {"binary": ["yt-dlp"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Use ytsearch/scsearch only after the query and version constraints are clear; inspect candidates before download."},
+            {"kind": "public-cli", "name": "spotdl metadata/search", "requires": {"binary": ["spotdl"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Useful when the user names a Spotify track/playlist and metadata alignment matters; respect platform rights and user authorization."}
+          ]
+        },
+        {
+          "id": "music.download",
+          "intent": "Download or import existing music into the workspace with provenance metadata, conversion, and source-audio validation.",
+          "inputs": ["urls:string[]", "local_files?:path[]", "version_metadata?:json", "license_metadata?:json"],
+          "outputs": ["audio_clip:path", "music_sources_manifest:path"],
+          "skill_search_hints": ["music downloader", "audio extraction", "yt-dlp audio", "soundcloud downloader", "bandcamp downloader", "spotify downloader"],
+          "providers": [
+            {"kind": "public-cli", "name": "yt-dlp audio download", "requires": {"binary": ["yt-dlp", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "General audio download/extraction path for many supported sites. For Bilibili, download raw m4a and convert with ffmpeg instead of `yt-dlp -x --audio-format mp3`; verify mean volume after conversion."},
+            {"kind": "public-cli", "name": "spotdl", "requires": {"binary": ["spotdl", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Downloads tracks/playlists with Spotify metadata and matched audio sources. Use only when the user is authorized to use the resulting music."},
+            {"kind": "public-cli", "name": "scdl", "requires": {"binary": ["scdl"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "SoundCloud-focused downloader for public/authorized SoundCloud tracks."},
+            {"kind": "public-cli", "name": "bandcamp-dl", "requires": {"binary": ["bandcamp-dl"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Bandcamp-focused downloader for public or user-owned Bandcamp tracks/albums."},
+            {"kind": "native", "name": "local file import + ffmpeg", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Use when the user supplies local music files; normalize/convert only after validating the correct version and clean audio."}
+          ]
+        },
+        {
+          "id": "visual.capture",
+          "intent": "Record screen, webcam, or application windows to a video file.",
+          "inputs": ["source:screen|window|webcam", "duration?:seconds"],
+          "outputs": ["video_clip:path"],
+          "skill_search_hints": ["screen recording", "screencast", "webcam capture"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-openscreen", "requires": {"binary": ["cli-anything-openscreen"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-obs-studio", "requires": {"binary": ["cli-anything-obs-studio"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "ffmpeg x11grab/avfoundation", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "screencapture (macOS)", "requires": {"binary": ["screencapture"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "mss + cv2", "requires": {"package": ["mss", "cv2"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "visual.generate",
+          "intent": "Produce a video clip from a text prompt or reference image.",
+          "inputs": ["prompt:text", "ref_image?:path", "duration?:seconds"],
+          "outputs": ["video_clip:path"],
+          "skill_search_hints": ["text-to-video", "AI video", "video generation"],
+          "providers": [
+            {"kind": "public-cli", "name": "generate-veo-video", "requires": {"binary": ["generate-veo"], "env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "public-cli", "name": "jimeng", "requires": {"binary": ["dreamina"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "ByteDance Dreamina; shares model family with Seedance."},
+            {"kind": "api", "name": "Runway Gen-4", "requires": {"env": ["RUNWAY_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "~$0.05/sec, cinematic motion."},
+            {"kind": "api", "name": "Kling", "requires": {"env": ["KLING_API_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Pika", "requires": {"env": ["PIKA_API_KEY"]}, "cost_tier": "paid", "quality_tier": "good", "offline": false},
+            {"kind": "api", "name": "Seedance", "requires": {"env": ["SEEDANCE_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "ByteDance Seedance; realistic motion."}
+          ]
+        },
+        {
+          "id": "audio.capture",
+          "intent": "Record, clean, trim, normalize, or denoise audio tracks.",
+          "inputs": ["source:mic|file"],
+          "outputs": ["audio_clip:path"],
+          "skill_search_hints": ["audio editing", "noise reduction"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-audacity", "requires": {"binary": ["cli-anything-audacity"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "sox/ffmpeg", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "pydub/soundfile/librosa/noisereduce", "requires": {"package": ["pydub"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "audio.synthesize",
+          "intent": "Generate speech audio from text (narration / voiceover).",
+          "inputs": ["text", "voice?:id", "lang?:code"],
+          "outputs": ["audio_clip:path"],
+          "skill_search_hints": ["text-to-speech", "TTS", "voice synthesis"],
+          "providers": [
+            {"kind": "public-cli", "name": "minimax-cli", "requires": {"binary": ["minimax-cli"], "env": ["MINIMAX_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "public-cli", "name": "elevenlabs", "requires": {"binary": ["elevenlabs"], "env": ["ELEVENLABS_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "OpenAI TTS", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Google Cloud TTS", "requires": {"env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "python", "name": "edge-tts", "requires": {"package": ["edge_tts"]}, "cost_tier": "free", "quality_tier": "good", "offline": false}
+          ]
+        },
+        {
+          "id": "music.generate",
+          "intent": "Generate background music or sound effects that follow the planned audio arc rather than a flat continuous bed.",
+          "inputs": ["prompt:text", "duration?:seconds", "audio_plan?:path"],
+          "outputs": ["audio_clip:path"],
+          "skill_search_hints": ["music generation", "background music"],
+          "providers": [
+            {"kind": "public-cli", "name": "suno", "requires": {"binary": ["suno"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "public-cli", "name": "minimax-cli", "requires": {"binary": ["minimax-cli"], "env": ["MINIMAX_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Udio", "requires": {"env": ["UDIO_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false}
+          ]
+        },
+        {
+          "id": "sound.design",
+          "intent": "Design hits, risers, score sections, mix dynamics, and the final audio arc as a separate pass; a music bed alone is not a designed mix.",
+          "inputs": ["edit_or_plan:path", "audio_plan?:path", "music_bed?:path", "source_audio?:path[]"],
+          "outputs": ["sound_design:path", "audio_stems:path[]", "mixed_audio:path"],
+          "skill_search_hints": ["sound design", "trailer hits", "risers", "sfx stems", "audio mix", "ducking", "section loudness"],
+          "providers": [
+            {"kind": "agent-native", "name": "Agent-native sound plan", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Read cli-hub-matrix/video-creation/references/sound-design.md, then write sound_design.md with stems, cue times, story function, ducking notes, and section loudness targets; shape the ending/final act intentionally (escalation, silence/hold, hit/drop, source-audio reveal, or resolve)."},
+            {"kind": "native", "name": "ffmpeg/sox procedural stems", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Short SFX, impacts, whooshes, and risers only; filter, envelope, and gain-stage every generated stem. Never use raw Gaussian/full-band noise as a music bed or repeated transition effect."},
+            {"kind": "python", "name": "pydub/numpy procedural stems", "requires": {"package": ["pydub", "numpy"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Programmatic stem synthesis and mixing; same procedural-audio gate as the ffmpeg/sox path — accent stems only, not the main music bed for polished 60+ second videos."},
+            {"kind": "public-cli", "name": "Generated music provider", "requires": {"binary": ["suno"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "Locally generated score sections via the provider chosen for music.generate (suno checked here; minimax-cli or Udio with UDIO_API_KEY also apply). Follow music.generate cost/consent rules."},
+            {"kind": "agent-skill", "name": "Downloaded/authorized music", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Route through music.search + music.download, or install the music-downloader skill with `npx skills add https://github.com/nymbo/skills --skill music-downloader`. Use only relevant music the user is authorized to use; run the source-audio gate before mixing source audio with new music or narration."}
+          ]
+        },
+        {
+          "id": "media.analyze",
+          "intent": "Segment, label, OCR, and index video footage so an editor can find usable shots across many clips.",
+          "inputs": ["video_clips:path[]", "focus?:shots|text|people|objects|actions"],
+          "outputs": ["scene_index:path", "keyframes:path[]", "labels:json"],
+          "skill_search_hints": ["scene detection", "video indexing", "video OCR", "shot labels", "scene index"],
+          "providers": [
+            {"kind": "public-cli", "name": "PySceneDetect scenedetect", "requires": {"binary": ["scenedetect", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Fast local scene cut detection; can save scene lists and start/mid/end keyframes. For found-footage edits, build scene_library.json and use cli-hub-matrix/video-creation/references/source-triage.md for the source rejection checklist and contact-sheet requirements."},
+            {"kind": "api", "name": "Google Cloud Video Intelligence", "requires": {"env": ["GOOGLE_APPLICATION_CREDENTIALS"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false, "notes": "Use for labels, people, objects, text, speech, and shot-change annotations when cloud processing is acceptable."},
+            {"kind": "api", "name": "TwelveLabs video search/index", "requires": {"env": ["TWELVELABS_API_KEY"], "package": ["twelvelabs"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false, "notes": "Use for semantic search over larger footage libraries and multimodal visual/audio indexing."},
+            {"kind": "python", "name": "PaddleOCR on sampled keyframes", "requires": {"package": ["paddleocr"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Run after keyframe extraction to index visible text, signage, lower thirds, and hard subtitles; it complements scene detection rather than replacing it."}
+          ]
+        },
+        {
+          "id": "text.transcribe",
+          "intent": "Transcribe speech to text and produce subtitle files (SRT/ASS).",
+          "inputs": ["audio_or_video:path", "lang?:code"],
+          "outputs": ["subtitles:path", "transcript:text"],
+          "skill_search_hints": ["subtitle", "transcribe", "speech-to-text"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-videocaptioner", "requires": {"binary": ["cli-anything-videocaptioner"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Can use cloud ASR backends if configured."},
+            {"kind": "python", "name": "openai-whisper", "requires": {"package": ["whisper"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "First use may download model weights. Prefer small/base CPU models for drafts; use larger models only when runtime/resources fit the task."},
+            {"kind": "python", "name": "faster-whisper/stable-ts", "requires": {"package": ["faster_whisper"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Package availability does not guarantee model cache or acceptable runtime. Choose model size by quality/time constraints."},
+            {"kind": "api", "name": "AssemblyAI", "requires": {"env": ["ASSEMBLYAI_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Deepgram", "requires": {"env": ["DEEPGRAM_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Google Speech-to-Text", "requires": {"env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "text.caption",
+          "intent": "Design, time, render, and QC visible captions, subtitles, lyrics, karaoke, lower thirds, and trailer title hits so they look polished and genre-appropriate.",
+          "inputs": ["captions_source:path", "video?:path", "style?:text", "aspect_ratio?:text", "language?:code"],
+          "outputs": ["captions_ass_or_overlay:path", "captions_style:path", "caption_preview_frames:path[]", "captions_qc:path"],
+          "skill_search_hints": ["caption design", "subtitle styling", "ASS subtitles", "kinetic captions", "lyrics karaoke", "caption QC"],
+          "providers": [
+            {"kind": "agent-native", "name": "Captions reference module", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Read cli-hub-matrix/video-creation/references/captions.md. Use for polished visible captions, subtitles, lyrics, lower thirds, genre presets, safe-zone rules, and caption QC."},
+            {"kind": "native", "name": "ASS + ffmpeg subtitles", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Deterministic local path for styled subtitle burn-in on edited footage; supply fontsdir when custom fonts are used."},
+            {"kind": "agent-skill", "name": "HyperFrames captions workflow", "requires": {"binary": ["hyperframes", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Install with `npx skills add heygen-com/hyperframes --skill hyperframes`. Use only when captions are part of an HTML/CSS/GSAP motion composition, karaoke, audio-reactive typography, or digital launch video."},
+            {"kind": "python", "name": "pysubs2 ASS authoring", "requires": {"package": ["pysubs2"], "binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Programmatically author ASS events/styles while keeping final burn-in deterministic through ffmpeg."},
+            {"kind": "python", "name": "MoviePy/Pillow transparent overlays", "requires": {"package": ["moviepy", "PIL"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Use only when custom layout exceeds ASS and the project already uses a Python render path; inspect caption-heavy frames before delivery."}
+          ]
+        },
+        {
+          "id": "composite.assemble",
+          "intent": "Assemble clips on a timeline with transitions, following the creative direction, story arc, source roles, and audio plan.",
+          "inputs": ["clips:path[]", "edit_plan?:json", "creative_direction?:path", "audio_plan?:path"],
+          "outputs": ["video:path"],
+          "skill_search_hints": ["video editing", "timeline", "NLE", "story arc", "beat map", "audio plan", "hyperframes", "website to video", "product launch video", "digital launch video"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-kdenlive", "requires": {"binary": ["cli-anything-kdenlive"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Use the provider-boundary pattern in cli-hub-matrix/video-creation/references/nle-shotcut-kdenlive.md: ffmpeg for mezzanine prep, the NLE harness for project/timeline/tracks/transitions/render, then ffmpeg for post-NLE captions, normalization, muxing, and doctor evidence."},
+            {"kind": "harness-cli", "name": "cli-anything-shotcut", "requires": {"binary": ["cli-anything-shotcut"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Use the provider-boundary pattern in cli-hub-matrix/video-creation/references/nle-shotcut-kdenlive.md: ffmpeg for mezzanine prep, the NLE harness for project/timeline/tracks/transitions/render, then ffmpeg for post-NLE captions, normalization, muxing, and doctor evidence."},
+            {"kind": "python", "name": "moviepy", "requires": {"package": ["moviepy"], "binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "ffmpeg-python", "requires": {"package": ["ffmpeg"], "binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "ffmpeg concat/filter_complex", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "agent-skill", "name": "HyperFrames skill/CLI", "requires": {"binary": ["hyperframes", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Install skill with `npx skills add heygen-com/hyperframes`; CLI can also run via `npx hyperframes preview/render`. Use only for website/product-page or digital UI-driven launch videos where HTML/CSS/GSAP composition is appropriate, not as a general NLE or Remotion/React path."}
+          ]
+        },
+        {
+          "id": "composite.overlay",
+          "intent": "Apply already-designed caption/subtitle assets, watermarks, or picture-in-picture layers onto a video.",
+          "inputs": ["video:path", "overlay:path_or_srt"],
+          "outputs": ["video:path"],
+          "skill_search_hints": ["burn subtitles", "caption overlay", "watermark", "picture in picture", "overlay"],
+          "providers": [
+            {"kind": "native", "name": "ffmpeg -vf subtitles/overlay", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "moviepy (CompositeVideoClip)", "requires": {"package": ["moviepy"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "package.thumbnail",
+          "intent": "Create a thumbnail image or social card.",
+          "inputs": ["concept:text", "reference?:path"],
+          "outputs": ["image:path"],
+          "skill_search_hints": ["thumbnail", "social card", "image design"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-gimp", "requires": {"binary": ["cli-anything-gimp"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-krita", "requires": {"binary": ["cli-anything-krita"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-inkscape", "requires": {"binary": ["cli-anything-inkscape"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "Pillow", "requires": {"package": ["PIL"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "cairosvg/html2image", "requires": {"package": ["cairosvg"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "api", "name": "OpenAI GPT-Image-1", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Google Nano Banana", "requires": {"env": ["GOOGLE_CLOUD_PROJECT"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Ideogram", "requires": {"env": ["IDEOGRAM_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Stability AI", "requires": {"env": ["STABILITY_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "native", "name": "ffmpeg frame-grab", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "basic", "offline": true},
+            {"kind": "native", "name": "ImageMagick convert/magick", "requires": {"binary": ["magick"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "package.encode",
+          "intent": "Final mux / codec / container for the output video.",
+          "inputs": ["video:path", "target?:codec_or_container"],
+          "outputs": ["video:path"],
+          "skill_search_hints": ["encode", "transcode", "codec"],
+          "providers": [
+            {"kind": "native", "name": "ffmpeg", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true}
+          ]
+        },
+        {
+          "id": "quality.review",
+          "intent": "Check rendered video for technical, editorial, story-structure, and audio defects before delivery.",
+          "inputs": ["video:path", "subtitles?:path", "reference?:path", "creative_direction?:path"],
+          "outputs": ["qc_report:path", "preview_frames:path[]"],
+          "skill_search_hints": ["video qc", "ffmpeg blackdetect", "loudness LUFS", "subtitle layout", "story review", "audio flatness", "ffprobe"],
+          "providers": [
+            {"kind": "native", "name": "ffmpeg/ffprobe QC filters", "requires": {"binary": ["ffmpeg", "ffprobe"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Primary local QC path for metadata, black frames, silence, freezes, crop/aspect checks, and LUFS/loudness analysis. For polished videos, also run the art gates in cli-hub-matrix/video-creation/references/art-direction-review.md and the story/audio rubric in references/story-structure-audio.md."},
+            {"kind": "native", "name": "MediaInfo CLI", "requires": {"binary": ["mediainfo"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Use for independent container/codec/bitrate/duration/aspect-ratio metadata checks."},
+            {"kind": "public-cli", "name": "ffmpeg-quality-metrics / VMAF", "requires": {"binary": ["ffmpeg-quality-metrics", "ffmpeg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Install with `pipx install ffmpeg-quality-metrics`; source: https://github.com/slhck/ffmpeg-quality-metrics. Use VMAF/SSIM/PSNR only when a reference video exists."},
+            {"kind": "bundled-script", "name": "Video doctor helper", "requires": {"binary": ["ffmpeg", "ffprobe"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Run cli-hub-matrix/video-creation/scripts/video_doctor.py with the system Python; subcommands probe/captions/sources/frames/tail/audio/lint produce investigation evidence, not pass/fail verdicts. For every promoted final, follow cli-hub-matrix/video-creation/references/render-doctor.md (hash the candidate, regenerate frames from the promoted path, refresh reports)."}
+          ]
+        }
+      ],
+      "recipes": [
+        {
+          "id": "ai-short",
+          "description": "Fully-generative social short.",
+          "capabilities_used": ["script.storyboard", "visual.generate", "audio.synthesize", "text.caption", "music.generate", "music.search", "music.download", "sound.design", "composite.assemble", "composite.overlay", "package.thumbnail", "quality.review", "package.encode"]
+        },
+        {
+          "id": "screencast-tutorial",
+          "description": "Record a screen walkthrough with narration and subtitles.",
+          "capabilities_used": ["script.storyboard", "visual.capture", "audio.capture", "text.transcribe", "text.caption", "composite.overlay", "package.thumbnail", "quality.review", "package.encode"]
+        },
+        {
+          "id": "talking-head-explainer",
+          "description": "Webcam + b-roll + captions.",
+          "capabilities_used": ["script.storyboard", "visual.capture", "video.search", "video.download", "music.search", "music.download", "sound.design", "visual.generate", "media.analyze", "audio.capture", "text.transcribe", "text.caption", "composite.assemble", "composite.overlay", "package.thumbnail", "quality.review", "package.encode"]
+        },
+        {
+          "id": "podcast-to-video",
+          "description": "Audio-first, visualize and caption for video platforms.",
+          "capabilities_used": ["script.storyboard", "audio.capture", "text.transcribe", "text.caption", "package.thumbnail", "composite.overlay", "composite.assemble", "quality.review", "package.encode"]
+        },
+        {
+          "id": "found-footage-montage",
+          "description": "Find internet clips, download them with provenance, then edit a montage.",
+          "capabilities_used": ["script.storyboard", "video.search", "video.download", "media.analyze", "sound.design", "text.transcribe", "text.caption", "composite.assemble", "composite.overlay", "package.thumbnail", "quality.review", "package.encode"]
+        },
+        {
+          "id": "existing-song-music-video",
+          "description": "Build a music video around a user-specified or discovered existing song.",
+          "capabilities_used": ["music.search", "music.download", "script.storyboard", "video.search", "video.download", "media.analyze", "sound.design", "text.caption", "composite.assemble", "composite.overlay", "package.thumbnail", "quality.review", "package.encode"]
+        },
+        {
+          "id": "digital-product-launch",
+          "description": "Product/site-driven launch video with animated UI, typography, and motion graphics.",
+          "capabilities_used": ["script.storyboard", "visual.capture", "audio.synthesize", "text.caption", "music.generate", "music.search", "music.download", "sound.design", "composite.assemble", "composite.overlay", "package.thumbnail", "package.encode", "quality.review"]
+        }
+      ],
+      "known_gaps": [
+        {
+          "capability": "publish.upload",
+          "reason": "No first-party or public CLI for YouTube/TikTok/Bilibili/Instagram yet.",
+          "workaround": "Instruct the user to upload manually via the web UI, or escalate to a custom script using each platform's v3 API with an OAuth token the user supplies."
+        },
+        {
+          "capability": "visual.generate",
+          "reason": "Sota-tier cinematic output is only available via paid APIs (Runway, Kling, Seedance).",
+          "workaround": "Use generate-veo-video or jimeng for high-quality output when configured; avoid pulling complex local GPU/weights stacks into the matrix by default."
+        },
+        {
+          "capability": "rights.provenance",
+          "reason": "No automated license/TOS/provenance verifier for web-sourced video or music.",
+          "workaround": "Save sources.json/music_sources.json with source URL, creator, license, intended use, and attribution text; ask the user before using unclear or restricted media. Use cli-hub-matrix/video-creation/references/source-triage.md for platform-origin evidence levels."
+        },
+        {
+          "capability": "agent-skill.preflight",
+          "reason": "External agent skills are reported as agent-installable instead of available/missing because their local install state is not machine-checkable by the env/binary/package preflight contract.",
+          "workaround": "Use provider notes and the SKILL.md source/install table to install or inspect the external skill before relying on it."
+        }
+      ],
+      "suggest_to_user_template": "To enable <capability> via <provider>, please set <ENV_VAR>. Cost: <cost_tier>. Quality: <quality_tier>. Reply 'skip' to fall back to <next provider>."
+    },
+    {
+      "name": "knowledge-research",
+      "display_name": "Knowledge / Office / Research",
+      "version": "1",
+      "schema_version": "2",
+      "description": "Capability-based matrix for research, note-taking, document authoring, and publishing: web/literature search, article retrieval, citations/references, notes/PKM, outlining, multi-doc synthesis, office document authoring (DOCX/XLSX/PPTX/PDF), format conversion, PDF manipulation, diagrams, web publishing, and LaTeX builds. Providers include harness CLIs, public CLIs, Python libs, native binaries, and cloud APIs.",
+      "category": "knowledge",
+      "matrix": "cli-matrix",
+      "matrix_id": "S2",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix/cli-matrix-plan.md",
+      "skill_md": "cli-hub-matrix/knowledge-research/SKILL.md",
+      "clis": [
+        "exa",
+        "browser",
+        "safari",
+        "clibrowser",
+        "zotero",
+        "obsidian",
+        "mubu",
+        "notebooklm",
+        "intelwatch",
+        "libreoffice",
+        "anygen",
+        "drawio",
+        "mermaid"
+      ],
+      "capabilities": [
+        {
+          "id": "research.search",
+          "intent": "Search the web and academic literature for candidate sources on a topic.",
+          "inputs": ["query:text", "scope?:web|academic|news", "recency?:text"],
+          "outputs": ["results:json", "source_urls:string[]"],
+          "skill_search_hints": ["web search", "literature search", "academic search", "search API"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-exa", "requires": {"binary": ["cli-anything-exa"], "env": ["EXA_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "harness-cli", "name": "cli-anything-browser / safari / clibrowser", "requires": {"binary": ["cli-anything-browser"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Browser-driven search and navigation; cli-anything-safari (macOS) and clibrowser are equivalent harness paths."},
+            {"kind": "python", "name": "duckduckgo-search", "requires": {"package": ["duckduckgo_search"]}, "cost_tier": "free", "quality_tier": "good", "offline": false},
+            {"kind": "python", "name": "googlesearch-python", "requires": {"package": ["googlesearch"]}, "cost_tier": "free", "quality_tier": "good", "offline": false},
+            {"kind": "api", "name": "Perplexity API", "requires": {"env": ["PERPLEXITY_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Tavily", "requires": {"env": ["TAVILY_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Brave Search", "requires": {"env": ["BRAVE_API_KEY"]}, "cost_tier": "metered", "quality_tier": "good", "offline": false},
+            {"kind": "api", "name": "Google Custom Search", "requires": {"env": ["GOOGLE_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "research.retrieve",
+          "intent": "Fetch pages and extract readable article text, including JS-heavy pages.",
+          "inputs": ["urls:string[]", "render_js?:bool"],
+          "outputs": ["article_text:path[]", "page_snapshots:path[]"],
+          "skill_search_hints": ["web scraping", "article extraction", "readability", "headless browser"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-browser / safari / clibrowser", "requires": {"binary": ["cli-anything-browser"]}, "cost_tier": "free", "quality_tier": "high", "offline": false},
+            {"kind": "python", "name": "trafilatura", "requires": {"package": ["trafilatura"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Best default extractor; extraction also works offline on saved HTML."},
+            {"kind": "python", "name": "readability-lxml", "requires": {"package": ["readability"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "httpx + manual parse", "requires": {"package": ["httpx"]}, "cost_tier": "free", "quality_tier": "basic", "offline": true},
+            {"kind": "python", "name": "playwright", "requires": {"package": ["playwright"]}, "cost_tier": "free", "quality_tier": "sota", "offline": false, "notes": "Needs `playwright install` browser download on first use; best for JS-heavy pages."},
+            {"kind": "api", "name": "Firecrawl", "requires": {"env": ["FIRECRAWL_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "ScrapingBee", "requires": {"env": ["SCRAPINGBEE_API_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "research.reference",
+          "intent": "Manage citations, bibliographies, BibTeX, and reference metadata.",
+          "inputs": ["dois_or_queries:string[]", "library?:path"],
+          "outputs": ["bibtex:path", "references:json"],
+          "skill_search_hints": ["citation", "bibtex", "zotero", "crossref", "reference manager"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-zotero", "requires": {"binary": ["cli-anything-zotero"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "pyzotero", "requires": {"package": ["pyzotero"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Needs a Zotero API key and library ID."},
+            {"kind": "python", "name": "habanero (Crossref)", "requires": {"package": ["habanero"]}, "cost_tier": "free", "quality_tier": "high", "offline": false},
+            {"kind": "python", "name": "bibtexparser", "requires": {"package": ["bibtexparser"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "api", "name": "Crossref REST", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "No key required; add a mailto for the polite pool."},
+            {"kind": "api", "name": "Semantic Scholar", "requires": {}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "SEMANTIC_SCHOLAR_API_KEY is optional for higher rate limits."}
+          ]
+        },
+        {
+          "id": "knowledge.note",
+          "intent": "Create, search, and maintain notes in a personal knowledge management system.",
+          "inputs": ["note:text", "vault?:path"],
+          "outputs": ["note_files:path[]"],
+          "skill_search_hints": ["note taking", "PKM", "obsidian", "markdown notes", "notion"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-obsidian", "requires": {"binary": ["cli-anything-obsidian"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-mubu", "requires": {"binary": ["cli-anything-mubu"]}, "cost_tier": "free", "quality_tier": "high", "offline": false},
+            {"kind": "public-cli", "name": "obsidian-cli", "requires": {"binary": ["obsidian"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Official Obsidian CLI bundled with Obsidian 1.12+; install via `cli-hub install obsidian-cli` and point it at a vault."},
+            {"kind": "native", "name": "raw markdown + git", "requires": {"binary": ["git"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "mdformat", "requires": {"package": ["mdformat"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "api", "name": "Notion API", "requires": {"env": ["NOTION_API_KEY"]}, "cost_tier": "free", "quality_tier": "sota", "offline": false, "notes": "Free tier suffices for most users; round-trips block/page IDs."}
+          ]
+        },
+        {
+          "id": "knowledge.outline",
+          "intent": "Build and manipulate hierarchical outlines (OPML/YAML/markdown) for documents and plans.",
+          "inputs": ["topic_or_doc:text", "format?:opml|yaml|markdown"],
+          "outputs": ["outline:path"],
+          "skill_search_hints": ["outliner", "OPML", "mind map", "mubu"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-mubu", "requires": {"binary": ["cli-anything-mubu"]}, "cost_tier": "free", "quality_tier": "high", "offline": false},
+            {"kind": "python", "name": "OPML via lxml", "requires": {"package": ["lxml"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "native", "name": "YAML outlines + yq", "requires": {"binary": ["yq"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "knowledge.synthesize",
+          "intent": "Summarize and synthesize across multiple documents or sources into briefs, digests, or reports.",
+          "inputs": ["sources:path[]", "question?:text", "length?:text"],
+          "outputs": ["synthesis:path"],
+          "skill_search_hints": ["summarization", "multi-document synthesis", "notebooklm", "RAG"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-notebooklm", "requires": {"binary": ["cli-anything-notebooklm"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "harness-cli", "name": "cli-anything-intelwatch", "requires": {"binary": ["cli-anything-intelwatch"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Partially offline; metered when cloud backends are configured."},
+            {"kind": "python", "name": "langchain / llama_index + local LLM", "requires": {"package": ["langchain"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Pair with a local model via ollama; llama_index is an equivalent path."},
+            {"kind": "python", "name": "haystack", "requires": {"package": ["haystack"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Partial offline support depending on pipeline components."},
+            {"kind": "api", "name": "Claude / OpenAI / Gemini long context", "requires": {"env": ["ANTHROPIC_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false, "notes": "Any long-context model key works (ANTHROPIC_API_KEY checked here; OPENAI_API_KEY or GOOGLE_API_KEY also apply)."}
+          ]
+        },
+        {
+          "id": "document.author",
+          "intent": "Author office documents — DOCX, XLSX, PPTX, PDF — from structured content.",
+          "inputs": ["content:path_or_text", "format:docx|xlsx|pptx|pdf", "template?:path"],
+          "outputs": ["document:path"],
+          "skill_search_hints": ["docx", "pptx", "spreadsheet", "report generation", "office documents"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-libreoffice", "requires": {"binary": ["cli-anything-libreoffice"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-anygen", "requires": {"binary": ["cli-anything-anygen"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "python-docx / openpyxl / python-pptx / reportlab", "requires": {"package": ["docx"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Install per output format; import names are docx (DOCX), openpyxl (XLSX), pptx (PPTX), reportlab (PDF)."},
+            {"kind": "api", "name": "Google Docs API", "requires": {"env": ["GOOGLE_APPLICATION_CREDENTIALS"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false, "notes": "OAuth/service-account credentials required."},
+            {"kind": "api", "name": "Microsoft Graph", "requires": {"env": ["MICROSOFT_GRAPH_TOKEN"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false, "notes": "Azure app registration + token required."}
+          ]
+        },
+        {
+          "id": "document.format",
+          "intent": "Convert documents between formats (markdown, DOCX, HTML, PDF, EPUB, ...).",
+          "inputs": ["document:path", "target:format"],
+          "outputs": ["document:path"],
+          "skill_search_hints": ["pandoc", "document conversion", "markdown to pdf", "docx to pdf"],
+          "providers": [
+            {"kind": "native", "name": "pandoc", "requires": {"binary": ["pandoc"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-libreoffice (headless convert)", "requires": {"binary": ["cli-anything-libreoffice"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "docx2pdf", "requires": {"package": ["docx2pdf"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Needs Word or LibreOffice installed."},
+            {"kind": "python", "name": "weasyprint", "requires": {"package": ["weasyprint"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "api", "name": "CloudConvert", "requires": {"env": ["CLOUDCONVERT_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false}
+          ]
+        },
+        {
+          "id": "document.pdf",
+          "intent": "Split, merge, OCR, and extract text/tables from PDFs.",
+          "inputs": ["pdf:path", "operation:split|merge|ocr|extract"],
+          "outputs": ["pdf_or_text:path"],
+          "skill_search_hints": ["pdf manipulation", "pdf ocr", "pdf extract", "qpdf"],
+          "providers": [
+            {"kind": "native", "name": "qpdf / pdftk", "requires": {"binary": ["qpdf"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true, "notes": "pdftk is an equivalent alternative for split/merge/forms."},
+            {"kind": "python", "name": "pypdf", "requires": {"package": ["pypdf"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "pdfplumber", "requires": {"package": ["pdfplumber"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Best local path for text and table extraction."},
+            {"kind": "python", "name": "pdf2image", "requires": {"package": ["pdf2image"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Needs poppler installed."},
+            {"kind": "native", "name": "ocrmypdf", "requires": {"binary": ["ocrmypdf", "tesseract"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "api", "name": "Adobe PDF Services", "requires": {"env": ["PDF_SERVICES_CLIENT_ID"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "Adobe PDF Services credentials (client id + secret)."}
+          ]
+        },
+        {
+          "id": "diagram.create",
+          "intent": "Create diagrams, flowcharts, and architecture drawings.",
+          "inputs": ["spec:text_or_path", "format?:svg|png|drawio|mermaid"],
+          "outputs": ["diagram:path"],
+          "skill_search_hints": ["diagram", "flowchart", "mermaid", "graphviz", "drawio"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-drawio", "requires": {"binary": ["cli-anything-drawio"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-mermaid", "requires": {"binary": ["cli-anything-mermaid"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "graphviz (dot)", "requires": {"binary": ["dot"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "plantuml", "requires": {"binary": ["plantuml"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Needs Java."}
+          ]
+        },
+        {
+          "id": "publish.web",
+          "intent": "Publish articles or posts to a website, blog, or CMS.",
+          "inputs": ["content:path", "target:cms_or_site"],
+          "outputs": ["published_url:text"],
+          "skill_search_hints": ["blog publishing", "CMS", "static site", "wordpress", "ghost"],
+          "providers": [
+            {"kind": "public-cli", "name": "contentful", "requires": {"binary": ["contentful"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "Needs a Contentful space token; install via `cli-hub install contentful`."},
+            {"kind": "public-cli", "name": "sanity", "requires": {"binary": ["sanity"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "Needs a Sanity project token; install via `cli-hub install sanity`."},
+            {"kind": "native", "name": "hugo / mkdocs / jekyll / pelican", "requires": {"binary": ["hugo"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Static-site path (hugo checked here); mkdocs/pelican are Python equivalents, jekyll is Ruby."},
+            {"kind": "api", "name": "WordPress REST", "requires": {"env": ["WORDPRESS_TOKEN"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Application password/token for the target site."},
+            {"kind": "api", "name": "Ghost Admin", "requires": {"env": ["GHOST_ADMIN_KEY"]}, "cost_tier": "free", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Medium (legacy)", "requires": {"env": ["MEDIUM_TOKEN"]}, "cost_tier": "free", "quality_tier": "good", "offline": false, "notes": "Legacy API; availability not guaranteed."}
+          ]
+        },
+        {
+          "id": "publish.latex",
+          "intent": "Build PDFs from LaTeX sources.",
+          "inputs": ["tex:path"],
+          "outputs": ["pdf:path"],
+          "skill_search_hints": ["latex", "latexmk", "tectonic", "pdf build"],
+          "providers": [
+            {"kind": "native", "name": "latexmk + texlive", "requires": {"binary": ["latexmk"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "pylatex", "requires": {"package": ["pylatex"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Needs a TeX distribution installed."},
+            {"kind": "native", "name": "Tectonic", "requires": {"binary": ["tectonic"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "api", "name": "Overleaf API", "requires": {"env": ["OVERLEAF_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false}
+          ]
+        }
+      ],
+      "recipes": [
+        {
+          "id": "literature-review",
+          "description": "Survey a topic, extract key papers, synthesize.",
+          "capabilities_used": ["research.search", "research.retrieve", "research.reference", "knowledge.synthesize", "document.author"]
+        },
+        {
+          "id": "meeting-to-doc",
+          "description": "Turn a recorded meeting into a structured document.",
+          "capabilities_used": ["knowledge.synthesize", "document.author", "document.format"],
+          "notes": "Transcription comes from the video-creation (S1) matrix's text.transcribe capability; run it there first."
+        },
+        {
+          "id": "blog-post",
+          "description": "Research, write, and publish a post.",
+          "capabilities_used": ["research.search", "research.retrieve", "knowledge.synthesize", "document.author", "publish.web"]
+        },
+        {
+          "id": "paper-draft",
+          "description": "Research + citations + LaTeX build.",
+          "capabilities_used": ["research.reference", "knowledge.synthesize", "document.author", "publish.latex"]
+        },
+        {
+          "id": "competitive-brief",
+          "description": "Fetch competitor pages, extract positioning, produce a briefing deck (PPTX).",
+          "capabilities_used": ["research.retrieve", "knowledge.synthesize", "document.author"]
+        },
+        {
+          "id": "pdf-book-digest",
+          "description": "Ingest a PDF book, OCR if needed, produce chapter summaries + quote file.",
+          "capabilities_used": ["document.pdf", "knowledge.synthesize", "knowledge.note"]
+        }
+      ],
+      "known_gaps": [
+        {
+          "capability": "knowledge.note",
+          "reason": "Notion API exists as an escalation, but there is no harness for local-first Notion workflows (recurs in S11 team comms).",
+          "workaround": "Use cli-anything-obsidian or raw markdown locally, then sync to Notion via the API when NOTION_API_KEY is set."
+        },
+        {
+          "capability": "document.author",
+          "reason": "Google Docs / Microsoft 365 live editing is API-path only.",
+          "workaround": "Author locally (LibreOffice / python-docx) and upload, or escalate to Google Docs API / Microsoft Graph with user-supplied credentials."
+        },
+        {
+          "capability": "publish.latex",
+          "reason": "No agent-native LaTeX harness; latexmk + Tectonic cover the native path.",
+          "workaround": "Use the latexmk/Tectonic native binaries or pylatex."
+        },
+        {
+          "capability": "text.translate",
+          "reason": "No first-party translation CLI; Python fallbacks and APIs only.",
+          "workaround": "Translate directly as agent work, or escalate to a translation API the user supplies."
+        }
+      ],
+      "suggest_to_user_template": "To enable <capability> via <provider>, please set <ENV_VAR>. Cost: <cost_tier>. Quality: <quality_tier>. Reply 'skip' to fall back to <next provider>."
+    },
+    {
+      "name": "3d-cad",
+      "display_name": "3D & CAD",
+      "version": "1",
+      "schema_version": "2",
+      "description": "Capability-based matrix for 3D modeling, parametric CAD, sculpting, point clouds, photogrammetry, PBR texturing, preview/offline rendering, GPU frame debugging, fabrication (slicing and CAM), and game-engine export. Mostly offline-capable; providers include harness CLIs, Python libs, native binaries, and cloud APIs.",
+      "category": "3d",
+      "matrix": "cli-matrix",
+      "matrix_id": "S3",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix/cli-matrix-plan.md",
+      "skill_md": "cli-hub-matrix/3d-cad/SKILL.md",
+      "clis": [
+        "blender",
+        "freecad",
+        "cloudcompare",
+        "cloudanalyzer",
+        "godot",
+        "renderdoc"
+      ],
+      "capabilities": [
+        {
+          "id": "model.mesh",
+          "intent": "Create, edit, and repair polygon meshes (organic or scanned geometry).",
+          "inputs": ["spec_or_mesh:text_or_path", "format?:stl|obj|ply|gltf"],
+          "outputs": ["mesh:path"],
+          "skill_search_hints": ["mesh modeling", "blender scripting", "mesh repair", "trimesh"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-blender", "requires": {"binary": ["cli-anything-blender"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "trimesh", "requires": {"package": ["trimesh"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "pymeshlab", "requires": {"package": ["pymeshlab"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "open3d", "requires": {"package": ["open3d"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "pygalmesh", "requires": {"package": ["pygalmesh"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Needs CGAL installed."}
+          ]
+        },
+        {
+          "id": "model.parametric",
+          "intent": "Model dimension-driven parts with parametric CAD.",
+          "inputs": ["dimensions_or_spec:text", "format?:step|fcstd|scad"],
+          "outputs": ["cad_model:path"],
+          "skill_search_hints": ["parametric CAD", "cadquery", "openscad", "freecad"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-freecad", "requires": {"binary": ["cli-anything-freecad"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "cadquery", "requires": {"package": ["cadquery"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "build123d", "requires": {"package": ["build123d"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "OpenSCAD", "requires": {"binary": ["openscad"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "SolidPython", "requires": {"package": ["solid"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Generates OpenSCAD code; needs the openscad binary to render."},
+            {"kind": "api", "name": "Onshape API", "requires": {"env": ["ONSHAPE_ACCESS_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Fusion 360 API", "requires": {"env": ["FUSION360_TOKEN"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false}
+          ]
+        },
+        {
+          "id": "model.sculpt",
+          "intent": "Sculpt organic forms digitally.",
+          "inputs": ["base_mesh:path", "sculpt_plan:text"],
+          "outputs": ["mesh:path"],
+          "skill_search_hints": ["sculpting", "blender sculpt mode"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-blender (sculpt mode, scripted)", "requires": {"binary": ["cli-anything-blender"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Agent-driven sculpting is impractical beyond Blender scripts; see known gaps (no ZBrush/Nomad path)."}
+          ]
+        },
+        {
+          "id": "pointcloud.process",
+          "intent": "Ingest, clean, register, and convert point clouds.",
+          "inputs": ["pointcloud:path[]", "operation?:clean|register|convert|analyze"],
+          "outputs": ["pointcloud_or_mesh:path"],
+          "skill_search_hints": ["point cloud", "registration", "las", "pdal", "cloudcompare"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-cloudcompare", "requires": {"binary": ["cli-anything-cloudcompare"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-cloudanalyzer", "requires": {"binary": ["cli-anything-cloudanalyzer"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "open3d", "requires": {"package": ["open3d"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "laspy", "requires": {"package": ["laspy"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "pdal", "requires": {"binary": ["pdal"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "pyvista", "requires": {"package": ["pyvista"]}, "cost_tier": "free", "quality_tier": "high", "offline": true}
+          ]
+        },
+        {
+          "id": "photogrammetry.reconstruct",
+          "intent": "Reconstruct 3D meshes from photo sets.",
+          "inputs": ["photos:path[]", "quality?:draft|high"],
+          "outputs": ["mesh:path", "pointcloud:path"],
+          "skill_search_hints": ["photogrammetry", "3d scan", "structure from motion", "meshroom", "colmap"],
+          "providers": [
+            {"kind": "native", "name": "Meshroom", "requires": {"binary": ["meshroom"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "colmap", "requires": {"binary": ["colmap"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "OpenMVG + OpenMVS", "requires": {"binary": ["openmvg", "openmvs"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "RealityCapture", "requires": {"binary": ["RealityCapture"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": true, "notes": "Commercial license required."},
+            {"kind": "api", "name": "Polycam API", "requires": {"env": ["POLYCAM_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Luma AI", "requires": {"env": ["LUMA_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false}
+          ]
+        },
+        {
+          "id": "material.texture",
+          "intent": "Create PBR textures and materials for meshes.",
+          "inputs": ["mesh:path", "material_spec:text"],
+          "outputs": ["textured_mesh:path", "texture_maps:path[]"],
+          "skill_search_hints": ["PBR texturing", "materials", "uv mapping", "shader nodes"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-blender (shader nodes, scripted)", "requires": {"binary": ["cli-anything-blender"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "bpy PBR synthesis", "requires": {"package": ["bpy"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "Pillow procedural maps", "requires": {"package": ["PIL"]}, "cost_tier": "free", "quality_tier": "basic", "offline": true}
+          ]
+        },
+        {
+          "id": "render.preview",
+          "intent": "Produce fast viewport/preview renders.",
+          "inputs": ["scene:path", "camera?:spec"],
+          "outputs": ["image:path"],
+          "skill_search_hints": ["preview render", "eevee", "viewport screenshot"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-blender (Eevee)", "requires": {"binary": ["cli-anything-blender"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-godot (viewport screenshot)", "requires": {"binary": ["cli-anything-godot"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "render.offline",
+          "intent": "Produce final path-traced renders.",
+          "inputs": ["scene:path", "samples?:int", "resolution?:text"],
+          "outputs": ["image_or_animation:path"],
+          "skill_search_hints": ["path tracing", "cycles", "final render"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-blender (Cycles)", "requires": {"binary": ["cli-anything-blender"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true, "notes": "GPU strongly recommended for acceptable render times."},
+            {"kind": "python", "name": "bpy + Cycles", "requires": {"package": ["bpy"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "api", "name": "Octane Cloud", "requires": {"env": ["OCTANE_TOKEN"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false}
+          ]
+        },
+        {
+          "id": "gpu.debug",
+          "intent": "Capture and inspect GPU frames for graphics debugging.",
+          "inputs": ["application:path_or_pid"],
+          "outputs": ["frame_capture:path", "analysis:json"],
+          "skill_search_hints": ["gpu debugging", "frame capture", "renderdoc", "apitrace"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-renderdoc", "requires": {"binary": ["cli-anything-renderdoc"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "native", "name": "apitrace", "requires": {"binary": ["apitrace"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "vulkan-tools", "requires": {"binary": ["vulkaninfo"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "fabricate.slice",
+          "intent": "Slice meshes into 3D-printer gcode.",
+          "inputs": ["mesh:path", "printer_profile?:path"],
+          "outputs": ["gcode:path"],
+          "skill_search_hints": ["3d printing", "slicer", "gcode", "prusaslicer"],
+          "providers": [
+            {"kind": "native", "name": "PrusaSlicer CLI", "requires": {"binary": ["prusaslicer"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true, "notes": "Check the mesh is manifold first (trimesh.Trimesh.is_volume or pymeshlab); slicers fail silently on non-manifold meshes."},
+            {"kind": "native", "name": "CuraEngine", "requires": {"binary": ["CuraEngine"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "slic3r", "requires": {"binary": ["slic3r"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "fabricate.cam",
+          "intent": "Generate CNC/CAM toolpaths from CAD models.",
+          "inputs": ["cad_model:path", "machine_profile?:path"],
+          "outputs": ["gcode:path"],
+          "skill_search_hints": ["CAM", "CNC", "toolpath", "freecad path"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-freecad (Path workbench, scripted)", "requires": {"binary": ["cli-anything-freecad"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "pycam", "requires": {"package": ["pycam"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "native", "name": "kiri:moto", "requires": {"binary": ["kirimoto"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Grid.Space kiri:moto; also runs as a local web app."},
+            {"kind": "api", "name": "Fusion 360 CAM / Onshape CAM", "requires": {"env": ["FUSION360_TOKEN"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "Onshape CAM via ONSHAPE_ACCESS_KEY is the equivalent escalation."}
+          ]
+        },
+        {
+          "id": "export.engine",
+          "intent": "Export/convert assets (glTF/FBX) and hand off to a game or viz engine.",
+          "inputs": ["asset:path", "target?:godot|gltf|fbx"],
+          "outputs": ["engine_asset:path"],
+          "skill_search_hints": ["gltf export", "game engine import", "fbx", "asset handoff"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-godot", "requires": {"binary": ["cli-anything-godot"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-blender (glTF/FBX export)", "requires": {"binary": ["cli-anything-blender"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true, "notes": "Apply modifiers and bake materials before export; runtime engines don't read Blender shader graphs."},
+            {"kind": "python", "name": "pygltflib", "requires": {"package": ["pygltflib"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "trimesh glTF writer", "requires": {"package": ["trimesh"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        }
+      ],
+      "recipes": [
+        {
+          "id": "printable-part",
+          "description": "Parametric CAD, then mesh, slice, and gcode.",
+          "capabilities_used": ["model.parametric", "model.mesh", "fabricate.slice"]
+        },
+        {
+          "id": "game-asset",
+          "description": "Model, texture, and export to an engine.",
+          "capabilities_used": ["model.mesh", "material.texture", "export.engine", "render.preview"],
+          "notes": "render.preview is optional."
+        },
+        {
+          "id": "reality-scan",
+          "description": "Photos to photogrammetry, clean mesh, then export.",
+          "capabilities_used": ["photogrammetry.reconstruct", "pointcloud.process", "model.mesh", "export.engine"]
+        },
+        {
+          "id": "cnc-part",
+          "description": "Parametric part, then CAM toolpath and gcode.",
+          "capabilities_used": ["model.parametric", "fabricate.cam"]
+        },
+        {
+          "id": "product-viz-still",
+          "description": "CAD import, scene setup, offline render.",
+          "capabilities_used": ["model.parametric", "model.mesh", "material.texture", "render.offline"]
+        },
+        {
+          "id": "gpu-bug-repro",
+          "description": "Capture a GPU frame, analyze, patch shader.",
+          "capabilities_used": ["gpu.debug", "render.preview"]
+        }
+      ],
+      "known_gaps": [
+        {
+          "capability": "material.texture",
+          "reason": "No open agent-native path approaches Substance 3D quality; Blender shader nodes are the current ceiling.",
+          "workaround": "Use scripted Blender shader nodes or bpy/Pillow procedural maps; ask the user for Substance-authored textures when quality is critical."
+        },
+        {
+          "capability": "fabricate.slice",
+          "reason": "PrusaSlicer/CuraEngine natives work but there is no harness-level wrapper (Bambu Studio / OrcaSlicer uncovered).",
+          "workaround": "Drive the native slicer CLIs directly; verify the mesh is manifold first."
+        },
+        {
+          "capability": "model.sculpt",
+          "reason": "Agent-driven sculpting is impractical beyond Blender scripts; no ZBrush/Nomad path.",
+          "workaround": "Use Blender sculpt-mode scripting for coarse forms or ask the user to sculpt manually."
+        },
+        {
+          "capability": "export.engine",
+          "reason": "Only Godot is covered on the harness side; no Unity Asset Pipeline / Unreal Datasmith path.",
+          "workaround": "Export glTF/FBX and instruct the user to import into Unity/Unreal manually."
+        }
+      ],
+      "suggest_to_user_template": "To enable <capability> via <provider>, please set <ENV_VAR>. Cost: <cost_tier>. Quality: <quality_tier>. Reply 'skip' to fall back to <next provider>."
+    },
+    {
+      "name": "game-development",
+      "display_name": "Game Development",
+      "version": "1",
+      "schema_version": "2",
+      "description": "Capability-based matrix for game development: engine authoring (Godot-first), 3D/2D/audio/notation assets, AI-generated assets, agent-driven playtesting, build packaging, store publishing, and telemetry/crash reporting. Providers include harness CLIs, public CLIs, Python libs, native binaries, and cloud APIs.",
+      "category": "game",
+      "matrix": "cli-matrix",
+      "matrix_id": "S4",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix/cli-matrix-plan.md",
+      "skill_md": "cli-hub-matrix/game-development/SKILL.md",
+      "clis": [
+        "godot",
+        "blender",
+        "freecad",
+        "krita",
+        "inkscape",
+        "audacity",
+        "musescore",
+        "comfyui",
+        "slay_the_spire_ii"
+      ],
+      "capabilities": [
+        {
+          "id": "game.engine",
+          "intent": "Author and manipulate game projects, scenes, and scripts in an engine.",
+          "inputs": ["project:path", "change_spec:text"],
+          "outputs": ["project:path"],
+          "skill_search_hints": ["game engine", "godot", "pygame", "game scripting"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-godot", "requires": {"binary": ["cli-anything-godot"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "pygame", "requires": {"package": ["pygame"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "arcade", "requires": {"package": ["arcade"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "panda3d", "requires": {"package": ["panda3d"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "ursina", "requires": {"package": ["ursina"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+          ]
+        },
+        {
+          "id": "asset.3d",
+          "intent": "Produce 3D game assets (modeling, baking, engine-ready export).",
+          "inputs": ["spec:text", "format?:gltf|fbx|obj"],
+          "outputs": ["asset:path"],
+          "skill_search_hints": ["3d asset", "gltf", "blender", "game model"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-blender", "requires": {"binary": ["cli-anything-blender"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true, "notes": "The full pipeline lives in the 3d-cad (S3) matrix: model.mesh, material.texture, export.engine."},
+            {"kind": "harness-cli", "name": "cli-anything-freecad", "requires": {"binary": ["cli-anything-freecad"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "trimesh", "requires": {"package": ["trimesh"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "pygltflib", "requires": {"package": ["pygltflib"]}, "cost_tier": "free", "quality_tier": "high", "offline": true}
+          ]
+        },
+        {
+          "id": "asset.2d",
+          "intent": "Create sprites, tiles, and UI art.",
+          "inputs": ["spec:text", "style?:text", "size?:px"],
+          "outputs": ["images:path[]"],
+          "skill_search_hints": ["sprites", "pixel art", "game ui art", "tileset"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-krita", "requires": {"binary": ["cli-anything-krita"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-inkscape", "requires": {"binary": ["cli-anything-inkscape"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "Pillow", "requires": {"package": ["PIL"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "native", "name": "aseprite", "requires": {"binary": ["aseprite"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": true, "notes": "Commercial license required."},
+            {"kind": "python", "name": "pyxel", "requires": {"package": ["pyxel"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "api", "name": "OpenAI GPT-Image-1", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Scenario GG", "requires": {"env": ["SCENARIO_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Leonardo AI", "requires": {"env": ["LEONARDO_API_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "asset.audio",
+          "intent": "Create and process SFX and gameplay audio.",
+          "inputs": ["spec:text", "source_audio?:path"],
+          "outputs": ["audio:path[]"],
+          "skill_search_hints": ["game sfx", "sound effects", "audio asset"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-audacity", "requires": {"binary": ["cli-anything-audacity"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "pydub / librosa / soundfile", "requires": {"package": ["pydub"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "native", "name": "sfxr / jsfxr", "requires": {"binary": ["sfxr"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "api", "name": "ElevenLabs SFX", "requires": {"env": ["ELEVENLABS_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Mubert", "requires": {"env": ["MUBERT_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "asset.notation",
+          "intent": "Compose and export music notation / scores (MIDI, MusicXML).",
+          "inputs": ["score_spec:text", "format?:midi|musicxml|pdf"],
+          "outputs": ["score:path"],
+          "skill_search_hints": ["music notation", "midi", "musescore", "score composition"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-musescore", "requires": {"binary": ["cli-anything-musescore"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "music21", "requires": {"package": ["music21"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "mido", "requires": {"package": ["mido"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "abjad", "requires": {"package": ["abjad"]}, "cost_tier": "free", "quality_tier": "high", "offline": true}
+          ]
+        },
+        {
+          "id": "ai.gen-asset",
+          "intent": "Generate art/audio assets for games with AI, with reproducible seeds and prompts.",
+          "inputs": ["prompt:text", "seed?:int", "style?:text"],
+          "outputs": ["assets:path[]", "generation_manifest:json"],
+          "skill_search_hints": ["ai asset generation", "stable diffusion", "comfyui", "game art generation"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-comfyui", "requires": {"binary": ["cli-anything-comfyui"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Needs ComfyUI plus model weights."},
+            {"kind": "public-cli", "name": "jimeng", "requires": {"binary": ["dreamina"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "ByteDance Dreamina; install via `cli-hub install jimeng`."},
+            {"kind": "python", "name": "diffusers", "requires": {"package": ["diffusers"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Needs model weights and ideally a GPU."},
+            {"kind": "python", "name": "replicate", "requires": {"package": ["replicate"], "env": ["REPLICATE_API_TOKEN"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Scenario GG", "requires": {"env": ["SCENARIO_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Leonardo AI", "requires": {"env": ["LEONARDO_API_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "OpenAI GPT-Image-1", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Stability AI", "requires": {"env": ["STABILITY_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "playtest.agent",
+          "intent": "Drive a live game loop or test harness with an agent.",
+          "inputs": ["game:path_or_process", "test_plan?:text"],
+          "outputs": ["playtest_report:path", "telemetry:json"],
+          "skill_search_hints": ["agent playtesting", "game testing", "gymnasium", "headless game"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-slay-the-spire-ii", "requires": {"binary": ["cli-anything-sts2"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true, "notes": "Requires Slay the Spire II plus the bridge mod; ask the user if modding is permitted before attempting."},
+            {"kind": "python", "name": "gymnasium envs", "requires": {"package": ["gymnasium"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "harness-cli", "name": "Godot headless + scripted input", "requires": {"binary": ["cli-anything-godot"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Run Godot with --headless and GUT or scripted input."}
+          ]
+        },
+        {
+          "id": "build.package",
+          "intent": "Package a game build/binary for distribution.",
+          "inputs": ["project:path", "target_platform:text", "version:text"],
+          "outputs": ["build:path", "build_manifest:json"],
+          "skill_search_hints": ["game packaging", "export build", "godot export", "itch butler"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-godot (export presets)", "requires": {"binary": ["cli-anything-godot"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true, "notes": "Needs Godot export templates installed. Version builds into builds/<version>/ with a manifest."},
+            {"kind": "python", "name": "pyinstaller (pygame/arcade)", "requires": {"package": ["PyInstaller"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "native", "name": "butler (itch packager)", "requires": {"binary": ["butler"]}, "cost_tier": "free", "quality_tier": "high", "offline": true}
+          ]
+        },
+        {
+          "id": "publish.store",
+          "intent": "Upload a build to a game store; always gated behind explicit user confirmation.",
+          "inputs": ["build:path", "store:steam|itch|epic|play|appstore", "credentials:env"],
+          "outputs": ["release_url:text"],
+          "skill_search_hints": ["steam upload", "itch.io publish", "store release", "steamcmd"],
+          "providers": [
+            {"kind": "native", "name": "steamcmd", "requires": {"binary": ["steamcmd"], "env": ["STEAM_USERNAME", "STEAM_PASSWORD"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "One-time $100 Steamworks fee and an app ID; use a dedicated build account to limit credential risk."},
+            {"kind": "native", "name": "butler (itch.io)", "requires": {"binary": ["butler"], "env": ["ITCH_API_KEY"]}, "cost_tier": "free", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Epic Games Services", "requires": {"env": ["EPIC_DEV_TOKEN"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Google Play Developer", "requires": {"env": ["PLAY_CONSOLE_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false, "notes": "Service account required."},
+            {"kind": "api", "name": "App Store Connect", "requires": {"env": ["APP_STORE_CONNECT_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "telemetry.ingest",
+          "intent": "Collect gameplay analytics and crash reports.",
+          "inputs": ["app_or_build:path", "events?:json"],
+          "outputs": ["telemetry_dashboard:url", "crash_reports:json"],
+          "skill_search_hints": ["game analytics", "crash reporting", "sentry", "telemetry"],
+          "providers": [
+            {"kind": "public-cli", "name": "sentry", "requires": {"binary": ["sentry-cli"], "env": ["SENTRY_DSN"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Free tier with paid scale; install via `cli-hub install sentry`."},
+            {"kind": "python", "name": "posthog", "requires": {"package": ["posthog"], "env": ["POSTHOG_API_KEY"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Free tier with paid scale."},
+            {"kind": "api", "name": "GameAnalytics", "requires": {"env": ["GAMEANALYTICS_KEY"]}, "cost_tier": "free", "quality_tier": "good", "offline": false},
+            {"kind": "api", "name": "Unity Analytics", "requires": {"env": ["UNITY_PROJECT_TOKEN"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "Unity project token required."},
+            {"kind": "api", "name": "PlayFab", "requires": {"env": ["PLAYFAB_TITLE_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
+        }
+      ],
+      "recipes": [
+        {
+          "id": "godot-jam-game",
+          "description": "Minimal end-to-end for a game jam.",
+          "capabilities_used": ["game.engine", "asset.2d", "asset.audio", "build.package", "publish.store"],
+          "notes": "publish.store is optional and always needs explicit user confirmation."
+        },
+        {
+          "id": "agent-bot",
+          "description": "Train / evaluate an agent against an existing game.",
+          "capabilities_used": ["playtest.agent", "telemetry.ingest"]
+        },
+        {
+          "id": "ai-indie-short",
+          "description": "AI-generated art plus a simple engine loop.",
+          "capabilities_used": ["ai.gen-asset", "asset.2d", "game.engine", "asset.audio", "build.package"]
+        },
+        {
+          "id": "steam-release",
+          "description": "Ship to Steam with crash reporting.",
+          "capabilities_used": ["build.package", "publish.store", "telemetry.ingest"]
+        },
+        {
+          "id": "music-driven-game",
+          "description": "Composed score integrated with gameplay.",
+          "capabilities_used": ["asset.notation", "asset.audio", "game.engine"]
+        },
+        {
+          "id": "reality-to-game",
+          "description": "Photogrammetry asset, import, ship.",
+          "capabilities_used": ["asset.3d", "game.engine", "build.package"],
+          "notes": "Photogrammetry reconstruction comes from the 3d-cad (S3) matrix's photogrammetry.reconstruct capability."
+        }
+      ],
+      "known_gaps": [
+        {
+          "capability": "publish.store",
+          "reason": "Steam/itch/console wrappers are native or API only; no harness-level abstraction.",
+          "workaround": "Escalate via the suggest-to-user template with platform-specific credentials; never auto-publish without explicit user confirmation."
+        },
+        {
+          "capability": "game.engine",
+          "reason": "Only Godot has a harness; no Unity/Unreal path.",
+          "workaround": "Start in Godot unless the user explicitly requires Unity/Unreal; for those, fall back to user-driven editor work."
+        },
+        {
+          "capability": "telemetry.ingest",
+          "reason": "Sentry works via the public CLI; no first-party path for GameAnalytics/PlayFab.",
+          "workaround": "Use the sentry public CLI, or API escalation with user-supplied keys."
+        }
+      ],
+      "suggest_to_user_template": "To enable <capability> via <provider>, please set <ENV_VAR>. Cost: <cost_tier>. Quality: <quality_tier>. Reply 'skip' to fall back to <next provider>."
+    },
+    {
+      "name": "image-design",
+      "display_name": "Image & Graphic Design",
+      "version": "1",
+      "schema_version": "2",
+      "description": "Capability-based matrix for image and graphic design: AI image generation, raster/vector editing, UI mockups/wireframes, diagrams, super-resolution upscaling, photo library management, RAW development, and CMS publishing. GIMP/Krita/Inkscape/ComfyUI cover most work offline; cloud APIs escalate quality.",
+      "category": "image",
+      "matrix": "cli-matrix",
+      "matrix_id": "S5",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/blob/main/docs/cli-matrix/cli-matrix-plan.md",
+      "skill_md": "cli-hub-matrix/image-design/SKILL.md",
+      "clis": [
+        "comfyui",
+        "gimp",
+        "krita",
+        "inkscape",
+        "sketch",
+        "drawio",
+        "mermaid"
+      ],
+      "capabilities": [
+        {
+          "id": "visual.generate",
+          "intent": "Produce an image from a text prompt or reference image.",
+          "inputs": ["prompt:text", "ref_image?:path", "size?:px", "seed?:int"],
+          "outputs": ["image:path"],
+          "skill_search_hints": ["text-to-image", "AI image", "image generation", "stable diffusion"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-comfyui", "requires": {"binary": ["cli-anything-comfyui"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Needs ComfyUI plus model weights (FLUX/SDXL)."},
+            {"kind": "public-cli", "name": "jimeng", "requires": {"binary": ["dreamina"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "ByteDance Dreamina; install via `cli-hub install jimeng`."},
+            {"kind": "python", "name": "diffusers (SD/SDXL/FLUX)", "requires": {"package": ["diffusers"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Needs model weights and ideally a GPU."},
+            {"kind": "python", "name": "replicate", "requires": {"package": ["replicate"], "env": ["REPLICATE_API_TOKEN"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "OpenAI GPT-Image-1", "requires": {"env": ["OPENAI_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false, "notes": "Best for photoreal and text-in-image."},
+            {"kind": "api", "name": "Ideogram", "requires": {"env": ["IDEOGRAM_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false, "notes": "Strong poster/typography rendering."},
+            {"kind": "api", "name": "Stability AI", "requires": {"env": ["STABILITY_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Recraft", "requires": {"env": ["RECRAFT_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Google Imagen / Nano Banana", "requires": {"env": ["GOOGLE_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Midjourney (Discord bridge)", "requires": {"env": ["MIDJOURNEY_TOKEN"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "Discord bridge only; no official API."},
+            {"kind": "api", "name": "Adobe Firefly", "requires": {"env": ["FIREFLY_TOKEN"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "visual.edit.raster",
+          "intent": "Edit raster images: retouch, composite, resize, background removal.",
+          "inputs": ["image:path", "edit_spec:text"],
+          "outputs": ["image:path"],
+          "skill_search_hints": ["raster editing", "photo retouch", "background removal", "compositing"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-gimp", "requires": {"binary": ["cli-anything-gimp"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-krita", "requires": {"binary": ["cli-anything-krita"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "Pillow", "requires": {"package": ["PIL"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "opencv-python", "requires": {"package": ["cv2"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "scikit-image", "requires": {"package": ["skimage"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "rembg (background removal)", "requires": {"package": ["rembg"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "api", "name": "remove.bg", "requires": {"env": ["REMOVE_BG_API_KEY"]}, "cost_tier": "metered", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Adobe Firefly", "requires": {"env": ["FIREFLY_TOKEN"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "api", "name": "Cutout.pro", "requires": {"env": ["CUTOUT_PRO_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "visual.edit.vector",
+          "intent": "Create and edit vector graphics (SVG): logos, icons, illustrations.",
+          "inputs": ["svg_or_spec:path_or_text", "edit_spec?:text"],
+          "outputs": ["svg:path"],
+          "skill_search_hints": ["vector editing", "svg", "logo design", "inkscape"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-inkscape", "requires": {"binary": ["cli-anything-inkscape"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "python", "name": "svgwrite", "requires": {"package": ["svgwrite"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "python", "name": "cairosvg", "requires": {"package": ["cairosvg"]}, "cost_tier": "free", "quality_tier": "good", "offline": true, "notes": "Also the batch rasterization path for icon/logo exports."},
+            {"kind": "python", "name": "svgpathtools", "requires": {"package": ["svgpathtools"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "python", "name": "vpype (vector post-processing)", "requires": {"package": ["vpype"]}, "cost_tier": "free", "quality_tier": "high", "offline": true}
+          ]
+        },
+        {
+          "id": "visual.mockup",
+          "intent": "Design UI mockups and wireframes.",
+          "inputs": ["flow_spec:text", "fidelity?:wireframe|hifi"],
+          "outputs": ["mockups:path[]"],
+          "skill_search_hints": ["UI mockup", "wireframe", "figma", "design system"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-sketch", "requires": {"binary": ["sketch-cli"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": true, "notes": "Sketch is a paid macOS app."},
+            {"kind": "harness-cli", "name": "cli-anything-drawio", "requires": {"binary": ["cli-anything-drawio"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "drawio-desktop", "requires": {"binary": ["drawio"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "penpot", "requires": {"binary": ["penpot"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Self-hostable."},
+            {"kind": "api", "name": "Figma API", "requires": {"env": ["FIGMA_TOKEN"]}, "cost_tier": "free", "quality_tier": "sota", "offline": false, "notes": "Free tier works for most users; design-system aware."},
+            {"kind": "api", "name": "Canva API", "requires": {"env": ["CANVA_API_KEY"]}, "cost_tier": "paid", "quality_tier": "high", "offline": false},
+            {"kind": "api", "name": "Penpot API", "requires": {"env": ["PENPOT_TOKEN"]}, "cost_tier": "free", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "visual.diagram",
+          "intent": "Create diagrams and flowcharts.",
+          "inputs": ["spec:text_or_path", "format?:svg|png|drawio|mermaid"],
+          "outputs": ["diagram:path"],
+          "skill_search_hints": ["diagram", "flowchart", "mermaid", "graphviz"],
+          "providers": [
+            {"kind": "harness-cli", "name": "cli-anything-drawio", "requires": {"binary": ["cli-anything-drawio"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-mermaid", "requires": {"binary": ["cli-anything-mermaid"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "graphviz (dot)", "requires": {"binary": ["dot"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "plantuml", "requires": {"binary": ["plantuml"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Needs Java."}
+          ]
+        },
+        {
+          "id": "visual.upscale",
+          "intent": "Upscale images and restore faces with super-resolution.",
+          "inputs": ["image:path", "scale?:2x|4x"],
+          "outputs": ["image:path"],
+          "skill_search_hints": ["super resolution", "upscale", "esrgan", "face restoration"],
+          "providers": [
+            {"kind": "python", "name": "Real-ESRGAN", "requires": {"package": ["realesrgan"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Needs model weights."},
+            {"kind": "python", "name": "GFPGAN (faces)", "requires": {"package": ["gfpgan"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Face restoration; needs model weights."},
+            {"kind": "native", "name": "upscayl", "requires": {"binary": ["upscayl"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "api", "name": "Topaz", "requires": {"env": ["TOPAZ_API_KEY"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false},
+            {"kind": "python", "name": "Replicate upscalers", "requires": {"package": ["replicate"], "env": ["REPLICATE_API_TOKEN"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false}
+          ]
+        },
+        {
+          "id": "photo.library",
+          "intent": "Organize, tag, and query a photo library (DAM).",
+          "inputs": ["photos:path[]", "operation?:tag|search|organize"],
+          "outputs": ["library_index:path"],
+          "skill_search_hints": ["photo organization", "DAM", "exif", "photo library"],
+          "providers": [
+            {"kind": "native", "name": "exiftool + Pillow", "requires": {"binary": ["exiftool"], "package": ["PIL"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Handles EXIF/ICC metadata; preserve color profiles when moving between tools."},
+            {"kind": "native", "name": "digikam", "requires": {"binary": ["digikam"]}, "cost_tier": "free", "quality_tier": "high", "offline": true},
+            {"kind": "native", "name": "photoprism", "requires": {"binary": ["photoprism"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Self-hosted."},
+            {"kind": "api", "name": "Google Photos API", "requires": {"env": ["GOOGLE_APPLICATION_CREDENTIALS"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "OAuth credentials required; free tier."}
+          ]
+        },
+        {
+          "id": "photo.develop",
+          "intent": "Process RAW photos into developed images.",
+          "inputs": ["raw_files:path[]", "develop_profile?:path"],
+          "outputs": ["images:path[]"],
+          "skill_search_hints": ["RAW processing", "darktable", "rawtherapee", "photo develop"],
+          "providers": [
+            {"kind": "python", "name": "rawpy", "requires": {"package": ["rawpy"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Convert to sRGB at the boundary when handing off to Pillow."},
+            {"kind": "native", "name": "darktable-cli", "requires": {"binary": ["darktable-cli"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "native", "name": "rawtherapee-cli", "requires": {"binary": ["rawtherapee-cli"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "api", "name": "Adobe Lightroom API", "requires": {"env": ["ADOBE_CLIENT_ID"]}, "cost_tier": "paid", "quality_tier": "sota", "offline": false, "notes": "Adobe credentials required."}
+          ]
+        },
+        {
+          "id": "publish.cms",
+          "intent": "Publish images or articles to a CMS or static site.",
+          "inputs": ["assets:path[]", "target:cms_or_site"],
+          "outputs": ["published_url:text"],
+          "skill_search_hints": ["CMS publishing", "contentful", "static site", "image hosting"],
+          "providers": [
+            {"kind": "public-cli", "name": "contentful", "requires": {"binary": ["contentful"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "Needs a Contentful space token; install via `cli-hub install contentful`."},
+            {"kind": "public-cli", "name": "sanity", "requires": {"binary": ["sanity"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false, "notes": "Needs a Sanity project token; install via `cli-hub install sanity`."},
+            {"kind": "native", "name": "hugo / mkdocs", "requires": {"binary": ["hugo"]}, "cost_tier": "free", "quality_tier": "high", "offline": true, "notes": "Static-site path (hugo checked here); mkdocs is the Python equivalent."},
+            {"kind": "api", "name": "WordPress REST", "requires": {"env": ["WORDPRESS_TOKEN"]}, "cost_tier": "free", "quality_tier": "high", "offline": false, "notes": "Application password/token for the target site."}
+          ]
+        }
+      ],
+      "recipes": [
+        {
+          "id": "social-card",
+          "description": "Generate and compose a social sharing image.",
+          "capabilities_used": ["visual.generate", "visual.edit.raster", "publish.cms"]
+        },
+        {
+          "id": "logo-set",
+          "description": "Design a logo plus size variants with batch export.",
+          "capabilities_used": ["visual.edit.vector", "visual.edit.raster"],
+          "notes": "Vector-first; rasterize last for the size variants."
+        },
+        {
+          "id": "ui-wireframe",
+          "description": "Mock up a UI flow.",
+          "capabilities_used": ["visual.mockup", "visual.edit.vector"],
+          "notes": "visual.edit.vector polish is optional."
+        },
+        {
+          "id": "photo-batch",
+          "description": "RAW ingest, develop, edit, library, publish.",
+          "capabilities_used": ["photo.develop", "visual.edit.raster", "photo.library", "publish.cms"]
+        },
+        {
+          "id": "icon-pack",
+          "description": "Systematic icon production with batch rasterization.",
+          "capabilities_used": ["visual.edit.vector"],
+          "notes": "Batch rasterize via cairosvg."
+        },
+        {
+          "id": "thumbnail-set",
+          "description": "Thumbnails for a video/article series with batch variant export.",
+          "capabilities_used": ["visual.generate", "visual.edit.raster"]
+        },
+        {
+          "id": "ai-concept-art",
+          "description": "Generate, upscale, touch up.",
+          "capabilities_used": ["visual.generate", "visual.upscale", "visual.edit.raster"]
+        }
+      ],
+      "known_gaps": [
+        {
+          "capability": "visual.mockup",
+          "reason": "Figma is the headline cross-scenario gap (S5 and S7); API escalation only, no native harness.",
+          "workaround": "Use the Figma API with FIGMA_TOKEN, or fall back to cli-anything-sketch / drawio wireframes."
+        },
+        {
+          "capability": "photo.library",
+          "reason": "Strong native CLIs (exiftool, digikam, photoprism) and equally strong photo.develop natives, but no harness.",
+          "workaround": "Drive the native CLIs directly."
+        },
+        {
+          "capability": "visual.generate",
+          "reason": "Midjourney has no clean API; Discord bridge only.",
+          "workaround": "Prefer GPT-Image-1 / Ideogram / Stability / Recraft when credentialed, or local ComfyUI / diffusers."
+        }
+      ],
+      "suggest_to_user_template": "To enable <capability> via <provider>, please set <ENV_VAR>. Cost: <cost_tier>. Quality: <quality_tier>. Reply 'skip' to fall back to <next provider>."
+    }
+  ]
+}

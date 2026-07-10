@@ -136,6 +136,188 @@ def _validate_vec3(value: Any, label: str) -> List[float]:
         raise ValueError(f"{label} elements must be numeric: {exc}") from exc
 
 
+def _rotation_matrix(rotation: List[float]) -> List[List[float]]:
+    """Return a simple XYZ Euler rotation matrix for *rotation* in degrees."""
+    rx, ry, rz = [math.radians(float(v)) for v in rotation]
+    cx, sx = math.cos(rx), math.sin(rx)
+    cy, sy = math.cos(ry), math.sin(ry)
+    cz, sz = math.cos(rz), math.sin(rz)
+
+    mx = [
+        [1.0, 0.0, 0.0],
+        [0.0, cx, -sx],
+        [0.0, sx, cx],
+    ]
+    my = [
+        [cy, 0.0, sy],
+        [0.0, 1.0, 0.0],
+        [-sy, 0.0, cy],
+    ]
+    mz = [
+        [cz, -sz, 0.0],
+        [sz, cz, 0.0],
+        [0.0, 0.0, 1.0],
+    ]
+
+    def _matmul(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
+        return [
+            [
+                sum(a[row][k] * b[k][col] for k in range(3))
+                for col in range(3)
+            ]
+            for row in range(3)
+        ]
+
+    return _matmul(mz, _matmul(my, mx))
+
+
+def _transform_point(point: List[float], rotation: List[float], translation: List[float]) -> List[float]:
+    """Apply an XYZ Euler rotation and translation to a point."""
+    matrix = _rotation_matrix(rotation)
+    x, y, z = point
+    tx, ty, tz = translation
+    return [
+        matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z + tx,
+        matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z + ty,
+        matrix[2][0] * x + matrix[2][1] * y + matrix[2][2] * z + tz,
+    ]
+
+
+def _bbox_from_points(points: List[List[float]]) -> Dict[str, Dict[str, float]]:
+    """Build min/max/size/center dictionaries from transformed points."""
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    zs = [point[2] for point in points]
+    min_corner = {"x": min(xs), "y": min(ys), "z": min(zs)}
+    max_corner = {"x": max(xs), "y": max(ys), "z": max(zs)}
+    return {
+        "min": min_corner,
+        "max": max_corner,
+        "size": {
+            axis: max_corner[axis] - min_corner[axis]
+            for axis in ("x", "y", "z")
+        },
+        "center": {
+            axis: (min_corner[axis] + max_corner[axis]) / 2.0
+            for axis in ("x", "y", "z")
+        },
+    }
+
+
+def _local_bounds(part_type: str, params: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
+    """Return a primitive-local bounding box for supported part types."""
+    if part_type == "box":
+        return {
+            "min": {"x": 0.0, "y": 0.0, "z": 0.0},
+            "max": {
+                "x": float(params["length"]),
+                "y": float(params["width"]),
+                "z": float(params["height"]),
+            },
+        }
+
+    if part_type == "cylinder":
+        radius = float(params["radius"])
+        height = float(params["height"])
+        return {
+            "min": {"x": -radius, "y": -radius, "z": 0.0},
+            "max": {"x": radius, "y": radius, "z": height},
+        }
+
+    if part_type == "sphere":
+        radius = float(params["radius"])
+        return {
+            "min": {"x": -radius, "y": -radius, "z": -radius},
+            "max": {"x": radius, "y": radius, "z": radius},
+        }
+
+    if part_type == "cone":
+        radius = max(float(params["radius1"]), float(params["radius2"]))
+        height = float(params["height"])
+        return {
+            "min": {"x": -radius, "y": -radius, "z": 0.0},
+            "max": {"x": radius, "y": radius, "z": height},
+        }
+
+    if part_type == "torus":
+        radius1 = float(params["radius1"])
+        radius2 = float(params["radius2"])
+        major = radius1 + radius2
+        return {
+            "min": {"x": -major, "y": -major, "z": -radius2},
+            "max": {"x": major, "y": major, "z": radius2},
+        }
+
+    if part_type == "wedge":
+        return {
+            "min": {
+                "x": min(float(params["xmin"]), float(params["x2min"])),
+                "y": float(params["ymin"]),
+                "z": min(float(params["zmin"]), float(params["z2min"])),
+            },
+            "max": {
+                "x": max(float(params["xmax"]), float(params["x2max"])),
+                "y": float(params["ymax"]),
+                "z": max(float(params["zmax"]), float(params["z2max"])),
+            },
+        }
+
+    if part_type == "plane":
+        return {
+            "min": {"x": 0.0, "y": 0.0, "z": 0.0},
+            "max": {"x": float(params["length"]), "y": float(params["width"]), "z": 0.0},
+        }
+
+    if part_type == "polygon_3d":
+        radius = float(params["radius"])
+        return {
+            "min": {"x": -radius, "y": -radius, "z": 0.0},
+            "max": {"x": radius, "y": radius, "z": 0.0},
+        }
+
+    return None
+
+
+def _world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
+    """Return a world-space bounding box for supported primitive parts."""
+    local = _local_bounds(str(part.get("type", "")).lower(), part.get("params", {}))
+    if local is None:
+        return None
+
+    min_corner = local["min"]
+    max_corner = local["max"]
+    corners = []
+    for x in (min_corner["x"], max_corner["x"]):
+        for y in (min_corner["y"], max_corner["y"]):
+            for z in (min_corner["z"], max_corner["z"]):
+                corners.append([x, y, z])
+
+    placement = part.get("placement", {})
+    position = _validate_vec3(placement.get("position", [0.0, 0.0, 0.0]), "position")
+    rotation = _validate_vec3(placement.get("rotation", [0.0, 0.0, 0.0]), "rotation")
+    return _bbox_from_points([_transform_point(point, rotation, position) for point in corners])
+
+
+def _anchor_value(bounds: Dict[str, Dict[str, float]], axis: str, anchor: str) -> float:
+    """Resolve an axis anchor string against a bounds payload."""
+    aliases = {
+        "min": "min",
+        "max": "max",
+        "center": "center",
+        "left": "min",
+        "right": "max",
+        "bottom": "min",
+        "top": "max",
+        "front": "min",
+        "back": "max",
+        "mid": "center",
+    }
+    normalized = aliases.get(anchor.lower())
+    if normalized is None:
+        raise ValueError(f"Unknown anchor '{anchor}'. Valid: min, center, max")
+    return float(bounds[normalized][axis])
+
+
 # ---------------------------------------------------------------------------
 # Core functions
 # ---------------------------------------------------------------------------
@@ -1311,6 +1493,90 @@ def _estimate_geometry(part_type: str, params: Dict[str, Any]) -> Dict[str, Any]
     }
 
 
+def part_bounds(
+    project: Dict[str, Any],
+    index: int,
+) -> Dict[str, Any]:
+    """Return local and world bounding-box data for a part."""
+    part = get_part(project, index)
+    local = _local_bounds(str(part["type"]).lower(), part.get("params", {}))
+    world = _world_bounds(part)
+    return {
+        "id": part["id"],
+        "name": part["name"],
+        "type": part["type"],
+        "local_bounding_box": local,
+        "world_bounding_box": world,
+    }
+
+
+def align_part(
+    project: Dict[str, Any],
+    index: int,
+    target_index: int,
+    *,
+    x: Optional[str] = None,
+    to_x: Optional[str] = None,
+    dx: float = 0.0,
+    y: Optional[str] = None,
+    to_y: Optional[str] = None,
+    dy: float = 0.0,
+    z: Optional[str] = None,
+    to_z: Optional[str] = None,
+    dz: float = 0.0,
+) -> Dict[str, Any]:
+    """Move a part so selected bbox anchors match another part's anchors."""
+    part = get_part(project, index)
+    target = get_part(project, target_index)
+    source_bounds = _world_bounds(part)
+    target_bounds = _world_bounds(target)
+    if source_bounds is None:
+        raise ValueError(
+            f"Part #{index} ({part['name']}) does not support bounding-box alignment for type '{part['type']}'"
+        )
+    if target_bounds is None:
+        raise ValueError(
+            f"Target part #{target_index} ({target['name']}) does not support bounding-box alignment for type '{target['type']}'"
+        )
+
+    updates = {
+        "x": (x, to_x, float(dx)),
+        "y": (y, to_y, float(dy)),
+        "z": (z, to_z, float(dz)),
+    }
+    if not any(source_anchor or target_anchor for source_anchor, target_anchor, _ in updates.values()):
+        raise ValueError("At least one axis alignment must be specified")
+
+    position = _validate_vec3(part["placement"]["position"], "position")
+    delta = [0.0, 0.0, 0.0]
+    axis_to_index = {"x": 0, "y": 1, "z": 2}
+
+    for axis, (source_anchor, target_anchor, offset) in updates.items():
+        if source_anchor is None and target_anchor is None:
+            continue
+        if source_anchor is None or target_anchor is None:
+            raise ValueError(f"Axis '{axis}' requires both source and target anchors")
+        shift = (
+            _anchor_value(target_bounds, axis, target_anchor)
+            + offset
+            - _anchor_value(source_bounds, axis, source_anchor)
+        )
+        delta[axis_to_index[axis]] = shift
+        position[axis_to_index[axis]] += shift
+
+    part["placement"]["position"] = position
+    updated_bounds = _world_bounds(part)
+    return {
+        "part_index": index,
+        "target_index": target_index,
+        "part_name": part["name"],
+        "target_name": target["name"],
+        "delta": {"x": delta[0], "y": delta[1], "z": delta[2]},
+        "placement": deepcopy(part["placement"]),
+        "world_bounding_box": updated_bounds,
+    }
+
+
 def part_info(
     project: Dict[str, Any],
     index: int,
@@ -1331,6 +1597,7 @@ def part_info(
     """
     part = get_part(project, index)
     geo = _estimate_geometry(part["type"], part.get("params", {}))
+    world = _world_bounds(part)
 
     return {
         "id": part["id"],
@@ -1343,4 +1610,5 @@ def part_info(
         "volume": geo["volume"],
         "area": geo["area"],
         "bounding_box": geo["bounding_box"],
+        "world_bounding_box": world,
     }

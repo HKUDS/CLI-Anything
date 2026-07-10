@@ -707,6 +707,26 @@ class TestCLISubprocess:
         assert result.returncode == 0
         assert "wav" in result.stdout.lower()
 
+    def test_cli_project_mutations_persist_to_disk(self, tmp_dir, sine_wav):
+        project_path = os.path.join(tmp_dir, "persist.json")
+
+        result = self._run_cli(["project", "new", "--name", "Persist", "-o", project_path])
+        assert result.returncode == 0
+        assert os.path.exists(project_path)
+
+        result = self._run_cli(["--project", project_path, "track", "add", "--name", "Music"])
+        assert result.returncode == 0
+        with open(project_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        assert len(payload["tracks"]) == 1
+        assert payload["tracks"][0]["name"] == "Music"
+
+        result = self._run_cli(["--project", project_path, "clip", "add", "0", sine_wav])
+        assert result.returncode == 0
+        with open(project_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        assert len(payload["tracks"][0]["clips"]) == 1
+
 
 # ── True Backend E2E Tests (requires SoX installed) ──────────────
 

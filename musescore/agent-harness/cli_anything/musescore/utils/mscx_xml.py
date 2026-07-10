@@ -6,6 +6,7 @@ Handles reading and writing .mscz (ZIP containing .mscx XML) and
 
 import os
 import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import parse as _defused_parse, fromstring as _defused_fromstring
 import zipfile
 from pathlib import Path
 
@@ -91,7 +92,7 @@ def read_mscz(path: str) -> dict:
             if name.endswith(".mscx"):
                 result["mscx_filename"] = name
                 xml_bytes = zf.read(name)
-                result["mscx"] = ET.ElementTree(ET.fromstring(xml_bytes))
+                result["mscx"] = ET.ElementTree(_defused_fromstring(xml_bytes))
             elif name == "score_style.mss" or name.endswith("/score_style.mss"):
                 result["style"] = zf.read(name).decode("utf-8")
             elif name == "audiosettings.json" or name.endswith("/audiosettings.json"):
@@ -154,7 +155,7 @@ def read_mxl(path: str) -> ET.ElementTree:
         for name in zf.namelist():
             if name.endswith(".xml") and not name.startswith("META-INF"):
                 xml_bytes = zf.read(name)
-                return ET.ElementTree(ET.fromstring(xml_bytes))
+                return ET.ElementTree(_defused_fromstring(xml_bytes))
 
     raise ValueError(f"No MusicXML file found inside {path}")
 
@@ -344,6 +345,6 @@ def read_score_tree(path: str) -> ET.ElementTree:
     elif fmt == "mxl":
         return read_mxl(path)
     elif fmt == "musicxml":
-        return ET.parse(path)
+        return _defused_parse(path)
     else:
         raise ValueError(f"Cannot read XML tree from format: {fmt} ({path})")

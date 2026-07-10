@@ -236,11 +236,19 @@ def search():
 
 @search.command("query")
 @click.argument("query")
+@click.option("--type", "query_type",
+              type=click.Choice(["dql", "jsonlogic"]), default="dql",
+              help="Query language: dql (Dataview, default) or jsonlogic.")
 @handle_error
-def search_query(query):
-    """Search vault using Obsidian's search engine."""
+def search_query(query, query_type):
+    """Search vault using Obsidian's structured search engine.
+
+    The query body is sent verbatim with the matching vendor Content-Type:
+    Dataview DQL as application/vnd.olrapi.dataview.dql+txt, JsonLogic as
+    application/vnd.olrapi.jsonlogic+json.
+    """
     _require_api_key()
-    result = search_mod.search_query(_host, _api_key, query)
+    result = search_mod.search_query(_host, _api_key, query, query_type=query_type)
     if _json_output:
         output(result)
     else:
@@ -400,7 +408,7 @@ def repl():
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("obsidian", version="1.0.0")
+    skin = ReplSkin("obsidian", version="1.1.0")
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()

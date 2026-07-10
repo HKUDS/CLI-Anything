@@ -29,6 +29,34 @@ cli-hub install gimp
 cli-hub info gimp
 ```
 
+## Workflow Matrices
+
+A single CLI is one tool. A **matrix** is a whole workflow packaged as
+capabilities × providers — e.g. `video-creation` maps intents like
+`text.transcribe` or `visual.generate` to harness CLIs, public CLIs, Python
+libraries, native binaries, and cloud APIs. Reach for a matrix when a task spans
+several tools (produce a video, design an image, build a game).
+
+Standard agent sequence — **preflight before you install**:
+
+```bash
+cli-hub matrix list                                   # browse all matrices
+cli-hub can "transcribe audio"                        # find the capability across matrices
+cli-hub matrix search "video subtitle"                # search; shows the matched capability
+cli-hub matrix preflight video-creation --json        # what's usable here? (exit 3 = gaps)
+cli-hub matrix preflight video-creation -c text.transcribe --fix-hints   # one capability + install hints
+cli-hub matrix install video-creation --capability text.transcribe       # install ONLY what the task needs
+# After install, the matrix SKILL.md renders locally with provider-selection rules — read it.
+```
+
+Scope every install — do not bulk-install a 14-CLI matrix for a one-capability
+task. Use `--capability <id>`, `--recipe <id>`, or `--only a,b`, and
+`--dry-run` to preview the plan with zero side effects. `--json` is available on
+every matrix subcommand; exit codes are `0` ok · `3` partial/gaps · `1` failure ·
+`2` usage error. Retry failures with `cli-hub matrix install <name> --resume`,
+and audit an install with `cli-hub matrix doctor <name>`.
+
+
 ## Live Catalog
 
 **URL**: [`https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md`](https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md)

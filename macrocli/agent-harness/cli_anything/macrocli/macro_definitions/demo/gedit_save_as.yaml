@@ -1,0 +1,95 @@
+name: gedit_save_as
+version: "1.0"
+description: >
+  Save the current gedit document to a specific file path.
+  Uses Ctrl+Shift+S to open Save As, then Ctrl+L to type the full path.
+tags: [demo, gedit, visual_anchor]
+
+parameters:
+  output_path:
+    type: string
+    required: true
+    description: Full path to save the file to.
+    example: /tmp/demo_output.txt
+
+preconditions:
+  - process_running: gedit
+
+steps:
+  - id: focus_gedit
+    backend: semantic_ui
+    action: focus_window
+    params:
+      title_contains: gedit
+    on_failure: fail
+
+  - id: open_save_as
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+shift+s
+    on_failure: fail
+
+  - id: wait_dialog
+    backend: semantic_ui
+    action: wait_for_window
+    params:
+      title_contains: Save As
+      timeout_ms: 5000
+    on_failure: fail
+
+  - id: open_path_entry
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+l
+    on_failure: fail
+
+  - id: clear_path_entry
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: ctrl+a
+    on_failure: fail
+
+  - id: type_path
+    backend: visual_anchor
+    action: type_text
+    params:
+      text: "${output_path}"
+      interval_ms: 30
+    on_failure: fail
+
+  - id: confirm_save
+    backend: visual_anchor
+    action: hotkey
+    params:
+      keys: enter
+    on_failure: fail
+
+  - id: wait_dialog_close
+    backend: semantic_ui
+    action: wait_for_window
+    params:
+      title_contains: gedit
+      timeout_ms: 3000
+    on_failure: skip
+
+  - id: wait_file_flush
+    backend: native_api
+    action: run_command
+    params:
+      command: [sleep, "0.5"]
+    on_failure: skip
+
+postconditions: []
+
+outputs:
+  - name: saved_file
+    path: ${output_path}
+
+agent_hints:
+  danger_level: safe
+  side_effects: [creates_file, gui_interaction]
+  reversible: true
+  estimated_duration_ms: 4000

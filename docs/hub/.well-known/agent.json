@@ -1,0 +1,48 @@
+{
+  "name": "CLI-Anything Hub",
+  "id": "clianything-hub",
+  "url": "https://clianything.cc",
+  "description": "Agent-friendly registry and package manager for CLI tools that let AI agents operate GUI applications, developer tools, creative software, web APIs, and public SaaS platforms.",
+  "version": "0.3.0",
+  "publisher": {
+    "name": "HKUDS",
+    "url": "https://github.com/HKUDS"
+  },
+  "copyright": "Copyright: HKUDS. Lead author: Yuhao Yang (yuhao.page).",
+  "crawl_policy": {
+    "ai_crawlers_welcome": true,
+    "robots_txt": "https://clianything.cc/robots.txt",
+    "llms_txt": "https://clianything.cc/llms.txt",
+    "llms_full_txt": "https://clianything.cc/llms-full.txt"
+  },
+  "capabilities": [
+    "browse CLI registry",
+    "search CLI tools by task or software",
+    "inspect install commands and entry points",
+    "install CLI tools through cli-hub",
+    "launch installed CLI tools",
+    "provide agent skill guidance"
+  ],
+  "entry_points": {
+    "package": "cli-anything-hub",
+    "cli": "cli-hub",
+    "install": "pip install cli-anything-hub",
+    "agent_skill_install": "npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y"
+  },
+  "resources": {
+    "homepage": "https://clianything.cc/",
+    "markdown_homepage": "https://clianything.cc/index.md",
+    "pricing": "https://clianything.cc/pricing.md",
+    "repository": "https://github.com/HKUDS/CLI-Anything",
+    "pypi": "https://pypi.org/project/cli-anything-hub/",
+    "registry": "https://clianything.cc/registry.json",
+    "public_registry": "https://clianything.cc/public_registry.json",
+    "openapi": "https://clianything.cc/openapi.json",
+    "agent_card": "https://clianything.cc/.well-known/agent-card.json",
+    "skills_index": "https://clianything.cc/.well-known/agent-skills/index.json"
+  },
+  "auth": {
+    "type": "none",
+    "description": "Public registry resources do not require authentication."
+  }
+}

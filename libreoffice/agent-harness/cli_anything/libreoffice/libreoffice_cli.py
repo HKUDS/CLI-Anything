@@ -31,6 +31,7 @@ from cli_anything.libreoffice.core import calc as calc_mod
 from cli_anything.libreoffice.core import impress as impress_mod
 from cli_anything.libreoffice.core import styles as styles_mod
 from cli_anything.libreoffice.core import export as export_mod
+from cli_anything.libreoffice.core import importer as import_mod
 
 # Global session state
 _session: Optional[Session] = None
@@ -181,14 +182,57 @@ def document_new(doc_type, name, profile, output_path):
 
 @document.command("open")
 @click.argument("path")
+@click.option("--output", "-o", "output_path", type=str, default=None,
+              help="Save imported Office/ODF files to this project JSON path")
+@click.option("--name", "-n", type=str, default=None,
+              help="Override imported project name")
 @handle_error
-def document_open(path):
-    """Open an existing project file."""
+def document_open(path, output_path, name):
+    """Open a project JSON file, or import an existing Office/ODF file."""
+    if import_mod.can_import(path):
+        proj = import_mod.import_document(path, name=name)
+        sess = get_session()
+        sess.set_project(proj, output_path)
+        if output_path:
+            doc_mod.save_document(proj, output_path)
+        info = doc_mod.get_document_info(proj)
+        info["source_path"] = proj.get("metadata", {}).get("source_path")
+        info["project_path"] = output_path
+        output(info, f"Imported: {path}")
+        return
+
     proj = doc_mod.open_document(path)
     sess = get_session()
     sess.set_project(proj, path)
     info = doc_mod.get_document_info(proj)
     output(info, f"Opened: {path}")
+
+
+@document.command("import")
+@click.argument("path")
+@click.option("--output", "-o", "output_path", required=True,
+              help="Project JSON path to create")
+@click.option("--name", "-n", type=str, default=None,
+              help="Override imported project name")
+@handle_error
+def document_import(path, output_path, name):
+    """Import an existing Office/ODF file into a project JSON file."""
+    proj = import_mod.import_document(path, name=name)
+    doc_mod.save_document(proj, output_path)
+    sess = get_session()
+    sess.set_project(proj, output_path)
+    info = doc_mod.get_document_info(proj)
+    info["source_path"] = proj.get("metadata", {}).get("source_path")
+    info["project_path"] = output_path
+    output(info, f"Imported: {path}")
+
+
+@document.command("import-formats")
+@handle_error
+def document_import_formats():
+    """List supported import formats."""
+    formats = import_mod.list_import_formats()
+    output(formats, "Supported import formats:")
 
 
 @document.command("save")
@@ -743,7 +787,7 @@ def repl(project_path):
 
 def _repl_help(skin=None):
     commands = {
-        "document new|open|save|info|profiles|json": "Document management",
+        "document new|open|import|import-formats|save|info|profiles|json": "Document management",
         "writer add-paragraph|add-heading|add-list|add-table|add-page-break|remove|list|set-text": "Writer editing",
         "calc add-sheet|remove-sheet|rename-sheet|set-cell|get-cell|list-sheets": "Spreadsheet editing",
         "impress add-slide|remove-slide|set-content|list-slides|add-element": "Presentation editing",

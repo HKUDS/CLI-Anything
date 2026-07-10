@@ -4,6 +4,7 @@ import json
 import os
 import copy
 from datetime import datetime
+from json import JSONDecodeError
 from typing import Optional, Dict, Any, List
 
 
@@ -119,8 +120,15 @@ def open_document(path: str) -> Dict[str, Any]:
     """Open a .lo-cli.json project file."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"Document file not found: {path}")
-    with open(path, "r") as f:
-        project = json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            project = json.load(f)
+    except (JSONDecodeError, UnicodeDecodeError) as e:
+        raise ValueError(
+            f"Invalid project file: {path}. "
+            "Use 'document import <office-file> -o project.json' to import "
+            "ODF, DOCX, XLSX, PPTX, or other Office files."
+        ) from e
     if "version" not in project or "type" not in project:
         raise ValueError(f"Invalid project file: {path}")
     if project["type"] not in VALID_DOC_TYPES:

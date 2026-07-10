@@ -10,7 +10,7 @@ Handles:
 import os
 from pathlib import Path
 
-from cli_anything.zoom.utils.zoom_backend import api_get, api_delete, api_request
+from cli_anything.zoom.utils.zoom_backend import api_get, api_delete
 
 
 def list_recordings(
@@ -130,9 +130,7 @@ def download_recording(
 
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    # Download with streaming
-    resp = api_request("GET", "", stream=True)
-    # For recording downloads, we need to use the direct URL with token
+    # For recording downloads, we need to use the direct URL with token.
     import requests
     from cli_anything.zoom.utils.zoom_backend import _get_valid_token
 

@@ -63,6 +63,37 @@ cli-anything-freecad --json -p project.json part add box
 cli-anything-freecad --json -p project.json export render output.step
 ```
 
+## Preview and Motion
+
+FreeCAD supports both truthful preview bundles and final motion rendering.
+
+```bash
+# Capture a real 4-view preview bundle
+cli-anything-freecad --json -p project.json preview capture --recipe quick
+
+# Start poll-mode live preview
+cli-anything-freecad --json -p project.json preview live start --recipe quick --mode poll --source-poll-ms 500
+
+# Query current live status without rendering
+cli-anything-freecad --json -p project.json preview live status --recipe quick
+
+# Render a final motion sequence
+cli-anything-freecad --json -p project.json motion render-video spin output.mp4
+```
+
+The preview side publishes `session.json`, immutable bundle dirs, and
+`trajectory.json`. The default bundle includes `hero.png`, `front.png`,
+`top.png`, and `right.png`.
+
+Inspect/open the published previews with:
+
+```bash
+cli-hub previews inspect /path/to/bundle-or-session
+cli-hub previews html /path/to/bundle-or-session -o page.html
+cli-hub previews watch /path/to/session --open
+cli-hub previews open /path/to/bundle-or-session
+```
+
 ## Command Groups
 
 | Group | Description |

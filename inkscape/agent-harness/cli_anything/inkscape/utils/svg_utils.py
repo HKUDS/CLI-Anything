@@ -5,6 +5,7 @@ and style string helpers.
 """
 
 import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import parse as _defused_parse, fromstring as _defused_fromstring
 import re
 from typing import Dict, Optional, Any
 
@@ -79,12 +80,12 @@ def create_svg_element(
 
 def parse_svg(svg_string: str) -> ET.Element:
     """Parse an SVG string into an ElementTree Element."""
-    return ET.fromstring(svg_string)
+    return _defused_fromstring(svg_string)
 
 
 def parse_svg_file(path: str) -> ET.Element:
     """Parse an SVG file into an ElementTree Element."""
-    tree = ET.parse(path)
+    tree = _defused_parse(path)
     return tree.getroot()
 
 

@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+  <title>Documentation — CLI-Anything Hub</title>
+  <meta name="description" content="How to use cli-hub: install and launch agent-native CLIs from the catalog, and drive capability-based Workflow Matrices — search, preflight, progressive install, doctor, and JSON automation.">
+  <meta name="author" content="HKUDS and Yuhao Yang">
+  <meta name="copyright" content="Copyright: HKUDS. Lead author: Yuhao Yang (yuhao.page).">
+  <link rel="canonical" href="https://clianything.cc/docs.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="CLI-Anything Hub">
+  <meta property="og:title" content="Documentation — CLI-Anything Hub">
+  <meta property="og:description" content="Use cli-hub to install agent-native CLIs and drive capability-based Workflow Matrices.">
+  <meta property="og:url" content="https://clianything.cc/docs.html">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Documentation — CLI-Anything Hub">
+  <meta name="twitter:description" content="Install agent-native CLIs and drive Workflow Matrices from one command.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&display=swap" rel="stylesheet">
+  <style>
+    /* ===================== Tokens — shared with the Hub (Steel Sky default; set by JS per palette×theme) ===================== */
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117; --surface: #151b24;
+      --ink: #e8edf4; --ink-2: #9fb0c4; --ink-3: #647488;
+      --line: rgba(255,255,255,0.08);
+      --accent: #46b2f4; --accent2: #6cc6f8; --accent-rgb: 70,178,244;
+      --surface-rgb: 21,27,36; --accent-band: 203;
+      --ok: #54d196; --radius: 22px; --radius-sm: 13px;
+      --accent-ink: var(--accent2);
+      --glass-bg: linear-gradient(158deg, rgba(255,255,255,0.075), rgba(255,255,255,0.024) 46%, rgba(255,255,255,0.010));
+      --glass-bg-fallback: rgba(var(--surface-rgb), 0.86);
+      --glass-border: var(--line);
+      --glass-edge: rgba(255,255,255,0.14);
+      --glass-shadow: 0 24px 60px -22px rgba(0,0,0,0.62), 0 2px 8px -2px rgba(0,0,0,0.48);
+      --glass-shadow-hi: 0 38px 90px -28px rgba(0,0,0,0.70), 0 4px 14px -4px rgba(0,0,0,0.52);
+      --chip-bg: rgba(255,255,255,0.055);
+      --cmd-bg: rgba(0,0,0,0.30); --cmd-line: rgba(255,255,255,0.08);
+      --tint-s: 52%; --tint-l: 62%;
+      --ease: cubic-bezier(.22,.61,.36,1);
+      --spring: cubic-bezier(.34,1.32,.5,1);
+      --palette-transition: background .45s var(--ease), color .45s var(--ease), border-color .45s var(--ease);
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f4f6f9; --surface: #ffffff;
+      --ink: #14181f; --ink-2: #4a5568; --ink-3: #8595a8;
+      --line: rgba(20,40,80,0.10);
+      --accent: #1c8ee0; --accent2: #1573bd; --accent-rgb: 28,142,224;
+      --surface-rgb: 255,255,255;
+      --accent-ink: var(--accent2);
+      --glass-bg: linear-gradient(158deg, rgba(255,255,255,0.92), rgba(255,255,255,0.62) 48%, rgba(255,255,255,0.42));
+      --glass-bg-fallback: rgba(var(--surface-rgb), 0.92);
+      --glass-edge: rgba(255,255,255,0.96);
+      --glass-shadow: 0 22px 50px -24px rgba(30,44,70,0.22), 0 2px 6px -2px rgba(30,44,70,0.12);
+      --glass-shadow-hi: 0 34px 80px -28px rgba(30,44,70,0.28), 0 4px 12px -4px rgba(30,44,70,0.16);
+      --chip-bg: rgba(20,40,80,0.045);
+      --cmd-bg: rgba(20,40,80,0.05); --cmd-line: rgba(20,40,80,0.08);
+      --tint-s: 46%; --tint-l: 44%;
+    }
+    body, .nav.scrolled { transition: var(--palette-transition); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 84px; -webkit-text-size-adjust: 100%; }
+    body { font-family: 'Hanken Grotesk', sans-serif; background: var(--bg); color: var(--ink);
+      line-height: 1.6; font-size: 16px; letter-spacing: -0.004em;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; min-height: 100vh; overflow-x: hidden; }
+    ::selection { background: rgba(var(--accent-rgb), 0.30); color: var(--ink); }
+    a { color: inherit; }
+    button { font-family: inherit; }
+    h1,h2,h3,h4 { letter-spacing: -0.022em; line-height: 1.1; font-weight: 700; }
+    code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ambient + grain + glass (shared) */
+    .ambient { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+    .ambient i { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.7; }
+    .ambient .a { width: 60vw; max-width: 760px; aspect-ratio: 1; top: -18vw; right: -10vw;
+      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), transparent 64%); }
+    .ambient .b { width: 50vw; max-width: 620px; aspect-ratio: 1; bottom: -16vw; left: -12vw;
+      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), transparent 62%); }
+    .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.04; mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+    /* ===================== Nav (shared with Hub) ===================== */
+    .nav { position: sticky; top: 0; z-index: 40; border-bottom: 1px solid transparent; transition: border-color .3s, background .3s, backdrop-filter .3s; }
+    .nav.scrolled { border-color: var(--line); background: color-mix(in oklab, var(--bg) 78%, transparent);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); }
+    .nav-in { max-width: 1180px; margin: 0 auto; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; gap: 14px; height: 64px; }
+    .nav-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-weight: 800; font-size: 1.08rem; letter-spacing: -0.02em; }
+    .nav-brand-badge { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; flex-shrink: 0;
+      border: 1px solid var(--glass-border); background: var(--chip-bg); box-shadow: var(--glass-shadow); }
+    .nav-brand-badge svg { width: 64%; height: 64%; }
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-link { padding: 7px 11px; border-radius: 10px; text-decoration: none; color: var(--ink-2); font-size: 0.84rem; font-weight: 500;
+      transition: color .18s, background .18s; display: inline-flex; align-items: center; gap: 6px; }
+    .nav-link:hover { color: var(--ink); background: var(--chip-bg); }
+    .nav-link.active { color: var(--ink); background: var(--chip-bg); }
+    .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+    .nav-link-stars { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600; color: var(--accent-ink);
+      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 7px; padding: 1px 7px; font-variant-numeric: tabular-nums; }
+    .theme-toggle { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 11px;
+      border: 1px solid var(--line); background: var(--chip-bg); color: var(--ink-2); cursor: pointer; transition: color .18s, border-color .18s; }
+    .theme-toggle:hover { color: var(--ink); border-color: var(--ink-3); }
+    .theme-toggle svg { width: 17px; height: 17px; }
+    .theme-toggle .icon-moon { display: none; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: block; }
+    [data-theme="light"] .theme-toggle .icon-sun { display: none; }
+
+    /* Mobile nav drawer */
+    .nav-menu { display: flex; align-items: center; gap: 4px; }
+    .nav-toggle { display: none; position: relative; z-index: 70; place-items: center; width: 38px; height: 38px;
+      border-radius: 11px; border: 1px solid var(--line); background: var(--chip-bg); color: var(--ink); cursor: pointer;
+      transition: color .18s, border-color .18s; }
+    .nav-toggle:hover { border-color: var(--ink-3); }
+    .nav-toggle svg { width: 19px; height: 19px; }
+    .nav-toggle .icon-x { display: none; }
+    .nav-toggle.open .icon-bars { display: none; }
+    .nav-toggle.open .icon-x { display: block; }
+    .nav-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(2,5,10,0.5);
+      -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); opacity: 0; visibility: hidden;
+      transition: opacity .3s var(--ease), visibility .3s; }
+    .nav-scrim.open { opacity: 1; visibility: visible; }
+    .nav-menu.open { transform: none; }
+    @media (max-width: 860px) {
+      .nav-toggle { display: inline-grid; }
+      .nav-menu { position: fixed; top: 0; right: 0; height: 100dvh; width: min(82vw, 320px);
+        flex-direction: column; align-items: stretch; gap: 6px; padding: 80px 16px 28px;
+        background: var(--glass-bg-fallback); border-left: 1px solid var(--line);
+        box-shadow: -24px 0 64px -28px rgba(0,0,0,0.6); transform: translateX(106%);
+        transition: transform .34s var(--ease); overflow-y: auto; z-index: 60; }
+      .nav-menu .nav-link { padding: 12px 14px; font-size: 0.98rem; border-radius: 11px; color: var(--ink-2); }
+      .nav-menu .nav-link.active { color: var(--ink); background: var(--chip-bg); }
+      .nav-menu .nav-link svg { width: 19px; height: 19px; }
+      .nav-menu .nav-link-stars { margin-left: auto; }
+    }
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      @media (max-width: 860px) {
+        .nav-menu { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.4); backdrop-filter: blur(22px) saturate(1.4); }
+      }
+    }
+
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+    .reveal.in { opacity: 1; transform: none; }
+
+    /* ===================== Page header ===================== */
+    .phead { max-width: 1180px; margin: 0 auto; padding: 60px 22px 6px; }
+    .klabel { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-ink); }
+    .phead h1 { font-family: 'Newsreader', serif; font-weight: 400; color: var(--ink);
+      font-size: clamp(2.4rem, 6vw, 4rem); letter-spacing: -0.018em; line-height: 1.04; margin-top: 14px; }
+    .phead h1 em { font-style: italic; font-weight: 300; color: var(--accent2); }
+    [data-theme="dark"] .phead h1 em { color: var(--accent); }
+    .phead p { max-width: 64ch; margin: 20px 0 0; color: var(--ink-2); font-size: clamp(1rem, 2.2vw, 1.16rem); text-wrap: pretty; }
+    .phead p .lead { color: var(--ink); font-weight: 600; }
+
+    /* ===================== Doc layout ===================== */
+    .doc-wrap { max-width: 1180px; margin: 30px auto 0; padding: 0 22px; display: grid; grid-template-columns: 222px minmax(0,1fr); gap: 54px; align-items: start; }
+    .toc { position: sticky; top: 88px; align-self: start; }
+    .toc-label { font-size: 0.64rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); padding: 0 12px 10px; }
+    .toc a { display: block; padding: 7px 12px; border-radius: 9px; color: var(--ink-2); text-decoration: none; font-size: 0.85rem;
+      border-left: 2px solid transparent; transition: color .15s, background .15s, border-color .15s; }
+    .toc a:hover { color: var(--ink); background: var(--chip-bg); }
+    .toc a.active { color: var(--accent-ink); border-left-color: var(--accent); background: var(--chip-bg); font-weight: 600; }
+    @media (max-width: 960px) { .doc-wrap { grid-template-columns: 1fr; gap: 0; } .toc { display: none; } }
+
+    .doc-main { min-width: 0; }
+    .doc-sec { scroll-margin-top: 84px; padding-bottom: 6px; margin-bottom: 30px; }
+    .doc-sec + .doc-sec { border-top: 1px solid var(--line); padding-top: 34px; }
+    .sec-eyebrow { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-ink); }
+    .doc-sec h2 { font-family: 'Newsreader', serif; font-weight: 400; font-size: clamp(1.7rem, 3.4vw, 2.25rem); margin-top: 8px; letter-spacing: -0.01em; }
+    .doc-sec h3 { font-size: 1.02rem; margin-top: 30px; color: var(--ink); }
+    .doc-sec > p { color: var(--ink-2); margin-top: 14px; max-width: 66ch; text-wrap: pretty; }
+    .doc-sec p code, .doc-sec li code, .inline { font-family: 'JetBrains Mono', monospace; font-size: 0.82em;
+      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--accent-ink); }
+    .doc-list { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .doc-list li { color: var(--ink-2); padding-left: 22px; position: relative; max-width: 66ch; }
+    .doc-list li::before { content: ''; position: absolute; left: 5px; top: 10px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+    .doc-list li b { color: var(--ink); font-weight: 600; }
+
+    /* code block */
+    .code { position: relative; margin-top: 18px; background: var(--cmd-bg); border: 1px solid var(--cmd-line); border-radius: 12px; overflow: hidden; }
+    .code pre { margin: 0; padding: 15px 16px; overflow-x: auto; }
+    .code code { font-family: 'JetBrains Mono', monospace; font-size: 0.795rem; line-height: 1.75; color: var(--ink); white-space: pre; display: block; }
+    .code .pr { color: var(--accent); } /* prompt $ */
+    .code .cm { color: var(--ink-3); }   /* comment */
+    .code .ot { color: var(--ink-3); }   /* output */
+    .code .hl { color: var(--accent-ink); }
+    .code-copy { position: absolute; top: 9px; right: 9px; border: 1px solid var(--line); background: var(--chip-bg); color: var(--ink-3);
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; font-family: inherit;
+      padding: 4px 8px; border-radius: 7px; transition: color .15s, border-color .15s; }
+    .code-copy:hover { color: var(--ink); border-color: var(--ink-3); }
+
+    /* command reference card */
+    .cmd { margin-top: 16px; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--glass-bg-fallback); box-shadow: var(--glass-shadow); padding: 17px 20px; }
+    @supports ((backdrop-filter: blur(1px))) { .cmd { background: var(--glass-bg); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); } }
+    .cmd-name { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 600; color: var(--ink); word-break: break-word; }
+    .cmd-name .arg { color: var(--accent-ink); font-weight: 500; }
+    .cmd-purpose { color: var(--ink-2); font-size: 0.88rem; margin-top: 7px; max-width: 60ch; }
+    .flags { margin-top: 13px; border-top: 1px solid var(--line); }
+    .flag { display: grid; grid-template-columns: 200px 1fr; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+    .flag:last-child { border-bottom: 0; }
+    .flag code { font-family: 'JetBrains Mono', monospace; font-size: 0.755rem; color: var(--accent-ink); }
+    .flag span { color: var(--ink-2); font-size: 0.84rem; }
+    @media (max-width: 560px) { .flag { grid-template-columns: 1fr; gap: 3px; } }
+
+    /* object model tree */
+    .concept { margin-top: 20px; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--cmd-bg); padding: 20px 22px; overflow-x: auto; }
+    .concept pre { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; line-height: 1.95; color: var(--ink-2); white-space: pre; margin: 0; }
+    .concept .n { color: var(--ink); font-weight: 600; }
+    .concept .k { color: var(--accent-ink); font-weight: 500; }
+    .concept .tree { color: var(--ink-3); }
+
+    /* provider kinds + exit codes grids */
+    .grid2 { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(228px,1fr)); gap: 12px; }
+    .kind { border-radius: 12px; border: 1px solid var(--line); background: var(--chip-bg); padding: 14px 16px; }
+    .kind h4 { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent-ink); font-weight: 600; }
+    .kind p { font-size: 0.81rem; margin-top: 6px; color: var(--ink-2); }
+    .exit { display: flex; align-items: flex-start; gap: 13px; border-radius: 12px; border: 1px solid var(--line); background: var(--chip-bg); padding: 13px 15px; }
+    .exit .num { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1.05rem; width: 30px; height: 30px; flex-shrink: 0; display: grid; place-items: center; border-radius: 8px; }
+    .exit.ok .num { color: #2faf6e; background: rgba(84,209,150,.16); }
+    .exit.fail .num { color: #db5b56; background: rgba(219,91,86,.16); }
+    .exit.warn .num { color: #d6982f; background: rgba(214,152,47,.16); }
+    .exit .x-label { font-weight: 700; color: var(--ink); font-size: 0.85rem; }
+    .exit .x-desc { color: var(--ink-2); font-size: 0.79rem; margin-top: 2px; }
+
+    /* callout */
+    .callout { margin-top: 18px; border-radius: 12px; border: 1px solid hsl(var(--accent-band) 50% 55% / .32); background: rgba(var(--accent-rgb), .06); padding: 14px 17px; display: flex; gap: 12px; }
+    .callout svg { width: 18px; height: 18px; color: var(--accent-ink); flex-shrink: 0; margin-top: 2px; }
+    .callout p { margin: 0; color: var(--ink-2); font-size: 0.85rem; max-width: 64ch; }
+    .callout b { color: var(--ink); }
+
+    /* footer (shared) */
+    .footer { border-top: 1px solid var(--line); margin: 64px auto 0; max-width: 1180px; padding: 32px 22px 56px;
+      font-size: 0.84rem; color: var(--ink-3); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .footer a { color: var(--accent-ink); text-decoration: none; font-weight: 600; }
+    .footer a:hover { text-decoration: underline; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001ms !important; scroll-behavior: auto !important; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient"><i class="a"></i><i class="b"></i></div>
+  <div class="grain"></div>
+
+  <!-- Nav (shared with the Hub) -->
+  <nav class="nav" id="nav">
+    <div class="nav-in">
+      <a class="nav-brand" href="index.html" aria-label="Back to CLI-Anything Hub home"><span class="nav-brand-badge" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M8 16.5 18.5 24 8 31.5" stroke="currentColor" stroke-width="3.9" stroke-linecap="square" stroke-linejoin="miter" style="color: var(--accent);"/><path d="M24 29.2h16" stroke="currentColor" stroke-width="3.9" stroke-linecap="square" style="color: var(--ink);"/></svg></span>CLI-Hub</a>
+      <div class="nav-links">
+        <div class="nav-menu" id="navMenu">
+        <a class="nav-link" href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+          Home
+        </a>
+        <a class="nav-link" href="index.html#matrices">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>
+          Matrices
+        </a>
+        <a class="nav-link active keep" href="docs.html" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4.8A1.8 1.8 0 0 1 5.8 3H12v17H5.8A1.8 1.8 0 0 0 4 21.8z"/><path d="M20 4.8A1.8 1.8 0 0 0 18.2 3H12v17h6.2A1.8 1.8 0 0 1 20 21.8z"/></svg>
+          Docs
+        </a>
+        <a class="nav-link" href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="m5.5 18.5 9.8-9.8"/><path d="m13.7 6.9 3.4 3.4"/><path d="M18 4v2.4"/><path d="M16.8 5.2h2.4"/><path d="M7.5 4.8v2"/><path d="M6.5 5.8h2"/><path d="M18.2 15.8v2"/><path d="M17.2 16.8h2"/></svg>
+          SKILL
+        </a>
+        <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything" target="_blank">
+          <svg viewBox="0 0 98 96" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6C29.304 70.25 17.9 66.013 17.9 47.02c0-5.52 1.94-10.046 5.127-13.58-.486-1.302-2.264-6.437.486-13.34 0 0 4.206-1.302 13.59 5.216 3.963-1.14 8.17-1.628 12.34-1.628 4.17 0 8.376.568 12.34 1.628 9.384-6.518 13.59-5.216 13.59-5.216 2.75 6.903.972 12.038.486 13.34 3.268 3.534 5.127 8.06 5.127 13.58 0 19.074-11.485 23.15-22.328 24.29 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
+          GitHub
+          <span class="nav-link-stars" data-github-stars aria-label="GitHub star count">--</span>
+        </a>
+        <a class="nav-link" href="https://github.com/HKUDS/CLI-Anything/blob/main/CONTRIBUTING.md" target="_blank">Contribute</a>
+        </div>
+        <button class="theme-toggle keep" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="nav-toggle keep" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="navMenu">
+          <svg class="icon-bars" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <svg class="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="nav-scrim" id="navScrim"></div>
+  </nav>
+
+  <!-- Page header -->
+  <header class="phead">
+    <span class="klabel">Documentation</span>
+    <h1>Drive any app from the <em>command line</em></h1>
+    <p><span class="lead">CLI-Hub is a registry and installer for agent-native CLIs.</span> Install a tool by name, launch it, and — when a task spans several tools — pull in a capability-based <b>Workflow Matrix</b>. Every command is built for both humans and AI agents, with <code>--json</code> output and a documented exit-code contract.</p>
+  </header>
+
+  <div class="doc-wrap">
+    <!-- Table of contents -->
+    <aside class="toc" aria-label="On this page">
+      <div class="toc-label">On this page</div>
+      <nav id="toc-nav">
+        <a href="#install">Install</a>
+        <a href="#quickstart">Quick start</a>
+        <a href="#catalog">Catalog commands</a>
+        <a href="#matrices">Workflow matrices</a>
+        <a href="#matrix-cli">Matrix commands</a>
+        <a href="#exit">Exit codes</a>
+        <a href="#automation">JSON &amp; automation</a>
+        <a href="#config">Registries &amp; config</a>
+      </nav>
+    </aside>
+
+    <main class="doc-main">
+
+      <!-- ===================== Install ===================== -->
+      <section class="doc-sec reveal" id="install">
+        <span class="sec-eyebrow">Getting started</span>
+        <h2>Install</h2>
+        <p>CLI-Hub ships as the <code>cli-anything-hub</code> package and installs the <code>cli-hub</code> command. It needs Python 3.10 or newer.</p>
+        <div class="code"><button class="code-copy" onclick="copyCode(this)">Copy</button><pre><code><span class="pr">$</span> pip install cli-anything-hub
+<span class="pr">$</span> cli-hub --version</code></pre></div>
+        <p>That single command is the entry point for everything below — browsing the catalog, installing tools, and working with matrices. From here you can also hand an agent the <a href="https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md" target="_blank" rel="noopener">meta-skill <code>SKILL.md</code></a> so it can discover and install CLIs autonomously.</p>
+      </section>
+
+      <!-- ===================== Quick start ===================== -->
+      <section class="doc-sec reveal" id="quickstart">
+        <span class="sec-eyebrow">Two-minute tour</span>
+        <h2>Quick start</h2>
+        <p>Find a tool, install it, and run it — or scope a whole workflow to just what your task needs.</p>
+        <div class="code"><button class="code-copy" onclick="copyCode(this)">Copy</button><pre><code><span class="cm"># Browse and install a single CLI</span>
+<span class="pr">$</span> cli-hub search diagram
+<span class="pr">$</span> cli-hub install drawio
+<span class="pr">$</span> cli-hub launch drawio --help
+
+<span class="cm"># Ask what's needed for a task across every matrix</span>
+<span class="pr">$</span> cli-hub can <span class="hl">"transcribe audio"</span>
+
+<span class="cm"># Check a matrix, then install only the capability you need</span>
+<span class="pr">$</span> cli-hub matrix preflight video-creation --summary
+<span class="pr">$</span> cli-hub matrix install video-creation --capability text.transcribe</code></pre></div>
+        <div class="callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <p><b>Tip.</b> Add <code>--json</code> to almost any command for machine-readable output, and chain on exit codes (see <a href="#exit">Exit codes</a>) to make scripts and agents react without parsing text.</p>
+        </div>
+      </section>
+
+      <!-- ===================== Catalog commands ===================== -->
+      <section class="doc-sec reveal" id="catalog">
+        <span class="sec-eyebrow">The catalog</span>
+        <h2>Catalog commands</h2>
+        <p>The catalog is the flat list of individual CLIs — first-party <em>harness</em> tools published by CLI-Anything and curated <em>public</em> tools. These commands discover, install, and run them.</p>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub list</div>
+          <div class="cmd-purpose">List every available CLI, grouped by category, with an installed marker.</div>
+          <div class="flags">
+            <div class="flag"><code>-c, --category &lt;name&gt;</code><span>Filter to one category.</span></div>
+            <div class="flag"><code>-s, --source &lt;harness|public|npm|all&gt;</code><span>Filter by source (<code>npm</code> is an alias for public).</span></div>
+            <div class="flag"><code>--json</code><span>Machine-readable output.</span></div>
+          </div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub search <span class="arg">&lt;query&gt;</span></div>
+          <div class="cmd-purpose">Search CLIs by name, description, or category.</div>
+          <div class="flags">
+            <div class="flag"><code>--json</code><span>Machine-readable output.</span></div>
+          </div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub info <span class="arg">&lt;name&gt;</span></div>
+          <div class="cmd-purpose">Show full detail for one CLI — description, category, source, version, requirements, entry point, homepage, and contributors.</div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub install <span class="arg">&lt;name&gt;</span></div>
+          <div class="cmd-purpose">Install a CLI from the registry. Harness tools install via <code>pip</code>; public tools use their declared strategy (npm / uv / command).</div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub launch <span class="arg">&lt;name&gt; [args…]</span></div>
+          <div class="cmd-purpose">Launch an installed CLI, passing every argument after the name straight through to it.</div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub update <span class="arg">&lt;name&gt;</span> &nbsp;·&nbsp; cli-hub uninstall <span class="arg">&lt;name&gt;</span></div>
+          <div class="cmd-purpose">Update an installed CLI to the latest version, or remove it.</div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub previews <span class="arg">&lt;inspect|html|watch|open&gt;</span></div>
+          <div class="cmd-purpose">Inspect, render, watch, or open preview bundles and live sessions produced by harness CLIs (e.g. FreeCAD / Blender preview loops). <code>watch</code> and <code>open</code> serve a live, auto-refreshing page.</div>
+        </div>
+      </section>
+
+      <!-- ===================== Workflow matrices ===================== -->
+      <section class="doc-sec reveal" id="matrices">
+        <span class="sec-eyebrow">Concepts</span>
+        <h2>Workflow matrices</h2>
+        <p>A real task — &ldquo;make a captioned video&rdquo; — rarely maps to one tool. A <b>matrix</b> bundles a domain into <b>capabilities</b> (the verbs an agent calls) and, for each, several <b>providers</b> (concrete ways to fulfil it). You pick a path by <em>capability</em>, not by memorising which of fourteen packages to install.</p>
+
+        <div class="concept"><pre><span class="n">Matrix</span>  <span class="tree">──</span> a capability bundle for one domain (e.g. video-creation)
+<span class="tree">│</span>
+<span class="tree">├─</span> <span class="n">capabilities[]</span>   verbs an agent can call — <span class="k">visual.generate</span>, <span class="k">text.transcribe</span> …
+<span class="tree">│   └─</span> <span class="n">providers[]</span>   concrete ways to fulfil a capability, each tagged with a <span class="n">kind</span>
+<span class="tree">│</span>
+<span class="tree">├─</span> <span class="n">recipes[]</span>        named subsets of capabilities for a specific task
+<span class="tree">├─</span> <span class="n">clis[]</span>           the flat list that <span class="k">matrix install</span> actually installs
+<span class="tree">└─</span> <span class="n">SKILL.md</span>         the provider-selection handbook, rendered locally on install</pre></div>
+
+        <h3>Provider kinds</h3>
+        <p>Every provider declares a <code>kind</code> that tells you how it&rsquo;s obtained and what it costs:</p>
+        <div class="grid2">
+          <div class="kind"><h4>harness-cli</h4><p>A first-party CLI you can install with <code>cli-hub</code>; each ships its own SKILL.md.</p></div>
+          <div class="kind"><h4>public-cli</h4><p>A third-party CLI installed via brew / npm / pip.</p></div>
+          <div class="kind"><h4>python</h4><p>A Python library used directly (a free fallback).</p></div>
+          <div class="kind"><h4>native</h4><p>A native binary on the system, such as <code>ffmpeg</code>.</p></div>
+          <div class="kind"><h4>api</h4><p>A cloud API — needs a key and explicit user consent.</p></div>
+          <div class="kind"><h4>agent-skill</h4><p>An external agent skill the agent installs itself; not counted by preflight.</p></div>
+        </div>
+
+        <div class="callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <p><b>Preflight reports, it doesn&rsquo;t choose.</b> Registry order is documentation order, not a ranking. <code>preflight</code> tells you what&rsquo;s available; the agent picks the provider using the rules in the matrix&rsquo;s <code>SKILL.md</code>. Paid APIs are never used without configured keys and user consent.</p>
+        </div>
+      </section>
+
+      <!-- ===================== Matrix commands ===================== -->
+      <section class="doc-sec reveal" id="matrix-cli">
+        <span class="sec-eyebrow">The matrix command family</span>
+        <h2>Matrix commands</h2>
+        <p>All matrix operations live under <code>cli-hub matrix</code>, plus the top-level <code>cli-hub can</code> shortcut for capability search. Every subcommand supports <code>--json</code>.</p>
+
+        <h3>Discover</h3>
+        <div class="cmd">
+          <div class="cmd-name">cli-hub can <span class="arg">&lt;query&gt;</span></div>
+          <div class="cmd-purpose">Search capabilities across <em>all</em> matrices for a task, with per-provider availability on this machine. Exit 0 if there are hits, 1 if none.</div>
+          <div class="flags">
+            <div class="flag"><code>--json</code><span>Emit capability matches as JSON.</span></div>
+          </div>
+        </div>
+        <div class="code"><button class="code-copy" onclick="copyCode(this)">Copy</button><pre><code><span class="pr">$</span> cli-hub can <span class="hl">"download bilibili video"</span>
+<span class="ot">  video.download  (video-creation)</span>
+<span class="ot">    available here: yt-dlp · missing: BBDown, lux</span>
+<span class="ot">    next: cli-hub matrix preflight video-creation -c video.download</span></code></pre></div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub matrix list</div>
+          <div class="cmd-purpose">List all matrices with their description and how many member CLIs are installed.</div>
+          <div class="flags"><div class="flag"><code>--json</code><span>Machine-readable output.</span></div></div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub matrix search <span class="arg">&lt;query&gt;</span></div>
+          <div class="cmd-purpose">Search matrices by name, capability, provider, recipe, or gap — with match attribution (which capability matched, and on which field).</div>
+          <div class="flags"><div class="flag"><code>--json</code><span>Includes <code>matched_capabilities[]</code>.</span></div></div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub matrix info <span class="arg">&lt;name&gt;</span></div>
+          <div class="cmd-purpose">Full detail for one matrix — members and status, capabilities with provider counts, recipes, and known gaps.</div>
+          <div class="flags"><div class="flag"><code>--json</code><span>Machine-readable output.</span></div></div>
+        </div>
+
+        <div class="cmd">
+          <div class="cmd-name">cli-hub matrix recipes</div>
+          <div class="cmd-purpose">List task-oriented recipes across every matrix, each with its capabilities and a ready-to-run preflight command.</div>
+          <div class="flags">
+            <div class="flag"><code>--search &lt;text&gt;</code><span>Filter by id, description, or capability.</span></div>
+            <div class="flag"><code>--json</code><span>Machine-readable output.</span></div>
+          </div>
+        </div>
+
+        <h3>Preflight</h3>
+        <p>Preflight is the pivot of the whole flow: it reports which providers are actually usable in your current environment, so you (or an agent) decide what to install before touching anything.</p>
+        <div class="cmd">
+          <div class="cmd-name">cli-hub matrix preflight <span class="arg">&lt;name&gt;</span></div>
+          <div class="cmd-purpose">Check provider availability per capability. Exits <code>0</code> when every (filtered) capability has at least one usable provider, <code>3</code> when there&rsquo;s a gap.</div>
+          <div class="flags">
+            <div class="flag"><code>-c, --capability &lt;id&gt;</code><span>Check just one capability.</span></div>
+            <div class="flag"><code>--recipe &lt;id&gt;</code><span>Check only the capabilities a recipe uses.</span></div>
+            <div class="flag"><code>--offline</code><span>Consider only offline-capable providers.</span></div>
+            <div class="flag"><code>--fix-hints</code><span>Print an install command under each missing provider.</span></div>
+            <div class="flag"><code>--summary</code><span>Print only the two-line summary.</span></div>
+            <div class="flag"><code>--json</code><span>Machine-readable output.</span></div>
+          </div>
+        </div>
+        <div class="code"><button class="code-copy" onclick="copyCode(this)">Copy</button><pre><code><span class="cm"># Gate an action on coverage — only proceed if the recipe is fully satisfiable</span>
+<span class="pr">$</span> cli-hub matrix preflight video-creation --recipe screencast-tutorial --json \
+    || echo <span class="hl">"capability gap — read the missing list before installing"</span></code></pre></div>
+
+        <h3>Install</h3>
+        <div class="cmd">
+          <div class="cmd-name">cli-hub matrix install <span class="arg">&lt;name&gt;</span></div>
+          <div class="cmd-purpose">Install a matrix&rsquo;s CLIs. With no scope flag it installs every member CLI; the scope flags below install just a subset. Installation is idempotent — already-installed tools are skipped.</div>
+          <div class="flags">
+            <div class="flag"><code>--dry-run</code><span>Show the install plan with zero side effects.</span></div>
+            <div class="flag"><code>-c, --capability &lt;id&gt;</code><span>Install only the CLIs behind one capability.</span></div>
+            <div class="flag"><code>--recipe &lt;id&gt;</code><span>Install only the CLIs a recipe uses.</span></div>
+            <div class="flag"><code>--only &lt;a,b,c&gt;</code><span>Install a named comma-separated subset of the matrix&rsquo;s CLIs.</span></div>
+            <div class="flag"><code>--resume</code><span>Retry only the CLIs that failed last time.</span></div>
+            <div class="flag"><code>--skill-only</code><span>Render the matrix skill (SKILL.md + references + scripts) without installing CLIs.</span></div>
+            <div class="flag"><code>--json</code><span>Machine-readable plan or result.</span></div>
+          </div>
+        </div>
+        <div class="code"><button class="code-copy" onclick="copyCode(this)">Copy</button><pre><code><span class="pr">$</span> cli-hub matrix install video-creation --dry-run
+<span class="ot">  Plan: video-creation</span>
+<span class="ot">  skip (already installed): audacity, gimp, kdenlive</span>
+<span class="ot">  install via pip:          inkscape, krita, obs-studio, …</span>
+<span class="ot">  not managed here:         python libs, native binaries, cloud APIs — see preflight</span></code></pre></div>
+        <p>The scope flags (<code>--capability</code>, <code>--recipe</code>, <code>--only</code>) are mutually exclusive. Per-matrix install state is recorded under <code>~/.cli-hub/matrix_state.json</code>, which is what powers <code>--resume</code>.</p>
+
+        <h3>Repair</h3>
+        <div class="cmd">
+          <div class="cmd-name">cli-hub matrix doctor <span class="arg">&lt;name&gt;</span></div>
+          <div class="cmd-purpose">Audit install completeness for a matrix&rsquo;s CLIs — flags anything recorded as installed but missing from <code>PATH</code>, and suggests a fix. (Preflight asks &ldquo;is a provider usable?&rdquo;; doctor asks &ldquo;is what I installed still healthy?&rdquo;)</div>
+          <div class="flags"><div class="flag"><code>--json</code><span>Machine-readable audit.</span></div></div>
+        </div>
+      </section>
+
+      <!-- ===================== Exit codes ===================== -->
+      <section class="doc-sec reveal" id="exit">
+        <span class="sec-eyebrow">Contract</span>
+        <h2>Exit codes</h2>
+        <p>The matrix command family follows one exit-code contract, so scripts and agents can branch without reading text. Catalog commands use the simpler <code>0</code> / <code>1</code> success-or-failure convention.</p>
+        <div class="grid2">
+          <div class="exit ok"><span class="num">0</span><div><div class="x-label">Success</div><div class="x-desc">All checks passed, or every capability gap is covered.</div></div></div>
+          <div class="exit fail"><span class="num">1</span><div><div class="x-label">Failure</div><div class="x-desc">Matrix or capability not found; nothing could be installed.</div></div></div>
+          <div class="exit warn"><span class="num">2</span><div><div class="x-label">Usage error</div><div class="x-desc">Mutually exclusive flags, or an invalid capability / recipe / <code>--only</code> name.</div></div></div>
+          <div class="exit warn"><span class="num">3</span><div><div class="x-label">Partial</div><div class="x-desc">A capability gap, or some CLIs installed while others failed or are broken.</div></div></div>
+        </div>
+      </section>
+
+      <!-- ===================== Automation ===================== -->
+      <section class="doc-sec reveal" id="automation">
+        <span class="sec-eyebrow">For agents &amp; scripts</span>
+        <h2>JSON &amp; automation</h2>
+        <p>CLI-Hub is built to be driven by AI agents as much as by people. Two design choices make that reliable:</p>
+        <ul class="doc-list">
+          <li><b>Structured output everywhere.</b> Catalog commands and the whole matrix family accept <code>--json</code> — including <code>matrix install</code>, whose JSON carries the full plan or result. No screen-scraping required.</li>
+          <li><b>Exit codes as control flow.</b> Combine the contract above with <code>&amp;&amp;</code> / <code>||</code> to gate steps — e.g. preflight a recipe, and only install when it returns <code>0</code>.</li>
+        </ul>
+        <p>After installing a matrix, its <code>SKILL.md</code> is rendered to your machine. Read it: it contains the provider-selection rules, the suggest-to-user template for paid upgrades, and references — the judgement an agent needs that the registry alone doesn&rsquo;t encode.</p>
+        <div class="callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="m7 11 5 5 5-5"/><path d="M12 4v12"/></svg>
+          <p>The meta-skill <code>SKILL.md</code> includes a <b>Workflow Matrices</b> section, and the site publishes <code>llms.txt</code> plus the machine-readable registries — give an agent those entry points and it can go from cold start to &ldquo;preflight → install by capability → JSON result&rdquo; on its own.</p>
+        </div>
+      </section>
+
+      <!-- ===================== Config ===================== -->
+      <section class="doc-sec reveal" id="config">
+        <span class="sec-eyebrow">Reference</span>
+        <h2>Registries &amp; config</h2>
+        <p>CLI-Hub reads three published registries and caches them locally (one-hour TTL) under <code>~/.cli-hub/</code>:</p>
+        <ul class="doc-list">
+          <li><b>registry.json</b> — first-party harness CLIs.</li>
+          <li><b>public_registry.json</b> — curated public CLIs.</li>
+          <li><b>matrix_registry.json</b> — matrices: capabilities × providers, with preflight contracts.</li>
+        </ul>
+        <p>They&rsquo;re served from the project&rsquo;s GitHub Pages domain (for example <code>…/CLI-Anything/matrix_registry.json</code>). Local state lives alongside the cache: <code>installed.json</code> tracks installed CLIs, and <code>matrix_state.json</code> records per-matrix install outcomes for <code>--resume</code>.</p>
+        <h3>Environment</h3>
+        <ul class="doc-list">
+          <li><b><code>CLI_HUB_NO_ANALYTICS=1</code></b> — opt out of anonymous, fire-and-forget usage analytics.</li>
+          <li>CLI-Hub auto-detects when it&rsquo;s invoked by an AI agent (Claude Code, Codex, Cursor, and others) for analytics bucketing only.</li>
+          <li>Color is suppressed automatically when output is piped or not a TTY, keeping logs and parsers clean.</li>
+        </ul>
+        <div class="callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg>
+          <p>Analytics never block your workflow and can be turned off entirely. Matrices are the differentiator here — start from <a href="index.html#matrices">the Matrices section</a> or run <code>cli-hub matrix list</code> to see what&rsquo;s available.</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer class="footer">
+    <span>CLI-Anything Hub — agent-friendly CLI registry.</span>
+    <span><a href="index.html">Home</a> · <a href="index.html#matrices">Matrices</a> · <a href="demos.html">Demos</a> · <a href="https://github.com/HKUDS/CLI-Anything" target="_blank">GitHub</a></span>
+  </footer>
+
+  <script>
+    // ===================== Palette + theme (shared with the Hub) =====================
+    const PALETTES = {
+      steel: { label:'Steel', accentBand:209,
+        light:{ bg:'#f4f6f9', surface:'#ffffff', ink:'#14181f', ink2:'#4a5568', ink3:'#8595a8', line:'rgba(20,40,80,.10)', accent:'#2f6fb0', accent2:'#1f5793', accentRgb:'47,111,176', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0d1117', surface:'#151b24', ink:'#e8edf4', ink2:'#9fb0c4', ink3:'#647488', line:'rgba(255,255,255,.08)', accent:'#5b9bd6', accent2:'#7db4e6', accentRgb:'91,155,214', surfaceRgb:'21,27,36' } },
+      steelsky: { label:'Steel Sky', accentBand:203,
+        light:{ bg:'#f4f6f9', surface:'#ffffff', ink:'#14181f', ink2:'#4a5568', ink3:'#8595a8', line:'rgba(20,40,80,.10)', accent:'#1c8ee0', accent2:'#1573bd', accentRgb:'28,142,224', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0d1117', surface:'#151b24', ink:'#e8edf4', ink2:'#9fb0c4', ink3:'#647488', line:'rgba(255,255,255,.08)', accent:'#46b2f4', accent2:'#6cc6f8', accentRgb:'70,178,244', surfaceRgb:'21,27,36' } },
+      sky: { label:'Sky', accentBand:203,
+        light:{ bg:'#f4f9fe', surface:'#ffffff', ink:'#0f1f2d', ink2:'#465a6b', ink3:'#8299ac', line:'rgba(20,70,115,.10)', accent:'#1c8ee0', accent2:'#1573bd', accentRgb:'28,142,224', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0a1320', surface:'#121e2d', ink:'#e9f3fb', ink2:'#9bb4c9', ink3:'#5f7689', line:'rgba(255,255,255,.08)', accent:'#46b2f4', accent2:'#6cc6f8', accentRgb:'70,178,244', surfaceRgb:'18,30,45' } },
+      sage: { label:'Sage', accentBand:160,
+        light:{ bg:'#f3f8f4', surface:'#ffffff', ink:'#13211b', ink2:'#475a51', ink3:'#7f968a', line:'rgba(20,65,48,.10)', accent:'#2c9b78', accent2:'#1d8062', accentRgb:'44,155,120', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0b1410', surface:'#121d18', ink:'#e7f2eb', ink2:'#9ab4a7', ink3:'#5e7568', line:'rgba(255,255,255,.07)', accent:'#48c29c', accent2:'#67d0b1', accentRgb:'72,194,156', surfaceRgb:'18,29,24' } },
+      sand: { label:'Sand', accentBand:175,
+        light:{ bg:'#f8f5ef', surface:'#fffdf8', ink:'#221d15', ink2:'#585044', ink3:'#948979', line:'rgba(75,58,30,.12)', accent:'#1d7a71', accent2:'#145d57', accentRgb:'29,122,113', surfaceRgb:'255,253,248' },
+        dark:{ bg:'#13110b', surface:'#1b1811', ink:'#f1ece1', ink2:'#b2a797', ink3:'#796e5e', line:'rgba(255,255,255,.07)', accent:'#3eb2a4', accent2:'#5cc3b6', accentRgb:'62,178,164', surfaceRgb:'27,24,17' } },
+      blush: { label:'Blush', accentBand:3,
+        light:{ bg:'#faf6f4', surface:'#fffefd', ink:'#271d1c', ink2:'#5e504e', ink3:'#9b8a87', line:'rgba(90,50,45,.11)', accent:'#c25e5a', accent2:'#a4453f', accentRgb:'194,94,90', surfaceRgb:'255,254,253' },
+        dark:{ bg:'#140f0e', surface:'#1c1615', ink:'#f3eae8', ink2:'#b6a4a1', ink3:'#7d6b68', line:'rgba(255,255,255,.07)', accent:'#df8480', accent2:'#e89f9b', accentRgb:'223,132,128', surfaceRgb:'28,22,21' } },
+      mist: { label:'Mist', accentBand:222,
+        light:{ bg:'#f6f8fb', surface:'#ffffff', ink:'#171b22', ink2:'#4e586a', ink3:'#8893a6', line:'rgba(25,35,60,.09)', accent:'#3b6ef0', accent2:'#2f57cf', accentRgb:'59,110,240', surfaceRgb:'255,255,255' },
+        dark:{ bg:'#0a0d14', surface:'#12161f', ink:'#eef1f7', ink2:'#9aa6bd', ink3:'#606b82', line:'rgba(255,255,255,.07)', accent:'#5b8bff', accent2:'#789fff', accentRgb:'91,139,255', surfaceRgb:'18,22,31' } },
+    };
+    const DEFAULT_PALETTE = 'steelsky';
+    function getPalette() { const s = localStorage.getItem('palette'); return (s && PALETTES[s]) ? s : DEFAULT_PALETTE; }
+    function applyPalette(name) {
+      const p = PALETTES[name] || PALETTES[DEFAULT_PALETTE];
+      const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+      const t = (theme === 'light') ? p.light : p.dark;
+      const r = document.documentElement.style;
+      r.setProperty('--bg', t.bg); r.setProperty('--surface', t.surface);
+      r.setProperty('--ink', t.ink); r.setProperty('--ink-2', t.ink2); r.setProperty('--ink-3', t.ink3);
+      r.setProperty('--line', t.line); r.setProperty('--accent', t.accent); r.setProperty('--accent2', t.accent2);
+      r.setProperty('--accent-rgb', t.accentRgb); r.setProperty('--surface-rgb', t.surfaceRgb);
+      r.setProperty('--accent-band', String(p.accentBand));
+      document.documentElement.setAttribute('data-palette', name);
+    }
+    function getPreferredTheme() { const s = localStorage.getItem('theme'); if (s) return s; return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; }
+    function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); applyPalette(getPalette()); }
+    function toggleTheme() { const cur = document.documentElement.getAttribute('data-theme') || 'dark'; const next = cur === 'dark' ? 'light' : 'dark'; applyTheme(next); localStorage.setItem('theme', next); }
+    applyTheme(getPreferredTheme());
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => { if (!localStorage.getItem('theme')) applyTheme(e.matches ? 'light' : 'dark'); });
+
+    // nav scrolled
+    (function () { const nav = document.getElementById('nav'); const on = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+      window.addEventListener('scroll', on, { passive: true }); on(); })();
+
+    // mobile nav drawer
+    (function () {
+      const toggle = document.getElementById('navToggle');
+      const menu = document.getElementById('navMenu');
+      const scrim = document.getElementById('navScrim');
+      if (!toggle || !menu) return;
+      function setOpen(open) {
+        menu.classList.toggle('open', open);
+        toggle.classList.toggle('open', open);
+        if (scrim) scrim.classList.toggle('open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+        document.body.style.overflow = open ? 'hidden' : '';
+      }
+      toggle.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
+      if (scrim) scrim.addEventListener('click', () => setOpen(false));
+      menu.addEventListener('click', (e) => { if (e.target.closest('a')) setOpen(false); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+      window.addEventListener('resize', () => { if (window.innerWidth > 860) setOpen(false); });
+    })();
+
+    // GitHub stars — shields.io badge first (CORS-friendly, no rate limit), API fallback. Matches the Hub.
+    const GITHUB_REPO_API = 'https://api.github.com/repos/HKUDS/CLI-Anything';
+    const GITHUB_STARS_BADGE_API = 'https://img.shields.io/github/stars/HKUDS/CLI-Anything.json';
+    function renderGitHubStars(label, title) {
+      document.querySelectorAll('[data-github-stars]').forEach(el => { el.textContent = label; el.setAttribute('aria-label', title); el.title = title; });
+    }
+    function formatCompactCount(value) {
+      return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: value >= 10000 ? 0 : 1 }).format(value);
+    }
+    function formatBadgeCount(value) {
+      if (typeof value !== 'string') return null;
+      const label = value.trim();
+      return label ? label.toUpperCase() : null;
+    }
+    (async function loadGitHubStars() {
+      try {
+        try {
+          const badgeResp = await fetch(GITHUB_STARS_BADGE_API);
+          if (badgeResp.ok) {
+            const badge = await badgeResp.json();
+            const badgeLabel = formatBadgeCount(badge.message || badge.value);
+            if (badgeLabel) { renderGitHubStars(badgeLabel, `${badgeLabel} GitHub stars`); return; }
+          }
+        } catch (_) {}
+        const resp = await fetch(GITHUB_REPO_API, { headers: { 'Accept': 'application/vnd.github+json' } });
+        if (!resp.ok) return;
+        const repo = await resp.json();
+        const stars = repo.stargazers_count;
+        if (typeof stars !== 'number') return;
+        renderGitHubStars(formatCompactCount(stars), `${stars.toLocaleString('en-US')} GitHub stars`);
+      } catch (_) {}
+    })();
+
+    // ===================== Doc behaviour =====================
+    // copy code blocks
+    function copyCode(btn) {
+      const code = btn.parentElement.querySelector('code');
+      if (!code || !navigator.clipboard) return;
+      navigator.clipboard.writeText(code.innerText).then(() => {
+        const o = btn.textContent; btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = o; }, 1200);
+      }).catch(() => {});
+    }
+
+    // reveal on scroll
+    (function () {
+      const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' });
+      document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+    })();
+
+    // scrollspy — highlight the active TOC link
+    (function () {
+      const links = Array.from(document.querySelectorAll('#toc-nav a'));
+      const map = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+      const sections = links.map(a => document.getElementById(a.getAttribute('href').slice(1))).filter(Boolean);
+      let active = null;
+      const setActive = (id) => { if (id === active) return; active = id; links.forEach(a => a.classList.toggle('active', a === map.get(id))); };
+      const spy = new IntersectionObserver((entries) => {
+        const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length) setActive(visible[0].target.id);
+      }, { rootMargin: '-72px 0px -64% 0px', threshold: 0 });
+      sections.forEach(s => spy.observe(s));
+    })();
+  </script>
+</body>
+</html>

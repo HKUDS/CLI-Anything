@@ -8,7 +8,9 @@ on:
       - '*/agent-harness/**'
       - 'registry.json'
       - 'public_registry.json'
+      - 'matrix_registry.json'
       - 'cli-hub/**'
+      - 'cli-hub-matrix/**'
       - 'docs/hub/**'
       - '.github/workflows/deploy-pages.yml'
       - '.github/scripts/update_registry_dates.py'
@@ -58,14 +60,29 @@ jobs:
             --acl public-read \
             --content-type text/markdown
 
-      - name: Copy registry.json to hub for cli-hub access
-        run: cp registry.json docs/hub/registry.json
+      - name: Copy registries to hub for cli-hub access
+        run: |
+          cp registry.json docs/hub/registry.json
+          cp public_registry.json docs/hub/public_registry.json
+
+      - name: Copy matrix_registry.json to hub for cli-hub access
+        run: cp matrix_registry.json docs/hub/matrix_registry.json
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs/hub
           destination: ./docs/_site
+
+      # Copied after the Jekyll build so SKILL.md front matter is served
+      # verbatim instead of being converted to HTML. Published at
+      # https://hkuds.github.io/CLI-Anything/matrix/<name>/{SKILL.md,references/,scripts/}
+      # (consumed by cli_hub.matrix_skill's published-URL fallback).
+      - name: Copy matrix skill content into site
+        run: |
+          sudo mkdir -p docs/_site/matrix
+          sudo rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' \
+            cli-hub-matrix/ docs/_site/matrix/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

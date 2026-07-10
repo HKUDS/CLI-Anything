@@ -1,0 +1,270 @@
+[
+  {
+    "number": 262,
+    "title": "Add MseeP.ai badge",
+    "files": [
+      {"filename": "README.md", "status": "modified"}
+    ],
+    "expected": ["documentation"]
+  },
+  {
+    "number": 260,
+    "title": "feat: add hacker-feeds-cli to registry",
+    "files": [
+      {"filename": "registry.json", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "new-cli"]
+  },
+  {
+    "number": 259,
+    "title": "feat: add ve-twini to registry",
+    "files": [
+      {"filename": "registry.json", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "new-cli"]
+  },
+  {
+    "number": 258,
+    "title": "feat: add sliver to registry",
+    "files": [
+      {"filename": "registry.json", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "new-cli"]
+  },
+  {
+    "number": 256,
+    "title": "feat(Calibre): add a CLI-Anything harness for Calibre Desktop",
+    "files": [
+      {"filename": ".gitignore", "status": "modified"},
+      {"filename": "README.md", "status": "modified"},
+      {"filename": "calibre/agent-harness/CALIBRE.md", "status": "added"},
+      {"filename": "calibre/agent-harness/cli_anything/calibre/calibre_cli.py", "status": "added"},
+      {"filename": "calibre/agent-harness/cli_anything/calibre/core/session.py", "status": "added"},
+      {"filename": "calibre/agent-harness/cli_anything/calibre/skills/SKILL.md", "status": "added"},
+      {"filename": "calibre/agent-harness/setup.py", "status": "added"},
+      {"filename": "cli-anything-plugin/scripts/setup-cli-anything.sh", "status": "modified"},
+      {"filename": "codex-skill/scripts/install.sh", "status": "modified"},
+      {"filename": "registry.json", "status": "modified"},
+      {"filename": "skills/cli-anything-calibre/SKILL.md", "status": "added"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 254,
+    "title": "feat: add quietshrink harness - Apple Silicon screen recording compressor",
+    "files": [
+      {"filename": ".gitignore", "status": "modified"},
+      {"filename": "quietshrink/agent-harness/QUIETSHRINK.md", "status": "added"},
+      {"filename": "quietshrink/agent-harness/cli_anything/quietshrink/quietshrink_cli.py", "status": "added"},
+      {"filename": "quietshrink/agent-harness/cli_anything/quietshrink/skills/SKILL.md", "status": "added"},
+      {"filename": "quietshrink/agent-harness/setup.py", "status": "added"},
+      {"filename": "registry.json", "status": "modified"},
+      {"filename": "skills/cli-anything-quietshrink/SKILL.md", "status": "added"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 252,
+    "title": "Add cli-anything-rekordbox: Pioneer Rekordbox 6/7 harness",
+    "files": [
+      {"filename": ".gitignore", "status": "modified"},
+      {"filename": "ableton/agent-harness/setup.py", "status": "added"},
+      {"filename": "ableton/agent-harness/cli_anything/ableton/ableton_cli.py", "status": "added"},
+      {"filename": "rekordbox/agent-harness/setup.py", "status": "added"},
+      {"filename": "rekordbox/agent-harness/cli_anything/rekordbox/rekordbox_cli.py", "status": "added"},
+      {"filename": "rekordbox/agent-harness/cli_anything/rekordbox/skills/SKILL.md", "status": "added"},
+      {"filename": "serum/agent-harness/setup.py", "status": "added"},
+      {"filename": "vital/agent-harness/setup.py", "status": "added"},
+      {"filename": "skills/cli-anything-rekordbox/SKILL.md", "status": "added"}
+    ],
+    "expected": ["cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 251,
+    "title": "feat: add s&box CLI harness",
+    "files": [
+      {"filename": ".gitignore", "status": "modified"},
+      {"filename": "README.md", "status": "modified"},
+      {"filename": "registry.json", "status": "modified"},
+      {"filename": "sbox/agent-harness/SBOX.md", "status": "added"},
+      {"filename": "sbox/agent-harness/cli_anything/sbox/sbox_cli.py", "status": "added"},
+      {"filename": "sbox/agent-harness/cli_anything/sbox/skills/SKILL.md", "status": "added"},
+      {"filename": "sbox/agent-harness/setup.py", "status": "added"},
+      {"filename": "skills/cli-anything-sbox/SKILL.md", "status": "added"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 245,
+    "title": "feat: mature lldb agent harness",
+    "files": [
+      {"filename": "lldb/agent-harness/LLDB.md", "status": "modified"},
+      {"filename": "lldb/agent-harness/cli_anything/lldb/lldb_cli.py", "status": "modified"},
+      {"filename": "lldb/agent-harness/cli_anything/lldb/skills/SKILL.md", "status": "modified"},
+      {"filename": "lldb/agent-harness/setup.py", "status": "modified"},
+      {"filename": "registry.json", "status": "modified"},
+      {"filename": "skills/cli-anything-lldb/SKILL.md", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "existing-cli-fix"]
+  },
+  {
+    "number": 244,
+    "title": "feat: improve Unreal Insights live analysis",
+    "files": [
+      {"filename": "skills/cli-anything-unrealinsights/SKILL.md", "status": "modified"},
+      {"filename": "unrealinsights/agent-harness/UNREALINSIGHTS.md", "status": "modified"},
+      {"filename": "unrealinsights/agent-harness/cli_anything/unrealinsights/core/analyze.py", "status": "added"},
+      {"filename": "unrealinsights/agent-harness/cli_anything/unrealinsights/skills/SKILL.md", "status": "modified"},
+      {"filename": "unrealinsights/agent-harness/cli_anything/unrealinsights/unrealinsights_cli.py", "status": "modified"}
+    ],
+    "expected": ["cli-anything-skill", "existing-cli-fix"]
+  },
+  {
+    "number": 241,
+    "title": "Feat/add firefly iii cli",
+    "files": [
+      {"filename": ".gitignore", "status": "modified"},
+      {"filename": "firefly-iii/agent-harness/README.md", "status": "added"},
+      {"filename": "firefly-iii/agent-harness/cli_anything/firefly_iii/firefly_iii_cli.py", "status": "added"},
+      {"filename": "firefly-iii/agent-harness/cli_anything/firefly_iii/skills/SKILL.md", "status": "added"},
+      {"filename": "firefly-iii/agent-harness/setup.py", "status": "added"},
+      {"filename": "firefly-iii/agent-harness/skills/cli-anything-firefly-iii/SKILL.md", "status": "added"}
+    ],
+    "expected": ["cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 240,
+    "title": "fix(blender): align docs and render execute with real behavior",
+    "files": [
+      {"filename": "README.md", "status": "modified"},
+      {"filename": "README_CN.md", "status": "modified"},
+      {"filename": "blender/agent-harness/cli_anything/blender/README.md", "status": "modified"},
+      {"filename": "blender/agent-harness/cli_anything/blender/blender_cli.py", "status": "modified"},
+      {"filename": "blender/agent-harness/cli_anything/blender/core/render.py", "status": "modified"},
+      {"filename": "blender/agent-harness/cli_anything/blender/utils/blender_backend.py", "status": "modified"}
+    ],
+    "expected": ["existing-cli-fix"]
+  },
+  {
+    "number": 238,
+    "title": "feat: add NSLogger CLI harness",
+    "files": [
+      {"filename": ".gitignore", "status": "modified"},
+      {"filename": "README.md", "status": "modified"},
+      {"filename": "nslogger/agent-harness/NSLOGGER.md", "status": "added"},
+      {"filename": "nslogger/agent-harness/cli_anything/nslogger/nslogger_cli.py", "status": "added"},
+      {"filename": "nslogger/agent-harness/cli_anything/nslogger/skills/SKILL.md", "status": "added"},
+      {"filename": "nslogger/agent-harness/setup.py", "status": "added"},
+      {"filename": "registry.json", "status": "modified"},
+      {"filename": "skills/cli-anything-nslogger/SKILL.md", "status": "added"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 237,
+    "title": "refactor(openclaw-skill->macrocli): rename, complete backends, add recorder and visual anchor",
+    "files": [
+      {"filename": "macrocli/SKILL.md", "status": "added"},
+      {"filename": "macrocli/agent-harness/MACROCLI.md", "status": "added"},
+      {"filename": "macrocli/agent-harness/cli_anything/macrocli/macrocli_cli.py", "status": "added"},
+      {"filename": "macrocli/agent-harness/cli_anything/macrocli/skills/SKILL.md", "status": "added"},
+      {"filename": "macrocli/agent-harness/setup.py", "status": "added"},
+      {"filename": "openclaw-skill/agent-harness/cli_anything/openclaw/openclaw_cli.py", "status": "modified"},
+      {"filename": "registry.json", "status": "modified"},
+      {"filename": "skills/cli-anything-macrocli/SKILL.md", "status": "added"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 233,
+    "title": "fix(browser): add MCP timeout guard to prevent fs hangs",
+    "files": [
+      {"filename": "browser/agent-harness/cli_anything/browser/browser_cli.py", "status": "modified"},
+      {"filename": "browser/agent-harness/cli_anything/browser/skills/SKILL.md", "status": "modified"},
+      {"filename": "browser/agent-harness/cli_anything/browser/utils/domshell_backend.py", "status": "modified"},
+      {"filename": "browser/agent-harness/setup.py", "status": "modified"},
+      {"filename": "registry.json", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "existing-cli-fix"]
+  },
+  {
+    "number": 220,
+    "title": "fix(browser): harden bridge and sync REPL template",
+    "files": [
+      {"filename": ".github/workflows/pr-ci.yml", "status": "added"},
+      {"filename": "browser/agent-harness/cli_anything/browser/browser_cli.py", "status": "modified"},
+      {"filename": "browser/agent-harness/cli_anything/browser/utils/repl_skin.py", "status": "modified"},
+      {"filename": "cli-anything-plugin/repl_skin.py", "status": "modified"},
+      {"filename": "gimp/agent-harness/cli_anything/gimp/utils/repl_skin.py", "status": "modified"}
+    ],
+    "expected": ["cli-anything-skill", "existing-cli-fix", "github-actions"]
+  },
+  {
+    "number": 218,
+    "title": "fix: Executing cli-anything-browser --json fs ls yields no return result",
+    "files": [
+      {"filename": "browser/agent-harness/cli_anything/browser/tests/test_core.py", "status": "modified"},
+      {"filename": "browser/agent-harness/cli_anything/browser/utils/domshell_backend.py", "status": "modified"}
+    ],
+    "expected": ["existing-cli-fix"]
+  },
+  {
+    "number": 202,
+    "title": "security: add user confirmation guard to meta-skill installation flow",
+    "files": [
+      {"filename": "cli-hub-meta-skill/SKILL.md", "status": "modified"},
+      {"filename": "docs/hub/SKILL.md", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill"]
+  },
+  {
+    "number": 189,
+    "title": "feat: add MiniMax CLI harness (chat + TTS)",
+    "files": [
+      {"filename": ".gitignore", "status": "modified"},
+      {"filename": "minimax/agent-harness/cli_anything/minimax/minimax_cli.py", "status": "added"},
+      {"filename": "minimax/agent-harness/cli_anything/minimax/skills/SKILL.md", "status": "added"},
+      {"filename": "minimax/agent-harness/setup.py", "status": "added"},
+      {"filename": "registry.json", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "new-cli"]
+  },
+  {
+    "number": 187,
+    "title": "Refactor AnyGen CLI for better state management",
+    "files": [
+      {"filename": "anygen/agent-harness/cli_anything/anygen/anygen_cli.py", "status": "modified"}
+    ],
+    "expected": ["existing-cli-fix"]
+  },
+  {
+    "number": 167,
+    "title": "feat(freecad): add FreeCAD 1.0.2 backward compatibility",
+    "files": [
+      {"filename": "freecad/agent-harness/FREECAD.md", "status": "modified"},
+      {"filename": "freecad/agent-harness/cli_anything/freecad/core/generate.py", "status": "modified"},
+      {"filename": "freecad/agent-harness/cli_anything/freecad/freecad_cli.py", "status": "modified"},
+      {"filename": "freecad/agent-harness/cli_anything/freecad/skills/SKILL.md", "status": "modified"},
+      {"filename": "registry.json", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub", "cli-anything-skill", "existing-cli-fix"]
+  },
+  {
+    "number": 106,
+    "title": "fix: split token-aware into default exclusions + optional --economic mode",
+    "files": [
+      {"filename": "cli-anything-plugin/HARNESS.md", "status": "modified"},
+      {"filename": "cli-anything-plugin/commands/cli-anything.md", "status": "modified"},
+      {"filename": "cli-anything-plugin/commands/refine.md", "status": "modified"}
+    ],
+    "expected": ["cli-anything-skill"]
+  },
+  {
+    "number": "registry-maintenance",
+    "title": "Update registry dates",
+    "files": [
+      {"filename": "registry.json", "status": "modified"}
+    ],
+    "expected": ["cli-anything-hub"]
+  }
+]

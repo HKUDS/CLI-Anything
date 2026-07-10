@@ -13,8 +13,33 @@ Requires: libreoffice (system package)
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+from pathlib import Path
 from typing import Optional
+
+
+# Conservative flags used for every headless invocation. Each one suppresses an
+# interactive UI surface that headless conversions should never need:
+#   --headless           no GUI
+#   --nologo             no startup splash
+#   --nodefault          do not open any default doc/start center
+#   --norestore          do not try to restore a crashed session
+#   --nolockcheck        ignore stale .~lock files left by a prior Office run
+#   --nofirststartwizard skip first-run setup
+#
+# These are particularly important on macOS, where stale lock files from prior
+# Office runs and the start center can both trigger SIGABRT ("Trace/BPT trap")
+# during headless conversion — see upstream bug
+# https://bugs.documentfoundation.org/show_bug.cgi?id=169711.
+_HEADLESS_FLAGS = (
+    "--headless",
+    "--nologo",
+    "--nodefault",
+    "--norestore",
+    "--nolockcheck",
+    "--nofirststartwizard",
+)
 
 
 def find_libreoffice() -> str:
@@ -31,7 +56,6 @@ def find_libreoffice() -> str:
             return path
 
     # 2) Check common installation paths (Windows)
-    import sys
     if sys.platform == "win32" or os.name == "nt" or "MSYS" in os.environ.get("MSYSTEM", "") or "msys" in sys.platform or os.path.exists("C:/"):
         win_candidates = [
             os.path.join(os.environ.get("PROGRAMFILES", r"C:\Program Files"),
@@ -77,6 +101,93 @@ def get_version() -> str:
     return f"LibreOffice (path: {lo})"
 
 
+def _macos_app_bundle(soffice_path: str) -> Optional[str]:
+    """Return the .app bundle path for a macOS soffice binary, or None.
+
+    Detects layouts like ``/Applications/LibreOffice.app/Contents/MacOS/soffice``
+    and returns ``/Applications/LibreOffice.app``. Used to drive the
+    ``open -W -n -a <bundle>`` fallback when a direct headless invocation
+    aborts during conversion.
+    """
+    if sys.platform != "darwin":
+        return None
+    p = Path(soffice_path).resolve()
+    for ancestor in p.parents:
+        if ancestor.suffix == ".app":
+            return str(ancestor)
+    return None
+
+
+def _looks_like_macos_abort(result: subprocess.CompletedProcess) -> bool:
+    """Detect the macOS SIGABRT pattern reported in issue #221.
+
+    On macOS, soffice's headless conversion sometimes aborts with a negative
+    return code (signal) or a "Trace/BPT trap" / "Abort trap" stderr message
+    before producing any output. Treat any of those as a candidate for the
+    LaunchServices retry path.
+    """
+    if result.returncode < 0:
+        return True
+    stderr = (result.stderr or "").lower()
+    return "trace/bpt trap" in stderr or "abort trap" in stderr
+
+
+def _convert_via_launchservices(
+    app_bundle: str,
+    output_format: str,
+    output_dir: str,
+    input_path: str,
+    profile_uri: str,
+    timeout: int,
+) -> subprocess.CompletedProcess:
+    """Re-attempt a conversion through ``open -W -n -a <bundle> --args …``.
+
+    LaunchServices spawns the .app bundle through the standard macOS app
+    activation pathway, which avoids some of the headless-abort scenarios that
+    direct ``soffice`` invocation can hit. ``open`` does not proxy the child's
+    stdout/stderr, so callers must verify success by checking for the expected
+    output file.
+    """
+    cmd = [
+        "open", "-W", "-n", "-a", app_bundle, "--args",
+        *_HEADLESS_FLAGS,
+        f"-env:UserInstallation={profile_uri}",
+        "--convert-to", output_format,
+        "--outdir", output_dir,
+        input_path,
+    ]
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout,
+    )
+
+
+def _macos_conversion_error(
+    cmd: list[str],
+    result: subprocess.CompletedProcess,
+    input_path: str,
+    output_dir: str,
+) -> RuntimeError:
+    """Build a clear, actionable error for the macOS headless-abort case."""
+    return RuntimeError(
+        "LibreOffice headless conversion failed on macOS even after the "
+        "LaunchServices fallback. This commonly tracks upstream LibreOffice "
+        "bug https://bugs.documentfoundation.org/show_bug.cgi?id=169711, "
+        "where headless conversion can SIGABRT in some macOS environments.\n"
+        f"  Last command: {' '.join(cmd)}\n"
+        f"  Return code:  {result.returncode}\n"
+        f"  stderr:       {(result.stderr or '').strip()}\n"
+        "Manual workarounds to try:\n"
+        f"  1) Re-run with an isolated profile yourself:\n"
+        f"     /Applications/LibreOffice.app/Contents/MacOS/soffice \\\n"
+        f"       -env:UserInstallation=file:///tmp/lo-profile-$$ \\\n"
+        f"       --headless --nologo --nodefault --norestore --nolockcheck \\\n"
+        f"       --convert-to <fmt> --outdir {output_dir} {input_path}\n"
+        f"  2) Force the LaunchServices path manually:\n"
+        f"     open -W -n -a 'LibreOffice' --args --headless --convert-to <fmt> "
+        f"--outdir {output_dir} {input_path}"
+    )
+
+
 def convert(
     input_path: str,
     output_format: str,
@@ -108,19 +219,62 @@ def convert(
         output_dir = os.path.dirname(input_path)
     os.makedirs(output_dir, exist_ok=True)
 
-    cmd = [
-        lo,
-        "--headless",
-        "--convert-to", output_format,
-        "--outdir", output_dir,
-        input_path,
-    ]
+    with tempfile.TemporaryDirectory(prefix="lo-profile-") as profile_dir, \
+            tempfile.TemporaryDirectory(prefix="lo-runtime-") as runtime_dir, \
+            tempfile.TemporaryDirectory(prefix="lo-config-") as config_dir, \
+            tempfile.TemporaryDirectory(prefix="lo-cache-") as cache_dir:
+        env = os.environ.copy()
+        if os.name == "posix":
+            try:
+                os.chmod(runtime_dir, 0o700)
+            except OSError:
+                pass
+            env.update({
+                "XDG_RUNTIME_DIR": runtime_dir,
+                "XDG_CONFIG_HOME": config_dir,
+                "XDG_CACHE_HOME": cache_dir,
+            })
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True, text=True,
-        timeout=timeout,
-    )
+        profile_uri = Path(profile_dir).resolve().as_uri()
+
+        cmd = [
+            lo,
+            *_HEADLESS_FLAGS,
+            f"-env:UserInstallation={profile_uri}",
+            "--convert-to", output_format,
+            "--outdir", output_dir,
+            input_path,
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True, text=True,
+            timeout=timeout,
+            env=env,
+        )
+
+        base = os.path.splitext(os.path.basename(input_path))[0]
+        output_path = os.path.join(output_dir, f"{base}.{output_format}")
+
+        # macOS: if the direct invocation aborted or produced no output,
+        # retry through LaunchServices once. See issue #221.
+        if (sys.platform == "darwin"
+                and (result.returncode != 0
+                     or _looks_like_macos_abort(result)
+                     or not os.path.exists(output_path))):
+            app_bundle = _macos_app_bundle(lo)
+            if app_bundle is not None:
+                fallback = _convert_via_launchservices(
+                    app_bundle, output_format, output_dir,
+                    input_path, profile_uri, timeout,
+                )
+                if os.path.exists(output_path):
+                    return os.path.abspath(output_path)
+                # LaunchServices also failed — surface a macOS-specific error
+                # with manual workarounds before the generic path takes over.
+                raise _macos_conversion_error(
+                    cmd, fallback, input_path, output_dir,
+                )
 
     if result.returncode != 0:
         raise RuntimeError(
@@ -128,10 +282,6 @@ def convert(
             f"  Command: {' '.join(cmd)}\n"
             f"  stderr: {result.stderr.strip()}"
         )
-
-    # Determine the output filename
-    base = os.path.splitext(os.path.basename(input_path))[0]
-    output_path = os.path.join(output_dir, f"{base}.{output_format}")
 
     if not os.path.exists(output_path):
         raise RuntimeError(

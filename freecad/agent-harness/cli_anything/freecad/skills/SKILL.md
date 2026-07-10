@@ -25,6 +25,64 @@ cli-anything-freecad --json -p proj.json <cmd>  # With project file
 cli-anything-freecad                            # Interactive REPL
 ```
 
+## Preview, Live Preview, and Motion
+
+FreeCAD is currently the deepest preview integration in this branch.
+
+Preview commands:
+
+```bash
+# List preview recipes
+cli-anything-freecad --json -p proj.json preview recipes
+
+# Capture a real 4-view bundle
+cli-anything-freecad --json -p proj.json preview capture --recipe quick
+
+# Start poll-mode live preview
+cli-anything-freecad --json -p proj.json preview live start --recipe quick --mode poll --source-poll-ms 500
+
+# Query current live state without rendering
+cli-anything-freecad --json -p proj.json preview live status --recipe quick
+
+# Stop live preview publication
+cli-anything-freecad --json -p proj.json preview live stop --recipe quick
+```
+
+Typical `quick` bundle artifacts:
+
+- `hero.png`
+- `front.png`
+- `top.png`
+- `right.png`
+
+Live preview persists:
+
+- `session.json`
+- immutable bundle directories
+- `trajectory.json`
+
+`preview live status --json` is intended for agents and includes a compact
+`trajectory_summary` in addition to `_session_dir`, current bundle refs, and
+`_trajectory_path`.
+
+Viewer commands:
+
+```bash
+cli-hub previews inspect /path/to/bundle-or-session
+cli-hub previews html /path/to/bundle-or-session -o page.html
+cli-hub previews watch /path/to/session --open
+cli-hub previews open /path/to/bundle-or-session
+```
+
+Motion commands remain separate from preview and are used for final truthful
+frame rendering and showcase videos:
+
+```bash
+cli-anything-freecad --json -p proj.json motion new --name spin --duration 6 --fps 24
+cli-anything-freecad --json -p proj.json motion keyframe spin --time 0.0 --part 0 --position 0,0,0
+cli-anything-freecad --json -p proj.json motion render-video spin output.mp4
+```
+
 ## Command Groups (258 commands)
 
 ### document (5) — Document management
@@ -253,3 +311,14 @@ All commands support `--json`. Responses include structured data. Errors: `{"err
 - Invalid types: Lists valid options
 - Index out of range: Reports valid range
 - File exists: Use `--overwrite`
+
+## Agent Preview Notes
+
+- Use `preview capture --json` whenever geometric changes need visual verification.
+- Use `preview live start` for iterative build loops; prefer poll mode when the
+  project file is being saved repeatedly.
+- Use `preview live status --json` as the cheap status probe before reading the
+  full `trajectory.json`.
+- Treat `_bundle_dir` as a single snapshot only; the stable live identity is
+  `_session_dir` plus `_trajectory_path`.
+- Use `cli-hub previews ...` only to inspect/open already-published previews.

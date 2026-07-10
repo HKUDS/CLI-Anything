@@ -1,0 +1,44 @@
+name: gedit_new_window
+version: "1.0"
+description: >
+  Open a new gedit window using native_api backend (subprocess).
+  This macro does not require an existing gedit window.
+tags: [demo, gedit, native_api]
+
+parameters:
+  file_path:
+    type: string
+    required: false
+    default: ""
+    description: Optional file to open in the new window.
+
+preconditions:
+  - file_exists: /usr/bin/gedit
+
+steps:
+  - id: launch_gedit
+    backend: native_api
+    action: start_process
+    params:
+      command: [gedit]
+      log_file: /tmp/gedit.log
+      env:
+        DISPLAY: ":99"
+    on_failure: fail
+
+  - id: wait_window
+    backend: semantic_ui
+    action: wait_for_window
+    params:
+      title_contains: gedit
+      timeout_ms: 8000
+    on_failure: fail
+
+postconditions: []
+outputs: []
+
+agent_hints:
+  danger_level: safe
+  side_effects: [opens_application]
+  reversible: true
+  estimated_duration_ms: 3000

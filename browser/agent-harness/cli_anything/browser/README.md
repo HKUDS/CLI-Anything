@@ -276,4 +276,4 @@ This CLI follows the [CLI-Anything harness methodology](https://github.com/HKUDS
 
 ## License
 
-MIT License — See [CLI-Anything](https://github.com/HKUDS/CLI-Anything) for details.
+Apache License 2.0 — See [CLI-Anything](https://github.com/HKUDS/CLI-Anything) for details.

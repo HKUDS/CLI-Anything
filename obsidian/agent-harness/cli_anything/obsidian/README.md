@@ -67,8 +67,15 @@ vault append <path> --content "..."        # Append content to a note
 ### Search
 
 ```bash
-search query <query>                        # Search using Obsidian query syntax
-search simple <query>                       # Plain text search across the vault
+# Dataview DQL (default) — body is sent verbatim with
+# Content-Type: application/vnd.olrapi.dataview.dql+txt
+search query 'TABLE file.link FROM "Projects"'
+
+# JsonLogic — Content-Type: application/vnd.olrapi.jsonlogic+json
+search query --type jsonlogic '{"==":[{"var":"frontmatter.status"},"active"]}'
+
+# Plain text search across the vault (GET /search/simple/)
+search simple <query>
 ```
 
 ### Note

@@ -116,7 +116,7 @@ To modify or extend this extension:
 
 ## License
 
-MIT License - See the main CLI-Anything repository for full license details.
+Apache License 2.0 - See the main CLI-Anything repository for full license details.
 
 ## See Also
 

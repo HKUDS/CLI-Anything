@@ -13,10 +13,10 @@ with open("cli_anything/libreoffice/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-libreoffice",
-    version="1.0.0",
+    version="1.0.1",
     author="cli-anything contributors",
     author_email="",
-    description="CLI harness for LibreOffice - Create and manipulate ODF documents, export to PDF/DOCX/XLSX/PPTX via LibreOffice headless",
+    description="CLI harness for LibreOffice - import, create, edit, and export ODF/Office documents via LibreOffice headless",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/HKUDS/CLI-Anything",
@@ -36,6 +36,7 @@ setup(
     install_requires=[
         "click>=8.0.0",
         "prompt-toolkit>=3.0.0",
+        "defusedxml>=0.7.1",
     ],
     extras_require={
         "dev": [

@@ -26,6 +26,7 @@ Structure:
 import os
 import time
 from xml.etree import ElementTree as ET
+from defusedxml.ElementTree import parse as _defused_parse
 from typing import Optional
 
 
@@ -37,7 +38,7 @@ def parse_drawio(path: str) -> ET.Element:
     """Parse a .drawio XML file. Returns the root <mxfile> element."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"File not found: {path}")
-    tree = ET.parse(path)
+    tree = _defused_parse(path)
     return tree.getroot()
 
 

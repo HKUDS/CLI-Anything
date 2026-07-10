@@ -1,0 +1,60 @@
+{
+  "name": "CLI-Anything Hub",
+  "description": "Agent-friendly CLI registry and package manager for discovering, installing, and launching command-line tools for GUI applications, developer tools, creative software, web APIs, and public SaaS platforms.",
+  "url": "https://clianything.cc",
+  "version": "0.3.0",
+  "provider": {
+    "organization": "HKUDS",
+    "url": "https://github.com/HKUDS/CLI-Anything"
+  },
+  "documentationUrl": "https://clianything.cc/llms-full.txt",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "application/json",
+    "text/plain",
+    "text/markdown"
+  ],
+  "skills": [
+    {
+      "id": "cli_hub_discovery",
+      "name": "Discover CLI tools",
+      "description": "Search the CLI-Anything registry for agent-friendly command-line tools by software, category, or task.",
+      "tags": [
+        "cli",
+        "agent",
+        "registry",
+        "automation"
+      ],
+      "examples": [
+        "Find a CLI for editing images.",
+        "Install a Blender automation CLI.",
+        "List browser automation tools available through CLI-Anything Hub."
+      ]
+    },
+    {
+      "id": "cli_hub_install",
+      "name": "Install and launch CLI tools",
+      "description": "Use cli-hub to inspect, install, update, uninstall, and launch CLI tools from the registry.",
+      "tags": [
+        "install",
+        "package-manager",
+        "cli-hub"
+      ],
+      "examples": [
+        "pip install cli-anything-hub",
+        "cli-hub search browser",
+        "cli-hub install gimp",
+        "cli-hub launch gimp --help"
+      ]
+    }
+  ],
+  "supportsAuthenticatedExtendedCard": false,
+  "copyright": "Copyright: HKUDS. Lead author: Yuhao Yang (yuhao.page)."
+}

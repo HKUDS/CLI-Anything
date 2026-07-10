@@ -14,6 +14,7 @@ Key ODF structure:
 import os
 import zipfile
 import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import fromstring as _defused_fromstring
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -660,21 +661,21 @@ def validate_odf(path: str) -> Dict[str, Any]:
             # Validate XML in content.xml
             if "content.xml" in names:
                 try:
-                    ET.fromstring(zf.read("content.xml"))
+                    _defused_fromstring(zf.read("content.xml"))
                 except ET.ParseError as e:
                     errors.append(f"Invalid XML in content.xml: {e}")
 
             # Validate XML in styles.xml
             if "styles.xml" in names:
                 try:
-                    ET.fromstring(zf.read("styles.xml"))
+                    _defused_fromstring(zf.read("styles.xml"))
                 except ET.ParseError as e:
                     errors.append(f"Invalid XML in styles.xml: {e}")
 
             # Validate XML in meta.xml
             if "meta.xml" in names:
                 try:
-                    ET.fromstring(zf.read("meta.xml"))
+                    _defused_fromstring(zf.read("meta.xml"))
                 except ET.ParseError as e:
                     errors.append(f"Invalid XML in meta.xml: {e}")
 

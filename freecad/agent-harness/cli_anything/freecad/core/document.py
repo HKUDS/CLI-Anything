@@ -62,6 +62,7 @@ _REQUIRED_COLLECTIONS = ("parts", "sketches", "bodies", "materials")
 _OPTIONAL_COLLECTIONS = (
     "assemblies", "meshes", "techdraw_pages", "draft_objects",
     "measurements", "surfaces", "fem_analyses", "cam_jobs", "spreadsheets",
+    "motions",
 )
 ALL_COLLECTIONS = _REQUIRED_COLLECTIONS + _OPTIONAL_COLLECTIONS
 
@@ -165,6 +166,7 @@ def create_document(
         "fem_analyses": [],
         "cam_jobs": [],
         "spreadsheets": [],
+        "motions": [],
         "metadata": {
             "created": now,
             "modified": now,

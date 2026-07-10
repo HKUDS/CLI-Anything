@@ -1,0 +1,28 @@
+{
+  "name": "openrefine",
+  "backend_type": "local-http-server",
+  "start_command": [
+    "openrefine",
+    "-i",
+    "127.0.0.1",
+    "-p",
+    "3333"
+  ],
+  "provisioning": {
+    "download_url": "https://github.com/OpenRefine/OpenRefine/releases/download/3.10.1/openrefine-linux-3.10.1.tar.gz",
+    "extract_note": "Extract the OpenRefine release tarball and run the openrefine command, or the bundled refine executable, with -i 127.0.0.1 -p 3333.",
+    "data_dir": "/tmp/openrefine-data"
+  },
+  "readiness": {
+    "type": "http",
+    "url": "http://127.0.0.1:3333/command/core/get-version",
+    "timeout_seconds": 60
+  },
+  "e2e_command": [
+    "python3",
+    "-m",
+    "pytest",
+    "cli_anything/openrefine/tests/test_full_e2e.py",
+    "-q"
+  ]
+}

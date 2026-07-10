@@ -76,14 +76,16 @@ def fetch_all_clis(force_refresh=False):
     all_clis = []
 
     for cli in registry["clis"]:
-        cli["_source"] = "harness"
-        all_clis.append(cli)
+        entry = dict(cli)
+        entry["_source"] = "harness"
+        all_clis.append(entry)
 
     public = fetch_public_registry(force_refresh)
     if public:
         for cli in public["clis"]:
-            cli["_source"] = "public"
-            all_clis.append(cli)
+            entry = dict(cli)
+            entry["_source"] = "public"
+            all_clis.append(entry)
 
     return all_clis
 

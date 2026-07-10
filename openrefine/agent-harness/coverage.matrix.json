@@ -1,0 +1,78 @@
+{
+  "software": "OpenRefine",
+  "workflows": [
+    {
+      "use_case": "Import messy CSV files into OpenRefine projects and inspect project metadata.",
+      "cli_commands": [
+        "cli-anything-openrefine project import <csv> --name <name> --json",
+        "cli-anything-openrefine project list --json",
+        "cli-anything-openrefine data rows --limit 2 --json"
+      ],
+      "backend_interfaces": [
+        "POST /command/core/create-project-from-upload",
+        "GET /command/core/get-project-metadata",
+        "GET /command/core/get-rows"
+      ],
+      "unit_tests": [
+        "test_service_import_file_persists_project",
+        "test_service_list_projects",
+        "test_service_rows_uses_project_override"
+      ],
+      "e2e_tests": [
+        "test_e2e_import_csv_and_metadata",
+        "test_e2e_get_rows_after_import",
+        "test_e2e_cli_json_import_rows_export_workflow"
+      ]
+    },
+    {
+      "use_case": "Build reusable operation histories, apply them to projects, and export cleaned rows.",
+      "cli_commands": [
+        "cli-anything-openrefine ops text-transform <ops.json> --column Name --expression value.trim() --json",
+        "cli-anything-openrefine data apply <ops.json> --json",
+        "cli-anything-openrefine data export <output.csv> --format csv --json"
+      ],
+      "backend_interfaces": [
+        "POST /command/core/apply-operations",
+        "POST /command/core/export-rows"
+      ],
+      "unit_tests": [
+        "test_text_transform_shape",
+        "test_save_and_load_operations_roundtrip",
+        "test_service_apply_operations_uses_session_project",
+        "test_service_export_writes_output_and_session"
+      ],
+      "e2e_tests": [
+        "test_e2e_apply_text_transform_and_export_csv",
+        "test_e2e_apply_mass_edit_normalizes_city",
+        "test_e2e_cli_build_apply_operation_file"
+      ]
+    },
+    {
+      "use_case": "Persist CLI session state, report backend health, and recover with undo, redo, and project deletion.",
+      "cli_commands": [
+        "cli-anything-openrefine server ping --json",
+        "cli-anything-openrefine session show --json",
+        "cli-anything-openrefine session undo --json",
+        "cli-anything-openrefine session redo --json"
+      ],
+      "backend_interfaces": [
+        "GET /command/core/get-version",
+        "POST /command/core/undo-redo",
+        "POST /command/core/delete-project",
+        "GET /command/core/get-all-project-metadata"
+      ],
+      "unit_tests": [
+        "test_session_save_creates_parent_and_loads",
+        "test_session_undo_moves_to_future",
+        "test_session_redo_moves_to_history",
+        "test_service_open_project_persists_session"
+      ],
+      "e2e_tests": [
+        "test_e2e_backend_ping_reports_version",
+        "test_e2e_cli_session_persistence",
+        "test_e2e_backend_undo_redo_after_transform",
+        "test_e2e_recovery_delete_project_removes_from_listing"
+      ]
+    }
+  ]
+}

@@ -1,11 +1,13 @@
 """Filter management: apply, remove, configure filters on clips and tracks."""
 
 from typing import Optional
-from lxml import etree
+import xml.etree.ElementTree as ET
+
+from ..utils.time import parse_time_input, frames_to_timecode
 
 from ..utils import mlt_xml
-from ..utils.time import parse_time_input, frames_to_timecode
 from .session import Session
+from .timeline import real_clip_entries
 
 
 # Registry of commonly used MLT filters with their parameters
@@ -758,7 +760,7 @@ def get_filter_info(filter_name: str) -> dict:
 
 
 def _resolve_target(session: Session, track_index: Optional[int] = None,
-                    clip_index: Optional[int] = None) -> etree._Element:
+                    clip_index: Optional[int] = None) -> ET.Element:
     """Resolve the target element for a filter (clip producer or track playlist)."""
     if track_index is None:
         # Apply to the main tractor (global filter)
@@ -779,8 +781,7 @@ def _resolve_target(session: Session, track_index: Optional[int] = None,
         return playlist
 
     # Apply to a specific clip's producer
-    entries = mlt_xml.get_playlist_entries(playlist)
-    clip_entries = [e for e in entries if e["type"] == "entry"]
+    clip_entries = real_clip_entries(mlt_xml.get_playlist_entries(playlist), session.root)
     if clip_index < 0 or clip_index >= len(clip_entries):
         raise IndexError(f"Clip index {clip_index} out of range")
 
@@ -789,14 +790,6 @@ def _resolve_target(session: Session, track_index: Optional[int] = None,
     if producer is None:
         raise RuntimeError(f"Producer {clip_producer_id!r} not found")
     return producer
-
-
-def _find_filter_index(target: etree._Element, service: str) -> tuple[int | None, etree._Element | None]:
-    """Find the first filter on a target by MLT service name."""
-    for index, filt in enumerate(target.findall("filter")):
-        if mlt_xml.get_property(filt, "mlt_service", "") == service:
-            return index, filt
-    return None, None
 
 
 def add_filter(session: Session, filter_name: str,
@@ -831,7 +824,8 @@ def add_filter(session: Session, filter_name: str,
         props = params or {}
 
     target = _resolve_target(session, track_index, clip_index)
-    filt = mlt_xml.add_filter_to_element(target, service, props)
+    shotcut_filter_name = filter_name if filter_name in FILTER_REGISTRY else None
+    filt = mlt_xml.add_filter_to_element(target, service, shotcut_filter_name, props)
 
     target_desc = "global"
     if track_index is not None and clip_index is not None:
@@ -847,6 +841,8 @@ def add_filter(session: Session, filter_name: str,
         "target": target_desc,
         "params": props,
     }
+
+
 def remove_filter(session: Session, filter_index: int,
                   track_index: Optional[int] = None,
                   clip_index: Optional[int] = None) -> dict:
@@ -942,6 +938,13 @@ def list_filters(session: Session,
     return result
 
 
+def _find_filter_index(target: ET.Element, service: str) -> tuple[int | None, ET.Element | None]:
+    for index, filt in enumerate(target.findall("filter")):
+        if mlt_xml.get_property(filt, "mlt_service", "") == service:
+            return index, filt
+    return None, None
+
+
 def set_volume_envelope(
     session: Session,
     points: list[tuple[str, str]],
@@ -949,14 +952,11 @@ def set_volume_envelope(
     track_index: Optional[int] = None,
     clip_index: Optional[int] = None,
 ) -> dict:
-    """Create or update a keyframed volume envelope."""
     if not points:
         raise ValueError("At least one time=level point is required")
 
     session.checkpoint()
-    profile = session.get_profile()
-    fps_num = int(profile.get("frame_rate_num", 30000))
-    fps_den = int(profile.get("frame_rate_den", 1001))
+    fps_num, fps_den = int(session.get_profile()["frame_rate_num"]), int(session.get_profile()["frame_rate_den"])
 
     normalized: dict[int, str] = {}
     for timecode, level in points:
@@ -971,7 +971,7 @@ def set_volume_envelope(
     target = _resolve_target(session, track_index, clip_index)
     filter_index, filt = _find_filter_index(target, "volume")
     if filt is None:
-        filt = mlt_xml.add_filter_to_element(target, "volume", {"level": envelope})
+        filt = mlt_xml.add_filter_to_element(target, "volume", properties={"level": envelope})
         filter_index = len(target.findall("filter")) - 1
         old_value = None
     else:
@@ -998,13 +998,10 @@ def duck_volume(
     attack: str = "00:00:00.150",
     release: str = "00:00:00.250",
 ) -> dict:
-    """Apply a simple ducking envelope over one or more absolute timeline windows."""
     if not windows:
         raise ValueError("At least one ducking window is required")
 
-    profile = session.get_profile()
-    fps_num = int(profile.get("frame_rate_num", 30000))
-    fps_den = int(profile.get("frame_rate_den", 1001))
+    fps_num, fps_den = int(session.get_profile()["frame_rate_num"]), int(session.get_profile()["frame_rate_den"])
     attack_frames = parse_time_input(attack, fps_num, fps_den)
     release_frames = parse_time_input(release, fps_num, fps_den)
 
@@ -1023,21 +1020,17 @@ def duck_volume(
 
     result = set_volume_envelope(
         session,
-        [
-            (frames_to_timecode(frame, fps_num, fps_den), level)
-            for frame, level in sorted(frame_points.items())
-        ],
+        [(frames_to_timecode(frame, fps_num, fps_den), level)
+         for frame, level in sorted(frame_points.items())],
         track_index=track_index,
         clip_index=clip_index,
     )
-    result.update(
-        {
-            "action": "duck_volume",
-            "windows": sorted_windows,
-            "normal_level": normal_level,
-            "duck_level": duck_level,
-            "attack": attack,
-            "release": release,
-        }
-    )
+    result.update({
+        "action": "duck_volume",
+        "windows": sorted_windows,
+        "normal_level": normal_level,
+        "duck_level": duck_level,
+        "attack": attack,
+        "release": release,
+    })
     return result

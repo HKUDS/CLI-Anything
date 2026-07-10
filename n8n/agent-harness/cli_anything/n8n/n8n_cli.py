@@ -127,8 +127,7 @@ def repl(ctx: click.Context) -> None:
         click.echo("prompt-toolkit is required for REPL mode. Install: pip install prompt-toolkit")
         sys.exit(1)
 
-    base_url = ctx.obj["base_url"]
-    print_banner(base_url or "(not configured)")
+    print_banner()
 
     # Build completer from all CLI commands
     words = ["help", "exit", "quit", "status"]

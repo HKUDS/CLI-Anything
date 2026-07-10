@@ -149,11 +149,16 @@ cli-anything-obsidian vault append "Projects/new-project.md" --content "\n## New
 ### Search
 
 ```bash
-# Plain text search
+# Plain text search (GET /search/simple/)
 cli-anything-obsidian search simple "meeting notes"
 
-# Obsidian query syntax search (tags, links, etc.)
-cli-anything-obsidian search query "tag:#project"
+# Dataview DQL query — default --type dql, sent as
+# application/vnd.olrapi.dataview.dql+txt
+cli-anything-obsidian search query 'TABLE file.link FROM "Projects"'
+
+# JsonLogic query — application/vnd.olrapi.jsonlogic+json
+cli-anything-obsidian search query --type jsonlogic \
+  '{"==":[{"var":"frontmatter.status"},"active"]}'
 ```
 
 
@@ -231,4 +236,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.0
+1.1.0

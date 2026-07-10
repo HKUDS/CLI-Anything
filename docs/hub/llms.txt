@@ -1,0 +1,63 @@
+# CLI-Anything Hub
+
+> CLI-Anything is an agent-friendly project that helps AI agents discover, install, and operate command-line interfaces for GUI applications, developer tools, creative software, web APIs, and public SaaS platforms.
+
+Canonical site: https://clianything.cc
+Repository: https://github.com/HKUDS/CLI-Anything
+PyPI package: https://pypi.org/project/cli-anything-hub/
+Install hub: `pip install cli-anything-hub`
+Agent skill install: `npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y`
+
+## What This Product Does
+
+- Maintains a registry of agent-native CLI harnesses and public CLI tools.
+- Lets humans and agents browse, search, inspect, install, update, uninstall, and launch CLIs with `cli-hub`.
+- Converts GUI and API-driven software workflows into scriptable command-line surfaces.
+- Provides generated harness CLIs that support REPL mode, one-shot commands, JSON output, and local project state.
+- Welcomes crawling by AI agents and search agents. Use the files listed below for canonical machine-readable context.
+
+## When Agents Should Use CLI-Anything
+
+- Use it when a task requires operating desktop software, creative tools, browser-like workflows, local apps, or external CLIs from an AI coding or automation agent.
+- Use `cli-hub search <query>` to find a suitable CLI by software name, category, or use case.
+- Use `cli-hub info <name>` before installing to inspect entry points, requirements, and install commands.
+- Use `cli-hub install <name>` to install a selected CLI.
+- Use `cli-hub launch <name> [args...]` or the CLI entry point directly to run installed tools.
+- Prefer each harness CLI's `--json` output for reliable agent parsing.
+- For multi-tool workflows, use **matrices** (capability-based bundles): `cli-hub can "<task>"` to find a capability, `cli-hub matrix preflight <name> --json` to check availability, then `cli-hub matrix install <name> --capability <id>` to install only what the task needs.
+
+## Workflow Matrices
+
+Matrices package a whole workflow as capabilities × providers (harness CLIs, public CLIs, Python libs, native binaries, and cloud APIs). Browse them at https://clianything.cc/matrix.html.
+
+- Matrix registry (machine-readable): https://clianything.cc/matrix_registry.json — capabilities, providers, preflight `requires` contracts, recipes, and known gaps.
+- Discover a capability across all matrices: `cli-hub can "<task>"`.
+- Preflight before installing (exit 3 = capability gaps): `cli-hub matrix preflight <name> --json`.
+- Scope installs to a capability, recipe, or subset: `cli-hub matrix install <name> --capability <id>` (also `--recipe`, `--only`, `--dry-run`, `--resume`).
+- Every matrix subcommand supports `--json`. After install, each matrix renders a local SKILL.md with provider-selection rules.
+
+## Constraints
+
+- Some generated harness CLIs require the underlying GUI application or service to be installed locally.
+- E2E operations may require a real backend application, API key, desktop session, or user-granted permission.
+- `cli-hub` itself is a registry/package-manager interface; individual installed CLIs provide the domain-specific control surface.
+- Destructive or external side-effect operations should be confirmed by the user according to the calling agent's safety policy.
+
+## Machine-Readable Resources
+
+- Full context: https://clianything.cc/llms-full.txt
+- Markdown homepage: https://clianything.cc/index.md
+- Pricing: https://clianything.cc/pricing.md
+- Registry: https://clianything.cc/registry.json
+- Public registry: https://clianything.cc/public_registry.json
+- Matrix registry: https://clianything.cc/matrix_registry.json
+- OpenAPI description for read-only registry resources: https://clianything.cc/openapi.json
+- Agent discovery: https://clianything.cc/.well-known/agent.json
+- A2A agent card: https://clianything.cc/.well-known/agent-card.json
+- OpenAI plugin-style manifest: https://clianything.cc/.well-known/ai-plugin.json
+- Agent Skills index: https://clianything.cc/.well-known/agent-skills/index.json
+- Agent Skills artifact: https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md
+
+## Copyright
+
+Copyright: HKUDS. Lead author: Yuhao Yang (yuhao.page).

@@ -85,6 +85,44 @@ def api_post(base_url: str, endpoint: str, api_key: str,
         ) from e
 
 
+def api_post_raw(base_url: str, endpoint: str, api_key: str,
+                 body: str, content_type: str,
+                 params: dict | None = None, timeout: int = 30) -> Any:
+    """POST a raw body with a caller-provided Content-Type.
+
+    Used for Obsidian endpoints that require vendor-specific media types
+    (e.g. ``application/vnd.olrapi.dataview.dql+txt`` for the search endpoint),
+    where the standard ``api_post`` JSON path would be rejected with
+    ``40012 Unknown or invalid Content-Type``.
+    """
+    url = f"{base_url.rstrip('/')}{endpoint}"
+    try:
+        headers = _headers(api_key, content_type=content_type)
+        resp = requests.post(url, headers=headers,
+                             data=body.encode("utf-8"), params=params,
+                             timeout=timeout, verify=False)
+        resp.raise_for_status()
+        if resp.status_code == 204 or not resp.content:
+            return {"status": "ok"}
+        resp_ct = resp.headers.get("content-type", "")
+        if "application/json" in resp_ct:
+            return resp.json()
+        return {"content": resp.text}
+    except requests.exceptions.ConnectionError as e:
+        raise RuntimeError(
+            f"Cannot connect to Obsidian REST API at {base_url}. "
+            "Is Obsidian running with the Local REST API plugin enabled?"
+        ) from e
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(
+            f"Obsidian API error {resp.status_code} on POST {endpoint}: {resp.text}"
+        ) from e
+    except requests.exceptions.Timeout as e:
+        raise RuntimeError(
+            f"Request to Obsidian timed out: POST {endpoint}"
+        ) from e
+
+
 def api_put(base_url: str, endpoint: str, api_key: str,
             content: str = "", content_type: str = "text/markdown",
             timeout: int = 30) -> Any:
