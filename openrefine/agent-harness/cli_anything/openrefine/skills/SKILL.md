@@ -60,6 +60,10 @@ styling:
 printf 'help\nexit\n' | cli-anything-openrefine
 ```
 
+Unicode payloads are rendered as reversible ASCII backslash escapes when the
+REPL is redirected, preventing legacy Windows output encodings from turning a
+successful command into a failed journey.
+
 Piped workflows return a nonzero exit status at `exit` or EOF if any command
 failed, allowing CI to detect an unsuccessful user journey.
 

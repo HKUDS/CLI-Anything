@@ -17,7 +17,7 @@ from cli_anything.openrefine.core.operations import (
 from cli_anything.openrefine.core.project import OpenRefineService, _extract_project_id
 from cli_anything.openrefine.core.session import SessionState, SessionStore
 from cli_anything.openrefine import openrefine_cli
-from cli_anything.openrefine.openrefine_cli import _repl_to_args, _supports_interactive_prompt, cli
+from cli_anything.openrefine.openrefine_cli import _ascii_safe, _repl_to_args, _supports_interactive_prompt, cli
 from cli_anything.openrefine.utils.openrefine_backend import OpenRefineBackend, OpenRefineError, _coerce_json_or_text
 
 
@@ -471,6 +471,10 @@ def test_prompt_toolkit_is_reserved_for_real_terminals():
     assert _supports_interactive_prompt(Stream(True), Stream(True))
     assert not _supports_interactive_prompt(Stream(False), Stream(True))
     assert not _supports_interactive_prompt(Stream(True), Stream(False))
+
+
+def test_ascii_safe_output_preserves_unicode_as_escapes():
+    assert _ascii_safe("Project 😀 café") == r"Project \U0001f600 caf\xe9"
 
 
 def test_cli_repl_accepts_piped_multi_step_user_journey(tmp_path, monkeypatch):

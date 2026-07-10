@@ -25,24 +25,38 @@ def _service(ctx: click.Context) -> OpenRefineService:
     return OpenRefineService(OpenRefineBackend(base_url, timeout=ctx.obj["timeout"]), store)
 
 
-def _emit(data: Any, as_json: bool) -> None:
+def _ascii_safe(value: Any) -> str:
+    """Render text as reversible ASCII escapes for legacy output streams."""
+    return str(value).encode("ascii", errors="backslashreplace").decode("ascii")
+
+
+def _emit(data: Any, as_json: bool, ascii_safe: bool = False) -> None:
     if as_json:
         click.echo(json.dumps(data, indent=2, sort_keys=True))
     elif isinstance(data, dict):
         for key, value in data.items():
-            click.echo(f"{key}: {value}")
+            text = f"{key}: {value}"
+            click.echo(_ascii_safe(text) if ascii_safe else text)
     else:
-        click.echo(str(data))
+        text = str(data)
+        click.echo(_ascii_safe(text) if ascii_safe else text)
 
 
 def _handle(ctx: click.Context, func, *args, **kwargs) -> None:
     try:
-        _emit(func(*args, **kwargs), ctx.obj["json"])
+        _emit(
+            func(*args, **kwargs),
+            ctx.obj["json"],
+            ascii_safe=ctx.obj.get("ascii_output", False),
+        )
     except (OpenRefineError, ValueError, OSError) as exc:
         if ctx.obj["json"]:
             click.echo(json.dumps({"error": str(exc), "ok": False}, indent=2, sort_keys=True), err=True)
         else:
-            click.echo(f"Error: {exc}", err=True)
+            message = f"Error: {exc}"
+            if ctx.obj.get("ascii_output", False):
+                message = _ascii_safe(message)
+            click.echo(message, err=True)
         raise click.exceptions.Exit(1)
 
 
@@ -93,6 +107,7 @@ def repl(ctx: click.Context) -> None:
         # may expose legacy encodings such as cp1252, which cannot represent
         # the skin's box-drawing banner, prompt arrow, or status icons.
         prompt = None
+        ctx.obj["ascii_output"] = True
     commands = {
         "status": "Check backend and session",
         "projects": "List OpenRefine projects",
@@ -125,7 +140,7 @@ def repl(ctx: click.Context) -> None:
             if interactive:
                 skin.error(str(exc))
             else:
-                click.echo(f"Error: {exc}", err=True)
+                click.echo(f"Error: {_ascii_safe(exc)}", err=True)
                 had_error = True
             continue
         if not parts:
@@ -136,7 +151,7 @@ def repl(ctx: click.Context) -> None:
             if interactive:
                 skin.error(str(exc))
             else:
-                click.echo(f"Error: {exc}", err=True)
+                click.echo(f"Error: {_ascii_safe(exc)}", err=True)
                 had_error = True
             continue
         if parts[0] in {"exit", "quit"}:
@@ -171,7 +186,7 @@ def repl(ctx: click.Context) -> None:
             if interactive:
                 skin.error(str(exc))
             else:
-                click.echo(f"Error: {exc}", err=True)
+                click.echo(f"Error: {_ascii_safe(exc)}", err=True)
                 had_error = True
 
 

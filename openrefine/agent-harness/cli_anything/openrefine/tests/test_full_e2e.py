@@ -162,12 +162,17 @@ def test_e2e_cli_help_subprocess(cli_base):
     assert "data" in result.stdout
 
 
-def test_e2e_cli_repl_accepts_piped_user_commands(cli_base):
+def test_e2e_cli_repl_accepts_piped_user_commands(cli_base, tmp_path):
     env = os.environ.copy()
     env.update({"NO_COLOR": "1", "PYTHONIOENCODING": "cp1252"})
+    session = tmp_path / "unicode-session.json"
+    session.write_text(
+        json.dumps({"project_name": "Project 😀"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
     result = subprocess.run(
-        cli_base,
-        input="help\nexit\n",
+        cli_base + ["--session", str(session)],
+        input="session show\nhelp\nexit\n",
         capture_output=True,
         text=True,
         encoding="cp1252",
@@ -178,6 +183,7 @@ def test_e2e_cli_repl_accepts_piped_user_commands(cli_base):
     print("STDOUT:", result.stdout)
     print("STDERR:", result.stderr)
     assert result.returncode == 0
+    assert r"Project \U0001f600" in result.stdout
     assert "List OpenRefine projects" in result.stdout
     assert "Goodbye!" in result.stdout
     assert "NoConsoleScreenBufferError" not in result.stderr

@@ -22,6 +22,8 @@ printf 'help\nexit\n' | cli-anything-openrefine
 Interactive terminals keep the Unicode banner, prompt history, and styling;
 redirected input uses ASCII-only output for cross-platform reliability,
 including Windows environments configured with legacy encodings.
+Unicode command payloads are preserved as ASCII backslash escapes in this
+mode, so values remain identifiable without triggering encoding failures.
 If any piped command fails, the REPL continues consuming the script but exits
 nonzero at `exit` or EOF so CI can reject the failed user journey.
 
