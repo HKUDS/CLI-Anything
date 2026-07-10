@@ -378,6 +378,14 @@ def _make_preview_session(tmp_path: Path, *, with_trajectory: bool = False) -> P
 class TestRegistry:
     """Tests for registry.py — fetch, cache, search, and lookup."""
 
+    def test_openapi_documents_remote_script_integrity_metadata(self):
+        schema_path = Path(__file__).resolve().parents[2] / "docs" / "hub" / "openapi.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        remote_script = schema["components"]["schemas"]["RemoteScript"]
+
+        assert remote_script["required"] == ["url", "sha256", "interpreter"]
+        assert remote_script["properties"]["sha256"]["pattern"] == "^[A-Fa-f0-9]{64}$"
+
     @patch("cli_hub.registry.requests.get")
     @patch("cli_hub.registry.CACHE_FILE", Path(tempfile.mktemp()))
     def test_fetch_registry_from_remote(self, mock_get):
@@ -1203,6 +1211,27 @@ JIMENG_CLI = {
 }
 
 
+MANUAL_JIMENG_CLI = {
+    "name": "jimeng",
+    "display_name": "Jimeng / Dreamina CLI",
+    "version": "1.4.10",
+    "description": "Official ByteDance AI image and video generation CLI",
+    "category": "ai",
+    "entry_point": "dreamina",
+    "_source": "public",
+    "package_manager": "manual",
+    "install_strategy": "manual",
+    "install_instructions_url": "https://jimeng.jianying.com/ai-tool/install",
+    "remote_script": {
+        "url": "https://jimeng.jianying.com/cli",
+        "sha256": "3d9a5cade9c94420b13c46f1a425d657e22225c926b06a4608eae32065d7e158",
+        "interpreter": "bash",
+        "integrity_scope": "bootstrap-only; upstream does not publish checksums for the downloaded CLI binaries",
+    },
+    "install_notes": "Automatic installation is disabled: upstream artifacts are not fully verifiable.",
+}
+
+
 class TestScriptStrategy:
     """Tests for script/pipe-command installs (e.g. jimeng curl | bash)."""
 
@@ -1217,6 +1246,45 @@ class TestScriptStrategy:
         cli = {**JIMENG_CLI}
         del cli["install_strategy"]
         assert _install_strategy(cli) == "command"
+
+    def test_public_jimeng_is_manual_with_audited_bootstrap_metadata(self):
+        registry_path = Path(__file__).resolve().parents[2] / "public_registry.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        jimeng = next(cli for cli in registry["clis"] if cli["name"] == "jimeng")
+
+        assert jimeng["install_strategy"] == "manual"
+        assert jimeng["package_manager"] == "manual"
+        assert "install_cmd" not in jimeng
+        assert jimeng["remote_script"]["url"] == "https://jimeng.jianying.com/cli"
+        assert len(jimeng["remote_script"]["sha256"]) == 64
+        assert "bootstrap-only" in jimeng["remote_script"]["integrity_scope"]
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_manual_jimeng_install_never_executes(self, mock_get_cli, mock_run):
+        mock_get_cli.return_value = MANUAL_JIMENG_CLI
+
+        success, message = install_cli("jimeng")
+
+        assert not success
+        assert "Automatic installation is disabled" in message
+        mock_run.assert_not_called()
+
+    def test_matrix_plan_marks_manual_cli_unresolved(self):
+        from cli_hub.installer import plan_matrix_install
+
+        matrix_item = {"name": "demo", "display_name": "Demo", "clis": ["jimeng"]}
+        with (
+            patch("cli_hub.installer.get_matrix", return_value=matrix_item),
+            patch("cli_hub.installer.get_cli", return_value=MANUAL_JIMENG_CLI),
+            patch("cli_hub.installer.get_installed", return_value={}),
+        ):
+            success, payload = plan_matrix_install("demo")
+
+        assert success
+        assert payload["plan"][0]["action"] == "manual"
+        assert payload["summary"]["to_install"] == 0
+        assert payload["summary"]["unresolved"] == 1
 
     # ── _run_command shell detection ───────────────────────────────────
 
@@ -1973,6 +2041,23 @@ class TestCLI:
         mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["info", "nonexistent"])
         assert result.exit_code == 1
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_installed", return_value={})
+    @patch("cli_hub.cli.get_cli", return_value=MANUAL_JIMENG_CLI)
+    def test_info_shows_manual_remote_script_metadata(
+        self, mock_get, mock_installed, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["info", "jimeng"])
+
+        assert result.exit_code == 0
+        assert "Install via: manual" in result.output
+        assert "Automatic installation is disabled" in result.output
+        assert "Remote script: https://jimeng.jianying.com/cli" in result.output
+        assert "Script SHA-256:" in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")

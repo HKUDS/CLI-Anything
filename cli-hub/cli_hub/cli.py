@@ -307,6 +307,15 @@ def info(name):
             click.echo(f"  npx command: {cli['npx_cmd']}")
         if cli.get("install_cmd"):
             click.echo(f"  Install cmd: {cli['install_cmd']}")
+        if cli.get("install_instructions_url"):
+            click.echo(f"  Instructions: {cli['install_instructions_url']}")
+        if cli.get("remote_script"):
+            script = cli["remote_script"]
+            click.echo(f"  Remote script: {script.get('url', 'N/A')}")
+            if script.get("sha256"):
+                click.echo(f"  Script SHA-256: {script['sha256']}")
+            if script.get("integrity_scope"):
+                click.echo(f"  Integrity scope: {script['integrity_scope']}")
         if cli.get("install_notes"):
             click.echo(f"  Notes:       {cli['install_notes']}")
     click.echo(f"  Version:     {cli['version']}")
@@ -811,6 +820,7 @@ def _render_dry_run(payload):
     skips = [p for p in payload["plan"] if p["action"] == "skip"]
     installs = [p for p in payload["plan"] if p["action"] == "install"]
     errors = [p for p in payload["plan"] if p["action"] == "error"]
+    manual = [p for p in payload["plan"] if p["action"] == "manual"]
 
     if skips:
         names = ", ".join(p["name"] for p in skips)
@@ -823,6 +833,9 @@ def _render_dry_run(payload):
     if errors:
         names = ", ".join(p["name"] for p in errors)
         click.secho(f"  ! Not in CLI registry ({len(errors)}): {names}", fg="yellow")
+    if manual:
+        names = ", ".join(p["name"] for p in manual)
+        click.secho(f"  ! Manual install required ({len(manual)}): {names}", fg="yellow")
 
     not_managed = payload.get("not_managed", {})
     if not_managed:

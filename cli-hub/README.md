@@ -47,6 +47,12 @@ confirmation with a default of **No**. Non-interactive installs fail closed;
 use `--yes` only after reviewing the command. The same guard applies to
 `cli-hub matrix install` (including `--json` invocations).
 
+Remote-script entries that do not provide verifiable integrity metadata for
+every downloaded executable are marked as `manual`, and CLI-Hub will not run
+them. `cli-hub info <name>` shows the official
+instructions and any audited bootstrap-script digest, but installation remains
+an explicit manual decision.
+
 ## Preview Viewer
 
 `cli-hub` also includes the generic preview consumer for preview-capable

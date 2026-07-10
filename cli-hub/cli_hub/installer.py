@@ -188,6 +188,28 @@ def _bundled_update(cli):
     return False, note
 
 
+def _manual_install(cli):
+    """Return instructions for entries intentionally not installed by cli-hub."""
+    note = cli.get("install_notes") or (
+        f"{cli['display_name']} must be installed manually from its upstream instructions."
+    )
+    return False, note
+
+
+def _manual_uninstall(cli):
+    note = cli.get("uninstall_notes") or (
+        f"{cli['display_name']} was installed manually and must be removed manually."
+    )
+    return False, note
+
+
+def _manual_update(cli):
+    note = cli.get("update_notes") or (
+        f"{cli['display_name']} was installed manually and must be updated manually."
+    )
+    return False, note
+
+
 # ── pip operations (harness CLIs) ──
 
 
@@ -352,6 +374,11 @@ _STRATEGY_ACTIONS = {
         "uninstall": _bundled_uninstall,
         "update": _bundled_update,
     },
+    "manual": {
+        "install": _manual_install,
+        "uninstall": _manual_uninstall,
+        "update": _manual_update,
+    },
 }
 
 
@@ -505,6 +532,8 @@ def plan_matrix_install(name, capability=None, recipe=None, only=None):
             action, via = "skip", (_install_strategy(cli) if cli else None)
         elif cli is None:
             action, via = "error", None
+        elif _install_strategy(cli) == "manual":
+            action, via = "manual", "manual"
         else:
             action, via = "install", _install_strategy(cli)
         plan.append({
@@ -527,7 +556,7 @@ def plan_matrix_install(name, capability=None, recipe=None, only=None):
         "total": len(plan),
         "to_install": sum(1 for p in plan if p["action"] == "install"),
         "to_skip": sum(1 for p in plan if p["action"] == "skip"),
-        "unresolved": sum(1 for p in plan if p["action"] == "error"),
+        "unresolved": sum(1 for p in plan if p["action"] in {"error", "manual"}),
     }
     payload = {
         "matrix": matrix_item,
@@ -590,6 +619,8 @@ def install_matrix(
             action = "skip"
         elif cli is None:
             action = "error"
+        elif _install_strategy(cli) == "manual":
+            action = "manual"
         else:
             action = "install"
         install_items.append({
@@ -620,6 +651,8 @@ def install_matrix(
             status, message = "skipped", "Already installed"
         elif item["action"] == "error":
             status, message = "failed", "CLI not found in registry"
+        elif item["action"] == "manual":
+            status, message = "failed", _manual_install(item["cli"])[1]
         else:
             success, message = _install_cli_entry(item["cli"], command_approved=True)
             status = "installed" if success else "failed"

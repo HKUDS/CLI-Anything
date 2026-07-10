@@ -277,16 +277,23 @@
     {
       "name": "jimeng",
       "display_name": "Jimeng / Dreamina CLI",
-      "version": "latest",
+      "version": "1.4.10",
       "description": "Official ByteDance AI image and video generation CLI — text-to-image, text-to-video, image-to-video, digital human, and intelligent canvas; domestic brand is Jimeng (即梦), international brand is Dreamina",
       "category": "ai",
       "requires": "Jimeng / Dreamina account and API key",
       "homepage": "https://jimeng.jianying.com/",
       "docs_url": "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg",
       "source_url": null,
-      "package_manager": "script",
-      "install_strategy": "command",
-      "install_cmd": "curl -s https://jimeng.jianying.com/cli | bash",
+      "package_manager": "manual",
+      "install_strategy": "manual",
+      "install_instructions_url": "https://jimeng.jianying.com/ai-tool/install",
+      "remote_script": {
+        "url": "https://jimeng.jianying.com/cli",
+        "sha256": "3d9a5cade9c94420b13c46f1a425d657e22225c926b06a4608eae32065d7e158",
+        "interpreter": "bash",
+        "integrity_scope": "bootstrap-only; upstream does not publish checksums for the downloaded CLI binaries"
+      },
+      "install_notes": "Automatic installation is disabled: the official bootstrap script downloads additional mutable binaries without published checksums. Review the official instructions and verify upstream artifacts before installing manually.",
       "skill_md": "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg",
       "entry_point": "dreamina",
       "contributors": [
