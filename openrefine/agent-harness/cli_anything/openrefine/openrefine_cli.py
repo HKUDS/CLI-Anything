@@ -103,6 +103,7 @@ def repl(ctx: click.Context) -> None:
         "undo / redo": "Use OpenRefine undo-redo where possible",
         "exit": "Quit",
     }
+    had_error = False
     while True:
         try:
             state = SessionStore(ctx.obj["session"]).load()
@@ -115,6 +116,8 @@ def repl(ctx: click.Context) -> None:
                 skin.print_goodbye()
             else:
                 click.echo("Goodbye!")
+                if had_error:
+                    raise click.exceptions.Exit(1)
             return
         try:
             parts = shlex.split(line)
@@ -123,6 +126,7 @@ def repl(ctx: click.Context) -> None:
                 skin.error(str(exc))
             else:
                 click.echo(f"Error: {exc}", err=True)
+                had_error = True
             continue
         if not parts:
             continue
@@ -133,12 +137,15 @@ def repl(ctx: click.Context) -> None:
                 skin.error(str(exc))
             else:
                 click.echo(f"Error: {exc}", err=True)
+                had_error = True
             continue
         if parts[0] in {"exit", "quit"}:
             if interactive:
                 skin.print_goodbye()
             else:
                 click.echo("Goodbye!")
+                if had_error:
+                    raise click.exceptions.Exit(1)
             return
         if parts[0] == "help":
             if interactive:
@@ -148,14 +155,24 @@ def repl(ctx: click.Context) -> None:
                     click.echo(f"{command}: {description}")
             continue
         try:
-            cli.main(args=_global_args(ctx) + args, prog_name="cli-anything-openrefine", obj=ctx.obj, standalone_mode=False)
-        except SystemExit:
-            pass
+            result = cli.main(
+                args=_global_args(ctx) + args,
+                prog_name="cli-anything-openrefine",
+                obj=ctx.obj,
+                standalone_mode=False,
+            )
+            if isinstance(result, int) and result != 0:
+                had_error = True
+        except (SystemExit, click.exceptions.Exit) as exc:
+            exit_code = getattr(exc, "exit_code", getattr(exc, "code", 0))
+            if exit_code:
+                had_error = True
         except Exception as exc:
             if interactive:
                 skin.error(str(exc))
             else:
                 click.echo(f"Error: {exc}", err=True)
+                had_error = True
 
 
 def _repl_to_args(parts: list[str]) -> list[str]:

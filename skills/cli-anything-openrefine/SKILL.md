@@ -60,6 +60,9 @@ styling:
 printf 'help\nexit\n' | cli-anything-openrefine
 ```
 
+Piped workflows return a nonzero exit status at `exit` or EOF if any command
+failed, allowing CI to detect an unsuccessful user journey.
+
 ## Error Handling
 
 When `--json` is set, command failures write a JSON object to stderr with `ok: false`.

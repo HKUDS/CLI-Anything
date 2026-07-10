@@ -2,8 +2,8 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 79 backend-free unit and CLI tests planned.
-- `test_full_e2e.py`: 13 subprocess and real-backend E2E tests planned.
+- `test_core.py`: 80 backend-free unit and CLI tests planned.
+- `test_full_e2e.py`: 14 subprocess and real-backend E2E tests planned.
 
 ## Unit Test Plan
 
@@ -37,17 +37,17 @@ Unit suite run:
 
 ```text
 $ python -m pytest cli_anything/openrefine/tests/test_core.py -q
-........................................................................ [ 91%]
-.......                                                                  [100%]
-79 passed in 0.33s
+........................................................................ [ 90%]
+........                                                                 [100%]
+80 passed in 0.41s
 ```
 
 Backend-independent subprocess checks:
 
 ```text
-$ python -m pytest cli_anything/openrefine/tests/test_full_e2e.py -q -k "piped_user_commands or cli_help_subprocess"
-..                                                                       [100%]
-2 passed, 11 deselected in 0.68s
+$ python -m pytest cli_anything/openrefine/tests/test_full_e2e.py -q -k "piped_user_commands or failed_piped_command or cli_help_subprocess"
+...                                                                      [100%]
+3 passed, 11 deselected in 1.12s
 ```
 
 Previous full suite run with OpenRefine 3.10.1 running at `http://127.0.0.1:3333`:
@@ -132,7 +132,7 @@ Collection check:
 
 ```text
 $ python -m pytest cli_anything/openrefine/tests/ --collect-only -q
-92 tests collected in 0.06s
+94 tests collected in 0.06s
 ```
 
 Setup metadata check:
@@ -146,9 +146,9 @@ $ python setup.py --version
 
 ## Summary Statistics
 
-- Total collected tests: 92
-- Backend-free unit tests: 79 passing
-- E2E tests: 13 collected; the 2 backend-independent subprocess checks pass locally, and the original 12-test suite previously passed against a real OpenRefine 3.10.1 local HTTP backend
+- Total collected tests: 94
+- Backend-free unit tests: 80 passing
+- E2E tests: 14 collected; the 3 backend-independent subprocess checks pass locally, and the original 12-test suite previously passed against a real OpenRefine 3.10.1 local HTTP backend
 - Minimum validator thresholds met: 50+ pytest tests and 10+ E2E pytest tests
 
 ## Coverage Notes

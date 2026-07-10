@@ -501,9 +501,19 @@ def test_cli_repl_accepts_piped_multi_step_user_journey(tmp_path, monkeypatch):
 def test_cli_repl_piped_errors_are_ascii_safe():
     result = CliRunner().invoke(cli, input='import "unterminated\nexit\n')
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "Error: No closing quotation" in result.stderr
     assert result.output.endswith("Goodbye!\n")
+
+
+def test_cli_repl_propagates_piped_command_failures(tmp_path):
+    for script in ("rows\n", "definitely-not-a-command\n"):
+        session = tmp_path / f"session-{len(script)}.json"
+        result = CliRunner().invoke(cli, ["--session", str(session)], input=script)
+
+        assert result.exit_code == 1
+        assert "Error:" in result.stderr
+        assert result.output.endswith("Goodbye!\n")
 
 
 def test_openrefine_error_is_runtime_error():

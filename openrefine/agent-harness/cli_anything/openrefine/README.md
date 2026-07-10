@@ -22,6 +22,8 @@ printf 'help\nexit\n' | cli-anything-openrefine
 Interactive terminals keep the Unicode banner, prompt history, and styling;
 redirected input uses ASCII-only output for cross-platform reliability,
 including Windows environments configured with legacy encodings.
+If any piped command fails, the REPL continues consuming the script but exits
+nonzero at `exit` or EOF so CI can reject the failed user journey.
 
 Start OpenRefine first:
 

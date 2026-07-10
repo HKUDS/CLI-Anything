@@ -184,6 +184,26 @@ def test_e2e_cli_repl_accepts_piped_user_commands(cli_base):
     assert "UnicodeEncodeError" not in result.stderr
 
 
+def test_e2e_cli_repl_returns_nonzero_after_failed_piped_command(cli_base):
+    env = os.environ.copy()
+    env.update({"NO_COLOR": "1", "PYTHONIOENCODING": "cp1252"})
+    result = subprocess.run(
+        cli_base,
+        input="definitely-not-a-command\n",
+        capture_output=True,
+        text=True,
+        encoding="cp1252",
+        check=False,
+        timeout=30,
+        env=env,
+    )
+    print("STDOUT:", result.stdout)
+    print("STDERR:", result.stderr)
+    assert result.returncode == 1
+    assert "No such command 'definitely-not-a-command'" in result.stderr
+    assert result.stdout.endswith("Goodbye!\n")
+
+
 def test_e2e_cli_json_import_rows_export_workflow(backend, cli_base, sample_csv, tmp_path, base_url):
     session = tmp_path / "session.json"
     imported = _run(cli_base, ["--json", "--base-url", base_url, "--session", str(session), "project", "import", str(sample_csv), "--name", "cli-anything-e2e-cli"])
