@@ -247,10 +247,17 @@ Run: `npx @apireno/domshell --version` (first run downloads the package)
 First `npx` call downloads DOMShell package (10-50 MB). Subsequent calls are faster. Use `--daemon` mode for persistent connection.
 
 If the server is unreachable or auth token is wrong, MCP calls now fail with timeout instead of hanging forever.
-Set timeout (seconds) via:
+Set the per-tool-call timeout (seconds) via:
 
 ```bash
 export CLI_ANYTHING_BROWSER_MCP_TIMEOUT=20
+```
+
+Session initialization (spawning `npx`/`domshell-proxy` and completing the MCP handshake)
+can legitimately take longer than a regular tool call, so it has its own timeout:
+
+```bash
+export CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT=120
 ```
 
 ## Architecture

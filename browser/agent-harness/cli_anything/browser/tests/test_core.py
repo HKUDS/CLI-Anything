@@ -409,6 +409,197 @@ class TestBackendTimeouts:
         monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "0")
         assert backend_mod._get_tool_timeout_seconds() == 1.0
 
+    def test_init_timeout_default_value(self, monkeypatch):
+        """Init timeout defaults to 120s when env var is unset."""
+        monkeypatch.delenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", raising=False)
+        assert backend_mod._get_init_timeout_seconds() == 120.0
+
+    def test_init_timeout_invalid_env_falls_back_to_default(self, monkeypatch):
+        """Invalid init timeout env var falls back to default."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "not-a-number")
+        assert backend_mod._get_init_timeout_seconds() == 120.0
+
+    def test_init_timeout_is_clamped_to_minimum(self, monkeypatch):
+        """Init timeout values below 1 second are clamped to 1 second."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "0")
+        assert backend_mod._get_init_timeout_seconds() == 1.0
+
+    def test_init_timeout_is_independent_of_tool_timeout(self, monkeypatch):
+        """Init and tool timeouts are configured independently."""
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+        assert backend_mod._get_tool_timeout_seconds() == 5.0
+        assert backend_mod._get_init_timeout_seconds() == 120.0
+
+    def test_call_tool_uses_init_timeout_for_session_initialize(self, monkeypatch):
+        """Non-daemon _call_tool must await session.initialize() with the init timeout."""
+        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+
+        class _DummyStdioContext:
+            async def __aenter__(self):
+                return object(), object()
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class _DummyClientSession:
+            def __init__(self, _read, _write):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def initialize(self):
+                return object()
+
+            def call_tool(self, _tool_name, _arguments):
+                return object()
+
+        recorded_timeouts = []
+
+        async def _fake_await_with_timeout(_coro, operation, timeout_seconds=None):
+            if timeout_seconds is None:
+                timeout_seconds = (
+                    backend_mod._get_init_timeout_seconds()
+                    if "initialize" in operation
+                    else backend_mod._get_tool_timeout_seconds()
+                )
+            recorded_timeouts.append((operation, timeout_seconds))
+            return {"ok": True}
+
+        with patch(
+            "cli_anything.browser.utils.domshell_backend._await_with_timeout",
+            side_effect=_fake_await_with_timeout,
+        ), patch(
+            "cli_anything.browser.utils.domshell_backend.stdio_client",
+            return_value=_DummyStdioContext(),
+        ), patch(
+            "cli_anything.browser.utils.domshell_backend.ClientSession",
+            _DummyClientSession,
+        ):
+            asyncio.run(
+                backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=False)
+            )
+
+        assert ("session initialize", 120.0) in recorded_timeouts
+        assert ("domshell_click", 5.0) in recorded_timeouts
+
+    def test_start_daemon_uses_init_timeout(self, monkeypatch):
+        """_start_daemon must await daemon initialize() with the init timeout, not the tool timeout."""
+        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+
+        class _DummyStdioContext:
+            async def __aenter__(self):
+                return object(), object()
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class _DummyClientSession:
+            def __init__(self, _read, _write):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def initialize(self):
+                return object()
+
+        recorded_timeouts = []
+
+        async def _fake_await_with_timeout(_coro, operation, timeout_seconds=None):
+            recorded_timeouts.append((operation, timeout_seconds))
+            return None
+
+        original_daemon = backend_mod._daemon_session
+        try:
+            backend_mod._daemon_session = None
+            with patch(
+                "cli_anything.browser.utils.domshell_backend._await_with_timeout",
+                side_effect=_fake_await_with_timeout,
+            ), patch(
+                "cli_anything.browser.utils.domshell_backend.stdio_client",
+                return_value=_DummyStdioContext(),
+            ), patch(
+                "cli_anything.browser.utils.domshell_backend.ClientSession",
+                _DummyClientSession,
+            ):
+                asyncio.run(backend_mod._start_daemon())
+
+            assert recorded_timeouts == [("daemon initialize", 120.0)]
+        finally:
+            backend_mod._daemon_session = original_daemon
+
+    def test_call_tool_captures_timeout_once_per_operation(self, monkeypatch):
+        """Timeout values are captured once per _call_tool invocation, not re-read per await."""
+        monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+
+        class _DummyStdioContext:
+            async def __aenter__(self):
+                return object(), object()
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class _DummyClientSession:
+            def __init__(self, _read, _write):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def initialize(self):
+                return object()
+
+            def call_tool(self, _tool_name, _arguments):
+                return object()
+
+        recorded_timeouts = []
+
+        async def _fake_await_with_timeout(_coro, operation, timeout_seconds=None):
+            # Simulate the env var mutating mid-operation (e.g. another thread/test).
+            # A per-call env read would pick this up; a captured-once value would not.
+            monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "999")
+            monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "999")
+            recorded_timeouts.append((operation, timeout_seconds))
+            return {"ok": True}
+
+        with patch(
+            "cli_anything.browser.utils.domshell_backend._await_with_timeout",
+            side_effect=_fake_await_with_timeout,
+        ), patch(
+            "cli_anything.browser.utils.domshell_backend.stdio_client",
+            return_value=_DummyStdioContext(),
+        ), patch(
+            "cli_anything.browser.utils.domshell_backend.ClientSession",
+            _DummyClientSession,
+        ):
+            asyncio.run(
+                backend_mod._call_tool("domshell_click", {"path": "/"}, use_daemon=False)
+            )
+
+        # Both calls within this single _call_tool invocation must use the timeouts
+        # captured before the env var was mutated mid-operation.
+        assert recorded_timeouts == [
+            ("session initialize", 120.0),
+            ("domshell_click", 5.0),
+        ]
+
     def test_await_with_timeout_passes_fast_calls(self, monkeypatch):
         """Fast operations should complete without timeout errors."""
         monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")

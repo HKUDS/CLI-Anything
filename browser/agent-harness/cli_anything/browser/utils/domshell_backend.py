@@ -27,6 +27,8 @@ from mcp.client.stdio import stdio_client
 #   DOMSHELL_PORT   — MCP HTTP port of the running server (default: 3001)
 DEFAULT_SERVER_CMD = "npx"
 DEFAULT_TOOL_TIMEOUT_SECONDS = 20.0
+DEFAULT_INIT_TIMEOUT_SECONDS = 120.0
+DAEMON_STOP_TIMEOUT_SECONDS = 5.0
 
 
 class MCPToolTimeoutError(RuntimeError):
@@ -52,7 +54,7 @@ def _build_server_args() -> list[str]:
 
 
 def _get_tool_timeout_seconds() -> float:
-    """Read MCP tool timeout (seconds) from env with safe bounds."""
+    """Read MCP tool-call timeout (seconds) from env with safe bounds."""
     raw = os.environ.get(
         "CLI_ANYTHING_BROWSER_MCP_TIMEOUT",
         str(DEFAULT_TOOL_TIMEOUT_SECONDS),
@@ -64,9 +66,37 @@ def _get_tool_timeout_seconds() -> float:
     return max(1.0, parsed)
 
 
-async def _await_with_timeout(coro: Awaitable[Any], operation: str) -> Any:
-    """Await an MCP operation with timeout and actionable error text."""
-    timeout_seconds = _get_tool_timeout_seconds()
+def _get_init_timeout_seconds() -> float:
+    """Read MCP session-initialize timeout (seconds) from env with safe bounds.
+
+    Initialize can legitimately take much longer than a regular tool call
+    (e.g. spawning npx/domshell-proxy and completing the MCP handshake), so it
+    is configured separately from CLI_ANYTHING_BROWSER_MCP_TIMEOUT.
+    """
+    raw = os.environ.get(
+        "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT",
+        str(DEFAULT_INIT_TIMEOUT_SECONDS),
+    )
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_INIT_TIMEOUT_SECONDS
+    return max(1.0, parsed)
+
+
+async def _await_with_timeout(
+    coro: Awaitable[Any],
+    operation: str,
+    timeout_seconds: Optional[float] = None,
+) -> Any:
+    """Await an MCP operation with timeout and actionable error text.
+
+    Callers that need to distinguish init vs. tool-call timeouts (or capture
+    the timeout once for a whole operation) should pass timeout_seconds
+    explicitly; it otherwise defaults to the tool-call timeout.
+    """
+    if timeout_seconds is None:
+        timeout_seconds = _get_tool_timeout_seconds()
     try:
         return await asyncio.wait_for(coro, timeout=timeout_seconds)
     except asyncio.TimeoutError as e:
@@ -161,12 +191,18 @@ async def _call_tool(
     """
     global _daemon_session, _daemon_read, _daemon_write
 
+    # Capture timeouts once per operation so env mutations mid-call (e.g. from
+    # another thread) can't apply inconsistent timeouts across the awaits below.
+    tool_timeout = _get_tool_timeout_seconds()
+    init_timeout = _get_init_timeout_seconds()
+
     if use_daemon and _daemon_session is not None:
         # Use persistent daemon connection
         try:
             result = await _await_with_timeout(
                 _daemon_session.call_tool(tool_name, arguments),
                 f"{tool_name} (daemon)",
+                tool_timeout,
             )
             return result
         except MCPToolTimeoutError:
@@ -186,10 +222,13 @@ async def _call_tool(
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await _await_with_timeout(session.initialize(), "session initialize")
+                await _await_with_timeout(
+                    session.initialize(), "session initialize", init_timeout
+                )
                 result = await _await_with_timeout(
                     session.call_tool(tool_name, arguments),
                     tool_name,
+                    tool_timeout,
                 )
                 return result
     except RuntimeError as e:
@@ -239,7 +278,11 @@ async def _start_daemon() -> bool:
         _daemon_read, _daemon_write = await _daemon_client_context.__aenter__()
         _daemon_session = ClientSession(_daemon_read, _daemon_write)
         await _daemon_session.__aenter__()
-        await _await_with_timeout(_daemon_session.initialize(), "daemon initialize")
+        await _await_with_timeout(
+            _daemon_session.initialize(),
+            "daemon initialize",
+            _get_init_timeout_seconds(),
+        )
         return True
     except Exception as e:
         _daemon_session = None
@@ -252,23 +295,24 @@ async def _start_daemon() -> bool:
 async def _stop_daemon() -> None:
     """Stop persistent daemon mode.
 
-    Cleanup is bounded to avoid hanging if the daemon transport is wedged.
+    Cleanup is bounded to a fixed timeout (DAEMON_STOP_TIMEOUT_SECONDS) to
+    avoid hanging if the daemon transport is wedged. Not configurable via
+    env var: this is an internal safety bound, not a user-tunable setting.
     """
     global _daemon_session, _daemon_read, _daemon_write, _daemon_client_context
 
     if _daemon_session is None:
         return
 
-    cleanup_timeout = float(os.environ.get("DOMSHELL_DAEMON_STOP_TIMEOUT", "5.0"))
     try:
         await asyncio.wait_for(
             _daemon_session.__aexit__(None, None, None),
-            timeout=cleanup_timeout,
+            timeout=DAEMON_STOP_TIMEOUT_SECONDS,
         )
         if _daemon_client_context:
             await asyncio.wait_for(
                 _daemon_client_context.__aexit__(None, None, None),
-                timeout=cleanup_timeout,
+                timeout=DAEMON_STOP_TIMEOUT_SECONDS,
             )
     except (Exception, asyncio.TimeoutError):
         pass  # Ignore cleanup errors; we're discarding the session anyway
@@ -455,15 +499,21 @@ def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
     """
     async def _focus_and_type():
         global _daemon_session
+        # Capture timeouts once per operation, consistent with _call_tool.
+        tool_timeout = _get_tool_timeout_seconds()
+        init_timeout = _get_init_timeout_seconds()
+
         if use_daemon and _daemon_session is not None:
             try:
                 await _await_with_timeout(
                     _daemon_session.call_tool("domshell_focus", {"name": path}),
                     "domshell_focus (daemon)",
+                    tool_timeout,
                 )
                 return await _await_with_timeout(
                     _daemon_session.call_tool("domshell_type", {"text": text}),
                     "domshell_type (daemon)",
+                    tool_timeout,
                 )
             except MCPToolTimeoutError:
                 # Reset daemon so subsequent commands can reconnect cleanly.
@@ -476,14 +526,18 @@ def type_text(path: str, text: str, use_daemon: bool = False) -> dict:
         )
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await _await_with_timeout(session.initialize(), "session initialize")
+                await _await_with_timeout(
+                    session.initialize(), "session initialize", init_timeout
+                )
                 await _await_with_timeout(
                     session.call_tool("domshell_focus", {"name": path}),
                     "domshell_focus",
+                    tool_timeout,
                 )
                 return await _await_with_timeout(
                     session.call_tool("domshell_type", {"text": text}),
                     "domshell_type",
+                    tool_timeout,
                 )
 
     return asyncio.run(_focus_and_type())
