@@ -164,13 +164,13 @@ def test_e2e_cli_help_subprocess(cli_base):
 
 def test_e2e_cli_repl_accepts_piped_user_commands(cli_base):
     env = os.environ.copy()
-    env.update({"NO_COLOR": "1", "PYTHONIOENCODING": "utf-8"})
+    env.update({"NO_COLOR": "1", "PYTHONIOENCODING": "cp1252"})
     result = subprocess.run(
         cli_base,
         input="help\nexit\n",
         capture_output=True,
         text=True,
-        encoding="utf-8",
+        encoding="cp1252",
         check=False,
         timeout=30,
         env=env,
@@ -181,6 +181,7 @@ def test_e2e_cli_repl_accepts_piped_user_commands(cli_base):
     assert "List OpenRefine projects" in result.stdout
     assert "Goodbye!" in result.stdout
     assert "NoConsoleScreenBufferError" not in result.stderr
+    assert "UnicodeEncodeError" not in result.stderr
 
 
 def test_e2e_cli_json_import_rows_export_workflow(backend, cli_base, sample_csv, tmp_path, base_url):

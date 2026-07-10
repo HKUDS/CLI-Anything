@@ -457,8 +457,7 @@ def test_cli_session_show_json_uses_custom_path(tmp_path):
 def test_cli_default_enters_repl_and_exits():
     result = CliRunner().invoke(cli, input="exit\n")
     assert result.exit_code == 0
-    assert "cli-anything" in result.output
-    assert "Openrefine" in result.output
+    assert result.output == "Goodbye!\n"
 
 
 def test_prompt_toolkit_is_reserved_for_real_terminals():
@@ -497,6 +496,14 @@ def test_cli_repl_accepts_piped_multi_step_user_journey(tmp_path, monkeypatch):
     state = SessionStore(session).load()
     assert state.project_id == "123"
     assert state.last_export == str(output)
+
+
+def test_cli_repl_piped_errors_are_ascii_safe():
+    result = CliRunner().invoke(cli, input='import "unterminated\nexit\n')
+
+    assert result.exit_code == 0
+    assert "Error: No closing quotation" in result.stderr
+    assert result.output.endswith("Goodbye!\n")
 
 
 def test_openrefine_error_is_runtime_error():

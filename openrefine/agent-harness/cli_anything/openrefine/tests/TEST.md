@@ -2,7 +2,7 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 78 backend-free unit and CLI tests planned.
+- `test_core.py`: 79 backend-free unit and CLI tests planned.
 - `test_full_e2e.py`: 13 subprocess and real-backend E2E tests planned.
 
 ## Unit Test Plan
@@ -37,9 +37,9 @@ Unit suite run:
 
 ```text
 $ python -m pytest cli_anything/openrefine/tests/test_core.py -q
-........................................................................ [ 92%]
-......                                                                   [100%]
-78 passed in 0.37s
+........................................................................ [ 91%]
+.......                                                                  [100%]
+79 passed in 0.33s
 ```
 
 Backend-independent subprocess checks:
@@ -132,7 +132,7 @@ Collection check:
 
 ```text
 $ python -m pytest cli_anything/openrefine/tests/ --collect-only -q
-91 tests collected in 0.06s
+92 tests collected in 0.06s
 ```
 
 Setup metadata check:
@@ -146,8 +146,8 @@ $ python setup.py --version
 
 ## Summary Statistics
 
-- Total collected tests: 91
-- Backend-free unit tests: 78 passing
+- Total collected tests: 92
+- Backend-free unit tests: 79 passing
 - E2E tests: 13 collected; the 2 backend-independent subprocess checks pass locally, and the original 12-test suite previously passed against a real OpenRefine 3.10.1 local HTTP backend
 - Minimum validator thresholds met: 50+ pytest tests and 10+ E2E pytest tests
 

@@ -19,8 +19,9 @@ can be replayed in CI without an interactive terminal:
 printf 'help\nexit\n' | cli-anything-openrefine
 ```
 
-Interactive terminals keep prompt history and styling; redirected input uses a
-plain prompt automatically for cross-platform reliability.
+Interactive terminals keep the Unicode banner, prompt history, and styling;
+redirected input uses ASCII-only output for cross-platform reliability,
+including Windows environments configured with legacy encodings.
 
 Start OpenRefine first:
 

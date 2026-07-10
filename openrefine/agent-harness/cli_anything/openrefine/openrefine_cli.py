@@ -84,8 +84,15 @@ def repl(ctx: click.Context) -> None:
     """Start the interactive REPL."""
     history_file = _repl_history_file(ctx)
     skin = ReplSkin("openrefine", version=__version__, history_file=history_file)
-    skin.print_banner()
-    prompt = skin.create_prompt_session() if _supports_interactive_prompt() else None
+    interactive = _supports_interactive_prompt()
+    if interactive:
+        skin.print_banner()
+        prompt = skin.create_prompt_session()
+    else:
+        # Keep redirected workflows ASCII-only.  Windows pipes and CI runners
+        # may expose legacy encodings such as cp1252, which cannot represent
+        # the skin's box-drawing banner, prompt arrow, or status icons.
+        prompt = None
     commands = {
         "status": "Check backend and session",
         "projects": "List OpenRefine projects",
@@ -99,34 +106,56 @@ def repl(ctx: click.Context) -> None:
     while True:
         try:
             state = SessionStore(ctx.obj["session"]).load()
-            line = skin.get_input(prompt, project_name=state.project_name)
+            if interactive:
+                line = skin.get_input(prompt, project_name=state.project_name)
+            else:
+                line = input().strip()
         except (EOFError, KeyboardInterrupt):
-            skin.print_goodbye()
+            if interactive:
+                skin.print_goodbye()
+            else:
+                click.echo("Goodbye!")
             return
         try:
             parts = shlex.split(line)
         except (IndexError, ValueError) as exc:
-            skin.error(str(exc))
+            if interactive:
+                skin.error(str(exc))
+            else:
+                click.echo(f"Error: {exc}", err=True)
             continue
         if not parts:
             continue
         try:
             args = _repl_to_args(parts)
         except (IndexError, ValueError) as exc:
-            skin.error(str(exc))
+            if interactive:
+                skin.error(str(exc))
+            else:
+                click.echo(f"Error: {exc}", err=True)
             continue
         if parts[0] in {"exit", "quit"}:
-            skin.print_goodbye()
+            if interactive:
+                skin.print_goodbye()
+            else:
+                click.echo("Goodbye!")
             return
         if parts[0] == "help":
-            skin.help(commands)
+            if interactive:
+                skin.help(commands)
+            else:
+                for command, description in commands.items():
+                    click.echo(f"{command}: {description}")
             continue
         try:
             cli.main(args=_global_args(ctx) + args, prog_name="cli-anything-openrefine", obj=ctx.obj, standalone_mode=False)
         except SystemExit:
             pass
         except Exception as exc:
-            skin.error(str(exc))
+            if interactive:
+                skin.error(str(exc))
+            else:
+                click.echo(f"Error: {exc}", err=True)
 
 
 def _repl_to_args(parts: list[str]) -> list[str]:
