@@ -51,6 +51,14 @@ cli-anything-openrefine --json --session run/session.json session redo
 
 Run `cli-anything-openrefine` with no subcommand to enter the REPL.
 
+For automated user journeys, pipe newline-separated REPL commands through
+stdin. Redirected streams automatically use the plain-input fallback while
+interactive terminals retain prompt history and styling:
+
+```bash
+printf 'help\nexit\n' | cli-anything-openrefine
+```
+
 ## Error Handling
 
 When `--json` is set, command failures write a JSON object to stderr with `ok: false`.

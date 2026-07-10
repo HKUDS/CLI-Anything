@@ -46,6 +46,22 @@ def _handle(ctx: click.Context, func, *args, **kwargs) -> None:
         raise click.exceptions.Exit(1)
 
 
+def _supports_interactive_prompt(stdin=None, stdout=None) -> bool:
+    """Return whether prompt_toolkit can safely attach to the current terminal.
+
+    Redirected streams are common in CI, Click's ``CliRunner``, and shell
+    pipelines that replay a user workflow.  On Windows prompt_toolkit raises
+    ``NoConsoleScreenBufferError`` for those streams instead of reading the
+    piped commands, so keep its rich prompt for real terminals only.
+    """
+    stdin = sys.stdin if stdin is None else stdin
+    stdout = sys.stdout if stdout is None else stdout
+    try:
+        return bool(stdin.isatty() and stdout.isatty())
+    except (AttributeError, OSError):
+        return False
+
+
 @click.group(invoke_without_command=True)
 @click.option("--base-url", default=None, help="OpenRefine URL. Defaults to OPENREFINE_URL, then session state, then http://127.0.0.1:3333.")
 @click.option("--session", "session_path", type=click.Path(dir_okay=False), default=None, help="Session JSON path.")
@@ -69,7 +85,7 @@ def repl(ctx: click.Context) -> None:
     history_file = _repl_history_file(ctx)
     skin = ReplSkin("openrefine", version=__version__, history_file=history_file)
     skin.print_banner()
-    prompt = skin.create_prompt_session()
+    prompt = skin.create_prompt_session() if _supports_interactive_prompt() else None
     commands = {
         "status": "Check backend and session",
         "projects": "List OpenRefine projects",

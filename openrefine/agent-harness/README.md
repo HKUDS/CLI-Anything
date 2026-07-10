@@ -15,6 +15,12 @@ cli-anything-openrefine --help
 cli-anything-openrefine
 ```
 
+Replay a scripted REPL user journey in CI or a shell pipeline:
+
+```bash
+printf 'help\nexit\n' | cli-anything-openrefine
+```
+
 Start OpenRefine first for backend commands:
 
 ```bash

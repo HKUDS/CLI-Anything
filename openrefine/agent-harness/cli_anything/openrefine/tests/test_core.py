@@ -17,7 +17,7 @@ from cli_anything.openrefine.core.operations import (
 from cli_anything.openrefine.core.project import OpenRefineService, _extract_project_id
 from cli_anything.openrefine.core.session import SessionState, SessionStore
 from cli_anything.openrefine import openrefine_cli
-from cli_anything.openrefine.openrefine_cli import _repl_to_args, cli
+from cli_anything.openrefine.openrefine_cli import _repl_to_args, _supports_interactive_prompt, cli
 from cli_anything.openrefine.utils.openrefine_backend import OpenRefineBackend, OpenRefineError, _coerce_json_or_text
 
 
@@ -459,6 +459,44 @@ def test_cli_default_enters_repl_and_exits():
     assert result.exit_code == 0
     assert "cli-anything" in result.output
     assert "Openrefine" in result.output
+
+
+def test_prompt_toolkit_is_reserved_for_real_terminals():
+    class Stream:
+        def __init__(self, is_tty):
+            self.is_tty = is_tty
+
+        def isatty(self):
+            return self.is_tty
+
+    assert _supports_interactive_prompt(Stream(True), Stream(True))
+    assert not _supports_interactive_prompt(Stream(False), Stream(True))
+    assert not _supports_interactive_prompt(Stream(True), Stream(False))
+
+
+def test_cli_repl_accepts_piped_multi_step_user_journey(tmp_path, monkeypatch):
+    session = tmp_path / "session.json"
+    output = tmp_path / "clean export.csv"
+    monkeypatch.setattr(openrefine_cli, "OpenRefineBackend", FakeBackend)
+
+    commands = "\n".join(
+        [
+            "open 123",
+            "rows 2",
+            f'export "{output}" csv',
+            "exit",
+            "",
+        ]
+    )
+    result = CliRunner().invoke(cli, ["--session", str(session)], input=commands)
+
+    assert result.exit_code == 0, result.output
+    assert "project_id: 123" in result.output
+    assert "Alice" in result.output
+    assert output.read_text(encoding="utf-8").startswith("name,value")
+    state = SessionStore(session).load()
+    assert state.project_id == "123"
+    assert state.last_export == str(output)
 
 
 def test_openrefine_error_is_runtime_error():

@@ -7,11 +7,10 @@ import shutil
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
-from cli_anything.openrefine.utils.openrefine_backend import INSTALL_INSTRUCTIONS, OpenRefineBackend, OpenRefineError
+from cli_anything.openrefine.utils.openrefine_backend import INSTALL_INSTRUCTIONS, OpenRefineBackend
 
 
 def _resolve_cli(name):
@@ -161,6 +160,27 @@ def test_e2e_cli_help_subprocess(cli_base):
     result = _run(cli_base, ["--help"])
     assert "project" in result.stdout
     assert "data" in result.stdout
+
+
+def test_e2e_cli_repl_accepts_piped_user_commands(cli_base):
+    env = os.environ.copy()
+    env.update({"NO_COLOR": "1", "PYTHONIOENCODING": "utf-8"})
+    result = subprocess.run(
+        cli_base,
+        input="help\nexit\n",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+        timeout=30,
+        env=env,
+    )
+    print("STDOUT:", result.stdout)
+    print("STDERR:", result.stderr)
+    assert result.returncode == 0
+    assert "List OpenRefine projects" in result.stdout
+    assert "Goodbye!" in result.stdout
+    assert "NoConsoleScreenBufferError" not in result.stderr
 
 
 def test_e2e_cli_json_import_rows_export_workflow(backend, cli_base, sample_csv, tmp_path, base_url):

@@ -12,6 +12,16 @@ cli-anything-openrefine --json data export clean.csv
 
 Run `cli-anything-openrefine` with no arguments for the REPL.
 
+The REPL also accepts newline-separated commands from stdin, so user journeys
+can be replayed in CI without an interactive terminal:
+
+```bash
+printf 'help\nexit\n' | cli-anything-openrefine
+```
+
+Interactive terminals keep prompt history and styling; redirected input uses a
+plain prompt automatically for cross-platform reliability.
+
 Start OpenRefine first:
 
 ```bash
