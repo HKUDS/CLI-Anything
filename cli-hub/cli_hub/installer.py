@@ -120,13 +120,17 @@ def _install_strategy(cli):
     return "command"
 
 
-def _requires_command_approval(cli):
-    """Return whether installing this entry uses the free-form command handler."""
-    if not cli.get("install_cmd"):
+def _requires_command_approval(cli, action):
+    """Return whether an action is dispatched through the free-form command handler."""
+    if not cli.get(f"{action}_cmd"):
         return False
     strategy = _install_strategy(cli)
     handlers = _STRATEGY_ACTIONS.get(strategy, _STRATEGY_ACTIONS["command"])
-    return handlers["install"] is _generic_install
+    return handlers[action] is {
+        "install": _generic_install,
+        "uninstall": _generic_uninstall,
+        "update": _generic_update,
+    }[action]
 
 
 def _generic_install(cli):
@@ -414,23 +418,29 @@ def _installed_entry(cli, source, strategy):
 # ── Unified interface ──
 
 
-def _approve_command_install(cli, command_approver):
-    """Obtain approval for a free-form command install."""
-    if _requires_command_approval(cli):
+def _approve_command_action(cli, action, command_approver):
+    """Obtain approval before dispatching a free-form registry command."""
+    command = cli.get(f"{action}_cmd")
+    if _requires_command_approval(cli, action):
         if command_approver is None:
             return False, (
-                "Explicit approval is required before running this registry install command:\n"
-                f"  {json.dumps(cli['install_cmd'])}"
+                f"Explicit approval is required before running this registry {action} command:\n"
+                f"  {json.dumps(command)}"
             )
-        if not command_approver(cli["display_name"], cli["install_cmd"]):
-            return False, "Installation cancelled; the registry command was not executed."
+        if not command_approver(cli["display_name"], command):
+            action_label = {
+                "install": "Installation",
+                "uninstall": "Uninstallation",
+                "update": "Update",
+            }[action]
+            return False, f"{action_label} cancelled; the registry command was not executed."
     return True, ""
 
 
 def _install_cli_entry(cli, command_approver=None, command_approved=False):
     """Install one already-resolved registry entry."""
     if not command_approved:
-        approved, message = _approve_command_install(cli, command_approver)
+        approved, message = _approve_command_action(cli, "install", command_approver)
         if not approved:
             return False, message
 
@@ -460,11 +470,15 @@ def install_cli(name, command_approver=None):
     return _install_cli_entry(cli, command_approver=command_approver)
 
 
-def uninstall_cli(name):
-    """Uninstall a CLI by name. Returns (success, message)."""
+def uninstall_cli(name, command_approver=None):
+    """Uninstall a CLI by name, approving free-form registry commands first."""
     cli = get_cli(name)
     if cli is None:
         return False, f"CLI '{name}' not found in registry."
+
+    approved, message = _approve_command_action(cli, "uninstall", command_approver)
+    if not approved:
+        return False, message
 
     _, (success, msg) = _perform_action(cli, "uninstall")
 
@@ -476,11 +490,15 @@ def uninstall_cli(name):
     return success, msg
 
 
-def update_cli(name):
-    """Update a CLI by reinstalling. Returns (success, message)."""
+def update_cli(name, command_approver=None):
+    """Update a CLI by name, approving free-form registry commands first."""
     cli = get_cli(name, force_refresh=True)
     if cli is None:
         return False, f"CLI '{name}' not found in registry."
+
+    approved, message = _approve_command_action(cli, "update", command_approver)
+    if not approved:
+        return False, message
 
     source = cli.get("_source", "harness")
     strategy, (success, msg) = _perform_action(cli, "update")
@@ -636,7 +654,7 @@ def install_matrix(
     for item in install_items:
         if item["action"] != "install":
             continue
-        approved, message = _approve_command_install(item["cli"], command_approver)
+        approved, message = _approve_command_action(item["cli"], "install", command_approver)
         if not approved:
             return False, {
                 "error": message,

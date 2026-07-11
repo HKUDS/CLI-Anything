@@ -48,6 +48,7 @@ from cli_hub.installer import (
     install_cli,
     install_matrix,
     uninstall_cli,
+    update_cli,
     get_installed,
     _load_installed,
     _save_installed,
@@ -1007,6 +1008,66 @@ class TestInstaller:
         assert "approval is required" in msg
         assert install_cmd in msg
         mock_run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("action", "command_key"),
+        [("uninstall", "uninstall_cmd"), ("update", "update_cmd")],
+    )
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_command_management_actions_require_approval(
+        self, mock_get_cli, mock_run, action, command_key
+    ):
+        command = f"tool {action} --from-registry"
+        mock_get_cli.return_value = {
+            "name": "managed-tool",
+            "display_name": "Managed Tool",
+            "version": "latest",
+            "entry_point": "managed-tool",
+            "_source": "public",
+            "install_strategy": "command",
+            command_key: command,
+        }
+
+        operation = uninstall_cli if action == "uninstall" else update_cli
+        success, msg = operation("managed-tool")
+
+        assert not success
+        assert f"registry {action} command" in msg
+        assert command in msg
+        mock_run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("action", "command_key"),
+        [("uninstall", "uninstall_cmd"), ("update", "update_cmd")],
+    )
+    def test_command_management_actions_execute_after_approval(
+        self, action, command_key
+    ):
+        command = f"tool {action} --from-registry"
+        with (
+            patch("cli_hub.installer.subprocess.run") as mock_run,
+            patch("cli_hub.installer.get_cli") as mock_get_cli,
+            patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp())),
+        ):
+            mock_get_cli.return_value = {
+                "name": "managed-tool",
+                "display_name": "Managed Tool",
+                "version": "latest",
+                "entry_point": "managed-tool",
+                "_source": "public",
+                "install_strategy": "command",
+                command_key: command,
+            }
+            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
+
+            operation = uninstall_cli if action == "uninstall" else update_cli
+            success, _ = operation(
+                "managed-tool", command_approver=lambda display_name, approved_command: approved_command == command
+            )
+
+            assert success
+            mock_run.assert_called_once()
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
@@ -2075,16 +2136,22 @@ class TestCLI:
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
     @patch("cli_hub.cli.detect_invocation_context")
-    def test_install_help_documents_yes_option(
+    def test_command_help_documents_yes_option(
         self, mock_detect, mock_visit, mock_first_run
     ):
         mock_detect.return_value = self.human_detection
 
         install_help = self.runner.invoke(main, ["install", "--help"])
+        update_help = self.runner.invoke(main, ["update", "--help"])
+        uninstall_help = self.runner.invoke(main, ["uninstall", "--help"])
         matrix_help = self.runner.invoke(main, ["matrix", "install", "--help"])
 
         assert install_help.exit_code == 0
         assert "-y, --yes" in install_help.output
+        assert update_help.exit_code == 0
+        assert "-y, --yes" in update_help.output
+        assert uninstall_help.exit_code == 0
+        assert "-y, --yes" in uninstall_help.output
         assert matrix_help.exit_code == 0
         assert "-y, --yes" in matrix_help.output
 
@@ -2221,6 +2288,28 @@ class TestCLI:
         result = self.runner.invoke(main, ["uninstall", "gimp"])
         assert result.exit_code == 0
         mock_track.assert_called_once()
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.track_install")
+    @patch("cli_hub.cli.get_cli", return_value={"version": "latest"})
+    @patch("cli_hub.cli.update_cli")
+    def test_update_command_yes_passes_explicit_approval(
+        self, mock_update, mock_get_cli, mock_track, mock_detect, mock_visit, mock_first_run
+    ):
+        mock_detect.return_value = self.agent_detection
+
+        def guarded_update(name, command_approver):
+            assert command_approver("Managed Tool", "tool update --from-registry")
+            return True, "Updated Managed Tool"
+
+        mock_update.side_effect = guarded_update
+        result = self.runner.invoke(main, ["update", "managed-tool", "--yes"])
+
+        assert result.exit_code == 0
+        assert "tool update --from-registry" in result.output
+        mock_update.assert_called_once()
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")

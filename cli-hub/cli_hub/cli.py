@@ -174,9 +174,21 @@ def install(name, assume_yes):
 
 @main.command()
 @click.argument("name")
-def uninstall(name):
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided commands without prompting.",
+)
+def uninstall(name, assume_yes):
     """Uninstall a CLI by name."""
-    success, msg = uninstall_cli(name)
+    success, msg = uninstall_cli(
+        name,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes
+        ),
+    )
     if success:
         track_uninstall(name)
         click.secho(f"✓ {msg}", fg="green")
@@ -187,10 +199,22 @@ def uninstall(name):
 
 @main.command()
 @click.argument("name")
-def update(name):
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided commands without prompting.",
+)
+def update(name, assume_yes):
     """Update a CLI to the latest version."""
     click.echo(f"Updating {name}...")
-    success, msg = update_cli(name)
+    success, msg = update_cli(
+        name,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes
+        ),
+    )
     if success:
         cli = get_cli(name)
         track_install(name, cli["version"] if cli else "unknown")

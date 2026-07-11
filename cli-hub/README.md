@@ -31,7 +31,7 @@ cli-hub info gimp
 cli-hub install gimp
 
 # Explicitly approve registry-provided command/script installs (for automation)
-cli-hub install jimeng --yes
+cli-hub install 1password-cli --yes
 
 # Update a CLI to the latest version
 cli-hub update gimp
@@ -43,9 +43,10 @@ cli-hub uninstall gimp
 Entries that use the `command` install strategy can run arbitrary commands,
 including remote scripts. Before executing one, `cli-hub` safely displays the
 complete registry-provided command and, in an interactive terminal, asks for
-confirmation with a default of **No**. Non-interactive installs fail closed;
+confirmation with a default of **No**. Non-interactive commands fail closed;
 use `--yes` only after reviewing the command. The same guard applies to
-`cli-hub matrix install` (including `--json` invocations).
+install, update, uninstall, and `cli-hub matrix install` (including `--json`
+invocations).
 
 Remote-script entries that do not provide verifiable integrity metadata for
 every downloaded executable are marked as `manual`, and CLI-Hub will not run
