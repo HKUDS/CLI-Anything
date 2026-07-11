@@ -1413,6 +1413,24 @@ def test_await_with_timeout_passes_fast_calls(monkeypatch):
     assert result == {"ok": True}
 
 
+def test_await_with_timeout_runs_operation_in_calling_task():
+    async def _run():
+        import asyncio as _aio
+
+        calling_task = _aio.current_task()
+
+        async def _operation():
+            return _aio.current_task()
+
+        operation_task = await backend._await_with_timeout(
+            _operation(), "unit-test", 1
+        )
+        assert operation_task is calling_task
+
+    import asyncio as _aio
+    _aio.run(_run())
+
+
 def test_await_with_timeout_raises_on_timeout(monkeypatch):
     """Slow operations should raise an actionable MCPToolTimeoutError."""
     monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "1")

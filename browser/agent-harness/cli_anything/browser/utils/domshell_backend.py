@@ -128,7 +128,8 @@ async def _await_with_timeout(
     if timeout_seconds is None:
         timeout_seconds = _get_tool_timeout_seconds()
     try:
-        return await asyncio.wait_for(coro, timeout=timeout_seconds)
+        async with _same_task_timeout(timeout_seconds):
+            return await coro
     except asyncio.TimeoutError as e:
         raise MCPToolTimeoutError(
             _timeout_error(operation, timeout_seconds)
