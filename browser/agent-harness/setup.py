@@ -32,6 +32,7 @@ setup(
     python_requires=">=3.10",
 
     install_requires=[
+        "async-timeout>=4.0,<6.0; python_version < '3.11'",
         "click>=8.1,<9.0",
         "prompt-toolkit>=3.0,<4.0",
         "mcp>=0.1.0,<1.0.0",

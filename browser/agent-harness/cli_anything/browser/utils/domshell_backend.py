@@ -115,7 +115,9 @@ async def _await_with_timeout(
         raise MCPToolTimeoutError(
             "DOMShell MCP request timed out after "
             f"{timeout_seconds:.1f}s during {operation}. "
-            "Verify DOMSHELL_TOKEN and that the DOMShell server is reachable."
+            "Verify DOMSHELL_TOKEN and that the DOMShell server is reachable. "
+            "Adjust CLI_ANYTHING_BROWSER_MCP_TIMEOUT for tool calls or "
+            "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT for initialization."
         ) from e
 
 # Daemon mode: persistent MCP connection
@@ -748,24 +750,27 @@ async def _close_daemon_transport(session: Any, client_context: Any) -> None:
     """Best-effort, bounded exit of entered MCP contexts.
 
     Shared by per-command calls and daemon startup/shutdown. Each
-    ``__aexit__`` is bounded by ``DAEMON_STOP_TIMEOUT_SECONDS`` and
-    failures are swallowed so cleanup cannot hide the operation result.
-    Either argument may be ``None`` and is skipped.
+    ``__aexit__`` runs in the task that entered the AnyIO-backed context
+    and is bounded by ``DAEMON_STOP_TIMEOUT_SECONDS``. Failures are
+    swallowed so cleanup cannot hide the operation result. Either argument
+    may be ``None`` and is skipped.
     """
+    def cleanup_timeout():
+        if hasattr(asyncio, "timeout"):
+            return asyncio.timeout(DAEMON_STOP_TIMEOUT_SECONDS)
+        from async_timeout import timeout
+        return timeout(DAEMON_STOP_TIMEOUT_SECONDS)
+
     if session is not None:
         try:
-            await asyncio.wait_for(
-                session.__aexit__(None, None, None),
-                timeout=DAEMON_STOP_TIMEOUT_SECONDS,
-            )
+            async with cleanup_timeout():
+                await session.__aexit__(None, None, None)
         except (Exception, asyncio.TimeoutError):
             pass
     if client_context is not None:
         try:
-            await asyncio.wait_for(
-                client_context.__aexit__(None, None, None),
-                timeout=DAEMON_STOP_TIMEOUT_SECONDS,
-            )
+            async with cleanup_timeout():
+                await client_context.__aexit__(None, None, None)
         except (Exception, asyncio.TimeoutError):
             pass
 

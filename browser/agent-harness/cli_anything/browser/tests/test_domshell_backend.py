@@ -1424,8 +1424,11 @@ def test_await_with_timeout_raises_on_timeout(monkeypatch):
 
     import asyncio as _aio
 
-    with pytest.raises(RuntimeError, match="timed out"):
+    with pytest.raises(RuntimeError, match="timed out") as exc_info:
         _aio.run(backend._await_with_timeout(_slow(), "unit-test"))
+    message = str(exc_info.value)
+    assert "CLI_ANYTHING_BROWSER_MCP_TIMEOUT" in message
+    assert "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT" in message
 
 
 def test_call_execute_uses_init_timeout_for_session_initialize(monkeypatch):
@@ -1629,6 +1632,68 @@ def test_call_execute_bounds_context_exit_after_tool_timeout(monkeypatch):
         _aio.run(_run())
 
     assert exit_started == ["session", "stdio"]
+
+
+def test_close_transport_exits_contexts_in_entering_task():
+    """AnyIO-backed MCP contexts must exit in the task that entered them."""
+    import asyncio as _aio
+
+    class _TaskBoundContext:
+        entered_task = None
+        exited_task = None
+
+        async def __aenter__(self):
+            self.entered_task = _aio.current_task()
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            self.exited_task = _aio.current_task()
+            return False
+
+    async def _run():
+        real_wait_for = _aio.wait_for
+
+        async def _scheduled_wait_for(awaitable, timeout):
+            return await real_wait_for(_aio.create_task(awaitable), timeout)
+
+        session = _TaskBoundContext()
+        client = _TaskBoundContext()
+        await client.__aenter__()
+        await session.__aenter__()
+        with patch.object(
+            backend.asyncio, "wait_for", new=_scheduled_wait_for
+        ):
+            await backend._close_daemon_transport(session, client)
+        assert session.exited_task is session.entered_task
+        assert client.exited_task is client.entered_task
+
+    _aio.run(_run())
+
+
+def test_close_transport_preserves_anyio_cancel_scope_order():
+    """Cleanup timeout must not nest a cancel scope inside the MCP context."""
+    import asyncio as _aio
+    import anyio
+
+    class _AnyioContext:
+        closed = False
+
+        async def __aenter__(self):
+            self.task_group = anyio.create_task_group()
+            await self.task_group.__aenter__()
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await self.task_group.__aexit__(exc_type, exc, tb)
+            self.closed = True
+
+    async def _run():
+        context = _AnyioContext()
+        await context.__aenter__()
+        await backend._close_daemon_transport(context, None)
+        assert context.closed is True
+
+    _aio.run(_run())
 
 
 def test_daemon_timeout_is_not_retried_and_resets_daemon():
