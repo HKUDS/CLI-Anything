@@ -1460,8 +1460,8 @@
     {
       "name": "meerk40t",
       "display_name": "MeerK40t",
-      "version": "1.2.0",
-      "description": "Laser cutting/engraving via the real MeerK40t kernel — elements, operations, SVG/G-code export, and real GRBL device connection and motion control with --json output",
+      "version": "1.3.0",
+      "description": "Laser cutting/engraving via the real MeerK40t kernel — elements, operations, SVG/G-code export with placement guard, and real GRBL hardware control (detect, preflight check, jog, frame) with machine profiles and --json output",
       "requires": "MeerK40t (installed automatically)",
       "homepage": "https://github.com/meerk40t/meerk40t",
       "source_url": "https://github.com/George-RD/cli-anything-meerk40t",

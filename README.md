@@ -773,7 +773,7 @@ The meta-skill points agents to the live CLI-Hub catalog, where they can choose 
 | **🌐 Network & Infrastructure** | Manage network services, DNS, ad-blocking, and infrastructure through structured CLI commands | AdGuardHome |
 | **🧪 Testing & Mocking** | Control HTTP mock servers, manage test stubs, record and replay API traffic for integration testing | **[WireMock](https://wiremock.org)** |
 | **🔬 Graphics & GPU Debugging** | Analyze GPU frame captures, inspect pipeline state, export shaders, and diff rendering state | RenderDoc |
-| **⚙️ Fabrication & Machine Control** | Drive real hardware from design file to physical output — device connection, motion control, and machine-ready exports over the software's real backend | MeerK40t (laser), Ink/Stitch (embroidery) |
+| **⚙️ Fabrication & Machine Control** | Drive real hardware from design file to physical output — safety-gated detect, preflight, jog, and framing commands with machine profiles over the software's real backend | MeerK40t (laser), Ink/Stitch (embroidery) |
 | **🎬 Video & Subtitles** | Transcribe speech, translate subtitles, burn styled captions into video — full captioning pipeline | VideoCaptioner |
 | **🔍 AI-Native Search** | Neural and deep web search with structured content retrieval through embedding-based APIs | [Exa](https://exa.ai) |
 | **✨ AI Content Generation** | Generate professional deliverables (slides, docs, diagrams, websites, research reports) through AI-powered cloud APIs | [AnyGen](https://www.anygen.io), Gamma, Beautiful.ai, Tome |
