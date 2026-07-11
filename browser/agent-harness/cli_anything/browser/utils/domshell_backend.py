@@ -387,6 +387,19 @@ def _best_effort_restore(
         )
 
 
+def _anchor_with_restore_on_error(
+    anchor_cmd: str, restore_cmd: str, use_daemon: bool, session: Any,
+) -> Any:
+    """Run an anchor command and restore cwd if it raises."""
+    try:
+        return asyncio.run(
+            _call_execute(anchor_cmd, use_daemon, session=session)
+        )
+    except Exception:
+        _best_effort_restore(restore_cmd, use_daemon, session)
+        raise
+
+
 def _anchor_path_cmd(deeper: str = "") -> str:
     """Build a single ``cd %here%[/<deeper>]`` command line, shell-quoted.
 
@@ -679,28 +692,34 @@ async def _call_execute(
         args=_build_server_args()
     )
 
+    client_context = None
+    session_context = None
     try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as mcp_session:
-                await _await_with_timeout(
-                    mcp_session.initialize(), "session initialize", init_timeout
-                )
-                result = await _await_with_timeout(
-                    mcp_session.call_tool("domshell_execute", arguments),
-                    "domshell_execute",
-                    tool_timeout,
-                )
-                _capture_lane(session, result)
-                # See daemon-path capture above for rationale — same
-                # logic applies on the fresh-spawn fall-back path,
-                # including the lock-guarded test-and-set.
-                if use_daemon and session is None:
-                    with _daemon_lane_lock:
-                        if _daemon_lane_id is None:
-                            captured = _extract_lane_id(result)
-                            if captured:
-                                _daemon_lane_id = captured
-                return result
+        client_manager = stdio_client(server_params)
+        read, write = await client_manager.__aenter__()
+        client_context = client_manager
+        session_manager = ClientSession(read, write)
+        mcp_session = await session_manager.__aenter__()
+        session_context = session_manager
+        await _await_with_timeout(
+            mcp_session.initialize(), "session initialize", init_timeout
+        )
+        result = await _await_with_timeout(
+            mcp_session.call_tool("domshell_execute", arguments),
+            "domshell_execute",
+            tool_timeout,
+        )
+        _capture_lane(session, result)
+        # See daemon-path capture above for rationale — same
+        # logic applies on the fresh-spawn fall-back path,
+        # including the lock-guarded test-and-set.
+        if use_daemon and session is None:
+            with _daemon_lane_lock:
+                if _daemon_lane_id is None:
+                    captured = _extract_lane_id(result)
+                    if captured:
+                        _daemon_lane_id = captured
+        return result
     except RuntimeError as e:
         # Pass through MCPToolTimeoutError unchanged so callers can recover;
         # but wrap other RuntimeErrors with actionable context below.
@@ -717,6 +736,8 @@ async def _call_execute(
             f"Ensure Chrome is running with DOMShell extension installed.\n"
             f"Chrome Web Store: https://chromewebstore.google.com/detail/domshell"
         ) from e
+    finally:
+        await _close_daemon_transport(session_context, client_context)
 
 # NOTE: Known limitation - Daemon mode uses asyncio.run() per tool call (in sync wrappers).
 # Each asyncio.run() creates a new event loop. Async IO objects created in one loop
@@ -724,15 +745,12 @@ async def _call_execute(
 # create new loops. This is a documented limitation for v1; future work should use
 # a single long-lived event loop (e.g., background thread + run_coroutine_threadsafe).
 async def _close_daemon_transport(session: Any, client_context: Any) -> None:
-    """Best-effort, bounded exit of whichever daemon contexts were entered.
+    """Best-effort, bounded exit of entered MCP contexts.
 
-    Shared by ``_start_daemon`` (init failure after partial entry) and
-    ``_stop_daemon`` (normal shutdown). Each ``__aexit__`` is bounded by
-    ``DAEMON_STOP_TIMEOUT_SECONDS`` and failures are swallowed — this
-    always runs either during cleanup-on-error or intentional shutdown,
-    so it must never raise over/mask whatever triggered it. Either
-    argument may be ``None`` (e.g. ``ClientSession.__aenter__`` never
-    even ran) and is skipped.
+    Shared by per-command calls and daemon startup/shutdown. Each
+    ``__aexit__`` is bounded by ``DAEMON_STOP_TIMEOUT_SECONDS`` and
+    failures are swallowed so cleanup cannot hide the operation result.
+    Either argument may be ``None`` and is skipped.
     """
     if session is not None:
         try:
@@ -861,12 +879,15 @@ def ls(path: str = "/", use_daemon: bool = False, *, session: Any = None) -> dic
         # wrong-target results. Three separate _call_execute calls so
         # we can _is_error-gate after the anchor and skip the operation
         # cleanly. All share the persisted lane via session.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(translated), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor = _anchor_with_restore_on_error(
+            _anchor_path_cmd(translated),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor):
             return _parse_execute_result(anchor, "ls")
-        restore_cmd = _restore_cwd_cmd(session)
         try:
             op = asyncio.run(_call_execute("ls", use_daemon, session=session))
         except Exception:
@@ -959,12 +980,15 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         # otherwise run relative cat, restore. Anchor success is
         # load-bearing — without it cat resolves the relative path
         # against the wrong cwd.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor = _anchor_with_restore_on_error(
+            _anchor_path_cmd(""),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor):
             return _parse_execute_result(anchor, "cat")
-        restore_cmd = _restore_cwd_cmd(session)
         try:
             op = asyncio.run(_call_execute(
                 f"cat {_q(translated)}", use_daemon, session=session,
@@ -1083,7 +1107,9 @@ def grep(
                 else _anchor_path_cmd("")
             )
 
-    anchor = asyncio.run(_call_execute(anchor_cmd, use_daemon, session=session))
+    anchor = _anchor_with_restore_on_error(
+        anchor_cmd, restore_cmd, use_daemon, session,
+    )
     if _is_error(anchor):
         return _parse_execute_result(anchor, "grep")
     # `-r` preserves the pre-migration recursive default (see unrooted
@@ -1125,12 +1151,15 @@ def click(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         # otherwise click the relative path, restore. Anchor success is
         # load-bearing — clicking the wrong element if cwd has drifted
         # could trigger an unintended action.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor = _anchor_with_restore_on_error(
+            _anchor_path_cmd(""),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor):
             return _parse_execute_result(anchor, "click")
-        restore_cmd = _restore_cwd_cmd(session)
         try:
             op = asyncio.run(_call_execute(
                 f"click {_q(translated)}", use_daemon, session=session,
@@ -1316,9 +1345,13 @@ def type_text(
     # we can _is_error-check, then type, then restore as a separate
     # best-effort call. All four share the persisted lane via session.
     if is_absolute:
-        anchor_result = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor_result = _anchor_with_restore_on_error(
+            _anchor_path_cmd(""),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor_result):
             # Anchor failed — we never moved, so no restore is needed.
             return _parse_execute_result(anchor_result, "focus")
@@ -1332,7 +1365,7 @@ def type_text(
         # dict. Only relevant to restore when we actually moved (the
         # absolute path branch) — mirrors the _is_error restore below.
         if is_absolute:
-            _best_effort_restore(_restore_cwd_cmd(session), use_daemon, session)
+            _best_effort_restore(restore_cmd, use_daemon, session)
         raise
     if _is_error(focus_result):
         # Focus failed — restore cwd before returning so the lane
@@ -1340,7 +1373,7 @@ def type_text(
         # actually moved, i.e. the absolute path branch).
         if is_absolute:
             asyncio.run(_call_execute(
-                _restore_cwd_cmd(session), use_daemon, session=session,
+                restore_cmd, use_daemon, session=session,
             ))
         return _parse_execute_result(focus_result, "focus")
 
@@ -1352,7 +1385,7 @@ def type_text(
         # type raised after a successful focus — the anchor already
         # moved the lane cwd, so restore must still be attempted.
         if is_absolute:
-            _best_effort_restore(_restore_cwd_cmd(session), use_daemon, session)
+            _best_effort_restore(restore_cmd, use_daemon, session)
         raise
 
     if is_absolute:
@@ -1360,7 +1393,7 @@ def type_text(
         # failure is cosmetic. The next harness cd will correct any
         # drift.
         asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
+            restore_cmd, use_daemon, session=session,
         ))
 
     return _parse_execute_result(type_result, "type")

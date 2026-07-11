@@ -1559,6 +1559,61 @@ def test_call_execute_captures_timeout_once_per_operation(monkeypatch):
     ]
 
 
+def test_call_execute_bounds_context_exit_after_tool_timeout(monkeypatch):
+    """A wedged context exit must not hide the original tool timeout."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setattr(backend, "DAEMON_STOP_TIMEOUT_SECONDS", 0.01)
+    exit_started = []
+
+    class _DummyMcpSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            exit_started.append("session")
+            import asyncio as _aio
+            await _aio.sleep(0.5)
+
+        def initialize(self):
+            return object()
+
+        def call_tool(self, _tool_name, _arguments):
+            return object()
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            exit_started.append("stdio")
+            import asyncio as _aio
+            await _aio.sleep(0.5)
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        if operation == "domshell_execute":
+            raise backend.MCPToolTimeoutError("tool timed out")
+        return None
+
+    async def _run():
+        import asyncio as _aio
+        with pytest.raises(backend.MCPToolTimeoutError, match="tool timed out"):
+            await _aio.wait_for(
+                backend._call_execute("ls /", session=Session()),
+                timeout=0.2,
+            )
+
+    with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+         patch.object(backend, "ClientSession", return_value=_DummyMcpSession()), \
+         patch.object(backend, "_build_server_args", return_value=[]), \
+         patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout):
+        import asyncio as _aio
+        _aio.run(_run())
+
+    assert exit_started == ["session", "stdio"]
+
+
 def test_daemon_timeout_is_not_retried_and_resets_daemon():
     """A daemon-mode timeout must not be retried against the same tool
     call, but must reset the daemon so later commands can recover."""
@@ -1879,3 +1934,57 @@ def test_ls_absolute_restore_failure_does_not_mask_op_error(mock_call):
     with pytest.raises(backend.MCPToolTimeoutError, match="ls timed out"):
         backend.ls("/main", session=sess)
     assert mock_call.call_count == 3
+
+
+@pytest.mark.parametrize(
+    ("invoke", "anchor_cmd", "restore_cmd"),
+    [
+        pytest.param(
+            lambda sess: backend.ls("/main", session=sess),
+            "cd %here%/main",
+            "cd %here%/main",
+            id="ls",
+        ),
+        pytest.param(
+            lambda sess: backend.cat("/main/btn", session=sess),
+            "cd %here%",
+            "cd %here%/main",
+            id="cat",
+        ),
+        pytest.param(
+            lambda sess: backend.grep("Login", path="/main", session=sess),
+            "cd %here%/main",
+            "cd %here%/main",
+            id="grep",
+        ),
+        pytest.param(
+            lambda sess: backend.click("/main/button[0]", session=sess),
+            "cd %here%",
+            "cd %here%/main",
+            id="click",
+        ),
+        pytest.param(
+            lambda sess: backend.type_text("/main/input", "hello", session=sess),
+            "cd %here%",
+            "cd %here%/main",
+            id="type-text",
+        ),
+    ],
+)
+def test_absolute_wrappers_restore_after_anchor_timeout(
+    invoke, anchor_cmd, restore_cmd,
+):
+    sess = _make_session(working_dir="/main")
+    mock_call = AsyncMock(side_effect=[
+        backend.MCPToolTimeoutError("anchor timed out"),
+        _make_result("restored\n[lane: 1]"),
+    ])
+
+    with patch.object(backend, "_call_execute", mock_call):
+        with pytest.raises(backend.MCPToolTimeoutError, match="anchor timed out"):
+            invoke(sess)
+
+    assert [item.args[0] for item in mock_call.call_args_list] == [
+        anchor_cmd,
+        restore_cmd,
+    ]
