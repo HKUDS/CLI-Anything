@@ -25,7 +25,7 @@ import shlex
 import subprocess
 import shutil
 import threading
-from typing import Any, Optional
+from typing import Any, Awaitable, Optional
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -38,6 +38,13 @@ log = logging.getLogger(__name__)
 #   DOMSHELL_TOKEN  — auth token (required, must match the running server)
 #   DOMSHELL_PORT   — MCP HTTP port of the running server (default: 3001)
 DEFAULT_SERVER_CMD = "npx"
+DEFAULT_TOOL_TIMEOUT_SECONDS = 20.0
+DEFAULT_INIT_TIMEOUT_SECONDS = 120.0
+DAEMON_STOP_TIMEOUT_SECONDS = 5.0
+
+
+class MCPToolTimeoutError(RuntimeError):
+    """Raised when a DOMShell MCP operation exceeds configured timeout."""
 
 
 def _build_server_args() -> list[str]:
@@ -56,6 +63,92 @@ def _build_server_args() -> list[str]:
         "--port", port,
         "--token", token,
     ]
+
+
+def _get_tool_timeout_seconds() -> float:
+    """Read MCP tool-call timeout (seconds) from env with safe bounds."""
+    raw = os.environ.get(
+        "CLI_ANYTHING_BROWSER_MCP_TIMEOUT",
+        str(DEFAULT_TOOL_TIMEOUT_SECONDS),
+    )
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TOOL_TIMEOUT_SECONDS
+    return max(1.0, parsed)
+
+
+def _get_init_timeout_seconds() -> float:
+    """Read MCP session-initialize timeout (seconds) from env with safe bounds.
+
+    Initialize can legitimately take much longer than a regular tool call
+    (e.g. spawning npx/domshell-proxy and completing the MCP handshake), so it
+    is configured separately from CLI_ANYTHING_BROWSER_MCP_TIMEOUT.
+    """
+    raw = os.environ.get(
+        "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT",
+        str(DEFAULT_INIT_TIMEOUT_SECONDS),
+    )
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_INIT_TIMEOUT_SECONDS
+    return max(1.0, parsed)
+
+
+def _same_task_timeout(timeout_seconds: float) -> Any:
+    """Return a timeout context that does not move work to another task."""
+    if hasattr(asyncio, "timeout"):
+        return asyncio.timeout(timeout_seconds)
+    from async_timeout import timeout
+    return timeout(timeout_seconds)
+
+
+def _timeout_error(operation: str, timeout_seconds: float) -> str:
+    return (
+        "DOMShell MCP request timed out after "
+        f"{timeout_seconds:.1f}s during {operation}. "
+        "Verify DOMSHELL_TOKEN and that the DOMShell server is reachable. "
+        "Adjust CLI_ANYTHING_BROWSER_MCP_TIMEOUT for tool calls or "
+        "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT for initialization."
+    )
+
+
+async def _await_with_timeout(
+    coro: Awaitable[Any],
+    operation: str,
+    timeout_seconds: Optional[float] = None,
+) -> Any:
+    """Await an MCP operation with timeout and actionable error text.
+
+    Callers that need to distinguish init vs. tool-call timeouts (or capture
+    the timeout once for a whole operation) should pass timeout_seconds
+    explicitly; it otherwise defaults to the tool-call timeout.
+    """
+    if timeout_seconds is None:
+        timeout_seconds = _get_tool_timeout_seconds()
+    try:
+        async with _same_task_timeout(timeout_seconds):
+            return await coro
+    except asyncio.TimeoutError as e:
+        raise MCPToolTimeoutError(
+            _timeout_error(operation, timeout_seconds)
+        ) from e
+
+
+async def _enter_context_with_timeout(
+    context: Any,
+    operation: str,
+    timeout_seconds: float,
+) -> Any:
+    """Enter an AnyIO-backed context with a timeout in the current task."""
+    try:
+        async with _same_task_timeout(timeout_seconds):
+            return await context.__aenter__()
+    except asyncio.TimeoutError as e:
+        raise MCPToolTimeoutError(
+            _timeout_error(operation, timeout_seconds)
+        ) from e
 
 # Daemon mode: persistent MCP connection
 _daemon_session: Optional[ClientSession] = None
@@ -297,6 +390,39 @@ def _restore_cwd_cmd(session: Any) -> str:
     if is_abs:
         return f"cd {_here_path(stripped)}"
     return f"cd {_q(stripped)}" if stripped else f"cd {_here_path('')}"
+
+
+def _best_effort_restore(
+    restore_cmd: str, use_daemon: bool, session: Any,
+) -> None:
+    """Attempt a restore-cwd call without masking the primary result.
+
+    Absolute-path wrappers (ls/cat/click/grep/type_text) anchor a `cd`
+    before their real operation and restore afterward. If the operation
+    raises or returns, restore must still be attempted so the lane's cwd
+    does not stay parked at the anchor. Restore errors are logged and
+    swallowed because cleanup must not replace the operation's result.
+    """
+    try:
+        asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+    except Exception:
+        log.warning(
+            "DOMShell lane cwd restore failed",
+            exc_info=True,
+        )
+
+
+def _anchor_with_restore_on_error(
+    anchor_cmd: str, restore_cmd: str, use_daemon: bool, session: Any,
+) -> Any:
+    """Run an anchor command and restore cwd if it raises."""
+    try:
+        return asyncio.run(
+            _call_execute(anchor_cmd, use_daemon, session=session)
+        )
+    except Exception:
+        _best_effort_restore(restore_cmd, use_daemon, session)
+        raise
 
 
 def _anchor_path_cmd(deeper: str = "") -> str:
@@ -545,11 +671,18 @@ async def _call_execute(
     else:
         arguments["group_id"] = "new"
 
+    # Capture timeouts once per operation so env mutations mid-call (e.g. from
+    # another thread) can't apply inconsistent timeouts across the awaits below.
+    tool_timeout = _get_tool_timeout_seconds()
+    init_timeout = _get_init_timeout_seconds()
+
     if use_daemon and _daemon_session is not None:
         # Use persistent daemon connection
         try:
-            result = await _daemon_session.call_tool(
-                "domshell_execute", arguments
+            result = await _await_with_timeout(
+                _daemon_session.call_tool("domshell_execute", arguments),
+                "domshell_execute (daemon)",
+                tool_timeout,
             )
             _capture_lane(session, result)
             # Daemon-level capture on first daemon-no-session call so
@@ -564,6 +697,10 @@ async def _call_execute(
                         if captured:
                             _daemon_lane_id = captured
             return result
+        except MCPToolTimeoutError:
+            # Do not auto-retry this call, but reset daemon for future recovery.
+            await _stop_daemon()
+            raise
         except Exception as e:
             # Daemon died — log diagnosability and fall back to spawning
             # a fresh server below. Silent swallow was making the daemon
@@ -580,36 +717,83 @@ async def _call_execute(
         args=_build_server_args()
     )
 
+    client_context = None
+    session_context = None
     try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as mcp_session:
-                await mcp_session.initialize()
-                result = await mcp_session.call_tool(
-                    "domshell_execute", arguments
-                )
-                _capture_lane(session, result)
-                # See daemon-path capture above for rationale — same
-                # logic applies on the fresh-spawn fall-back path,
-                # including the lock-guarded test-and-set.
-                if use_daemon and session is None:
-                    with _daemon_lane_lock:
-                        if _daemon_lane_id is None:
-                            captured = _extract_lane_id(result)
-                            if captured:
-                                _daemon_lane_id = captured
-                return result
+        client_context = stdio_client(server_params)
+        read, write = await _enter_context_with_timeout(
+            client_context, "stdio client enter", init_timeout
+        )
+        session_context = ClientSession(read, write)
+        mcp_session = await _enter_context_with_timeout(
+            session_context, "session enter", init_timeout
+        )
+        await _await_with_timeout(
+            mcp_session.initialize(), "session initialize", init_timeout
+        )
+        result = await _await_with_timeout(
+            mcp_session.call_tool("domshell_execute", arguments),
+            "domshell_execute",
+            tool_timeout,
+        )
+        _capture_lane(session, result)
+        # See daemon-path capture above for rationale — same
+        # logic applies on the fresh-spawn fall-back path,
+        # including the lock-guarded test-and-set.
+        if use_daemon and session is None:
+            with _daemon_lane_lock:
+                if _daemon_lane_id is None:
+                    captured = _extract_lane_id(result)
+                    if captured:
+                        _daemon_lane_id = captured
+        return result
+    except RuntimeError as e:
+        # Pass through MCPToolTimeoutError unchanged so callers can recover;
+        # but wrap other RuntimeErrors with actionable context below.
+        if isinstance(e, MCPToolTimeoutError):
+            raise
+        raise RuntimeError(
+            f"DOMShell MCP call failed: {e}\n"
+            f"Ensure Chrome is running with DOMShell extension installed.\n"
+            f"Chrome Web Store: https://chromewebstore.google.com/detail/domshell"
+        ) from e
     except Exception as e:
         raise RuntimeError(
             f"DOMShell MCP call failed: {e}\n"
             f"Ensure Chrome is running with DOMShell extension installed.\n"
             f"Chrome Web Store: https://chromewebstore.google.com/detail/domshell"
         ) from e
+    finally:
+        await _close_daemon_transport(session_context, client_context)
 
 # NOTE: Known limitation - Daemon mode uses asyncio.run() per tool call (in sync wrappers).
 # Each asyncio.run() creates a new event loop. Async IO objects created in one loop
 # (like the daemon session) may have issues when accessed from subsequent calls that
 # create new loops. This is a documented limitation for v1; future work should use
 # a single long-lived event loop (e.g., background thread + run_coroutine_threadsafe).
+async def _close_daemon_transport(session: Any, client_context: Any) -> None:
+    """Best-effort, bounded exit of entered MCP contexts.
+
+    Shared by per-command calls and daemon startup/shutdown. Each
+    ``__aexit__`` runs in the task that entered the AnyIO-backed context
+    and is bounded by ``DAEMON_STOP_TIMEOUT_SECONDS``. Failures are
+    swallowed so cleanup cannot hide the operation result. Either argument
+    may be ``None`` and is skipped.
+    """
+    if session is not None:
+        try:
+            async with _same_task_timeout(DAEMON_STOP_TIMEOUT_SECONDS):
+                await session.__aexit__(None, None, None)
+        except (Exception, asyncio.TimeoutError):
+            pass
+    if client_context is not None:
+        try:
+            async with _same_task_timeout(DAEMON_STOP_TIMEOUT_SECONDS):
+                await client_context.__aexit__(None, None, None)
+        except (Exception, asyncio.TimeoutError):
+            pass
+
+
 async def _start_daemon() -> bool:
     """Start persistent daemon mode.
 
@@ -631,13 +815,28 @@ async def _start_daemon() -> bool:
 
     try:
         # Store the context manager so we can properly clean it up later
+        init_timeout = _get_init_timeout_seconds()
         _daemon_client_context = stdio_client(server_params)
-        _daemon_read, _daemon_write = await _daemon_client_context.__aenter__()
+        _daemon_read, _daemon_write = await _enter_context_with_timeout(
+            _daemon_client_context, "daemon stdio enter", init_timeout
+        )
         _daemon_session = ClientSession(_daemon_read, _daemon_write)
-        await _daemon_session.__aenter__()
-        await _daemon_session.initialize()
+        await _enter_context_with_timeout(
+            _daemon_session, "daemon session enter", init_timeout
+        )
+        await _await_with_timeout(
+            _daemon_session.initialize(),
+            "daemon initialize",
+            init_timeout,
+        )
         return True
     except Exception as e:
+        # An initialize() timeout/error can land after the stdio
+        # transport and/or the ClientSession have already been
+        # __aenter__'d. Exiting them here (best-effort, bounded) is
+        # required — otherwise the underlying npx/DOMShell subprocess
+        # and stdio pipes are orphaned, not just the Python globals.
+        await _close_daemon_transport(_daemon_session, _daemon_client_context)
         _daemon_session = None
         _daemon_read = None
         _daemon_write = None
@@ -646,23 +845,22 @@ async def _start_daemon() -> bool:
 
 
 async def _stop_daemon() -> None:
-    """Stop persistent daemon mode."""
+    """Stop persistent daemon mode.
+
+    Cleanup is bounded to a fixed timeout (DAEMON_STOP_TIMEOUT_SECONDS) to
+    avoid hanging if the daemon transport is wedged. Not configurable via
+    env var: this is an internal safety bound, not a user-tunable setting.
+    """
     global _daemon_session, _daemon_read, _daemon_write, _daemon_client_context
 
     if _daemon_session is None:
         return
 
-    try:
-        await _daemon_session.__aexit__(None, None, None)
-        if _daemon_client_context:
-            await _daemon_client_context.__aexit__(None, None, None)
-    except Exception:
-        pass  # Ignore cleanup errors
-    finally:
-        _daemon_session = None
-        _daemon_read = None
-        _daemon_write = None
-        _daemon_client_context = None
+    await _close_daemon_transport(_daemon_session, _daemon_client_context)
+    _daemon_session = None
+    _daemon_read = None
+    _daemon_write = None
+    _daemon_client_context = None
 
 
 def daemon_started() -> bool:
@@ -710,17 +908,24 @@ def ls(path: str = "/", use_daemon: bool = False, *, session: Any = None) -> dic
         # wrong-target results. Three separate _call_execute calls so
         # we can _is_error-gate after the anchor and skip the operation
         # cleanly. All share the persisted lane via session.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(translated), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor = _anchor_with_restore_on_error(
+            _anchor_path_cmd(translated),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor):
             return _parse_execute_result(anchor, "ls")
-        op = asyncio.run(_call_execute("ls", use_daemon, session=session))
-        # Best-effort restore — ls already ran; restore failure is
-        # cosmetic (next harness cd corrects any drift).
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
+        try:
+            op = asyncio.run(_call_execute("ls", use_daemon, session=session))
+        except Exception:
+            # ls raised (e.g. a timeout) instead of returning an error
+            # dict — restore must still be attempted so the lane cwd
+            # doesn't stay parked at the anchor.
+            _best_effort_restore(restore_cmd, use_daemon, session)
+            raise
+        _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(op, "ls")
     if translated:
         op = asyncio.run(_call_execute(
@@ -757,10 +962,10 @@ def cd(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
          "output": "cd: /missing: No such directory"}
     """
     translated, is_absolute = _translate_path(path)
-    # cd is the one wrapper where the operation IS the new state — no
-    # following operation needs the anchored cwd, so no split-and-check
-    # and no restore. Absolute targets anchor via `cd %here%/<rest>` so
-    # the result is independent of the lane's current cwd.
+    # cd is the one wrapper where the operation IS the new state, so no
+    # restore follows a successful call. Absolute targets anchor via
+    # `cd %here%/<rest>` so the result is independent of the lane's
+    # current cwd.
     if is_absolute:
         command = _anchor_path_cmd(translated)
     elif translated:
@@ -768,7 +973,12 @@ def cd(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
     else:
         # Bare/empty `cd` → back to tab root.
         command = _anchor_path_cmd("")
-    result = asyncio.run(_call_execute(command, use_daemon, session=session))
+    if session is not None:
+        result = _anchor_with_restore_on_error(
+            command, _restore_cwd_cmd(session), use_daemon, session
+        )
+    else:
+        result = asyncio.run(_call_execute(command, use_daemon, session=session))
     return _parse_execute_result(result, "cd")
 
 
@@ -802,17 +1012,23 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         # otherwise run relative cat, restore. Anchor success is
         # load-bearing — without it cat resolves the relative path
         # against the wrong cwd.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor = _anchor_with_restore_on_error(
+            _anchor_path_cmd(""),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor):
             return _parse_execute_result(anchor, "cat")
-        op = asyncio.run(_call_execute(
-            f"cat {_q(translated)}", use_daemon, session=session,
-        ))
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
+        try:
+            op = asyncio.run(_call_execute(
+                f"cat {_q(translated)}", use_daemon, session=session,
+            ))
+        except Exception:
+            _best_effort_restore(restore_cmd, use_daemon, session)
+            raise
+        _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(op, "cat")
     op = asyncio.run(_call_execute(
         f"cat {_q(translated)}", use_daemon, session=session,
@@ -923,15 +1139,21 @@ def grep(
                 else _anchor_path_cmd("")
             )
 
-    anchor = asyncio.run(_call_execute(anchor_cmd, use_daemon, session=session))
+    anchor = _anchor_with_restore_on_error(
+        anchor_cmd, restore_cmd, use_daemon, session,
+    )
     if _is_error(anchor):
         return _parse_execute_result(anchor, "grep")
     # `-r` preserves the pre-migration recursive default (see unrooted
     # branch above for the full rationale).
-    op = asyncio.run(_call_execute(
-        f"grep -r {_q(pattern)}", use_daemon, session=session,
-    ))
-    asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+    try:
+        op = asyncio.run(_call_execute(
+            f"grep -r {_q(pattern)}", use_daemon, session=session,
+        ))
+    except Exception:
+        _best_effort_restore(restore_cmd, use_daemon, session)
+        raise
+    _best_effort_restore(restore_cmd, use_daemon, session)
     return _parse_execute_result(op, "grep")
 
 
@@ -961,17 +1183,23 @@ def click(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         # otherwise click the relative path, restore. Anchor success is
         # load-bearing — clicking the wrong element if cwd has drifted
         # could trigger an unintended action.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor = _anchor_with_restore_on_error(
+            _anchor_path_cmd(""),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor):
             return _parse_execute_result(anchor, "click")
-        op = asyncio.run(_call_execute(
-            f"click {_q(translated)}", use_daemon, session=session,
-        ))
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
+        try:
+            op = asyncio.run(_call_execute(
+                f"click {_q(translated)}", use_daemon, session=session,
+            ))
+        except Exception:
+            _best_effort_restore(restore_cmd, use_daemon, session)
+            raise
+        _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(op, "click")
     op = asyncio.run(_call_execute(
         f"click {_q(translated)}", use_daemon, session=session,
@@ -1128,7 +1356,6 @@ def type_text(
             "(Daemon mode shares the persistent connection's lane "
             "automatically and doesn't need session.)"
         )
-
     translated_path, is_absolute = _translate_path(path)
     if not translated_path:
         raise ValueError(
@@ -1150,37 +1377,49 @@ def type_text(
     # we can _is_error-check, then type, then restore as a separate
     # best-effort call. All four share the persisted lane via session.
     if is_absolute:
-        anchor_result = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
+        restore_cmd = _restore_cwd_cmd(session)
+        anchor_result = _anchor_with_restore_on_error(
+            _anchor_path_cmd(""),
+            restore_cmd,
+            use_daemon,
+            session,
+        )
         if _is_error(anchor_result):
             # Anchor failed — we never moved, so no restore is needed.
             return _parse_execute_result(anchor_result, "focus")
 
-    focus_result = asyncio.run(_call_execute(
-        f"focus {_q(translated_path)}", use_daemon, session=session,
-    ))
+    try:
+        focus_result = asyncio.run(_call_execute(
+            f"focus {_q(translated_path)}", use_daemon, session=session,
+        ))
+    except Exception:
+        # focus raised (e.g. a timeout) instead of returning an error
+        # dict. Only relevant to restore when we actually moved (the
+        # absolute path branch) — mirrors the _is_error restore below.
+        if is_absolute:
+            _best_effort_restore(restore_cmd, use_daemon, session)
+        raise
     if _is_error(focus_result):
         # Focus failed — restore cwd before returning so the lane
         # doesn't stay parked at the anchor (only relevant when we
         # actually moved, i.e. the absolute path branch).
         if is_absolute:
-            asyncio.run(_call_execute(
-                _restore_cwd_cmd(session), use_daemon, session=session,
-            ))
+            _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(focus_result, "focus")
 
-    type_result = asyncio.run(_call_execute(
-        f"type {_q(text)}", use_daemon, session=session,
-    ))
+    try:
+        type_result = asyncio.run(_call_execute(
+            f"type {_q(text)}", use_daemon, session=session,
+        ))
+    except Exception:
+        # type raised after a successful focus — the anchor already
+        # moved the lane cwd, so restore must still be attempted.
+        if is_absolute:
+            _best_effort_restore(restore_cmd, use_daemon, session)
+        raise
 
     if is_absolute:
-        # Best-effort restore — type already succeeded, so a restore
-        # failure is cosmetic. The next harness cd will correct any
-        # drift.
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
+        _best_effort_restore(restore_cmd, use_daemon, session)
 
     return _parse_execute_result(type_result, "type")
 

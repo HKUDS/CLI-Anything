@@ -7,7 +7,7 @@ Usage:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page, fs

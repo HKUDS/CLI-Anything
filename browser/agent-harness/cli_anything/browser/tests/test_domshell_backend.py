@@ -127,6 +127,23 @@ def test_cd_relative_quoted(mock_call):
     assert mock_call.call_args.args[0] == "cd main"
 
 
+def test_cd_restores_tracked_cwd_after_timeout():
+    sess = _make_session(working_dir="/main")
+    mock_call = AsyncMock(side_effect=[
+        backend.MCPToolTimeoutError("cd timed out"),
+        _make_result("restored\n[lane: 1]"),
+    ])
+
+    with patch.object(backend, "_call_execute", mock_call):
+        with pytest.raises(backend.MCPToolTimeoutError, match="cd timed out"):
+            backend.cd("/dialog", session=sess)
+
+    assert [item.args[0] for item in mock_call.call_args_list] == [
+        "cd %here%/dialog",
+        "cd %here%/main",
+    ]
+
+
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
 def test_cat_absolute_path_uses_three_separate_calls(mock_call):
     """`cat /main/btn`: anchor at tab root → cat main/btn → restore."""
@@ -1334,4 +1351,884 @@ def test_use_daemon_positional_on_type_text(mock_call):
     assert mock_call.call_args_list == [
         call("focus input", True, session=sess),
         call("type hello", True, session=sess),
+    ]
+
+
+# ── MCP init vs. tool-call timeout split ─────────────────────────────
+#
+# CLI_ANYTHING_BROWSER_MCP_TIMEOUT bounds individual tool calls (default 20s);
+# CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT bounds session.initialize() /
+# daemon initialize() (default 120s), since a handshake can legitimately
+# take much longer than a single tool call without indicating a hang.
+
+
+def test_tool_timeout_default_value(monkeypatch):
+    """Tool-call timeout defaults to 20s when env var is unset."""
+    monkeypatch.delenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", raising=False)
+    assert backend._get_tool_timeout_seconds() == 20.0
+
+
+def test_tool_timeout_invalid_env_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "not-a-number")
+    assert backend._get_tool_timeout_seconds() == 20.0
+
+
+def test_tool_timeout_is_clamped_to_minimum(monkeypatch):
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "0")
+    assert backend._get_tool_timeout_seconds() == 1.0
+
+
+def test_init_timeout_default_value(monkeypatch):
+    """Init timeout defaults to 120s when env var is unset."""
+    monkeypatch.delenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", raising=False)
+    assert backend._get_init_timeout_seconds() == 120.0
+
+
+def test_init_timeout_invalid_env_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "not-a-number")
+    assert backend._get_init_timeout_seconds() == 120.0
+
+
+def test_init_timeout_is_clamped_to_minimum(monkeypatch):
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "0")
+    assert backend._get_init_timeout_seconds() == 1.0
+
+
+def test_init_timeout_independent_of_tool_timeout(monkeypatch):
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+    assert backend._get_tool_timeout_seconds() == 5.0
+    assert backend._get_init_timeout_seconds() == 120.0
+
+
+def test_await_with_timeout_passes_fast_calls(monkeypatch):
+    """Fast operations should complete without timeout errors."""
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+
+    async def _fast():
+        return {"ok": True}
+
+    import asyncio as _aio
+    result = _aio.run(backend._await_with_timeout(_fast(), "unit-test"))
+    assert result == {"ok": True}
+
+
+def test_await_with_timeout_runs_operation_in_calling_task():
+    async def _run():
+        import asyncio as _aio
+
+        calling_task = _aio.current_task()
+
+        async def _operation():
+            return _aio.current_task()
+
+        operation_task = await backend._await_with_timeout(
+            _operation(), "unit-test", 1
+        )
+        assert operation_task is calling_task
+
+    import asyncio as _aio
+    _aio.run(_run())
+
+
+def test_await_with_timeout_raises_on_timeout(monkeypatch):
+    """Slow operations should raise an actionable MCPToolTimeoutError."""
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "1")
+
+    async def _slow():
+        import asyncio as _aio
+        await _aio.sleep(2)
+        return {"ok": True}
+
+    import asyncio as _aio
+
+    with pytest.raises(RuntimeError, match="timed out") as exc_info:
+        _aio.run(backend._await_with_timeout(_slow(), "unit-test"))
+    message = str(exc_info.value)
+    assert "CLI_ANYTHING_BROWSER_MCP_TIMEOUT" in message
+    assert "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT" in message
+
+
+def test_call_execute_uses_init_timeout_for_session_initialize(monkeypatch):
+    """Non-daemon _call_execute must await session.initialize() with the
+    init timeout, not the (much shorter) tool-call timeout."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+
+    recorded_timeouts = []
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        recorded_timeouts.append((operation, timeout_seconds))
+        return _make_result("✓\n[lane: 1]")
+
+    class _DummyMcpSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def initialize(self):
+            return object()
+
+        def call_tool(self, _tool_name, _arguments):
+            return object()
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+         patch.object(backend, "ClientSession", return_value=_DummyMcpSession()), \
+         patch.object(backend, "_build_server_args", return_value=[]), \
+         patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout):
+        import asyncio as _aio
+        _aio.run(backend._call_execute("ls /", session=Session()))
+
+    assert ("session initialize", 120.0) in recorded_timeouts
+    assert ("domshell_execute", 5.0) in recorded_timeouts
+
+
+def test_start_daemon_uses_init_timeout(monkeypatch):
+    """_start_daemon must await daemon initialize() with the init timeout."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+
+    recorded_timeouts = []
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        recorded_timeouts.append((operation, timeout_seconds))
+        return None
+
+    class _DummyMcpSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def initialize(self):
+            return object()
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    original_daemon = backend._daemon_session
+    try:
+        backend._daemon_session = None
+        with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+             patch.object(backend, "ClientSession", return_value=_DummyMcpSession()), \
+             patch.object(backend, "_build_server_args", return_value=[]), \
+             patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout):
+            import asyncio as _aio
+            _aio.run(backend._start_daemon())
+
+        assert recorded_timeouts == [("daemon initialize", 120.0)]
+    finally:
+        backend._daemon_session = original_daemon
+
+
+def test_call_execute_captures_timeout_once_per_operation(monkeypatch):
+    """Timeouts are captured once per _call_execute invocation and passed
+    explicitly, rather than re-reading env vars on every await within the
+    same logical operation (which could pick up a mid-operation mutation)."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "5")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+
+    recorded_timeouts = []
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        # Simulate the env var mutating mid-operation (e.g. another
+        # thread/test). A per-call env read would pick this up; a
+        # captured-once value would not.
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_TIMEOUT", "999")
+        monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "999")
+        recorded_timeouts.append((operation, timeout_seconds))
+        return _make_result("✓\n[lane: 1]")
+
+    class _DummyMcpSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def initialize(self):
+            return object()
+
+        def call_tool(self, _tool_name, _arguments):
+            return object()
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+         patch.object(backend, "ClientSession", return_value=_DummyMcpSession()), \
+         patch.object(backend, "_build_server_args", return_value=[]), \
+         patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout):
+        import asyncio as _aio
+        _aio.run(backend._call_execute("ls /", session=Session()))
+
+    # Both awaits within this single _call_execute invocation must use the
+    # timeouts captured before the env var was mutated mid-operation.
+    assert recorded_timeouts == [
+        ("session initialize", 120.0),
+        ("domshell_execute", 5.0),
+    ]
+
+
+def test_call_execute_bounds_context_exit_after_tool_timeout(monkeypatch):
+    """A wedged context exit must not hide the original tool timeout."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setattr(backend, "DAEMON_STOP_TIMEOUT_SECONDS", 0.01)
+    exit_started = []
+
+    class _DummyMcpSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            exit_started.append("session")
+            import asyncio as _aio
+            await _aio.sleep(0.5)
+
+        def initialize(self):
+            return object()
+
+        def call_tool(self, _tool_name, _arguments):
+            return object()
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            exit_started.append("stdio")
+            import asyncio as _aio
+            await _aio.sleep(0.5)
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        if operation == "domshell_execute":
+            raise backend.MCPToolTimeoutError("tool timed out")
+        return None
+
+    async def _run():
+        import asyncio as _aio
+        with pytest.raises(backend.MCPToolTimeoutError, match="tool timed out"):
+            await _aio.wait_for(
+                backend._call_execute("ls /", session=Session()),
+                timeout=0.2,
+            )
+
+    with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+         patch.object(backend, "ClientSession", return_value=_DummyMcpSession()), \
+         patch.object(backend, "_build_server_args", return_value=[]), \
+         patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout):
+        import asyncio as _aio
+        _aio.run(_run())
+
+    assert exit_started == ["session", "stdio"]
+
+
+def test_close_transport_exits_contexts_in_entering_task():
+    """AnyIO-backed MCP contexts must exit in the task that entered them."""
+    import asyncio as _aio
+
+    class _TaskBoundContext:
+        entered_task = None
+        exited_task = None
+
+        async def __aenter__(self):
+            self.entered_task = _aio.current_task()
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            self.exited_task = _aio.current_task()
+            return False
+
+    async def _run():
+        real_wait_for = _aio.wait_for
+
+        async def _scheduled_wait_for(awaitable, timeout):
+            return await real_wait_for(_aio.create_task(awaitable), timeout)
+
+        session = _TaskBoundContext()
+        client = _TaskBoundContext()
+        await client.__aenter__()
+        await session.__aenter__()
+        with patch.object(
+            backend.asyncio, "wait_for", new=_scheduled_wait_for
+        ):
+            await backend._close_daemon_transport(session, client)
+        assert session.exited_task is session.entered_task
+        assert client.exited_task is client.entered_task
+
+    _aio.run(_run())
+
+
+def test_close_transport_preserves_anyio_cancel_scope_order():
+    """Cleanup timeout must not nest a cancel scope inside the MCP context."""
+    import asyncio as _aio
+    import anyio
+
+    class _AnyioContext:
+        closed = False
+
+        async def __aenter__(self):
+            self.task_group = anyio.create_task_group()
+            await self.task_group.__aenter__()
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await self.task_group.__aexit__(exc_type, exc, tb)
+            self.closed = True
+
+    async def _run():
+        context = _AnyioContext()
+        await context.__aenter__()
+        await backend._close_daemon_transport(context, None)
+        assert context.closed is True
+
+    _aio.run(_run())
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["ls", "cat", "grep", "click", "focus-error", "type"],
+)
+def test_restore_failure_does_not_mask_primary_result(operation):
+    sess = _make_session(working_dir="/main")
+    success = _make_result("primary result\n[lane: 1]")
+    restore_timeout = backend.MCPToolTimeoutError("restore timed out")
+
+    if operation == "focus-error":
+        focus_error = _make_result("Error: focus failed\n[lane: 1]")
+        responses = [_make_result("anchored\n[lane: 1]"), focus_error, restore_timeout]
+    elif operation == "type":
+        responses = [
+            _make_result("anchored\n[lane: 1]"),
+            _make_result("focused\n[lane: 1]"),
+            success,
+            restore_timeout,
+        ]
+    else:
+        responses = [
+            _make_result("anchored\n[lane: 1]"),
+            success,
+            restore_timeout,
+        ]
+
+    with patch.object(
+        backend, "_call_execute", AsyncMock(side_effect=responses)
+    ):
+        if operation == "ls":
+            result = backend.ls("/main", session=sess)
+        elif operation == "cat":
+            result = backend.cat("/main/button", session=sess)
+        elif operation == "grep":
+            result = backend.grep("needle", path="/main", session=sess)
+        elif operation == "click":
+            result = backend.click("/main/button", session=sess)
+        else:
+            result = backend.type_text("/main/input", "hello", session=sess)
+
+    if operation == "focus-error":
+        assert "focus failed" in result["error"]
+    elif operation in {"ls", "grep"}:
+        assert "primary result" in result["raw"]
+    else:
+        assert "primary result" in result["output"]
+
+
+@pytest.mark.parametrize("blocked_stage", ["stdio", "session"])
+def test_call_execute_bounds_context_entry(monkeypatch, blocked_stage):
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setattr(backend, "_get_init_timeout_seconds", lambda: 0.01)
+
+    class _Stdio:
+        async def __aenter__(self):
+            if blocked_stage == "stdio":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _Session:
+        async def __aenter__(self):
+            if blocked_stage == "session":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _run():
+        import asyncio as _aio
+        with pytest.raises(
+            backend.MCPToolTimeoutError, match=f"{blocked_stage}.*enter"
+        ):
+            await _aio.wait_for(
+                backend._call_execute("ls /", session=Session()),
+                timeout=0.2,
+            )
+
+    with patch.object(backend, "stdio_client", return_value=_Stdio()), \
+         patch.object(backend, "ClientSession", return_value=_Session()), \
+         patch.object(backend, "_build_server_args", return_value=[]):
+        import asyncio as _aio
+        _aio.run(_run())
+
+
+@pytest.mark.parametrize("blocked_stage", ["stdio", "session"])
+def test_start_daemon_bounds_context_entry(monkeypatch, blocked_stage):
+    monkeypatch.setattr(backend, "_get_init_timeout_seconds", lambda: 0.01)
+
+    class _Stdio:
+        async def __aenter__(self):
+            if blocked_stage == "stdio":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _Session:
+        async def __aenter__(self):
+            if blocked_stage == "session":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _run():
+        import asyncio as _aio
+        with pytest.raises(RuntimeError, match=f"{blocked_stage}.*enter"):
+            await _aio.wait_for(backend._start_daemon(), timeout=0.2)
+
+    original_state = (
+        backend._daemon_session,
+        backend._daemon_read,
+        backend._daemon_write,
+        backend._daemon_client_context,
+    )
+    try:
+        backend._daemon_session = None
+        backend._daemon_read = None
+        backend._daemon_write = None
+        backend._daemon_client_context = None
+        with patch.object(backend, "stdio_client", return_value=_Stdio()), \
+             patch.object(backend, "ClientSession", return_value=_Session()), \
+             patch.object(backend, "_build_server_args", return_value=[]):
+            import asyncio as _aio
+            _aio.run(_run())
+    finally:
+        (
+            backend._daemon_session,
+            backend._daemon_read,
+            backend._daemon_write,
+            backend._daemon_client_context,
+        ) = original_state
+
+
+def test_daemon_timeout_is_not_retried_and_resets_daemon():
+    """A daemon-mode timeout must not be retried against the same tool
+    call, but must reset the daemon so later commands can recover."""
+
+    class _DummyDaemonSession:
+        def call_tool(self, _tool_name, _arguments):
+            return object()
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        raise backend.MCPToolTimeoutError("timed out")
+
+    original_daemon = backend._daemon_session
+    try:
+        backend._daemon_session = _DummyDaemonSession()
+        with patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout), \
+             patch.object(backend, "_stop_daemon", new_callable=AsyncMock) as mock_stop, \
+             patch.object(backend, "stdio_client") as mock_stdio:
+            import asyncio as _aio
+            with pytest.raises(RuntimeError, match="timed out"):
+                _aio.run(backend._call_execute("click /", use_daemon=True, session=Session()))
+
+            mock_stop.assert_awaited_once()
+            mock_stdio.assert_not_called()
+    finally:
+        backend._daemon_session = original_daemon
+
+
+def test_daemon_non_timeout_error_falls_back_to_non_daemon_mode(monkeypatch):
+    """A non-timeout daemon RuntimeError should stop the daemon and fall
+    back to a fresh non-daemon call once (not propagate directly)."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+
+    class _BrokenDaemonSession:
+        def call_tool(self, _tool_name, _arguments):
+            raise RuntimeError("loop mismatch")
+
+    class _DummyMcpSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def initialize(self):
+            return object()
+
+        def call_tool(self, _tool_name, _arguments):
+            return object()
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    fallback_result = _make_result("✓\n[lane: 1]")
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        return fallback_result
+
+    original_daemon = backend._daemon_session
+    try:
+        backend._daemon_session = _BrokenDaemonSession()
+        with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+             patch.object(backend, "ClientSession", return_value=_DummyMcpSession()), \
+             patch.object(backend, "_build_server_args", return_value=[]), \
+             patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout), \
+             patch.object(backend, "_stop_daemon", new_callable=AsyncMock) as mock_stop:
+            import asyncio as _aio
+            result = _aio.run(
+                backend._call_execute("click /", use_daemon=True, session=Session())
+            )
+
+            assert result is fallback_result
+            mock_stop.assert_awaited_once()
+    finally:
+        backend._daemon_session = original_daemon
+
+
+
+# ── _start_daemon: entered contexts must be closed on init failure ───
+#
+# _start_daemon manually drives stdio_client and ClientSession as
+# entered context managers (not via `async with`) so it can hold them
+# open for the life of the daemon. If `initialize()` times out or
+# raises after both contexts are entered, the previous code only
+# nulled the module globals — it never called `__aexit__` on either
+# context, orphaning the underlying npx/DOMShell subprocess and stdio
+# pipes. This must close both entered contexts (best-effort, bounded)
+# before re-raising, without masking the original failure.
+
+
+def test_start_daemon_closes_contexts_on_initialize_failure(monkeypatch):
+    """A daemon-initialize failure must exit both the entered
+    ClientSession and the entered stdio_client context — not just null
+    the globals — so the underlying npx/DOMShell process isn't
+    orphaned."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setenv("CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT", "120")
+
+    session_exit_calls = []
+    stdio_exit_calls = []
+
+    class _DummyMcpSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            session_exit_calls.append((exc_type, exc))
+            return False
+
+        def initialize(self):
+            return object()
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            stdio_exit_calls.append((exc_type, exc))
+            return False
+
+    async def _fake_await_with_timeout(coro, operation, timeout_seconds=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        raise backend.MCPToolTimeoutError("daemon initialize timed out")
+
+    original_daemon = backend._daemon_session
+    original_context = backend._daemon_client_context
+    try:
+        backend._daemon_session = None
+        backend._daemon_client_context = None
+        with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+             patch.object(backend, "ClientSession", return_value=_DummyMcpSession()), \
+             patch.object(backend, "_build_server_args", return_value=[]), \
+             patch.object(backend, "_await_with_timeout", side_effect=_fake_await_with_timeout):
+            import asyncio as _aio
+            with pytest.raises(RuntimeError, match="Failed to start DOMShell daemon"):
+                _aio.run(backend._start_daemon())
+
+        # Both entered contexts must have been exited exactly once.
+        assert len(session_exit_calls) == 1
+        assert len(stdio_exit_calls) == 1
+        # Globals still end up cleared (pre-existing behavior, preserved).
+        assert backend._daemon_session is None
+        assert backend._daemon_read is None
+        assert backend._daemon_write is None
+        assert backend._daemon_client_context is None
+    finally:
+        backend._daemon_session = original_daemon
+        backend._daemon_client_context = original_context
+
+
+def test_start_daemon_closes_stdio_context_when_session_never_entered(monkeypatch):
+    """If ClientSession.__aenter__ itself raises (session never fully
+    entered), the already-entered stdio_client context must still be
+    exited."""
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+
+    stdio_exit_calls = []
+
+    class _BrokenMcpSession:
+        async def __aenter__(self):
+            raise RuntimeError("session enter failed")
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _DummyStdio:
+        async def __aenter__(self):
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            stdio_exit_calls.append((exc_type, exc))
+            return False
+
+    original_daemon = backend._daemon_session
+    original_context = backend._daemon_client_context
+    try:
+        backend._daemon_session = None
+        backend._daemon_client_context = None
+        with patch.object(backend, "stdio_client", return_value=_DummyStdio()), \
+             patch.object(backend, "ClientSession", return_value=_BrokenMcpSession()), \
+             patch.object(backend, "_build_server_args", return_value=[]):
+            import asyncio as _aio
+            with pytest.raises(RuntimeError, match="Failed to start DOMShell daemon"):
+                _aio.run(backend._start_daemon())
+
+        assert len(stdio_exit_calls) == 1
+        assert backend._daemon_client_context is None
+    finally:
+        backend._daemon_session = original_daemon
+        backend._daemon_client_context = original_context
+
+
+# ── Absolute-path wrappers: restore must be attempted even when the
+#    operation raises (not just on normal return) ─────────────────────
+#
+# ls/cat/click/grep/type_text all anchor a `cd` before the real
+# operation and restore afterward. Previously the restore call only
+# ran on normal return — an operation that raised (e.g. an
+# MCPToolTimeoutError) skipped it entirely, leaving the DOMShell
+# lane's cwd stuck at the anchor and silently corrupting every later
+# relative-path call against that lane. The fix must still let the
+# original exception propagate (the restore is best-effort — its own
+# failure must never mask the operation's failure).
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_ls_absolute_restores_after_op_raises(mock_call):
+    sess = _make_session(working_dir="/main")
+    mock_call.side_effect = [
+        _make_result("✓ Entered\n[lane: 1]"),           # anchor ok
+        backend.MCPToolTimeoutError("ls timed out"),      # op raises
+        _make_result("✓\n[lane: 1]"),                      # restore
+    ]
+    with pytest.raises(backend.MCPToolTimeoutError, match="ls timed out"):
+        backend.ls("/main", session=sess)
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[0].args[0] == "cd %here%/main"
+    assert mock_call.call_args_list[2].args[0] == "cd %here%/main"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_cat_absolute_restores_after_op_raises(mock_call):
+    sess = _make_session(working_dir="/")
+    mock_call.side_effect = [
+        _make_result("✓ Entered\n[lane: 1]"),
+        backend.MCPToolTimeoutError("cat timed out"),
+        _make_result("✓\n[lane: 1]"),
+    ]
+    with pytest.raises(backend.MCPToolTimeoutError, match="cat timed out"):
+        backend.cat("/main/btn", session=sess)
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[2].args[0] == "cd %here%"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_click_absolute_restores_after_op_raises(mock_call):
+    sess = _make_session(working_dir="/main")
+    mock_call.side_effect = [
+        _make_result("✓ Entered\n[lane: 1]"),
+        backend.MCPToolTimeoutError("click timed out"),
+        _make_result("✓\n[lane: 1]"),
+    ]
+    with pytest.raises(backend.MCPToolTimeoutError, match="click timed out"):
+        backend.click("/main/button[0]", session=sess)
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[2].args[0] == "cd %here%/main"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_rooted_absolute_restores_after_op_raises(mock_call):
+    mock_call.side_effect = [
+        _make_result("✓ Entered\n[lane: 1]"),
+        backend.MCPToolTimeoutError("grep timed out"),
+        _make_result("✓\n[lane: 1]"),
+    ]
+    with pytest.raises(backend.MCPToolTimeoutError, match="grep timed out"):
+        backend.grep(
+            "Login", path="/main", prev="/", session=_make_session(working_dir="/"),
+        )
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[2].args[0] == "cd %here%"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_type_text_absolute_restores_after_focus_raises(mock_call):
+    """focus itself raising (not just returning an error dict) must
+    still trigger the restore — the anchor already moved the lane
+    cwd."""
+    sess = _make_session(working_dir="/main")
+    mock_call.side_effect = [
+        _make_result("✓ Entered\n[lane: 1]"),               # anchor ok
+        backend.MCPToolTimeoutError("focus timed out"),       # focus raises
+        _make_result("✓\n[lane: 1]"),                          # restore
+    ]
+    with pytest.raises(backend.MCPToolTimeoutError, match="focus timed out"):
+        backend.type_text("/main/input", "hello", session=sess)
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[2].args[0] == "cd %here%/main"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_type_text_absolute_restores_after_type_raises(mock_call):
+    """type itself raising after a successful focus must still trigger
+    the restore — the lane cwd was moved by the anchor and must not
+    stay parked there."""
+    sess = _make_session(working_dir="/main")
+    mock_call.side_effect = [
+        _make_result("✓ Entered\n[lane: 1]"),               # anchor ok
+        _make_result("✓ Focused\n[lane: 1]"),                 # focus ok
+        backend.MCPToolTimeoutError("type timed out"),        # type raises
+        _make_result("✓\n[lane: 1]"),                          # restore
+    ]
+    with pytest.raises(backend.MCPToolTimeoutError, match="type timed out"):
+        backend.type_text("/main/input", "hello", session=sess)
+    assert mock_call.call_count == 4
+    assert mock_call.call_args_list[3].args[0] == "cd %here%/main"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_ls_absolute_restore_failure_does_not_mask_op_error(mock_call):
+    """If both the operation and the best-effort restore fail, the
+    original operation error must be what propagates — not the
+    restore's own failure."""
+    sess = _make_session(working_dir="/main")
+    mock_call.side_effect = [
+        _make_result("✓ Entered\n[lane: 1]"),
+        backend.MCPToolTimeoutError("ls timed out"),
+        RuntimeError("restore also failed"),
+    ]
+    with pytest.raises(backend.MCPToolTimeoutError, match="ls timed out"):
+        backend.ls("/main", session=sess)
+    assert mock_call.call_count == 3
+
+
+@pytest.mark.parametrize(
+    ("invoke", "anchor_cmd", "restore_cmd"),
+    [
+        pytest.param(
+            lambda sess: backend.ls("/main", session=sess),
+            "cd %here%/main",
+            "cd %here%/main",
+            id="ls",
+        ),
+        pytest.param(
+            lambda sess: backend.cat("/main/btn", session=sess),
+            "cd %here%",
+            "cd %here%/main",
+            id="cat",
+        ),
+        pytest.param(
+            lambda sess: backend.grep("Login", path="/main", session=sess),
+            "cd %here%/main",
+            "cd %here%/main",
+            id="grep",
+        ),
+        pytest.param(
+            lambda sess: backend.click("/main/button[0]", session=sess),
+            "cd %here%",
+            "cd %here%/main",
+            id="click",
+        ),
+        pytest.param(
+            lambda sess: backend.type_text("/main/input", "hello", session=sess),
+            "cd %here%",
+            "cd %here%/main",
+            id="type-text",
+        ),
+    ],
+)
+def test_absolute_wrappers_restore_after_anchor_timeout(
+    invoke, anchor_cmd, restore_cmd,
+):
+    sess = _make_session(working_dir="/main")
+    mock_call = AsyncMock(side_effect=[
+        backend.MCPToolTimeoutError("anchor timed out"),
+        _make_result("restored\n[lane: 1]"),
+    ])
+
+    with patch.object(backend, "_call_execute", mock_call):
+        with pytest.raises(backend.MCPToolTimeoutError, match="anchor timed out"):
+            invoke(sess)
+
+    assert [item.args[0] for item in mock_call.call_args_list] == [
+        anchor_cmd,
+        restore_cmd,
     ]
