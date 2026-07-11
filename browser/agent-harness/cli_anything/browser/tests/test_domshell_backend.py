@@ -127,6 +127,23 @@ def test_cd_relative_quoted(mock_call):
     assert mock_call.call_args.args[0] == "cd main"
 
 
+def test_cd_restores_tracked_cwd_after_timeout():
+    sess = _make_session(working_dir="/main")
+    mock_call = AsyncMock(side_effect=[
+        backend.MCPToolTimeoutError("cd timed out"),
+        _make_result("restored\n[lane: 1]"),
+    ])
+
+    with patch.object(backend, "_call_execute", mock_call):
+        with pytest.raises(backend.MCPToolTimeoutError, match="cd timed out"):
+            backend.cd("/dialog", session=sess)
+
+    assert [item.args[0] for item in mock_call.call_args_list] == [
+        "cd %here%/dialog",
+        "cd %here%/main",
+    ]
+
+
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
 def test_cat_absolute_path_uses_three_separate_calls(mock_call):
     """`cat /main/btn`: anchor at tab root → cat main/btn → restore."""

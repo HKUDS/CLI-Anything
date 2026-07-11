@@ -935,10 +935,10 @@ def cd(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
          "output": "cd: /missing: No such directory"}
     """
     translated, is_absolute = _translate_path(path)
-    # cd is the one wrapper where the operation IS the new state — no
-    # following operation needs the anchored cwd, so no split-and-check
-    # and no restore. Absolute targets anchor via `cd %here%/<rest>` so
-    # the result is independent of the lane's current cwd.
+    # cd is the one wrapper where the operation IS the new state, so no
+    # restore follows a successful call. Absolute targets anchor via
+    # `cd %here%/<rest>` so the result is independent of the lane's
+    # current cwd.
     if is_absolute:
         command = _anchor_path_cmd(translated)
     elif translated:
@@ -946,7 +946,12 @@ def cd(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
     else:
         # Bare/empty `cd` → back to tab root.
         command = _anchor_path_cmd("")
-    result = asyncio.run(_call_execute(command, use_daemon, session=session))
+    if session is not None:
+        result = _anchor_with_restore_on_error(
+            command, _restore_cwd_cmd(session), use_daemon, session
+        )
+    else:
+        result = asyncio.run(_call_execute(command, use_daemon, session=session))
     return _parse_execute_result(result, "cd")
 
 
