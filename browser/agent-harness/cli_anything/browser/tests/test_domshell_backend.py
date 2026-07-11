@@ -1696,6 +1696,150 @@ def test_close_transport_preserves_anyio_cancel_scope_order():
     _aio.run(_run())
 
 
+@pytest.mark.parametrize(
+    "operation",
+    ["ls", "cat", "grep", "click", "focus-error", "type"],
+)
+def test_restore_failure_does_not_mask_primary_result(operation):
+    sess = _make_session(working_dir="/main")
+    success = _make_result("primary result\n[lane: 1]")
+    restore_timeout = backend.MCPToolTimeoutError("restore timed out")
+
+    if operation == "focus-error":
+        focus_error = _make_result("Error: focus failed\n[lane: 1]")
+        responses = [_make_result("anchored\n[lane: 1]"), focus_error, restore_timeout]
+    elif operation == "type":
+        responses = [
+            _make_result("anchored\n[lane: 1]"),
+            _make_result("focused\n[lane: 1]"),
+            success,
+            restore_timeout,
+        ]
+    else:
+        responses = [
+            _make_result("anchored\n[lane: 1]"),
+            success,
+            restore_timeout,
+        ]
+
+    with patch.object(
+        backend, "_call_execute", AsyncMock(side_effect=responses)
+    ):
+        if operation == "ls":
+            result = backend.ls("/main", session=sess)
+        elif operation == "cat":
+            result = backend.cat("/main/button", session=sess)
+        elif operation == "grep":
+            result = backend.grep("needle", path="/main", session=sess)
+        elif operation == "click":
+            result = backend.click("/main/button", session=sess)
+        else:
+            result = backend.type_text("/main/input", "hello", session=sess)
+
+    if operation == "focus-error":
+        assert "focus failed" in result["error"]
+    elif operation in {"ls", "grep"}:
+        assert "primary result" in result["raw"]
+    else:
+        assert "primary result" in result["output"]
+
+
+@pytest.mark.parametrize("blocked_stage", ["stdio", "session"])
+def test_call_execute_bounds_context_entry(monkeypatch, blocked_stage):
+    monkeypatch.setenv("DOMSHELL_TOKEN", "test-token")
+    monkeypatch.setattr(backend, "_get_init_timeout_seconds", lambda: 0.01)
+
+    class _Stdio:
+        async def __aenter__(self):
+            if blocked_stage == "stdio":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _Session:
+        async def __aenter__(self):
+            if blocked_stage == "session":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _run():
+        import asyncio as _aio
+        with pytest.raises(
+            backend.MCPToolTimeoutError, match=f"{blocked_stage}.*enter"
+        ):
+            await _aio.wait_for(
+                backend._call_execute("ls /", session=Session()),
+                timeout=0.2,
+            )
+
+    with patch.object(backend, "stdio_client", return_value=_Stdio()), \
+         patch.object(backend, "ClientSession", return_value=_Session()), \
+         patch.object(backend, "_build_server_args", return_value=[]):
+        import asyncio as _aio
+        _aio.run(_run())
+
+
+@pytest.mark.parametrize("blocked_stage", ["stdio", "session"])
+def test_start_daemon_bounds_context_entry(monkeypatch, blocked_stage):
+    monkeypatch.setattr(backend, "_get_init_timeout_seconds", lambda: 0.01)
+
+    class _Stdio:
+        async def __aenter__(self):
+            if blocked_stage == "stdio":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return object(), object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _Session:
+        async def __aenter__(self):
+            if blocked_stage == "session":
+                import asyncio as _aio
+                await _aio.sleep(0.5)
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def _run():
+        import asyncio as _aio
+        with pytest.raises(RuntimeError, match=f"{blocked_stage}.*enter"):
+            await _aio.wait_for(backend._start_daemon(), timeout=0.2)
+
+    original_state = (
+        backend._daemon_session,
+        backend._daemon_read,
+        backend._daemon_write,
+        backend._daemon_client_context,
+    )
+    try:
+        backend._daemon_session = None
+        backend._daemon_read = None
+        backend._daemon_write = None
+        backend._daemon_client_context = None
+        with patch.object(backend, "stdio_client", return_value=_Stdio()), \
+             patch.object(backend, "ClientSession", return_value=_Session()), \
+             patch.object(backend, "_build_server_args", return_value=[]):
+            import asyncio as _aio
+            _aio.run(_run())
+    finally:
+        (
+            backend._daemon_session,
+            backend._daemon_read,
+            backend._daemon_write,
+            backend._daemon_client_context,
+        ) = original_state
+
+
 def test_daemon_timeout_is_not_retried_and_resets_daemon():
     """A daemon-mode timeout must not be retried against the same tool
     call, but must reset the daemon so later commands can recover."""

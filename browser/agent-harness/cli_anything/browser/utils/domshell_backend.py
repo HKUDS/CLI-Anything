@@ -96,6 +96,24 @@ def _get_init_timeout_seconds() -> float:
     return max(1.0, parsed)
 
 
+def _same_task_timeout(timeout_seconds: float) -> Any:
+    """Return a timeout context that does not move work to another task."""
+    if hasattr(asyncio, "timeout"):
+        return asyncio.timeout(timeout_seconds)
+    from async_timeout import timeout
+    return timeout(timeout_seconds)
+
+
+def _timeout_error(operation: str, timeout_seconds: float) -> str:
+    return (
+        "DOMShell MCP request timed out after "
+        f"{timeout_seconds:.1f}s during {operation}. "
+        "Verify DOMSHELL_TOKEN and that the DOMShell server is reachable. "
+        "Adjust CLI_ANYTHING_BROWSER_MCP_TIMEOUT for tool calls or "
+        "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT for initialization."
+    )
+
+
 async def _await_with_timeout(
     coro: Awaitable[Any],
     operation: str,
@@ -113,11 +131,22 @@ async def _await_with_timeout(
         return await asyncio.wait_for(coro, timeout=timeout_seconds)
     except asyncio.TimeoutError as e:
         raise MCPToolTimeoutError(
-            "DOMShell MCP request timed out after "
-            f"{timeout_seconds:.1f}s during {operation}. "
-            "Verify DOMSHELL_TOKEN and that the DOMShell server is reachable. "
-            "Adjust CLI_ANYTHING_BROWSER_MCP_TIMEOUT for tool calls or "
-            "CLI_ANYTHING_BROWSER_MCP_INIT_TIMEOUT for initialization."
+            _timeout_error(operation, timeout_seconds)
+        ) from e
+
+
+async def _enter_context_with_timeout(
+    context: Any,
+    operation: str,
+    timeout_seconds: float,
+) -> Any:
+    """Enter an AnyIO-backed context with a timeout in the current task."""
+    try:
+        async with _same_task_timeout(timeout_seconds):
+            return await context.__aenter__()
+    except asyncio.TimeoutError as e:
+        raise MCPToolTimeoutError(
+            _timeout_error(operation, timeout_seconds)
         ) from e
 
 # Daemon mode: persistent MCP connection
@@ -365,26 +394,19 @@ def _restore_cwd_cmd(session: Any) -> str:
 def _best_effort_restore(
     restore_cmd: str, use_daemon: bool, session: Any,
 ) -> None:
-    """Attempt a restore-cwd call after an operation raised.
+    """Attempt a restore-cwd call without masking the primary result.
 
     Absolute-path wrappers (ls/cat/click/grep/type_text) anchor a `cd`
     before their real operation and restore afterward. If the operation
-    itself raises (e.g. an MCP timeout), the restore must still be
-    attempted — otherwise the lane's cwd stays parked at the anchor and
-    silently corrupts every later relative-path call in that lane.
-
-    Any exception from THIS restore attempt is swallowed: it must never
-    mask the original operation failure that's already propagating past
-    this cleanup call. This is deliberately narrower than the
-    restore-on-success call each wrapper makes directly — a restore
-    failure on the normal-return path is not swallowed, since there's no
-    prior error it could mask.
+    raises or returns, restore must still be attempted so the lane's cwd
+    does not stay parked at the anchor. Restore errors are logged and
+    swallowed because cleanup must not replace the operation's result.
     """
     try:
         asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
     except Exception:
         log.warning(
-            "DOMShell lane cwd restore failed after an operation error",
+            "DOMShell lane cwd restore failed",
             exc_info=True,
         )
 
@@ -697,12 +719,14 @@ async def _call_execute(
     client_context = None
     session_context = None
     try:
-        client_manager = stdio_client(server_params)
-        read, write = await client_manager.__aenter__()
-        client_context = client_manager
-        session_manager = ClientSession(read, write)
-        mcp_session = await session_manager.__aenter__()
-        session_context = session_manager
+        client_context = stdio_client(server_params)
+        read, write = await _enter_context_with_timeout(
+            client_context, "stdio client enter", init_timeout
+        )
+        session_context = ClientSession(read, write)
+        mcp_session = await _enter_context_with_timeout(
+            session_context, "session enter", init_timeout
+        )
         await _await_with_timeout(
             mcp_session.initialize(), "session initialize", init_timeout
         )
@@ -755,21 +779,15 @@ async def _close_daemon_transport(session: Any, client_context: Any) -> None:
     swallowed so cleanup cannot hide the operation result. Either argument
     may be ``None`` and is skipped.
     """
-    def cleanup_timeout():
-        if hasattr(asyncio, "timeout"):
-            return asyncio.timeout(DAEMON_STOP_TIMEOUT_SECONDS)
-        from async_timeout import timeout
-        return timeout(DAEMON_STOP_TIMEOUT_SECONDS)
-
     if session is not None:
         try:
-            async with cleanup_timeout():
+            async with _same_task_timeout(DAEMON_STOP_TIMEOUT_SECONDS):
                 await session.__aexit__(None, None, None)
         except (Exception, asyncio.TimeoutError):
             pass
     if client_context is not None:
         try:
-            async with cleanup_timeout():
+            async with _same_task_timeout(DAEMON_STOP_TIMEOUT_SECONDS):
                 await client_context.__aexit__(None, None, None)
         except (Exception, asyncio.TimeoutError):
             pass
@@ -796,14 +814,19 @@ async def _start_daemon() -> bool:
 
     try:
         # Store the context manager so we can properly clean it up later
+        init_timeout = _get_init_timeout_seconds()
         _daemon_client_context = stdio_client(server_params)
-        _daemon_read, _daemon_write = await _daemon_client_context.__aenter__()
+        _daemon_read, _daemon_write = await _enter_context_with_timeout(
+            _daemon_client_context, "daemon stdio enter", init_timeout
+        )
         _daemon_session = ClientSession(_daemon_read, _daemon_write)
-        await _daemon_session.__aenter__()
+        await _enter_context_with_timeout(
+            _daemon_session, "daemon session enter", init_timeout
+        )
         await _await_with_timeout(
             _daemon_session.initialize(),
             "daemon initialize",
-            _get_init_timeout_seconds(),
+            init_timeout,
         )
         return True
     except Exception as e:
@@ -901,9 +924,7 @@ def ls(path: str = "/", use_daemon: bool = False, *, session: Any = None) -> dic
             # doesn't stay parked at the anchor.
             _best_effort_restore(restore_cmd, use_daemon, session)
             raise
-        # Best-effort restore — ls already ran; restore failure is
-        # cosmetic (next harness cd corrects any drift).
-        asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+        _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(op, "ls")
     if translated:
         op = asyncio.run(_call_execute(
@@ -1006,7 +1027,7 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         except Exception:
             _best_effort_restore(restore_cmd, use_daemon, session)
             raise
-        asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+        _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(op, "cat")
     op = asyncio.run(_call_execute(
         f"cat {_q(translated)}", use_daemon, session=session,
@@ -1131,7 +1152,7 @@ def grep(
     except Exception:
         _best_effort_restore(restore_cmd, use_daemon, session)
         raise
-    asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+    _best_effort_restore(restore_cmd, use_daemon, session)
     return _parse_execute_result(op, "grep")
 
 
@@ -1177,7 +1198,7 @@ def click(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         except Exception:
             _best_effort_restore(restore_cmd, use_daemon, session)
             raise
-        asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+        _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(op, "click")
     op = asyncio.run(_call_execute(
         f"click {_q(translated)}", use_daemon, session=session,
@@ -1382,9 +1403,7 @@ def type_text(
         # doesn't stay parked at the anchor (only relevant when we
         # actually moved, i.e. the absolute path branch).
         if is_absolute:
-            asyncio.run(_call_execute(
-                restore_cmd, use_daemon, session=session,
-            ))
+            _best_effort_restore(restore_cmd, use_daemon, session)
         return _parse_execute_result(focus_result, "focus")
 
     try:
@@ -1399,12 +1418,7 @@ def type_text(
         raise
 
     if is_absolute:
-        # Best-effort restore — type already succeeded, so a restore
-        # failure is cosmetic. The next harness cd will correct any
-        # drift.
-        asyncio.run(_call_execute(
-            restore_cmd, use_daemon, session=session,
-        ))
+        _best_effort_restore(restore_cmd, use_daemon, session)
 
     return _parse_execute_result(type_result, "type")
 
