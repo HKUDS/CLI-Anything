@@ -144,7 +144,7 @@ def _gen_world_settings(project: Dict[str, Any]) -> List[str]:
             "",
             "# HDRI environment",
             "env_tex = world.node_tree.nodes.new('ShaderNodeTexEnvironment')",
-            f"env_tex.image = bpy.data.images.load(r'{hdri_path}')",
+            f"env_tex.image = bpy.data.images.load({hdri_path!r})",
             f"bg_node.inputs[1].default_value = {strength}",
             "world.node_tree.links.new(env_tex.outputs[0], bg_node.inputs[0])",
         ])
@@ -532,7 +532,7 @@ def _gen_render_output(
     lines = [
         "# ── Render Output ───────────────────────────────────────────",
         f"scene.render.image_settings.file_format = '{bpy_format}'",
-        f"scene.render.filepath = r'{output_path}'",
+        f"scene.render.filepath = {output_path!r}",
     ]
 
     if animation:
@@ -552,7 +552,7 @@ def _gen_render_output(
 
     lines.extend([
         "",
-        f"print('Render complete: {output_path}')",
+        f"print('Render complete: ' + {output_path!r})",
     ])
 
     return lines
