@@ -402,6 +402,24 @@ class TestRegistry:
         assert result["clis"][0]["name"] == "gimp"
         mock_get.assert_called_once()
 
+    @pytest.mark.parametrize("cache_contents", [b"\xff", b"[]"])
+    @patch("cli_hub.registry.requests.get")
+    def test_fetch_registry_recovers_from_invalid_cache(
+        self, mock_get, tmp_path, cache_contents
+    ):
+        cache_file = tmp_path / "registry_cache.json"
+        cache_file.write_bytes(cache_contents)
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = SAMPLE_REGISTRY
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        with patch("cli_hub.registry.CACHE_FILE", cache_file):
+            result = fetch_registry()
+
+        assert result["clis"][0]["name"] == "gimp"
+        mock_get.assert_called_once()
+
     @patch("cli_hub.registry.fetch_public_registry", return_value=None)
     @patch("cli_hub.registry.fetch_registry")
     def test_fetch_all_clis_does_not_mutate_registry_entries(self, mock_fetch_registry, mock_fetch_public):
@@ -474,6 +492,24 @@ class TestMatrixRegistry:
         mock_get.return_value = mock_resp
 
         result = fetch_matrix_registry(force_refresh=True)
+        assert result["matrices"][0]["name"] == "video-creation"
+        mock_get.assert_called_once()
+
+    @pytest.mark.parametrize("cache_contents", [b"\xff", b"[]"])
+    @patch("cli_hub.matrix.requests.get")
+    def test_fetch_matrix_registry_recovers_from_invalid_cache(
+        self, mock_get, tmp_path, cache_contents
+    ):
+        cache_file = tmp_path / "matrix_registry_cache.json"
+        cache_file.write_bytes(cache_contents)
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = SAMPLE_MATRIX_REGISTRY
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        with patch("cli_hub.matrix.MATRIX_CACHE_FILE", cache_file):
+            result = fetch_matrix_registry()
+
         assert result["matrices"][0]["name"] == "video-creation"
         mock_get.assert_called_once()
 

@@ -23,9 +23,16 @@ def _load_cached_data(cache_file):
     if not cache_file.exists():
         return None
     try:
-        cached = json.loads(cache_file.read_text())
+        cached = json.loads(cache_file.read_text(encoding="utf-8"))
         return cached["data"]
-    except (json.JSONDecodeError, KeyError):
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        AttributeError,
+        KeyError,
+        TypeError,
+    ):
         return None
 
 
@@ -35,10 +42,17 @@ def _fetch_json(url, cache_file, force_refresh=False):
 
     if not force_refresh and cache_file.exists():
         try:
-            cached = json.loads(cache_file.read_text())
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
             if time.time() - cached.get("_cached_at", 0) < CACHE_TTL:
                 return cached["data"]
-        except (json.JSONDecodeError, KeyError):
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            AttributeError,
+            KeyError,
+            TypeError,
+        ):
             pass
 
     try:
@@ -52,7 +66,7 @@ def _fetch_json(url, cache_file, force_refresh=False):
         raise
 
     cache_payload = {"_cached_at": time.time(), "data": data}
-    cache_file.write_text(json.dumps(cache_payload, indent=2))
+    cache_file.write_text(json.dumps(cache_payload, indent=2), encoding="utf-8")
 
     return data
 

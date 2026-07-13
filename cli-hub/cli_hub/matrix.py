@@ -43,9 +43,16 @@ def _load_cached_data():
     if not MATRIX_CACHE_FILE.exists():
         return None
     try:
-        cached = json.loads(MATRIX_CACHE_FILE.read_text())
+        cached = json.loads(MATRIX_CACHE_FILE.read_text(encoding="utf-8"))
         return cached["data"]
-    except (json.JSONDecodeError, KeyError):
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        AttributeError,
+        KeyError,
+        TypeError,
+    ):
         return None
 
 
@@ -68,10 +75,17 @@ def fetch_matrix_registry(force_refresh=False):
 
     if not force_refresh and MATRIX_CACHE_FILE.exists():
         try:
-            cached = json.loads(MATRIX_CACHE_FILE.read_text())
+            cached = json.loads(MATRIX_CACHE_FILE.read_text(encoding="utf-8"))
             if time.time() - cached.get("_cached_at", 0) < CACHE_TTL:
                 return cached["data"]
-        except (json.JSONDecodeError, KeyError):
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            AttributeError,
+            KeyError,
+            TypeError,
+        ):
             pass
 
     try:
@@ -87,7 +101,10 @@ def fetch_matrix_registry(force_refresh=False):
             return local_data
         raise
 
-    MATRIX_CACHE_FILE.write_text(json.dumps({"_cached_at": time.time(), "data": data}, indent=2))
+    MATRIX_CACHE_FILE.write_text(
+        json.dumps({"_cached_at": time.time(), "data": data}, indent=2),
+        encoding="utf-8",
+    )
     return data
 
 
