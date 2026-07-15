@@ -23,7 +23,7 @@ from typing import Optional
 # Add parent to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cli_anything.shotcut.core.session import Session
+from cli_anything.shotcut.core.session import Session, set_session_dir
 from cli_anything.shotcut.core import project as proj_mod
 from cli_anything.shotcut.core import timeline as tl_mod
 from cli_anything.shotcut.core import filters as filt_mod
@@ -126,12 +126,14 @@ _dry_run = False
 @click.option("--json", "json_mode", is_flag=True, help="Output in JSON format")
 @click.option("--session", "session_id", default=None, help="Session ID to use/resume")
 @click.option("--project", "project_path", default=None, help="Open a project file")
+@click.option("--session-dir", "session_dir", default=None,
+              help="Directory for session state files (overrides ~/.shotcut-cli/sessions). Use to keep work isolated to a workspace.")
 @click.option("-s", "--save", "auto_save", is_flag=True,
-              help="Auto-save project after each mutation command (one-shot mode)")
+              help="Auto-save the project file after each mutation command (one-shot mode)")
 @click.option("--dry-run", "dry_run", is_flag=True, default=False,
               help="Run command without saving changes to disk")
 @click.pass_context
-def cli(ctx, json_mode, session_id, project_path, auto_save, dry_run):
+def cli(ctx, json_mode, session_id, project_path, session_dir, auto_save, dry_run):
     """Shotcut CLI — Video editing from the command line.
 
     A stateful CLI for manipulating Shotcut/MLT video projects.
@@ -139,21 +141,35 @@ def cli(ctx, json_mode, session_id, project_path, auto_save, dry_run):
 
     Run without a subcommand to enter interactive REPL mode.
 
-    Use -s/--save to automatically save changes after each mutation command.
-    This is useful in one-shot mode where each command runs in a new process.
+    Use -s/--save to automatically save the project file after each mutation.
+    Use --session-dir to keep session state inside a workspace instead of ~/.shotcut-cli.
     """
     global _json_output, _session, _auto_save, _dry_run
     _json_output = json_mode
     _auto_save = auto_save
     _dry_run = dry_run
 
+    if session_dir:
+        set_session_dir(session_dir)
+
     if session_id:
         _session = Session(session_id)
+        # Restore prior undo/redo history so mutations from a previous
+        # process (separate CLI invocation) remain undoable.
+        saved = Session.load_session_state(session_id)
+        if saved:
+            _session.restore_session_state(saved)
     else:
         _session = Session()
 
     if project_path:
         _session.open_project(project_path)
+        # If a session file already tracks this project, restore its history.
+        prior = Session.list_sessions()
+        for s in prior:
+            if s.get("project_path") == os.path.abspath(project_path):
+                _session.restore_session_state(s)
+                break
 
     # Register auto-save callback to run after each command
     ctx.call_on_close(_auto_save_callback)
