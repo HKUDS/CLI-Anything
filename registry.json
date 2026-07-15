@@ -27,7 +27,7 @@
     {
       "name": "openrefine",
       "display_name": "OpenRefine",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Agent-native CLI for OpenRefine import, operation-history cleaning, row inspection, export, and session undo/redo through the real local HTTP API.",
       "requires": "OpenRefine 3.10.x or newer running as a local web server",
       "homepage": "https://openrefine.org/",

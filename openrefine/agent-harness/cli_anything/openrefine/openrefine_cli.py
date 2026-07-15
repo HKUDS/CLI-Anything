@@ -69,7 +69,11 @@ def repl(ctx: click.Context) -> None:
     history_file = _repl_history_file(ctx)
     skin = ReplSkin("openrefine", version=__version__, history_file=history_file)
     skin.print_banner()
-    prompt = skin.create_prompt_session()
+    prompt = (
+        skin.create_prompt_session()
+        if sys.stdin.isatty() and sys.stdout.isatty()
+        else None
+    )
     commands = {
         "status": "Check backend and session",
         "projects": "List OpenRefine projects",

@@ -454,7 +454,15 @@ def test_cli_session_show_json_uses_custom_path(tmp_path):
     assert json.loads(result.output)["base_url"].startswith("http")
 
 
-def test_cli_default_enters_repl_and_exits():
+def test_cli_default_enters_repl_and_exits(monkeypatch):
+    def fail_if_prompt_session_is_created(self):
+        raise AssertionError("PromptSession should not be created for non-TTY Click streams")
+
+    monkeypatch.setattr(
+        openrefine_cli.ReplSkin,
+        "create_prompt_session",
+        fail_if_prompt_session_is_created,
+    )
     result = CliRunner().invoke(cli, input="exit\n")
     assert result.exit_code == 0
     assert "cli-anything" in result.output
