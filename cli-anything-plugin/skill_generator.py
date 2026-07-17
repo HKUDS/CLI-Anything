@@ -180,21 +180,14 @@ def extract_system_package(content: str) -> Optional[str]:
     """Extract system package installation command from README."""
     # Look for apt/brew install patterns
     patterns = [
-        r"`apt install ([\w\-]+)`",
-        r"`brew install ([\w\-]+)`",
-        r"`apt-get install ([\w\-]+)`",
+        r"`((?:sudo\s+)?apt(?:-get)?\s+install\s+[\w.+/-]+(?:\s+[\w.+/-]+)*)`",
+        r"`(brew\s+install(?:\s+--cask)?\s+[\w.+@/-]+(?:\s+[\w.+@/-]+)*)`",
     ]
 
     for pattern in patterns:
         match = re.search(pattern, content)
         if match:
-            package = match.group(1)
-            if "apt-get" in pattern:
-                return f"apt-get install {package}"
-            elif "apt" in pattern:
-                return f"apt install {package}"
-            elif "brew" in pattern:
-                return f"brew install {package}"
+            return match.group(1)
 
     return None
 

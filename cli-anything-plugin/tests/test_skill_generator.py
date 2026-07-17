@@ -361,10 +361,22 @@ class TestExtractSystemPackage:
         result = extract_system_package(content)
         assert result == "brew install mytool"
 
+    def test_sudo_apt_install(self):
+        content = "Install with `sudo apt install freecad`."
+        result = extract_system_package(content)
+        assert result == "sudo apt install freecad"
+
+    def test_brew_cask_install(self):
+        content = "Install with `brew install --cask krita`."
+        result = extract_system_package(content)
+        assert result == "brew install --cask krita"
+
+    def test_multiple_apt_packages(self):
+        content = "Install with `apt install melt ffmpeg`."
+        result = extract_system_package(content)
+        assert result == "apt install melt ffmpeg"
+
     def test_apt_get_install_returns_apt_get_command(self):
-        # Regression: apt-get pattern contains "apt" as a substring, so the
-        # condition must check "apt-get" before "apt" to avoid returning the
-        # wrong command ("apt install" instead of "apt-get install").
         content = "Install with `apt-get install mytool`."
         result = extract_system_package(content)
         assert result == "apt-get install mytool", (
