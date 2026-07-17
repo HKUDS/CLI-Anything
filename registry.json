@@ -2,120 +2,25 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-06-19"
+    "updated": "2026-07-17"
   },
   "clis": [
     {
-      "name": "jumpserver",
-      "display_name": "JumpServer",
-      "version": "0.1.0",
-      "description": "Bastion host management — manage assets, users, permissions, sessions, accounts, and audit logs via JumpServer REST API",
-      "requires": "JumpServer v3.0+ instance",
-      "homepage": "https://www.jumpserver.org",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=jumpserver/agent-harness",
-      "entry_point": "cli-anything-jumpserver",
-      "skill_md": "skills/cli-anything-jumpserver/SKILL.md",
-      "category": "devops",
-      "contributors": [
-        {
-          "name": "Ayasaz",
-          "url": "https://github.com/Ayasaz"
-        }
-      ]
-    },
-    {
-      "name": "openrefine",
-      "display_name": "OpenRefine",
+      "name": "3mf",
+      "display_name": "3MF",
       "version": "1.0.0",
-      "description": "Agent-native CLI for OpenRefine import, operation-history cleaning, row inspection, export, and session undo/redo through the real local HTTP API.",
-      "requires": "OpenRefine 3.10.x or newer running as a local web server",
-      "homepage": "https://openrefine.org/",
+      "description": "Mesh geometry editor for 3D printing files — detect and resize cylindrical holes, repair meshes, compare 3MF files",
+      "requires": "Python 3.10+; numpy, scipy, trimesh",
+      "homepage": "https://3mf.io",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openrefine/agent-harness",
-      "entry_point": "cli-anything-openrefine",
-      "skill_md": "skills/cli-anything-openrefine/SKILL.md",
-      "category": "database",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=3MF/agent-harness",
+      "entry_point": "cli-anything-3mf",
+      "skill_md": "3MF/agent-harness/cli_anything/threemf/skills/SKILL.md",
+      "category": "graphics",
       "contributors": [
         {
-          "name": "CLI-Anything-Team",
-          "url": "https://github.com/HKUDS/CLI-Anything"
-        }
-      ]
-    },
-    {
-      "name": "cc-switch",
-      "display_name": "CC Switch",
-      "version": "1.0.0",
-      "description": "Manage AI coding tool configurations - inspect providers, skills, MCP servers, usage stats, and proxy settings",
-      "requires": "CC Switch installed with active database",
-      "homepage": "https://github.com/HKUDS/CLI-Anything",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cc-switch/agent-harness",
-      "entry_point": "cli-anything-ccswitch",
-      "skill_md": "skills/cli-anything-ccswitch/SKILL.md",
-      "category": "devops",
-      "contributors": [
-        {
-          "name": "computersniper",
-          "url": "https://github.com/computersniper"
-        }
-      ]
-    },
-    {
-      "name": "wiremock",
-      "display_name": "WireMock",
-      "version": "0.1.0",
-      "description": "HTTP mock server management — create stubs, inspect requests, record traffic, and manage scenarios via WireMock REST API",
-      "requires": "WireMock server running (java -jar wiremock-standalone.jar)",
-      "homepage": "https://wiremock.org",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wiremock/agent-harness",
-      "entry_point": "cli-anything-wiremock",
-      "skill_md": "skills/cli-anything-wiremock/SKILL.md",
-      "category": "testing",
-      "contributors": [
-        {
-          "name": "fabiomantel",
-          "url": "https://github.com/fabiomantel"
-        }
-      ]
-    },
-    {
-      "name": "nslogger",
-      "display_name": "NSLogger",
-      "version": "0.1.0",
-      "description": "Capture, parse, filter, export, and mirror NSLogger iOS/macOS logs from the CLI",
-      "requires": "macOS for native Bonjour live capture; Python 3.10+",
-      "homepage": "https://github.com/fpillet/NSLogger",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nslogger/agent-harness",
-      "entry_point": "cli-anything-nslogger",
-      "skill_md": "skills/cli-anything-nslogger/SKILL.md",
-      "category": "devops",
-      "contributors": [
-        {
-          "name": "bazinga8023",
-          "url": "https://github.com/bazinga8023"
-        }
-      ]
-    },
-    {
-      "name": "anygen",
-      "display_name": "AnyGen",
-      "version": "1.0.0",
-      "description": "Generate docs, slides, websites and more via AnyGen cloud API",
-      "requires": "ANYGEN_API_KEY",
-      "homepage": "https://anygen.com",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=anygen/agent-harness",
-      "entry_point": "cli-anything-anygen",
-      "skill_md": "skills/cli-anything-anygen/SKILL.md",
-      "category": "generation",
-      "contributors": [
-        {
-          "name": "koltyu-anygen",
-          "url": "https://github.com/koltyu-anygen"
+          "name": "Gituheart",
+          "url": "https://github.com/Gituheart"
         }
       ]
     },
@@ -139,6 +44,25 @@
       ]
     },
     {
+      "name": "anygen",
+      "display_name": "AnyGen",
+      "version": "1.0.0",
+      "description": "Generate docs, slides, websites and more via AnyGen cloud API",
+      "requires": "ANYGEN_API_KEY",
+      "homepage": "https://anygen.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=anygen/agent-harness",
+      "entry_point": "cli-anything-anygen",
+      "skill_md": "skills/cli-anything-anygen/SKILL.md",
+      "category": "generation",
+      "contributors": [
+        {
+          "name": "koltyu-anygen",
+          "url": "https://github.com/koltyu-anygen"
+        }
+      ]
+    },
+    {
       "name": "audacity",
       "display_name": "Audacity",
       "version": "1.0.0",
@@ -154,25 +78,6 @@
         {
           "name": "CLI-Anything-Team",
           "url": "https://github.com/HKUDS/CLI-Anything"
-        }
-      ]
-    },
-    {
-      "name": "wavetone",
-      "display_name": "WaveTone",
-      "version": "1.0.0",
-      "description": "Prepare WaveTone 2.61 audio transcription manifests, probe audio files, and launch the real Windows WaveTone executable",
-      "requires": "WaveTone 2.61 extracted on Windows; set WAVETONE_EXE or WAVETONE_HOME",
-      "homepage": "http://ackiesound.ifdef.jp/",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wavetone/agent-harness",
-      "entry_point": "cli-anything-wavetone",
-      "skill_md": "skills/cli-anything-wavetone/SKILL.md",
-      "category": "audio",
-      "contributors": [
-        {
-          "name": "Shuhan Zhang",
-          "url": "https://github.com/Manifold68575"
         }
       ]
     },
@@ -215,21 +120,116 @@
       ]
     },
     {
-      "name": "web-yu-pri",
-      "display_name": "Web Yu-pri",
-      "version": "0.1.0",
-      "description": "Japan Post Web Yu-pri browser workflow automation for login, inspection, screenshots, dry-run planning, and contents-form filling",
-      "requires": "Japan Post Web Yu-pri account, Playwright, Microsoft Edge/Chrome or Playwright Chromium",
-      "homepage": "https://mgr.post.japanpost.jp/C30P01Action.do",
+      "name": "calibre",
+      "display_name": "Calibre",
+      "version": "1.0.0",
+      "description": "E-book library management — list, search, metadata editing, format conversion via calibredb, ebook-convert, ebook-meta",
+      "requires": "Calibre (apt install calibre, brew install --cask calibre)",
+      "homepage": "https://calibre-ebook.com",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=web-yu-pri/agent-harness",
-      "entry_point": "cli-anything-web-yu-pri",
-      "skill_md": "skills/cli-anything-web-yu-pri/SKILL.md",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=calibre/agent-harness",
+      "entry_point": "cli-anything-calibre",
+      "skill_md": "calibre/agent-harness/cli_anything/calibre/skills/SKILL.md",
+      "category": "office",
+      "contributors": [
+        {
+          "name": "OGRLEAF",
+          "url": "https://github.com/OGRLEAF"
+        }
+      ]
+    },
+    {
+      "name": "cc-switch",
+      "display_name": "CC Switch",
+      "version": "1.0.0",
+      "description": "Manage AI coding tool configurations - inspect providers, skills, MCP servers, usage stats, and proxy settings",
+      "requires": "CC Switch installed with active database",
+      "homepage": "https://github.com/HKUDS/CLI-Anything",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cc-switch/agent-harness",
+      "entry_point": "cli-anything-ccswitch",
+      "skill_md": "skills/cli-anything-ccswitch/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "computersniper",
+          "url": "https://github.com/computersniper"
+        }
+      ]
+    },
+    {
+      "name": "chromadb",
+      "display_name": "ChromaDB",
+      "version": "1.0.0",
+      "description": "Vector database operations — collections, documents, semantic search via ChromaDB HTTP API",
+      "requires": "ChromaDB server running at localhost:8000",
+      "homepage": "https://www.trychroma.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=chromadb/agent-harness",
+      "entry_point": "cli-anything-chromadb",
+      "skill_md": "skills/cli-anything-chromadb/SKILL.md",
+      "category": "database",
+      "contributors": [
+        {
+          "name": "t4tarzan",
+          "url": "https://github.com/t4tarzan"
+        }
+      ]
+    },
+    {
+      "name": "clibrowser",
+      "display_name": "clibrowser",
+      "version": "0.1.0",
+      "description": "Zero-dependency CLI browser for AI agents with search, extraction, forms, RSS, crawling, auth, and WebMCP support",
+      "requires": "Rust toolchain (cargo) for source install, or manual binary download from GitHub Releases",
+      "homepage": "https://github.com/allthingssecurity/clibrowser",
+      "source_url": null,
+      "install_cmd": "cargo install --git https://github.com/allthingssecurity/clibrowser.git --tag v0.1.0 --locked",
+      "entry_point": "clibrowser",
+      "skill_md": null,
       "category": "web",
       "contributors": [
         {
-          "name": "shinpei710",
-          "url": "https://github.com/shinpei710"
+          "name": "allthingssecurity",
+          "url": "https://github.com/allthingssecurity"
+        }
+      ]
+    },
+    {
+      "name": "cloudanalyzer",
+      "display_name": "CloudAnalyzer",
+      "version": "1.0.0",
+      "description": "Point cloud and trajectory QA: Chamfer/AUC/F1, ATE/RPE/drift, ground segmentation metrics, config-driven quality gates, baseline evolution — harness wraps the CloudAnalyzer Python API",
+      "requires": "Python 3.10+; cloudanalyzer (`pip install cloudanalyzer`), Open3D for full IO/viewer paths",
+      "homepage": "https://github.com/rsasaki0109/CloudAnalyzer",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cloudanalyzer/agent-harness",
+      "entry_point": "cli-anything-cloudanalyzer",
+      "skill_md": "skills/cli-anything-cloudanalyzer/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "rsasaki0109",
+          "url": "https://github.com/rsasaki0109"
+        }
+      ]
+    },
+    {
+      "name": "cloudcompare",
+      "display_name": "CloudCompare",
+      "version": "1.0.0",
+      "description": "3D point cloud and mesh processing: load/save, color ops, normal estimation, Delaunay meshing, noise filtering, ICP registration, connected component segmentation",
+      "requires": "cloudcompare (CloudCompare application installed, e.g. via Flatpak or package manager)",
+      "homepage": "https://cloudcompare.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cloudcompare/agent-harness",
+      "entry_point": "cli-anything-cloudcompare",
+      "skill_md": "skills/cli-anything-cloudcompare/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "Taeyoung96",
+          "url": "https://github.com/Taeyoung96"
         }
       ]
     },
@@ -249,6 +249,25 @@
         {
           "name": "Bortlesboat",
           "url": "https://github.com/Bortlesboat"
+        }
+      ]
+    },
+    {
+      "name": "dify-workflow",
+      "display_name": "Dify Workflow",
+      "version": "0.1.0",
+      "description": "CLI-Anything wrapper for the Dify workflow DSL editor covering create, inspect, validate, edit, export, and layout operations",
+      "requires": "Upstream dify-workflow CLI installed from https://github.com/Akabane71/dify-workflow-cli",
+      "homepage": "https://github.com/Akabane71/dify-workflow-cli",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=dify-workflow/agent-harness",
+      "entry_point": "cli-anything-dify-workflow",
+      "skill_md": "skills/cli-anything-dify-workflow/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "Akabane71",
+          "url": "https://github.com/Akabane71"
         }
       ]
     },
@@ -310,6 +329,25 @@
       ]
     },
     {
+      "name": "exa",
+      "display_name": "Exa",
+      "version": "1.0.0",
+      "description": "AI-powered web search and content extraction via the Exa API",
+      "requires": "EXA_API_KEY (free tier at exa.ai)",
+      "homepage": "https://exa.ai",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=exa/agent-harness",
+      "entry_point": "cli-anything-exa",
+      "skill_md": "skills/cli-anything-exa/SKILL.md",
+      "category": "search",
+      "contributors": [
+        {
+          "name": "tgonzalezc5",
+          "url": "https://github.com/tgonzalezc5"
+        }
+      ]
+    },
+    {
       "name": "firefly-iii",
       "display_name": "Firefly III",
       "version": "1.0.0",
@@ -325,6 +363,44 @@
         {
           "name": "joyous-coder",
           "url": "https://github.com/joyous-coder"
+        }
+      ]
+    },
+    {
+      "name": "freecad",
+      "display_name": "FreeCAD",
+      "version": "1.1.0",
+      "description": "Parametric 3D CAD modeling via FreeCAD CLI (258 commands: Part, Sketcher, PartDesign, Assembly, Mesh, TechDraw, Draft, FEM, CAM, and more)",
+      "requires": "FreeCAD >= 1.1 (freecad.org)",
+      "homepage": "https://www.freecad.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=freecad/agent-harness",
+      "entry_point": "cli-anything-freecad",
+      "skill_md": "skills/cli-anything-freecad/SKILL.md",
+      "category": "3d",
+      "contributors": [
+        {
+          "name": "AlexGabbia",
+          "url": "https://github.com/AlexGabbia"
+        }
+      ]
+    },
+    {
+      "name": "gentech-agent-kit",
+      "display_name": "GenTech Agent Kit",
+      "version": "0.3.0",
+      "description": "AI agent infrastructure - market data, DeFi intelligence, x402 payments. One install: market quotes, token search, DEX pairs, wallet analytics, and payment-gated API calls.",
+      "requires": "CoinMarketCap API key (free tier), Python 3.10+",
+      "homepage": "https://gentechlabs.net",
+      "source_url": "https://github.com/ProtoJay4789/genTech-agent-kit",
+      "install_cmd": "pip install git+https://github.com/ProtoJay4789/genTech-agent-kit.git",
+      "entry_point": "gentech-kit",
+      "skill_md": "https://github.com/ProtoJay4789/genTech-agent-kit/blob/main/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "ProtoJay4789",
+          "url": "https://github.com/ProtoJay4789"
         }
       ]
     },
@@ -348,6 +424,44 @@
       ]
     },
     {
+      "name": "godot",
+      "display_name": "Godot Engine",
+      "version": "1.0.0",
+      "description": "Game engine project management, scene editing, export and GDScript execution via Godot 4 headless mode",
+      "requires": "Godot 4.x (godotengine.org)",
+      "homepage": "https://godotengine.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=godot/agent-harness",
+      "entry_point": "cli-anything-godot",
+      "skill_md": "skills/cli-anything-godot/SKILL.md",
+      "category": "gamedev",
+      "contributors": [
+        {
+          "name": "omerarslan0",
+          "url": "https://github.com/omerarslan0"
+        }
+      ]
+    },
+    {
+      "name": "hacker-feeds-cli",
+      "display_name": "Hacker Feeds CLI",
+      "version": "1.0.0",
+      "description": "CLI for GitHub Trending, Hacker News, Reddit, Product Hunt, DEV.to, Lobsters, EchoJS, and V2EX feeds",
+      "requires": "Python 3.10+, Node.js (hf CLI)",
+      "homepage": "https://github.com/collectivewinca/hacker-feeds-cli",
+      "source_url": "https://github.com/collectivewinca/hacker-feeds-cli",
+      "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git",
+      "entry_point": "cli-anything-hacker-feeds-cli",
+      "skill_md": "https://github.com/collectivewinca/hacker-feeds-cli/blob/main/cli_anything/hacker_feeds_cli/skills/SKILL.md",
+      "category": "search",
+      "contributors": [
+        {
+          "name": "collectivewinca",
+          "url": "https://github.com/collectivewinca"
+        }
+      ]
+    },
+    {
       "name": "inkscape",
       "display_name": "Inkscape",
       "version": "1.0.0",
@@ -363,6 +477,101 @@
         {
           "name": "CLI-Anything-Team",
           "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
+      "name": "inkstitch",
+      "display_name": "Ink/Stitch",
+      "version": "0.1.1",
+      "description": "Machine-embroidery digitization — set stitch params, validate, preview, and export to DST/PES/JEF/VP3 via Ink/Stitch",
+      "requires": "Ink/Stitch extension installed (https://inkstitch.org/docs/install/)",
+      "homepage": "https://inkstitch.org",
+      "source_url": "https://github.com/bobbymarko/cli-anything-inkstitch",
+      "install_cmd": "pip install cli-anything-inkstitch",
+      "entry_point": "cli-anything-inkstitch",
+      "skill_md": "https://github.com/bobbymarko/cli-anything-inkstitch/blob/main/skills/cli-anything-inkstitch/SKILL.md",
+      "category": "design",
+      "contributors": [
+        {
+          "name": "bobbymarko",
+          "url": "https://github.com/bobbymarko"
+        }
+      ]
+    },
+    {
+      "name": "intelwatch",
+      "display_name": "Intelwatch",
+      "version": "1.0.0",
+      "description": "Competitive intelligence, M&A due diligence, and OSINT directly from your terminal.",
+      "requires": "Node.js >=18",
+      "homepage": "https://github.com/ashroth/intelwatch",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=intelwatch/agent-harness",
+      "entry_point": "cli-anything-intelwatch",
+      "skill_md": "skills/cli-anything-intelwatch/SKILL.md",
+      "category": "osint",
+      "contributors": [
+        {
+          "name": "ashroth",
+          "url": "https://github.com/ashroth"
+        }
+      ]
+    },
+    {
+      "name": "iterm2",
+      "display_name": "iTerm2",
+      "version": "1.0.0",
+      "description": "Control a running iTerm2 instance — manage windows, tabs, split panes, send text, read output, run tmux -CC, broadcast keystrokes, and configure preferences.",
+      "requires": "iTerm2.app (macOS only)",
+      "homepage": "https://iterm2.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=iterm2/agent-harness",
+      "entry_point": "cli-anything-iterm2",
+      "skill_md": "skills/cli-anything-iterm2/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "voidfreud",
+          "url": "https://github.com/voidfreud"
+        }
+      ]
+    },
+    {
+      "name": "joplin",
+      "display_name": "Joplin",
+      "version": "1.0.0",
+      "description": "Note-taking and to-do automation — manage notebooks, notes, to-dos, tags, attachments, search, sync, and import/export via the Joplin terminal CLI",
+      "requires": "Joplin terminal CLI installed and available in PATH as `joplin` (npm install -g joplin)",
+      "homepage": "https://joplinapp.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=joplin/agent-harness",
+      "entry_point": "cli-anything-joplin",
+      "skill_md": "skills/cli-anything-joplin/SKILL.md",
+      "category": "knowledge",
+      "contributors": [
+        {
+          "name": "27494539a-hub",
+          "url": "https://github.com/27494539a-hub"
+        }
+      ]
+    },
+    {
+      "name": "jumpserver",
+      "display_name": "JumpServer",
+      "version": "0.1.0",
+      "description": "Bastion host management — manage assets, users, permissions, sessions, accounts, and audit logs via JumpServer REST API",
+      "requires": "JumpServer v3.0+ instance",
+      "homepage": "https://www.jumpserver.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=jumpserver/agent-harness",
+      "entry_point": "cli-anything-jumpserver",
+      "skill_md": "skills/cli-anything-jumpserver/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "Ayasaz",
+          "url": "https://github.com/Ayasaz"
         }
       ]
     },
@@ -405,25 +614,6 @@
       ]
     },
     {
-      "name": "calibre",
-      "display_name": "Calibre",
-      "version": "1.0.0",
-      "description": "E-book library management — list, search, metadata editing, format conversion via calibredb, ebook-convert, ebook-meta",
-      "requires": "Calibre (apt install calibre, brew install --cask calibre)",
-      "homepage": "https://calibre-ebook.com",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=calibre/agent-harness",
-      "entry_point": "cli-anything-calibre",
-      "skill_md": "calibre/agent-harness/cli_anything/calibre/skills/SKILL.md",
-      "category": "office",
-      "contributors": [
-        {
-          "name": "OGRLEAF",
-          "url": "https://github.com/OGRLEAF"
-        }
-      ]
-    },
-    {
       "name": "libreoffice",
       "display_name": "LibreOffice",
       "version": "1.0.1",
@@ -447,6 +637,25 @@
       ]
     },
     {
+      "name": "live2d",
+      "display_name": "Live2D Cubism",
+      "version": "0.3.0",
+      "description": "Inspect, validate, edit, lint, diff, batch-manage, and deploy Live2D Cubism models (.model3.json, .moc3, .motion3.json, .exp3.json) from the command line — 42 commands covering the full model lifecycle",
+      "requires": "Python 3.10+",
+      "homepage": "https://www.live2d.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=live2d/agent-harness",
+      "entry_point": "cli-anything-live2d",
+      "skill_md": "skills/cli-anything-live2d/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "zyzly0705",
+          "url": "https://github.com/zyzly0705"
+        }
+      ]
+    },
+    {
       "name": "lldb",
       "display_name": "LLDB",
       "version": "1.0.0",
@@ -466,44 +675,78 @@
       ]
     },
     {
-      "name": "zotero",
-      "display_name": "Zotero",
-      "version": "0.4.1",
-      "description": "CLI & MCP server for Zotero 7/8 — 52 MCP tools + 70+ CLI commands for search, import, PDF, BibTeX, notes, and more",
-      "requires": "Zotero 7/8 desktop app (running), Python 3.10+",
-      "homepage": "https://www.zotero.org",
-      "source_url": "https://github.com/PiaoyangGuohai1/cli-anything-zotero",
-      "install_cmd": "pip install cli-anything-zotero",
-      "entry_point": "cli-anything-zotero",
-      "skill_md": "https://github.com/PiaoyangGuohai1/cli-anything-zotero/blob/main/cli_anything/zotero/skills/SKILL.md",
-      "category": "office",
+      "name": "macrocli",
+      "display_name": "MacroCLI",
+      "version": "1.0.0",
+      "description": "Layered macro runtime that converts GUI workflows into parameterized, agent-callable macros — record once, run anywhere via CLI with backend routing across native APIs, file transforms, accessibility controls, and visual template matching",
+      "requires": null,
+      "homepage": "https://github.com/HKUDS/CLI-Anything/tree/main/macrocli",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=macrocli/agent-harness",
+      "entry_point": "cli-anything-macrocli",
+      "skill_md": "macrocli/agent-harness/cli_anything/macrocli/skills/SKILL.md",
+      "category": "automation",
       "contributors": [
         {
-          "name": "zhiwuyazhe_fjr",
-          "url": "https://github.com/zhiwuyazhe-fjr"
-        },
-        {
-          "name": "PiaoyangGuohai1",
-          "url": "https://github.com/PiaoyangGuohai1"
+          "name": "haorui-harry",
+          "url": "https://github.com/haorui-harry"
         }
       ]
     },
     {
-      "name": "mubu",
-      "display_name": "Mubu",
-      "version": "0.1.1",
-      "description": "Knowledge management and outlining via local Mubu desktop data",
-      "requires": "Mubu desktop app",
-      "homepage": "https://mubu.com",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=mubu/agent-harness",
-      "entry_point": "cli-anything-mubu",
-      "skill_md": "skills/cli-anything-mubu/SKILL.md",
-      "category": "office",
+      "name": "magnific",
+      "display_name": "Magnific",
+      "version": "0.1.0",
+      "description": "Agent-native CLI harness for Magnific's remote MCP media-generation server — generate and upscale images and video via mcpc OAuth without loading the full MCP schema each turn",
+      "requires": "Node.js + npm (for the mcpc transport), Python 3.10+, Magnific account (OAuth)",
+      "homepage": "https://magnific.com",
+      "source_url": "https://github.com/workcr/magnific-cli-anything",
+      "install_cmd": "pip install git+https://github.com/workcr/magnific-cli-anything.git",
+      "entry_point": "cli-anything-magnific",
+      "skill_md": "https://github.com/workcr/magnific-cli-anything/blob/main/skills/cli-anything-magnific/SKILL.md",
+      "category": "ai",
       "contributors": [
         {
-          "name": "cnfjlhj",
-          "url": "https://github.com/cnfjlhj"
+          "name": "workcr",
+          "url": "https://github.com/workcr"
+        }
+      ]
+    },
+    {
+      "name": "mailchimp",
+      "display_name": "Mailchimp",
+      "version": "0.1.0",
+      "description": "Mailchimp Marketing API v3.0 — manage audiences, campaigns, reports, automations, ecommerce, templates, and more from an agent-native CLI",
+      "requires": "MAILCHIMP_API_KEY",
+      "homepage": "https://mailchimp.com/developer/marketing/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=mailchimp/agent-harness",
+      "entry_point": "cli-anything-mailchimp",
+      "skill_md": "skills/cli-anything-mailchimp/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "iGodly",
+          "url": "https://github.com/iGodly"
+        }
+      ]
+    },
+    {
+      "name": "meerk40t",
+      "display_name": "MeerK40t",
+      "version": "1.0.0",
+      "description": "Laser cutting/engraving job preparation via the real MeerK40t kernel — elements, operations, SVG/G-code export with --json output",
+      "requires": "MeerK40t (installed automatically)",
+      "homepage": "https://github.com/meerk40t/meerk40t",
+      "source_url": "https://github.com/George-RD/cli-anything-meerk40t",
+      "install_cmd": "pip install cli-anything-meerk40t",
+      "entry_point": "cli-anything-meerk40t",
+      "skill_md": "https://github.com/George-RD/cli-anything-meerk40t/blob/main/skills/cli-anything-meerk40t/SKILL.md",
+      "category": "graphics",
+      "contributors": [
+        {
+          "name": "George-RD",
+          "url": "https://github.com/George-RD"
         }
       ]
     },
@@ -527,6 +770,82 @@
       ]
     },
     {
+      "name": "minimax",
+      "display_name": "MiniMax",
+      "version": "1.1.0",
+      "description": "Chat and TTS via MiniMax AI API — MiniMax-M3 chat models and speech-2.8-hd TTS",
+      "requires": "MINIMAX_API_KEY",
+      "homepage": "https://platform.minimax.io",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=minimax/agent-harness",
+      "entry_point": "cli-anything-minimax",
+      "skill_md": "minimax/agent-harness/cli_anything/minimax/skills/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "octo-patch",
+          "url": "https://github.com/octo-patch"
+        }
+      ]
+    },
+    {
+      "name": "mubu",
+      "display_name": "Mubu",
+      "version": "0.1.1",
+      "description": "Knowledge management and outlining via local Mubu desktop data",
+      "requires": "Mubu desktop app",
+      "homepage": "https://mubu.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=mubu/agent-harness",
+      "entry_point": "cli-anything-mubu",
+      "skill_md": "skills/cli-anything-mubu/SKILL.md",
+      "category": "office",
+      "contributors": [
+        {
+          "name": "cnfjlhj",
+          "url": "https://github.com/cnfjlhj"
+        }
+      ]
+    },
+    {
+      "name": "musescore",
+      "display_name": "MuseScore",
+      "version": "1.0.0",
+      "description": "CLI for music notation — transpose, export PDF/audio/MIDI, extract parts, manage instruments",
+      "requires": "MuseScore 4 (musescore.org)",
+      "homepage": "https://musescore.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=musescore/agent-harness",
+      "entry_point": "cli-anything-musescore",
+      "skill_md": "skills/cli-anything-musescore/SKILL.md",
+      "category": "music",
+      "contributors": [
+        {
+          "name": "tamvicky",
+          "url": "https://github.com/tamvicky"
+        }
+      ]
+    },
+    {
+      "name": "n8n",
+      "display_name": "n8n",
+      "version": "2.4.7",
+      "description": "Workflow automation via n8n REST API — 55+ commands",
+      "requires": "n8n >= 1.0.0",
+      "homepage": "https://n8n.io",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=n8n/agent-harness",
+      "entry_point": "cli-anything-n8n",
+      "skill_md": "skills/cli-anything-n8n/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "webcomunicasolutions",
+          "url": "https://github.com/webcomunicasolutions"
+        }
+      ]
+    },
+    {
       "name": "notebooklm",
       "display_name": "NotebookLM",
       "version": "0.1.0",
@@ -546,40 +865,59 @@
       ]
     },
     {
-      "name": "ollama",
-      "display_name": "Ollama",
-      "version": "1.0.1",
-      "description": "Local LLM inference and model management via Ollama REST API",
-      "requires": "Ollama running at http://localhost:11434",
-      "homepage": "https://ollama.com",
+      "name": "novita",
+      "display_name": "Novita",
+      "version": "1.0.0",
+      "description": "Access AI models via Novita's OpenAI-compatible API (DeepSeek, GLM, MiniMax)",
+      "requires": "NOVITA_API_KEY",
+      "homepage": "https://novita.ai",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ollama/agent-harness",
-      "entry_point": "cli-anything-ollama",
-      "skill_md": "skills/cli-anything-ollama/SKILL.md",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=novita/agent-harness",
+      "entry_point": "cli-anything-novita",
+      "skill_md": "skills/cli-anything-novita/SKILL.md",
       "category": "ai",
       "contributors": [
         {
-          "name": "CLI-Anything-Team",
-          "url": "https://github.com/HKUDS/CLI-Anything"
+          "name": "Alex-wuhu",
+          "url": "https://github.com/Alex-wuhu"
         }
       ]
     },
     {
-      "name": "openwebui",
-      "display_name": "OpenWebUI",
-      "version": "1.0.0",
-      "description": "Operate a running OpenWebUI backend through an agent-friendly CLI",
-      "requires": "OpenWebUI instance running",
-      "homepage": "https://openwebui.com",
-      "source_url": "https://github.com/ashaiful/cli-anything-openwebui",
-      "install_cmd": "pip install git+https://github.com/ashaiful/cli-anything-openwebui.git",
-      "entry_point": "cli-anything-openwebui",
-      "skill_md": "https://github.com/ashaiful/cli-anything-openwebui/blob/main/cli_anything/openwebui/skills/SKILL.md",
-      "category": "ai",
+      "name": "nsight-graphics",
+      "display_name": "Nsight Graphics CLI",
+      "version": "0.2.0",
+      "description": "Windows-first Nsight Graphics CLI for Graphics/OpenGL capture, GPU Trace summary, Generate C++ Capture, and ngfx-replay analysis",
+      "requires": "NVIDIA Nsight Graphics installation with ngfx.exe plus optional split capture/replay tools",
+      "homepage": "https://developer.nvidia.com/nsight-graphics",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nsight-graphics/agent-harness",
+      "entry_point": "cli-anything-nsight-graphics",
+      "skill_md": "skills/cli-anything-nsight-graphics/SKILL.md",
+      "category": "graphics",
       "contributors": [
         {
-          "name": "ashaiful",
-          "url": "https://github.com/ashaiful"
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
+        }
+      ]
+    },
+    {
+      "name": "nslogger",
+      "display_name": "NSLogger",
+      "version": "0.1.0",
+      "description": "Capture, parse, filter, export, and mirror NSLogger iOS/macOS logs from the CLI",
+      "requires": "macOS for native Bonjour live capture; Python 3.10+",
+      "homepage": "https://github.com/fpillet/NSLogger",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nslogger/agent-harness",
+      "entry_point": "cli-anything-nslogger",
+      "skill_md": "skills/cli-anything-nslogger/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "bazinga8023",
+          "url": "https://github.com/bazinga8023"
         }
       ]
     },
@@ -603,17 +941,59 @@
       ]
     },
     {
-      "name": "shotcut",
-      "display_name": "Shotcut",
-      "version": "1.0.0",
-      "description": "Video editing and rendering via melt/ffmpeg",
-      "requires": "melt (apt install melt), ffmpeg (apt install ffmpeg)",
-      "homepage": "https://shotcut.org",
+      "name": "obsidian",
+      "display_name": "Obsidian",
+      "version": "1.1.0",
+      "description": "Knowledge management and note-taking — manage notes, search vault, execute commands via Obsidian Local REST API",
+      "requires": "Obsidian desktop app with Local REST API plugin enabled",
+      "homepage": "https://obsidian.md",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=shotcut/agent-harness",
-      "entry_point": "cli-anything-shotcut",
-      "skill_md": "skills/cli-anything-shotcut/SKILL.md",
-      "category": "video",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=obsidian/agent-harness",
+      "entry_point": "cli-anything-obsidian",
+      "skill_md": "skills/cli-anything-obsidian/SKILL.md",
+      "category": "knowledge",
+      "contributors": [
+        {
+          "name": "dorukozgen",
+          "url": "https://github.com/dorukozgen"
+        },
+        {
+          "name": "Mubashirrrr",
+          "url": "https://github.com/Mubashirrrr"
+        }
+      ]
+    },
+    {
+      "name": "ollama",
+      "display_name": "Ollama",
+      "version": "1.0.1",
+      "description": "Local LLM inference and model management via Ollama REST API",
+      "requires": "Ollama running at http://localhost:11434",
+      "homepage": "https://ollama.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ollama/agent-harness",
+      "entry_point": "cli-anything-ollama",
+      "skill_md": "skills/cli-anything-ollama/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
+    },
+    {
+      "name": "openrefine",
+      "display_name": "OpenRefine",
+      "version": "1.0.0",
+      "description": "Agent-native CLI for OpenRefine import, operation-history cleaning, row inspection, export, and session undo/redo through the real local HTTP API.",
+      "requires": "OpenRefine 3.10.x or newer running as a local web server",
+      "homepage": "https://openrefine.org/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=openrefine/agent-harness",
+      "entry_point": "cli-anything-openrefine",
+      "skill_md": "skills/cli-anything-openrefine/SKILL.md",
+      "category": "database",
       "contributors": [
         {
           "name": "CLI-Anything-Team",
@@ -641,59 +1021,40 @@
       ]
     },
     {
-      "name": "zoom",
-      "display_name": "Zoom",
-      "version": "1.0.1",
-      "description": "Meeting management via Zoom REST API (OAuth2)",
-      "requires": "Zoom account + OAuth app credentials",
-      "homepage": "https://zoom.us",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=zoom/agent-harness",
-      "entry_point": "cli-anything-zoom",
-      "skill_md": "skills/cli-anything-zoom/SKILL.md",
-      "category": "communication",
-      "contributors": [
-        {
-          "name": "zhangxilong-43",
-          "url": "https://github.com/zhangxilong-43"
-        }
-      ]
-    },
-    {
-      "name": "novita",
-      "display_name": "Novita",
+      "name": "openwebui",
+      "display_name": "OpenWebUI",
       "version": "1.0.0",
-      "description": "Access AI models via Novita's OpenAI-compatible API (DeepSeek, GLM, MiniMax)",
-      "requires": "NOVITA_API_KEY",
-      "homepage": "https://novita.ai",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=novita/agent-harness",
-      "entry_point": "cli-anything-novita",
-      "skill_md": "skills/cli-anything-novita/SKILL.md",
+      "description": "Operate a running OpenWebUI backend through an agent-friendly CLI",
+      "requires": "OpenWebUI instance running",
+      "homepage": "https://openwebui.com",
+      "source_url": "https://github.com/ashaiful/cli-anything-openwebui",
+      "install_cmd": "pip install git+https://github.com/ashaiful/cli-anything-openwebui.git",
+      "entry_point": "cli-anything-openwebui",
+      "skill_md": "https://github.com/ashaiful/cli-anything-openwebui/blob/main/cli_anything/openwebui/skills/SKILL.md",
       "category": "ai",
       "contributors": [
         {
-          "name": "Alex-wuhu",
-          "url": "https://github.com/Alex-wuhu"
+          "name": "ashaiful",
+          "url": "https://github.com/ashaiful"
         }
       ]
     },
     {
-      "name": "seaclip",
-      "display_name": "SeaClip",
-      "version": "1.0.0",
-      "description": "Kanban board, 6-agent AI pipeline, and issue management via SeaClip-Lite FastAPI + SQLite",
-      "requires": "SeaClip-Lite running at localhost:5200",
-      "homepage": "https://github.com/t4tarzan/cli-anything-seaclip",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=seaclip/agent-harness",
-      "entry_point": "cli-anything-seaclip",
-      "skill_md": "skills/cli-anything-seaclip/SKILL.md",
-      "category": "project-management",
+      "name": "palmier",
+      "display_name": "Palmier Pro",
+      "version": "0.1.0",
+      "description": "Agent-native CLI harness for the Palmier Pro local MCP video editor — drive timeline editing, media, captions, and AI generation from the command line",
+      "requires": "Palmier Pro desktop app running its local MCP server at 127.0.0.1:19789, Python 3.10+",
+      "homepage": "https://palmier.com",
+      "source_url": "https://github.com/workcr/palmier-cli-anything",
+      "install_cmd": "pip install git+https://github.com/workcr/palmier-cli-anything.git",
+      "entry_point": "cli-anything-palmier",
+      "skill_md": "https://github.com/workcr/palmier-cli-anything/blob/main/skills/cli-anything-palmier/SKILL.md",
+      "category": "video",
       "contributors": [
         {
-          "name": "t4tarzan",
-          "url": "https://github.com/t4tarzan"
+          "name": "workcr",
+          "url": "https://github.com/workcr"
         }
       ]
     },
@@ -731,135 +1092,21 @@
       "contributor_url": "https://github.com/scially"
     },
     {
-      "name": "chromadb",
-      "display_name": "ChromaDB",
+      "name": "quietshrink",
+      "display_name": "QuietShrink",
       "version": "1.0.0",
-      "description": "Vector database operations — collections, documents, semantic search via ChromaDB HTTP API",
-      "requires": "ChromaDB server running at localhost:8000",
-      "homepage": "https://www.trychroma.com",
+      "description": "Compress macOS screen recordings on Apple Silicon — 70-90% smaller files at visually lossless quality, hardware-encoded, computer stays silent",
+      "requires": "ffmpeg with hevc_videotoolbox + the quietshrink bash CLI (curl -fsSL https://raw.githubusercontent.com/achiya-automation/quietshrink/main/install.sh | bash)",
+      "homepage": "https://github.com/achiya-automation/quietshrink",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=chromadb/agent-harness",
-      "entry_point": "cli-anything-chromadb",
-      "skill_md": "skills/cli-anything-chromadb/SKILL.md",
-      "category": "database",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=quietshrink/agent-harness",
+      "entry_point": "cli-anything-quietshrink",
+      "skill_md": "skills/cli-anything-quietshrink/SKILL.md",
+      "category": "video",
       "contributors": [
         {
-          "name": "t4tarzan",
-          "url": "https://github.com/t4tarzan"
-        }
-      ]
-    },
-    {
-      "name": "musescore",
-      "display_name": "MuseScore",
-      "version": "1.0.0",
-      "description": "CLI for music notation — transpose, export PDF/audio/MIDI, extract parts, manage instruments",
-      "requires": "MuseScore 4 (musescore.org)",
-      "homepage": "https://musescore.org",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=musescore/agent-harness",
-      "entry_point": "cli-anything-musescore",
-      "skill_md": "skills/cli-anything-musescore/SKILL.md",
-      "category": "music",
-      "contributors": [
-        {
-          "name": "tamvicky",
-          "url": "https://github.com/tamvicky"
-        }
-      ]
-    },
-    {
-      "name": "sketch",
-      "display_name": "Sketch",
-      "version": "1.0.0",
-      "description": "Generate Sketch design files (.sketch) from JSON design specifications via sketch-constructor",
-      "requires": "Node.js >= 16.0.0",
-      "homepage": "https://www.sketch.com",
-      "source_url": null,
-      "install_cmd": "cd sketch/agent-harness && npm install && npm link",
-      "entry_point": "sketch-cli",
-      "skill_md": null,
-      "category": "design",
-      "contributors": [
-        {
-          "name": "zhangxilong-43",
-          "url": "https://github.com/zhangxilong-43"
-        }
-      ]
-    },
-    {
-      "name": "freecad",
-      "display_name": "FreeCAD",
-      "version": "1.1.0",
-      "description": "Parametric 3D CAD modeling via FreeCAD CLI (258 commands: Part, Sketcher, PartDesign, Assembly, Mesh, TechDraw, Draft, FEM, CAM, and more)",
-      "requires": "FreeCAD >= 1.1 (freecad.org)",
-      "homepage": "https://www.freecad.org",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=freecad/agent-harness",
-      "entry_point": "cli-anything-freecad",
-      "skill_md": "skills/cli-anything-freecad/SKILL.md",
-      "category": "3d",
-      "contributors": [
-        {
-          "name": "AlexGabbia",
-          "url": "https://github.com/AlexGabbia"
-        }
-      ]
-    },
-    {
-      "name": "iterm2",
-      "display_name": "iTerm2",
-      "version": "1.0.0",
-      "description": "Control a running iTerm2 instance — manage windows, tabs, split panes, send text, read output, run tmux -CC, broadcast keystrokes, and configure preferences.",
-      "requires": "iTerm2.app (macOS only)",
-      "homepage": "https://iterm2.com",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=iterm2/agent-harness",
-      "entry_point": "cli-anything-iterm2",
-      "skill_md": "skills/cli-anything-iterm2/SKILL.md",
-      "category": "devops",
-      "contributors": [
-        {
-          "name": "voidfreud",
-          "url": "https://github.com/voidfreud"
-        }
-      ]
-    },
-    {
-      "name": "slay_the_spire_ii",
-      "display_name": "Slay the Spire 2",
-      "version": "1.0.0",
-      "description": "Control the real Slay the Spire 2 game via local STS2_Bridge HTTP API",
-      "requires": "Slay the Spire 2 (Steam) with STS2_Bridge mod enabled",
-      "homepage": "https://github.com/HKUDS/CLI-Anything/tree/main/slay_the_spire_ii",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=slay_the_spire_ii/agent-harness",
-      "entry_point": "cli-anything-sts2",
-      "skill_md": "skills/cli-anything-slay-the-spire-ii/SKILL.md",
-      "category": "game",
-      "contributors": [
-        {
-          "name": "TianyuFan0504",
-          "url": "https://github.com/TianyuFan0504"
-        }
-      ]
-    },
-    {
-      "name": "rms",
-      "display_name": "Teltonika RMS",
-      "version": "1.0.0",
-      "description": "Device management and monitoring via Teltonika RMS REST API",
-      "requires": "RMS_API_TOKEN",
-      "homepage": "https://rms.teltonika-networks.com",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=rms/agent-harness",
-      "entry_point": "cli-anything-rms",
-      "skill_md": "skills/cli-anything-rms/SKILL.md",
-      "category": "network",
-      "contributors": [
-        {
-          "name": "galke",
-          "url": "https://github.com/galke7"
+          "name": "achiya-automation",
+          "url": "https://github.com/achiya-automation"
         }
       ]
     },
@@ -883,310 +1130,21 @@
       ]
     },
     {
-      "name": "unrealinsights",
-      "display_name": "Unreal Insights",
-      "version": "0.1.0",
-      "description": "Windows-first Unreal trace capture, background session control, engine-matched UnrealInsights builds, and headless Timing Insights export workflows",
-      "requires": "Windows + Unreal Engine source or installed build with UnrealEditor and Unreal trace support",
-      "homepage": "https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-in-unreal-engine",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unrealinsights/agent-harness",
-      "entry_point": "cli-anything-unrealinsights",
-      "skill_md": "unrealinsights/agent-harness/cli_anything/unrealinsights/skills/SKILL.md",
-      "category": "debugging",
-      "contributors": [
-        {
-          "name": "AiMiDi",
-          "url": "https://github.com/AiMiDi"
-        }
-      ]
-    },
-    {
-      "name": "ueatelier",
-      "display_name": "UEAtelier",
-      "version": "0.23.1",
-      "description": "Unreal Editor 5.6/5.7 MCP self-extension workbench - editor automation, build diagnostics, Task Atlas workflows, PIE smoke verification, scaffold pipeline",
-      "requires": "Unreal Engine 5.6 or 5.7 with the UEAtelier plugin extracted into <YourProject>/",
-      "homepage": "https://github.com/edwinmeng163-oss/UEAtelier",
-      "source_url": "https://github.com/edwinmeng163-oss/UEAtelier",
-      "install_cmd": "pip install git+https://github.com/edwinmeng163-oss/UEAtelier.git#subdirectory=Tools/UEAtelierCli",
-      "entry_point": "cli-anything-ueatelier",
-      "skill_md": "https://github.com/edwinmeng163-oss/UEAtelier/blob/main/Tools/UEAtelierCli/SKILL.md",
-      "category": "gamedev",
-      "contributors": [
-        {
-          "name": "edwinmeng163-oss",
-          "url": "https://github.com/edwinmeng163-oss"
-        }
-      ]
-    },
-    {
-      "name": "nsight-graphics",
-      "display_name": "Nsight Graphics CLI",
-      "version": "0.2.0",
-      "description": "Windows-first Nsight Graphics CLI for Graphics/OpenGL capture, GPU Trace summary, Generate C++ Capture, and ngfx-replay analysis",
-      "requires": "NVIDIA Nsight Graphics installation with ngfx.exe plus optional split capture/replay tools",
-      "homepage": "https://developer.nvidia.com/nsight-graphics",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=nsight-graphics/agent-harness",
-      "entry_point": "cli-anything-nsight-graphics",
-      "skill_md": "skills/cli-anything-nsight-graphics/SKILL.md",
-      "category": "graphics",
-      "contributors": [
-        {
-          "name": "AiMiDi",
-          "url": "https://github.com/AiMiDi"
-        }
-      ]
-    },
-    {
-      "name": "videocaptioner",
-      "display_name": "VideoCaptioner",
+      "name": "rms",
+      "display_name": "Teltonika RMS",
       "version": "1.0.0",
-      "description": "AI-powered video captioning — transcribe speech, optimize/translate subtitles, burn styled subtitles into video",
-      "requires": "videocaptioner (pip install videocaptioner), ffmpeg",
-      "homepage": "https://github.com/WEIFENG2333/VideoCaptioner",
+      "description": "Device management and monitoring via Teltonika RMS REST API",
+      "requires": "RMS_API_TOKEN",
+      "homepage": "https://rms.teltonika-networks.com",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=videocaptioner/agent-harness",
-      "entry_point": "cli-anything-videocaptioner",
-      "skill_md": "skills/cli-anything-videocaptioner/SKILL.md",
-      "category": "video",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=rms/agent-harness",
+      "entry_point": "cli-anything-rms",
+      "skill_md": "skills/cli-anything-rms/SKILL.md",
+      "category": "network",
       "contributors": [
         {
-          "name": "WEIFENG2333",
-          "url": "https://github.com/WEIFENG2333"
-        }
-      ]
-    },
-    {
-      "name": "intelwatch",
-      "display_name": "Intelwatch",
-      "version": "1.0.0",
-      "description": "Competitive intelligence, M&A due diligence, and OSINT directly from your terminal.",
-      "requires": "Node.js >=18",
-      "homepage": "https://github.com/ashroth/intelwatch",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=intelwatch/agent-harness",
-      "entry_point": "cli-anything-intelwatch",
-      "skill_md": "skills/cli-anything-intelwatch/SKILL.md",
-      "category": "osint",
-      "contributors": [
-        {
-          "name": "ashroth",
-          "url": "https://github.com/ashroth"
-        }
-      ]
-    },
-    {
-      "name": "clibrowser",
-      "display_name": "clibrowser",
-      "version": "0.1.0",
-      "description": "Zero-dependency CLI browser for AI agents with search, extraction, forms, RSS, crawling, auth, and WebMCP support",
-      "requires": "Rust toolchain (cargo) for source install, or manual binary download from GitHub Releases",
-      "homepage": "https://github.com/allthingssecurity/clibrowser",
-      "source_url": null,
-      "install_cmd": "cargo install --git https://github.com/allthingssecurity/clibrowser.git --tag v0.1.0 --locked",
-      "entry_point": "clibrowser",
-      "skill_md": null,
-      "category": "web",
-      "contributors": [
-        {
-          "name": "allthingssecurity",
-          "url": "https://github.com/allthingssecurity"
-        }
-      ]
-    },
-    {
-      "name": "cloudcompare",
-      "display_name": "CloudCompare",
-      "version": "1.0.0",
-      "description": "3D point cloud and mesh processing: load/save, color ops, normal estimation, Delaunay meshing, noise filtering, ICP registration, connected component segmentation",
-      "requires": "cloudcompare (CloudCompare application installed, e.g. via Flatpak or package manager)",
-      "homepage": "https://cloudcompare.org",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cloudcompare/agent-harness",
-      "entry_point": "cli-anything-cloudcompare",
-      "skill_md": "skills/cli-anything-cloudcompare/SKILL.md",
-      "category": "graphics",
-      "contributors": [
-        {
-          "name": "Taeyoung96",
-          "url": "https://github.com/Taeyoung96"
-        }
-      ]
-    },
-    {
-      "name": "exa",
-      "display_name": "Exa",
-      "version": "1.0.0",
-      "description": "AI-powered web search and content extraction via the Exa API",
-      "requires": "EXA_API_KEY (free tier at exa.ai)",
-      "homepage": "https://exa.ai",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=exa/agent-harness",
-      "entry_point": "cli-anything-exa",
-      "skill_md": "skills/cli-anything-exa/SKILL.md",
-      "category": "search",
-      "contributors": [
-        {
-          "name": "tgonzalezc5",
-          "url": "https://github.com/tgonzalezc5"
-        }
-      ]
-    },
-    {
-      "name": "godot",
-      "display_name": "Godot Engine",
-      "version": "1.0.0",
-      "description": "Game engine project management, scene editing, export and GDScript execution via Godot 4 headless mode",
-      "requires": "Godot 4.x (godotengine.org)",
-      "homepage": "https://godotengine.org",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=godot/agent-harness",
-      "entry_point": "cli-anything-godot",
-      "skill_md": "skills/cli-anything-godot/SKILL.md",
-      "category": "gamedev",
-      "contributors": [
-        {
-          "name": "omerarslan0",
-          "url": "https://github.com/omerarslan0"
-        }
-      ]
-    },
-    {
-      "name": "sbox",
-      "display_name": "s&box",
-      "version": "1.0.0",
-      "description": "Game engine project management for s&box (Source 2): scenes, prefabs, materials, sounds, codegen, asset graph, project validation",
-      "requires": "s&box installed via Steam (sbox.game)",
-      "homepage": "https://sbox.game",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=sbox/agent-harness",
-      "entry_point": "cli-anything-sbox",
-      "skill_md": "skills/cli-anything-sbox/SKILL.md",
-      "category": "gamedev",
-      "contributors": [
-        {
-          "name": "KarandeepSWranch",
-          "url": "https://github.com/KarandeepSWranch"
-        }
-      ]
-    },
-    {
-      "name": "dify-workflow",
-      "display_name": "Dify Workflow",
-      "version": "0.1.0",
-      "description": "CLI-Anything wrapper for the Dify workflow DSL editor covering create, inspect, validate, edit, export, and layout operations",
-      "requires": "Upstream dify-workflow CLI installed from https://github.com/Akabane71/dify-workflow-cli",
-      "homepage": "https://github.com/Akabane71/dify-workflow-cli",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=dify-workflow/agent-harness",
-      "entry_point": "cli-anything-dify-workflow",
-      "skill_md": "skills/cli-anything-dify-workflow/SKILL.md",
-      "category": "ai",
-      "contributors": [
-        {
-          "name": "Akabane71",
-          "url": "https://github.com/Akabane71"
-        }
-      ]
-    },
-    {
-      "name": "n8n",
-      "display_name": "n8n",
-      "version": "2.4.7",
-      "description": "Workflow automation via n8n REST API — 55+ commands",
-      "requires": "n8n >= 1.0.0",
-      "homepage": "https://n8n.io",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=n8n/agent-harness",
-      "entry_point": "cli-anything-n8n",
-      "skill_md": "skills/cli-anything-n8n/SKILL.md",
-      "category": "automation",
-      "contributors": [
-        {
-          "name": "webcomunicasolutions",
-          "url": "https://github.com/webcomunicasolutions"
-        }
-      ]
-    },
-    {
-      "name": "cloudanalyzer",
-      "display_name": "CloudAnalyzer",
-      "version": "1.0.0",
-      "description": "Point cloud and trajectory QA: Chamfer/AUC/F1, ATE/RPE/drift, ground segmentation metrics, config-driven quality gates, baseline evolution — harness wraps the CloudAnalyzer Python API",
-      "requires": "Python 3.10+; cloudanalyzer (`pip install cloudanalyzer`), Open3D for full IO/viewer paths",
-      "homepage": "https://github.com/rsasaki0109/CloudAnalyzer",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cloudanalyzer/agent-harness",
-      "entry_point": "cli-anything-cloudanalyzer",
-      "skill_md": "skills/cli-anything-cloudanalyzer/SKILL.md",
-      "category": "graphics",
-      "contributors": [
-        {
-          "name": "rsasaki0109",
-          "url": "https://github.com/rsasaki0109"
-        }
-      ]
-    },
-    {
-      "name": "obsidian",
-      "display_name": "Obsidian",
-      "version": "1.1.0",
-      "description": "Knowledge management and note-taking — manage notes, search vault, execute commands via Obsidian Local REST API",
-      "requires": "Obsidian desktop app with Local REST API plugin enabled",
-      "homepage": "https://obsidian.md",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=obsidian/agent-harness",
-      "entry_point": "cli-anything-obsidian",
-      "skill_md": "skills/cli-anything-obsidian/SKILL.md",
-      "category": "knowledge",
-      "contributors": [
-        {
-          "name": "dorukozgen",
-          "url": "https://github.com/dorukozgen"
-        },
-        {
-          "name": "Mubashirrrr",
-          "url": "https://github.com/Mubashirrrr"
-        }
-      ]
-    },
-    {
-      "name": "joplin",
-      "display_name": "Joplin",
-      "version": "1.0.0",
-      "description": "Note-taking and to-do automation — manage notebooks, notes, to-dos, tags, attachments, search, sync, and import/export via the Joplin terminal CLI",
-      "requires": "Joplin terminal CLI installed and available in PATH as `joplin` (npm install -g joplin)",
-      "homepage": "https://joplinapp.org",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=joplin/agent-harness",
-      "entry_point": "cli-anything-joplin",
-      "skill_md": "skills/cli-anything-joplin/SKILL.md",
-      "category": "knowledge",
-      "contributors": [
-        {
-          "name": "27494539a-hub",
-          "url": "https://github.com/27494539a-hub"
-        }
-      ]
-    },
-    {
-      "name": "unimol_tools",
-      "display_name": "Uni-Mol Tools",
-      "version": "1.0.0",
-      "description": "Molecular property prediction — train and predict with 5 task types (classification, regression, multiclass, multilabel) for drug discovery",
-      "requires": "PyTorch 1.12+, Uni-Mol Tools backend",
-      "homepage": "https://github.com/dptech-corp/Uni-Mol/tree/main/unimol_tools",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unimol_tools/agent-harness",
-      "entry_point": "cli-anything-unimol-tools",
-      "skill_md": "skills/cli-anything-unimol-tools/SKILL.md",
-      "category": "science",
-      "contributors": [
-        {
-          "name": "545487677",
-          "url": "https://github.com/545487677"
+          "name": "galke",
+          "url": "https://github.com/galke7"
         }
       ]
     },
@@ -1210,173 +1168,59 @@
       ]
     },
     {
-      "name": "macrocli",
-      "display_name": "MacroCLI",
+      "name": "sbox",
+      "display_name": "s&box",
       "version": "1.0.0",
-      "description": "Layered macro runtime that converts GUI workflows into parameterized, agent-callable macros — record once, run anywhere via CLI with backend routing across native APIs, file transforms, accessibility controls, and visual template matching",
-      "requires": null,
-      "homepage": "https://github.com/HKUDS/CLI-Anything/tree/main/macrocli",
+      "description": "Game engine project management for s&box (Source 2): scenes, prefabs, materials, sounds, codegen, asset graph, project validation",
+      "requires": "s&box installed via Steam (sbox.game)",
+      "homepage": "https://sbox.game",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=macrocli/agent-harness",
-      "entry_point": "cli-anything-macrocli",
-      "skill_md": "macrocli/agent-harness/cli_anything/macrocli/skills/SKILL.md",
-      "category": "automation",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=sbox/agent-harness",
+      "entry_point": "cli-anything-sbox",
+      "skill_md": "skills/cli-anything-sbox/SKILL.md",
+      "category": "gamedev",
       "contributors": [
         {
-          "name": "haorui-harry",
-          "url": "https://github.com/haorui-harry"
+          "name": "KarandeepSWranch",
+          "url": "https://github.com/KarandeepSWranch"
         }
       ]
     },
     {
-      "name": "ve-twini",
-      "display_name": "VE Twini",
+      "name": "seaclip",
+      "display_name": "SeaClip",
       "version": "1.0.0",
-      "description": "Unified Twitter/X CLI bridging bird (GraphQL API) and opencli (browser automation)",
-      "requires": "Python 3.10+, bird (Twitter API), opencli",
-      "homepage": "https://x.com",
-      "source_url": "https://github.com/collectivewinca/ve-twini",
-      "install_cmd": "pip install git+https://github.com/collectivewinca/ve-twini.git#subdirectory=agent-harness",
-      "entry_point": "cli-anything-ve-twini",
-      "skill_md": "https://github.com/collectivewinca/ve-twini/blob/master/agent-harness/cli_anything/ve_twini/skills/SKILL.md",
-      "category": "communication",
+      "description": "Kanban board, 6-agent AI pipeline, and issue management via SeaClip-Lite FastAPI + SQLite",
+      "requires": "SeaClip-Lite running at localhost:5200",
+      "homepage": "https://github.com/t4tarzan/cli-anything-seaclip",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=seaclip/agent-harness",
+      "entry_point": "cli-anything-seaclip",
+      "skill_md": "skills/cli-anything-seaclip/SKILL.md",
+      "category": "project-management",
       "contributors": [
         {
-          "name": "collectivewinca",
-          "url": "https://github.com/collectivewinca"
+          "name": "t4tarzan",
+          "url": "https://github.com/t4tarzan"
         }
       ]
     },
     {
-      "name": "quietshrink",
-      "display_name": "QuietShrink",
+      "name": "shotcut",
+      "display_name": "Shotcut",
       "version": "1.0.0",
-      "description": "Compress macOS screen recordings on Apple Silicon — 70-90% smaller files at visually lossless quality, hardware-encoded, computer stays silent",
-      "requires": "ffmpeg with hevc_videotoolbox + the quietshrink bash CLI (curl -fsSL https://raw.githubusercontent.com/achiya-automation/quietshrink/main/install.sh | bash)",
-      "homepage": "https://github.com/achiya-automation/quietshrink",
+      "description": "Video editing and rendering via melt/ffmpeg",
+      "requires": "melt (apt install melt), ffmpeg (apt install ffmpeg)",
+      "homepage": "https://shotcut.org",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=quietshrink/agent-harness",
-      "entry_point": "cli-anything-quietshrink",
-      "skill_md": "skills/cli-anything-quietshrink/SKILL.md",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=shotcut/agent-harness",
+      "entry_point": "cli-anything-shotcut",
+      "skill_md": "skills/cli-anything-shotcut/SKILL.md",
       "category": "video",
       "contributors": [
         {
-          "name": "achiya-automation",
-          "url": "https://github.com/achiya-automation"
-        }
-      ]
-    },
-    {
-      "name": "stata",
-      "display_name": "Stata",
-      "version": "0.1.0",
-      "description": "Run Stata do-files, batch jobs, and reproducible econometric projects from the terminal with JSON output, log parsing, project scaffolding, and security guard",
-      "requires": "Licensed Stata installation (StataMP/SE/BE 15+), Python 3.10+",
-      "homepage": "https://www.stata.com",
-      "source_url": "https://github.com/LI-Meng420/stata-cli",
-      "install_cmd": "pip install git+https://github.com/LI-Meng420/stata-cli.git",
-      "entry_point": "cli-anything-stata",
-      "skill_md": "https://raw.githubusercontent.com/LI-Meng420/stata-cli/main/cli_anything/stata/skills/SKILL.md",
-      "category": "science",
-      "contributors": [
-        {
-          "name": "LI-Meng420",
-          "url": "https://github.com/LI-Meng420"
-        }
-      ]
-    },
-    {
-      "name": "inkstitch",
-      "display_name": "Ink/Stitch",
-      "version": "0.1.1",
-      "description": "Machine-embroidery digitization — set stitch params, validate, preview, and export to DST/PES/JEF/VP3 via Ink/Stitch",
-      "requires": "Ink/Stitch extension installed (https://inkstitch.org/docs/install/)",
-      "homepage": "https://inkstitch.org",
-      "source_url": "https://github.com/bobbymarko/cli-anything-inkstitch",
-      "install_cmd": "pip install cli-anything-inkstitch",
-      "entry_point": "cli-anything-inkstitch",
-      "skill_md": "https://github.com/bobbymarko/cli-anything-inkstitch/blob/main/skills/cli-anything-inkstitch/SKILL.md",
-      "category": "design",
-      "contributors": [
-        {
-          "name": "bobbymarko",
-          "url": "https://github.com/bobbymarko"
-        }
-      ]
-    },
-    {
-      "name": "hacker-feeds-cli",
-      "display_name": "Hacker Feeds CLI",
-      "version": "1.0.0",
-      "description": "CLI for GitHub Trending, Hacker News, Reddit, Product Hunt, DEV.to, Lobsters, EchoJS, and V2EX feeds",
-      "requires": "Python 3.10+, Node.js (hf CLI)",
-      "homepage": "https://github.com/collectivewinca/hacker-feeds-cli",
-      "source_url": "https://github.com/collectivewinca/hacker-feeds-cli",
-      "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git",
-      "entry_point": "cli-anything-hacker-feeds-cli",
-      "skill_md": "https://github.com/collectivewinca/hacker-feeds-cli/blob/main/cli_anything/hacker_feeds_cli/skills/SKILL.md",
-      "category": "search",
-      "contributors": [
-        {
-          "name": "collectivewinca",
-          "url": "https://github.com/collectivewinca"
-        }
-      ]
-    },
-    {
-      "name": "mailchimp",
-      "display_name": "Mailchimp",
-      "version": "0.1.0",
-      "description": "Mailchimp Marketing API v3.0 — manage audiences, campaigns, reports, automations, ecommerce, templates, and more from an agent-native CLI",
-      "requires": "MAILCHIMP_API_KEY",
-      "homepage": "https://mailchimp.com/developer/marketing/",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=mailchimp/agent-harness",
-      "entry_point": "cli-anything-mailchimp",
-      "skill_md": "skills/cli-anything-mailchimp/SKILL.md",
-      "category": "web",
-      "contributors": [
-        {
-          "name": "iGodly",
-          "url": "https://github.com/iGodly"
-        }
-      ]
-    },
-    {
-      "name": "3mf",
-      "display_name": "3MF",
-      "version": "1.0.0",
-      "description": "Mesh geometry editor for 3D printing files — detect and resize cylindrical holes, repair meshes, compare 3MF files",
-      "requires": "Python 3.10+; numpy, scipy, trimesh",
-      "homepage": "https://3mf.io",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=3MF/agent-harness",
-      "entry_point": "cli-anything-3mf",
-      "skill_md": "3MF/agent-harness/cli_anything/threemf/skills/SKILL.md",
-      "category": "graphics",
-      "contributors": [
-        {
-          "name": "Gituheart",
-          "url": "https://github.com/Gituheart"
-        }
-      ]
-    },
-    {
-      "name": "minimax",
-      "display_name": "MiniMax",
-      "version": "1.1.0",
-      "description": "Chat and TTS via MiniMax AI API — MiniMax-M3 chat models and speech-2.8-hd TTS",
-      "requires": "MINIMAX_API_KEY",
-      "homepage": "https://platform.minimax.io",
-      "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=minimax/agent-harness",
-      "entry_point": "cli-anything-minimax",
-      "skill_md": "minimax/agent-harness/cli_anything/minimax/skills/SKILL.md",
-      "category": "ai",
-      "contributors": [
-        {
-          "name": "octo-patch",
-          "url": "https://github.com/octo-patch"
+          "name": "CLI-Anything-Team",
+          "url": "https://github.com/HKUDS/CLI-Anything"
         }
       ]
     },
@@ -1401,21 +1245,59 @@
       ]
     },
     {
-      "name": "live2d",
-      "display_name": "Live2D Cubism",
-      "version": "0.3.0",
-      "description": "Inspect, validate, edit, lint, diff, batch-manage, and deploy Live2D Cubism models (.model3.json, .moc3, .motion3.json, .exp3.json) from the command line — 42 commands covering the full model lifecycle",
-      "requires": "Python 3.10+",
-      "homepage": "https://www.live2d.com",
+      "name": "sketch",
+      "display_name": "Sketch",
+      "version": "1.0.0",
+      "description": "Generate Sketch design files (.sketch) from JSON design specifications via sketch-constructor",
+      "requires": "Node.js >= 16.0.0",
+      "homepage": "https://www.sketch.com",
       "source_url": null,
-      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=live2d/agent-harness",
-      "entry_point": "cli-anything-live2d",
-      "skill_md": "skills/cli-anything-live2d/SKILL.md",
-      "category": "graphics",
+      "install_cmd": "cd sketch/agent-harness && npm install && npm link",
+      "entry_point": "sketch-cli",
+      "skill_md": null,
+      "category": "design",
       "contributors": [
         {
-          "name": "zyzly0705",
-          "url": "https://github.com/zyzly0705"
+          "name": "zhangxilong-43",
+          "url": "https://github.com/zhangxilong-43"
+        }
+      ]
+    },
+    {
+      "name": "slay_the_spire_ii",
+      "display_name": "Slay the Spire 2",
+      "version": "1.0.0",
+      "description": "Control the real Slay the Spire 2 game via local STS2_Bridge HTTP API",
+      "requires": "Slay the Spire 2 (Steam) with STS2_Bridge mod enabled",
+      "homepage": "https://github.com/HKUDS/CLI-Anything/tree/main/slay_the_spire_ii",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=slay_the_spire_ii/agent-harness",
+      "entry_point": "cli-anything-sts2",
+      "skill_md": "skills/cli-anything-slay-the-spire-ii/SKILL.md",
+      "category": "game",
+      "contributors": [
+        {
+          "name": "TianyuFan0504",
+          "url": "https://github.com/TianyuFan0504"
+        }
+      ]
+    },
+    {
+      "name": "stata",
+      "display_name": "Stata",
+      "version": "0.1.0",
+      "description": "Run Stata do-files, batch jobs, and reproducible econometric projects from the terminal with JSON output, log parsing, project scaffolding, and security guard",
+      "requires": "Licensed Stata installation (StataMP/SE/BE 15+), Python 3.10+",
+      "homepage": "https://www.stata.com",
+      "source_url": "https://github.com/LI-Meng420/stata-cli",
+      "install_cmd": "pip install git+https://github.com/LI-Meng420/stata-cli.git",
+      "entry_point": "cli-anything-stata",
+      "skill_md": "https://raw.githubusercontent.com/LI-Meng420/stata-cli/main/cli_anything/stata/skills/SKILL.md",
+      "category": "science",
+      "contributors": [
+        {
+          "name": "LI-Meng420",
+          "url": "https://github.com/LI-Meng420"
         }
       ]
     },
@@ -1458,59 +1340,196 @@
       ]
     },
     {
-      "name": "meerk40t",
-      "display_name": "MeerK40t",
-      "version": "1.0.0",
-      "description": "Laser cutting/engraving job preparation via the real MeerK40t kernel — elements, operations, SVG/G-code export with --json output",
-      "requires": "MeerK40t (installed automatically)",
-      "homepage": "https://github.com/meerk40t/meerk40t",
-      "source_url": "https://github.com/George-RD/cli-anything-meerk40t",
-      "install_cmd": "pip install cli-anything-meerk40t",
-      "entry_point": "cli-anything-meerk40t",
-      "skill_md": "https://github.com/George-RD/cli-anything-meerk40t/blob/main/skills/cli-anything-meerk40t/SKILL.md",
-      "category": "graphics",
+      "name": "ueatelier",
+      "display_name": "UEAtelier",
+      "version": "0.23.1",
+      "description": "Unreal Editor 5.6/5.7 MCP self-extension workbench - editor automation, build diagnostics, Task Atlas workflows, PIE smoke verification, scaffold pipeline",
+      "requires": "Unreal Engine 5.6 or 5.7 with the UEAtelier plugin extracted into <YourProject>/",
+      "homepage": "https://github.com/edwinmeng163-oss/UEAtelier",
+      "source_url": "https://github.com/edwinmeng163-oss/UEAtelier",
+      "install_cmd": "pip install git+https://github.com/edwinmeng163-oss/UEAtelier.git#subdirectory=Tools/UEAtelierCli",
+      "entry_point": "cli-anything-ueatelier",
+      "skill_md": "https://github.com/edwinmeng163-oss/UEAtelier/blob/main/Tools/UEAtelierCli/SKILL.md",
+      "category": "gamedev",
       "contributors": [
         {
-          "name": "George-RD",
-          "url": "https://github.com/George-RD"
+          "name": "edwinmeng163-oss",
+          "url": "https://github.com/edwinmeng163-oss"
         }
       ]
     },
     {
-      "name": "palmier",
-      "display_name": "Palmier Pro",
+      "name": "unimol_tools",
+      "display_name": "Uni-Mol Tools",
+      "version": "1.0.0",
+      "description": "Molecular property prediction — train and predict with 5 task types (classification, regression, multiclass, multilabel) for drug discovery",
+      "requires": "PyTorch 1.12+, Uni-Mol Tools backend",
+      "homepage": "https://github.com/dptech-corp/Uni-Mol/tree/main/unimol_tools",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unimol_tools/agent-harness",
+      "entry_point": "cli-anything-unimol-tools",
+      "skill_md": "skills/cli-anything-unimol-tools/SKILL.md",
+      "category": "science",
+      "contributors": [
+        {
+          "name": "545487677",
+          "url": "https://github.com/545487677"
+        }
+      ]
+    },
+    {
+      "name": "unrealinsights",
+      "display_name": "Unreal Insights",
       "version": "0.1.0",
-      "description": "Agent-native CLI harness for the Palmier Pro local MCP video editor — drive timeline editing, media, captions, and AI generation from the command line",
-      "requires": "Palmier Pro desktop app running its local MCP server at 127.0.0.1:19789, Python 3.10+",
-      "homepage": "https://palmier.com",
-      "source_url": "https://github.com/workcr/palmier-cli-anything",
-      "install_cmd": "pip install git+https://github.com/workcr/palmier-cli-anything.git",
-      "entry_point": "cli-anything-palmier",
-      "skill_md": "https://github.com/workcr/palmier-cli-anything/blob/main/skills/cli-anything-palmier/SKILL.md",
+      "description": "Windows-first Unreal trace capture, background session control, engine-matched UnrealInsights builds, and headless Timing Insights export workflows",
+      "requires": "Windows + Unreal Engine source or installed build with UnrealEditor and Unreal trace support",
+      "homepage": "https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-in-unreal-engine",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unrealinsights/agent-harness",
+      "entry_point": "cli-anything-unrealinsights",
+      "skill_md": "unrealinsights/agent-harness/cli_anything/unrealinsights/skills/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "AiMiDi",
+          "url": "https://github.com/AiMiDi"
+        }
+      ]
+    },
+    {
+      "name": "ve-twini",
+      "display_name": "VE Twini",
+      "version": "1.0.0",
+      "description": "Unified Twitter/X CLI bridging bird (GraphQL API) and opencli (browser automation)",
+      "requires": "Python 3.10+, bird (Twitter API), opencli",
+      "homepage": "https://x.com",
+      "source_url": "https://github.com/collectivewinca/ve-twini",
+      "install_cmd": "pip install git+https://github.com/collectivewinca/ve-twini.git#subdirectory=agent-harness",
+      "entry_point": "cli-anything-ve-twini",
+      "skill_md": "https://github.com/collectivewinca/ve-twini/blob/master/agent-harness/cli_anything/ve_twini/skills/SKILL.md",
+      "category": "communication",
+      "contributors": [
+        {
+          "name": "collectivewinca",
+          "url": "https://github.com/collectivewinca"
+        }
+      ]
+    },
+    {
+      "name": "videocaptioner",
+      "display_name": "VideoCaptioner",
+      "version": "1.0.0",
+      "description": "AI-powered video captioning — transcribe speech, optimize/translate subtitles, burn styled subtitles into video",
+      "requires": "videocaptioner (pip install videocaptioner), ffmpeg",
+      "homepage": "https://github.com/WEIFENG2333/VideoCaptioner",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=videocaptioner/agent-harness",
+      "entry_point": "cli-anything-videocaptioner",
+      "skill_md": "skills/cli-anything-videocaptioner/SKILL.md",
       "category": "video",
       "contributors": [
         {
-          "name": "workcr",
-          "url": "https://github.com/workcr"
+          "name": "WEIFENG2333",
+          "url": "https://github.com/WEIFENG2333"
         }
       ]
     },
     {
-      "name": "magnific",
-      "display_name": "Magnific",
-      "version": "0.1.0",
-      "description": "Agent-native CLI harness for Magnific's remote MCP media-generation server — generate and upscale images and video via mcpc OAuth without loading the full MCP schema each turn",
-      "requires": "Node.js + npm (for the mcpc transport), Python 3.10+, Magnific account (OAuth)",
-      "homepage": "https://magnific.com",
-      "source_url": "https://github.com/workcr/magnific-cli-anything",
-      "install_cmd": "pip install git+https://github.com/workcr/magnific-cli-anything.git",
-      "entry_point": "cli-anything-magnific",
-      "skill_md": "https://github.com/workcr/magnific-cli-anything/blob/main/skills/cli-anything-magnific/SKILL.md",
-      "category": "ai",
+      "name": "wavetone",
+      "display_name": "WaveTone",
+      "version": "1.0.0",
+      "description": "Prepare WaveTone 2.61 audio transcription manifests, probe audio files, and launch the real Windows WaveTone executable",
+      "requires": "WaveTone 2.61 extracted on Windows; set WAVETONE_EXE or WAVETONE_HOME",
+      "homepage": "http://ackiesound.ifdef.jp/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wavetone/agent-harness",
+      "entry_point": "cli-anything-wavetone",
+      "skill_md": "skills/cli-anything-wavetone/SKILL.md",
+      "category": "audio",
       "contributors": [
         {
-          "name": "workcr",
-          "url": "https://github.com/workcr"
+          "name": "Shuhan Zhang",
+          "url": "https://github.com/Manifold68575"
+        }
+      ]
+    },
+    {
+      "name": "web-yu-pri",
+      "display_name": "Web Yu-pri",
+      "version": "0.1.0",
+      "description": "Japan Post Web Yu-pri browser workflow automation for login, inspection, screenshots, dry-run planning, and contents-form filling",
+      "requires": "Japan Post Web Yu-pri account, Playwright, Microsoft Edge/Chrome or Playwright Chromium",
+      "homepage": "https://mgr.post.japanpost.jp/C30P01Action.do",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=web-yu-pri/agent-harness",
+      "entry_point": "cli-anything-web-yu-pri",
+      "skill_md": "skills/cli-anything-web-yu-pri/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "shinpei710",
+          "url": "https://github.com/shinpei710"
+        }
+      ]
+    },
+    {
+      "name": "wiremock",
+      "display_name": "WireMock",
+      "version": "0.1.0",
+      "description": "HTTP mock server management — create stubs, inspect requests, record traffic, and manage scenarios via WireMock REST API",
+      "requires": "WireMock server running (java -jar wiremock-standalone.jar)",
+      "homepage": "https://wiremock.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wiremock/agent-harness",
+      "entry_point": "cli-anything-wiremock",
+      "skill_md": "skills/cli-anything-wiremock/SKILL.md",
+      "category": "testing",
+      "contributors": [
+        {
+          "name": "fabiomantel",
+          "url": "https://github.com/fabiomantel"
+        }
+      ]
+    },
+    {
+      "name": "zoom",
+      "display_name": "Zoom",
+      "version": "1.0.1",
+      "description": "Meeting management via Zoom REST API (OAuth2)",
+      "requires": "Zoom account + OAuth app credentials",
+      "homepage": "https://zoom.us",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=zoom/agent-harness",
+      "entry_point": "cli-anything-zoom",
+      "skill_md": "skills/cli-anything-zoom/SKILL.md",
+      "category": "communication",
+      "contributors": [
+        {
+          "name": "zhangxilong-43",
+          "url": "https://github.com/zhangxilong-43"
+        }
+      ]
+    },
+    {
+      "name": "zotero",
+      "display_name": "Zotero",
+      "version": "0.4.1",
+      "description": "CLI & MCP server for Zotero 7/8 — 52 MCP tools + 70+ CLI commands for search, import, PDF, BibTeX, notes, and more",
+      "requires": "Zotero 7/8 desktop app (running), Python 3.10+",
+      "homepage": "https://www.zotero.org",
+      "source_url": "https://github.com/PiaoyangGuohai1/cli-anything-zotero",
+      "install_cmd": "pip install cli-anything-zotero",
+      "entry_point": "cli-anything-zotero",
+      "skill_md": "https://github.com/PiaoyangGuohai1/cli-anything-zotero/blob/main/cli_anything/zotero/skills/SKILL.md",
+      "category": "office",
+      "contributors": [
+        {
+          "name": "zhiwuyazhe_fjr",
+          "url": "https://github.com/zhiwuyazhe-fjr"
+        },
+        {
+          "name": "PiaoyangGuohai1",
+          "url": "https://github.com/PiaoyangGuohai1"
         }
       ]
     }
