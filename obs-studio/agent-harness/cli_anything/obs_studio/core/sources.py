@@ -1,8 +1,17 @@
 """OBS Studio CLI - Source management."""
 
 import copy
+import math
 from typing import Dict, Any, List, Optional
-from cli_anything.obs_studio.utils.obs_utils import generate_id, unique_name, get_item, validate_range
+from cli_anything.obs_studio.utils.obs_utils import (
+    generate_id,
+    unique_name,
+    get_item,
+    validate_range,
+    validate_position,
+    validate_size,
+    validate_crop,
+)
 
 
 SOURCE_TYPES = {
@@ -122,13 +131,9 @@ def add_source(
     src["visible"] = visible
 
     if position:
-        src["position"] = {"x": float(position.get("x", 0)), "y": float(position.get("y", 0))}
+        src["position"] = validate_position(position)
     if size:
-        w = int(size.get("width", 1920))
-        h = int(size.get("height", 1080))
-        if w < 1 or h < 1:
-            raise ValueError(f"Size must be positive: {w}x{h}")
-        src["size"] = {"width": w, "height": h}
+        src["size"] = validate_size(size)
     if settings:
         src["settings"].update(settings)
 
@@ -201,25 +206,28 @@ def transform_source(
     source = get_item(sources, source_index, "source")
 
     if position:
-        source["position"] = {
-            "x": float(position.get("x", source["position"]["x"])),
-            "y": float(position.get("y", source["position"]["y"])),
-        }
+        source["position"] = validate_position(
+            {
+                "x": position.get("x", source["position"]["x"]),
+                "y": position.get("y", source["position"]["y"]),
+            }
+        )
     if size:
-        w = int(size.get("width", source["size"]["width"]))
-        h = int(size.get("height", source["size"]["height"]))
-        if w < 1 or h < 1:
-            raise ValueError(f"Size must be positive: {w}x{h}")
-        source["size"] = {"width": w, "height": h}
+        source["size"] = validate_size(
+            {
+                "width": size.get("width", source["size"]["width"]),
+                "height": size.get("height", source["size"]["height"]),
+            }
+        )
     if crop:
-        for key in ("top", "bottom", "left", "right"):
-            if key in crop:
-                val = int(crop[key])
-                if val < 0:
-                    raise ValueError(f"Crop {key} must be non-negative, got {val}")
-                source["crop"][key] = val
+        merged_crop = dict(source.get("crop") or {})
+        merged_crop.update(crop)
+        source["crop"] = validate_crop(merged_crop)
     if rotation is not None:
-        source["rotation"] = float(rotation)
+        rot = float(rotation)
+        if not math.isfinite(rot):
+            raise ValueError(f"Rotation must be a finite number, got {rot}")
+        source["rotation"] = rot
 
     return source
 
