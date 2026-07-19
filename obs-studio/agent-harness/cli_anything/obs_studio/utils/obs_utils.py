@@ -1,6 +1,7 @@
 """OBS Studio CLI - JSON helpers and utilities."""
 
 import json
+import math
 import os
 import copy
 from typing import Dict, Any, List, Optional
@@ -27,6 +28,8 @@ def unique_name(name: str, items: List[Dict[str, Any]], key: str = "name") -> st
 def validate_range(value: float, min_val: float, max_val: float, name: str) -> float:
     """Validate that a value is within range."""
     val = float(value)
+    if not math.isfinite(val):
+        raise ValueError(f"{name} must be a finite number, got {val}")
     if val < min_val or val > max_val:
         raise ValueError(f"{name} must be between {min_val} and {max_val}, got {val}")
     return val
