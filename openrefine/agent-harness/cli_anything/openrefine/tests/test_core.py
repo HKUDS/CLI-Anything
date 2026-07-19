@@ -463,10 +463,11 @@ def test_cli_default_enters_repl_and_exits(monkeypatch):
         "create_prompt_session",
         fail_if_prompt_session_is_created,
     )
-    result = CliRunner().invoke(cli, input="exit\n")
+    result = CliRunner().invoke(cli, input="help\nexit\n")
     assert result.exit_code == 0
     assert "cli-anything" in result.output
     assert "Openrefine" in result.output
+    assert "Commands" in result.output
 
 
 def test_openrefine_error_is_runtime_error():
