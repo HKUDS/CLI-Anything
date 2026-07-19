@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from cli_anything.obs_studio.utils.obs_utils import (
