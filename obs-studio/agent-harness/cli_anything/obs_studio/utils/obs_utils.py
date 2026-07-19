@@ -7,6 +7,22 @@ import copy
 from typing import Dict, Any, List, Optional
 
 
+
+def _finite_number(value: Any, name: str):
+    """Reject non-finite values without float-rounding large ints."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a finite number, got {value!r}")
+    if isinstance(value, int):
+        return value
+    try:
+        num = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite number, got {value!r}") from exc
+    if not math.isfinite(num):
+        raise ValueError(f"{name} must be a finite number, got {value!r}")
+    return num
+
+
 def generate_id(items: List[Dict[str, Any]]) -> int:
     """Generate the next unique ID for a list of items."""
     if not items:
@@ -35,21 +51,15 @@ def validate_range(value: float, min_val: float, max_val: float, name: str) -> f
 
 def validate_position(pos: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a position dict."""
-    x = float(pos.get("x", 0))
-    y = float(pos.get("y", 0))
-    if not math.isfinite(x) or not math.isfinite(y):
-        raise ValueError(f"Position coordinates must be finite numbers, got x={x}, y={y}")
+    x = _finite_number(pos.get("x", 0), "Position x")
+    y = _finite_number(pos.get("y", 0), "Position y")
     return {"x": x, "y": y}
 
 
 def validate_size(size: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a size dict."""
-    width_raw = float(size.get("width", 1920))
-    height_raw = float(size.get("height", 1080))
-    if not math.isfinite(width_raw) or not math.isfinite(height_raw):
-        raise ValueError(
-            f"Size must be finite numbers, got width={width_raw}, height={height_raw}"
-        )
+    width_raw = _finite_number(size.get("width", 1920), "Size width")
+    height_raw = _finite_number(size.get("height", 1080), "Size height")
     w = int(width_raw)
     h = int(height_raw)
     if w < 1:
@@ -63,9 +73,7 @@ def validate_crop(crop: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a crop dict."""
     result = {}
     for key in ("top", "bottom", "left", "right"):
-        raw = float(crop.get(key, 0))
-        if not math.isfinite(raw):
-            raise ValueError(f"Crop {key} must be a finite number, got {raw}")
+        raw = _finite_number(crop.get(key, 0), f"Crop {key}")
         val = int(raw)
         if val < 0:
             raise ValueError(f"Crop {key} must be non-negative, got {val}")
