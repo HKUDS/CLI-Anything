@@ -1,6 +1,7 @@
 """OBS Studio CLI - JSON helpers and utilities."""
 
 import json
+import math
 import os
 import copy
 from typing import Dict, Any, List, Optional
@@ -34,16 +35,23 @@ def validate_range(value: float, min_val: float, max_val: float, name: str) -> f
 
 def validate_position(pos: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a position dict."""
-    return {
-        "x": float(pos.get("x", 0)),
-        "y": float(pos.get("y", 0)),
-    }
+    x = float(pos.get("x", 0))
+    y = float(pos.get("y", 0))
+    if not math.isfinite(x) or not math.isfinite(y):
+        raise ValueError(f"Position coordinates must be finite numbers, got x={x}, y={y}")
+    return {"x": x, "y": y}
 
 
 def validate_size(size: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a size dict."""
-    w = int(size.get("width", 1920))
-    h = int(size.get("height", 1080))
+    width_raw = float(size.get("width", 1920))
+    height_raw = float(size.get("height", 1080))
+    if not math.isfinite(width_raw) or not math.isfinite(height_raw):
+        raise ValueError(
+            f"Size must be finite numbers, got width={width_raw}, height={height_raw}"
+        )
+    w = int(width_raw)
+    h = int(height_raw)
     if w < 1:
         raise ValueError(f"Width must be positive, got {w}")
     if h < 1:
@@ -55,7 +63,10 @@ def validate_crop(crop: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a crop dict."""
     result = {}
     for key in ("top", "bottom", "left", "right"):
-        val = int(crop.get(key, 0))
+        raw = float(crop.get(key, 0))
+        if not math.isfinite(raw):
+            raise ValueError(f"Crop {key} must be a finite number, got {raw}")
+        val = int(raw)
         if val < 0:
             raise ValueError(f"Crop {key} must be non-negative, got {val}")
         result[key] = val
