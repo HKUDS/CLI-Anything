@@ -785,40 +785,37 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
 
     Example:
         >>> cat("/main/button[0]", session=session)   # required for absolute paths
-        {"output": "button: Submit\\n..."}
+        {"output": "button: Submit\n..."}
     """
     translated, is_absolute = _translate_path(path)
-    # Note: a falsy `translated` (root path `/` or empty string) is no
-    # longer rejected here. Pre-migration `fs cat` at the root surfaced
-    # DOMShell's own `Usage: cat <name>` error string; the round-5 guard
-    # converted that into a Python ValueError, which broke the
-    # `fs.read_element(session, "")` fall-through to `session.working_dir`
-    # for callers landed at `/`. Removed per @yuh-yang R3 review of
-    # `b684732` — `cat ''` reaches DOMShell, which has the same
-    # `if (!targetName)` check and returns its standard Usage error.
+    # Empty translated path is the natural no-arg form:
+    # - absolute `/`  → anchor at tab root, then bare `cat` (current cursor)
+    # - relative `""` → bare `cat` on the lane's current cursor
+    # Named elements keep `cat <name>`. This preserves the advertised
+    # `fs cat [path]` no-arg behaviour and avoids `cat ''` (DOMShell
+    # Usage error) / the earlier Python ValueError regression.
+    cat_cmd = "cat" if not translated else f"cat {_q(translated)}"
     if is_absolute:
         _require_session_for_split_check("cat", session, use_daemon)
         # Split-and-check: anchor at tab root, halt if anchor fails,
-        # otherwise run relative cat, restore. Anchor success is
-        # load-bearing — without it cat resolves the relative path
-        # against the wrong cwd.
+        # otherwise run relative/bare cat, restore. Anchor success is
+        # load-bearing — without it cat resolves against the wrong cwd.
         anchor = asyncio.run(_call_execute(
             _anchor_path_cmd(""), use_daemon, session=session,
         ))
         if _is_error(anchor):
             return _parse_execute_result(anchor, "cat")
         op = asyncio.run(_call_execute(
-            f"cat {_q(translated)}", use_daemon, session=session,
+            cat_cmd, use_daemon, session=session,
         ))
         asyncio.run(_call_execute(
             _restore_cwd_cmd(session), use_daemon, session=session,
         ))
         return _parse_execute_result(op, "cat")
     op = asyncio.run(_call_execute(
-        f"cat {_q(translated)}", use_daemon, session=session,
+        cat_cmd, use_daemon, session=session,
     ))
     return _parse_execute_result(op, "cat")
-
 
 def grep(
     pattern: str,
