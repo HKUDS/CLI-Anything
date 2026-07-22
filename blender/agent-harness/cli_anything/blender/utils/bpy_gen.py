@@ -552,7 +552,7 @@ def _gen_render_output(
 
     lines.extend([
         "",
-        f"print('Render complete: {output_path}')",
+        f"print(r'Render complete: {output_path}')",
     ])
 
     return lines
