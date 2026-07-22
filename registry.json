@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "solidity-snippets",
+      "display_name": "Solidity Snippets",
+      "version": "1.0.0",
+      "description": "50+ battle-tested Solidity snippets for smart contract development — preview in terminal, buy full access for $1 (ETH/USDT). Zero dependencies.",
+      "requires": null,
+      "homepage": "https://solidity-snippets.vercel.app",
+      "source_url": "https://github.com/tiancaijb366-pixel/cli-anything-solidity-snippets",
+      "install_cmd": "pip install git+https://github.com/tiancaijb366-pixel/cli-anything-solidity-snippets.git",
+      "entry_point": "cli-anything-solidity-snippets",
+      "skill_md": "https://raw.githubusercontent.com/tiancaijb366-pixel/cli-anything-solidity-snippets/main/cli_anything/solidity_snippets/skills/SKILL.md",
+      "category": "web3",
+      "contributors": [
+        {
+          "name": "tiancaijb366-pixel",
+          "url": "https://github.com/tiancaijb366-pixel"
+        }
+      ]
     }
   ]
 }
