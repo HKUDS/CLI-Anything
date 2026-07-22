@@ -7,6 +7,7 @@ Requires: gimp (system package)
 """
 
 import os
+import re
 import shutil
 import subprocess
 from typing import Dict, Any, Optional, List
@@ -24,7 +25,13 @@ def _script_fu_escape(value: str) -> str:
 
 def find_gimp() -> str:
     """Find the GIMP executable. Raises RuntimeError if not found."""
-    for name in ("gimp", "gimp-2.10", "gimp-2.99"):
+    # Prefer the console binary: the GUI executable never exits in batch mode
+    # on Windows, hanging the caller until its timeout.
+    for name in (
+        "gimp-console-3.2", "gimp-console-3", "gimp-console",
+        "gimp-console-2.10", "gimp-console-2.99",
+        "gimp", "gimp-2.10", "gimp-2.99",
+    ):
         path = shutil.which(name)
         if path:
             return path
@@ -58,7 +65,13 @@ def batch_script_fu(
         Dict with stdout, stderr, return code
     """
     gimp = find_gimp()
-    cmd = [gimp, "-i", "-b", script, "-b", "(gimp-quit 0)"]
+    # GIMP 3 no longer defaults to Script-Fu for -b; without an explicit
+    # interpreter the process never exits.
+    cmd = [
+        gimp, "-i",
+        "--batch-interpreter", "plug-in-script-fu-eval",
+        "-b", script, "-b", "(gimp-quit 0)",
+    ]
 
     result = subprocess.run(
         cmd,
@@ -226,12 +239,28 @@ def apply_filter_and_export(
 # ---------------------------------------------------------------------------
 
 def is_available() -> bool:
-    """Return True if GIMP is installed and reachable on $PATH."""
+    """Return True if a usable GIMP is installed and reachable on $PATH.
+
+    The Script-Fu below targets the GIMP 2.10 PDB.  GIMP 3.x removed several
+    of those procedures (``gimp-palette-set-foreground``,
+    ``gimp-image-get-active-drawable``, ...), and its batch mode *hangs*
+    rather than exiting when a script errors -- so an unusable GIMP 3 costs a
+    full subprocess timeout per render before the Pillow fallback kicks in.
+    Treat it as unavailable until the Script-Fu is ported.
+    """
     try:
-        find_gimp()
-        return True
+        gimp = find_gimp()
     except RuntimeError:
         return False
+    try:
+        version = subprocess.run(
+            [gimp, "--version"],
+            capture_output=True, text=True, timeout=30,
+        ).stdout
+    except (subprocess.SubprocessError, OSError):
+        return False
+    match = re.search(r"version (\d+)\.", version)
+    return bool(match) and int(match.group(1)) < 3
 
 
 # ---------------------------------------------------------------------------
