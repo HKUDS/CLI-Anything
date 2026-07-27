@@ -82,9 +82,10 @@ with `_is_error` gates between them — not one multi-line string.
 |--------------------------------|-----------------------------------------------|
 | `fs ls /<sub>` | 3 calls: `cd %here%/<sub>` → bare `ls` → `cd <restore>` (`_is_error` after anchor) |
 | `fs cd /<sub>` | 1 call: `cd %here%/<sub>` (`cd` is the desired new state; no restore) |
-| `fs cat /<sub>` | 3 calls: `cd %here%` → `cat <sub>` (or bare `cat` when `<sub>` is empty/root) → `cd <restore>` |
+| `fs cat /<sub>` | 3 calls: `cd %here%` → `cat <sub>` (or bare `read` when `<sub>` is empty/root) → `cd <restore>` |
 | `fs grep <pat>` | 1 call: `grep -r <pat>` (unrooted; operates on lane cwd) |
-| `fs grep <pat> /<sub>` | 3 calls: `cd %here%/<sub>` → `grep -r <pat>` → `cd <restore>` (also for relative-rooted paths) |
+| `fs grep <pat> /<sub>` | 3 calls: `cd %here%/<sub>` → `grep -r <pat>` → `cd <restore>` |
+| `fs grep <pat> <sub>` | 3 calls: `cd <sub>` → `grep -r <pat>` → `cd <restore>` (relative to lane cwd) |
 | `act click /<sub>` | 3 calls: `cd %here%` → `click <sub>` → `cd <restore>` |
 | `act type /<sub> <text>` | Up to 4 calls: `cd %here%` → `focus <sub>` → (on focus success) `type <text>` → `cd <restore>` — all share a lane via `group_id` / session |
 | `page open <url>` | 1 call: `open <url>` |
