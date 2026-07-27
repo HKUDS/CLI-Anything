@@ -788,17 +788,14 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         {"output": "button: Submit\n..."}
     """
     translated, is_absolute = _translate_path(path)
-    # Empty translated path is the natural no-arg form:
-    # - absolute `/`  → anchor at tab root, then bare `cat` (current cursor)
-    # - relative `""` → bare `cat` on the lane's current cursor
-    # Named elements keep `cat <name>`. This preserves the advertised
-    # `fs cat [path]` no-arg behaviour and avoids `cat ''` (DOMShell
-    # Usage error) / the earlier Python ValueError regression.
-    cat_cmd = "cat" if not translated else f"cat {_q(translated)}"
+    # DOMShell's `cat` requires a child name; its no-argument `read`
+    # command is the supported way to read the current cursor.
+    command = "read" if not translated else f"cat {_q(translated)}"
     if is_absolute:
         _require_session_for_split_check("cat", session, use_daemon)
         # Split-and-check: anchor at tab root, halt if anchor fails,
-        # otherwise run relative/bare cat, restore. Anchor success is
+        # otherwise read the current cursor or named child, then restore.
+        # Anchor success is
         # load-bearing — without it cat resolves against the wrong cwd.
         anchor = asyncio.run(_call_execute(
             _anchor_path_cmd(""), use_daemon, session=session,
@@ -806,14 +803,14 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         if _is_error(anchor):
             return _parse_execute_result(anchor, "cat")
         op = asyncio.run(_call_execute(
-            cat_cmd, use_daemon, session=session,
+            command, use_daemon, session=session,
         ))
         asyncio.run(_call_execute(
             _restore_cwd_cmd(session), use_daemon, session=session,
         ))
         return _parse_execute_result(op, "cat")
     op = asyncio.run(_call_execute(
-        cat_cmd, use_daemon, session=session,
+        command, use_daemon, session=session,
     ))
     return _parse_execute_result(op, "cat")
 

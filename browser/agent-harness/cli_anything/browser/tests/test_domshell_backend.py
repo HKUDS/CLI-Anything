@@ -147,15 +147,14 @@ def test_cat_relative_no_wrap(mock_call):
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
-def test_cat_root_path_translates_to_bare_cat_at_anchor(mock_call):
-    """backend.cat("/") anchors at tab root, then issues bare `cat`.
+def test_cat_root_path_reads_current_node_at_anchor(mock_call):
+    """backend.cat("/") anchors at tab root, then issues bare `read`.
 
     Empty-after-translation absolute paths are the natural no-arg form
-    (``fs cat`` with ``session.working_dir == "/"``). Sending ``cat ''``
-    would hit DOMShell's Usage error; bare ``cat`` operates on the
-    cursor the anchor just parked at the tab root.
+    (``fs cat`` with ``session.working_dir == "/"``). DOMShell requires
+    a target for ``cat``; ``read`` is its supported current-node operation.
     """
-    mock_call.return_value = _make_result("button: Submit\n[lane: 1]")
+    mock_call.return_value = _make_result("root [document]\n  button [button]\n[lane: 1]")
     sess = _make_session(working_dir="/")
 
     result = backend.cat("/", session=sess)
@@ -164,21 +163,21 @@ def test_cat_root_path_translates_to_bare_cat_at_anchor(mock_call):
     assert "error" not in result
     assert mock_call.call_count == 3
     assert mock_call.call_args_list[0].args[0] == "cd %here%"
-    assert mock_call.call_args_list[1].args[0] == "cat"
+    assert mock_call.call_args_list[1].args[0] == "read"
     assert mock_call.call_args_list[2].args[0] == "cd %here%"
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
-def test_cat_empty_relative_path_is_bare_cat(mock_call):
-    """backend.cat("") is bare cat on the lane's current cursor."""
-    mock_call.return_value = _make_result("button: Submit\n[lane: 1]")
+def test_cat_empty_relative_path_reads_current_node(mock_call):
+    """backend.cat("") uses DOMShell read on the lane's current cursor."""
+    mock_call.return_value = _make_result("button [button]\n[lane: 1]")
 
     result = backend.cat("")
 
     assert isinstance(result, dict)
     assert "error" not in result
     assert mock_call.call_count == 1
-    assert mock_call.call_args.args[0] == "cat"
+    assert mock_call.call_args.args[0] == "read"
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
@@ -186,7 +185,7 @@ def test_read_element_empty_path_at_root_does_not_raise(mock_call):
     """fs.read_element(session, "") at default working_dir="/" must not raise."""
     from cli_anything.browser.core import fs as fs_mod
 
-    mock_call.return_value = _make_result("root content\n[lane: 1]")
+    mock_call.return_value = _make_result("root [document]\n  content [text]\n[lane: 1]")
     sess = _make_session(working_dir="/")
 
     result = fs_mod.read_element(sess, "")
@@ -195,7 +194,8 @@ def test_read_element_empty_path_at_root_does_not_raise(mock_call):
     assert "error" not in result
     # Falls through to working_dir="/", so absolute split-and-check path.
     assert mock_call.call_count == 3
-    assert mock_call.call_args_list[1].args[0] == "cat"
+    assert mock_call.call_args_list[1].args[0] == "read"
+
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
 def test_click_absolute_path_uses_three_separate_calls(mock_call):
