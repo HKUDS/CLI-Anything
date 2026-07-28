@@ -55,6 +55,34 @@ def test_validate_crop_rejects_inf():
 def test_validate_position_accepts_finite():
     assert validate_position({"x": 1.5, "y": -2.0}) == {"x": 1.5, "y": -2.0}
 
+def test_validate_position_preserves_large_int():
+    assert validate_position({"x": 2 ** 53 + 1, "y": -(2 ** 53 + 3)}) == {
+        "x": 2 ** 53 + 1,
+        "y": -(2 ** 53 + 3),
+    }
+
+
+def test_validate_size_preserves_large_int():
+    assert validate_size(
+        {"width": 2 ** 53 + 1, "height": 2 ** 53 + 3}
+    ) == {"width": 2 ** 53 + 1, "height": 2 ** 53 + 3}
+
+
+def test_validate_crop_preserves_large_int():
+    assert validate_crop(
+        {
+            "top": 2 ** 53 + 1,
+            "bottom": 2 ** 53 + 3,
+            "left": 2 ** 53 + 5,
+            "right": 2 ** 53 + 7,
+        }
+    ) == {
+        "top": 2 ** 53 + 1,
+        "bottom": 2 ** 53 + 3,
+        "left": 2 ** 53 + 5,
+        "right": 2 ** 53 + 7,
+    }
+
 
 def test_add_source_rejects_nan_position():
     with pytest.raises(ValueError, match="finite"):
