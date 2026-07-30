@@ -68,6 +68,27 @@ def test_validate_size_preserves_large_int():
     ) == {"width": 2 ** 53 + 1, "height": 2 ** 53 + 3}
 
 
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("+42", 42),
+        ("1", 1),
+        (str(2 ** 53 + 1), 2 ** 53 + 1),
+    ],
+)
+def test_validate_size_preserves_decimal_integer_strings(value, expected):
+    assert validate_size({"width": value, "height": value}) == {
+        "width": expected,
+        "height": expected,
+    }
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_validate_size_rejects_non_positive_decimal_integer_strings(value):
+    with pytest.raises(ValueError, match="positive"):
+        validate_size({"width": value, "height": 1})
+
 def test_validate_crop_preserves_large_int():
     assert validate_crop(
         {
@@ -82,6 +103,30 @@ def test_validate_crop_preserves_large_int():
         "left": 2 ** 53 + 5,
         "right": 2 ** 53 + 7,
     }
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("+42", 42),
+        ("0", 0),
+        (str(2 ** 53 + 1), 2 ** 53 + 1),
+    ],
+)
+def test_validate_crop_preserves_decimal_integer_strings(value, expected):
+    assert validate_crop(
+        {"top": value, "bottom": value, "left": value, "right": value}
+    ) == {
+        "top": expected,
+        "bottom": expected,
+        "left": expected,
+        "right": expected,
+    }
+
+
+def test_validate_crop_rejects_negative_decimal_integer_string():
+    with pytest.raises(ValueError, match="non-negative"):
+        validate_crop({"top": "-1"})
 
 
 def test_add_source_rejects_nan_position():

@@ -23,6 +23,16 @@ def _finite_number(value: Any, name: str):
     return num
 
 
+def _finite_integer(value: Any, name: str) -> int:
+    """Convert a finite value without rounding decimal integer strings."""
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    return int(_finite_number(value, name))
+
+
 def generate_id(items: List[Dict[str, Any]]) -> int:
     """Generate the next unique ID for a list of items."""
     if not items:
@@ -58,10 +68,8 @@ def validate_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 
 def validate_size(size: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a size dict."""
-    width_raw = _finite_number(size.get("width", 1920), "Size width")
-    height_raw = _finite_number(size.get("height", 1080), "Size height")
-    w = int(width_raw)
-    h = int(height_raw)
+    w = _finite_integer(size.get("width", 1920), "Size width")
+    h = _finite_integer(size.get("height", 1080), "Size height")
     if w < 1:
         raise ValueError(f"Width must be positive, got {w}")
     if h < 1:
@@ -73,8 +81,7 @@ def validate_crop(crop: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a crop dict."""
     result = {}
     for key in ("top", "bottom", "left", "right"):
-        raw = _finite_number(crop.get(key, 0), f"Crop {key}")
-        val = int(raw)
+        val = _finite_integer(crop.get(key, 0), f"Crop {key}")
         if val < 0:
             raise ValueError(f"Crop {key} must be non-negative, got {val}")
         result[key] = val
