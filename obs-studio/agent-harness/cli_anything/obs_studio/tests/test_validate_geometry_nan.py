@@ -78,6 +78,7 @@ def test_validate_size_preserves_large_int():
     ],
 )
 def test_validate_size_preserves_decimal_integer_strings(value, expected):
+    """Keep signed, boundary, and large size strings exact before int conversion."""
     assert validate_size({"width": value, "height": value}) == {
         "width": expected,
         "height": expected,
@@ -86,6 +87,7 @@ def test_validate_size_preserves_decimal_integer_strings(value, expected):
 
 @pytest.mark.parametrize("value", ["0", "-1"])
 def test_validate_size_rejects_non_positive_decimal_integer_strings(value):
+    """Reject size strings at and below the positive lower bound."""
     with pytest.raises(ValueError, match="positive"):
         validate_size({"width": value, "height": 1})
 
@@ -114,6 +116,7 @@ def test_validate_crop_preserves_large_int():
     ],
 )
 def test_validate_crop_preserves_decimal_integer_strings(value, expected):
+    """Keep signed, boundary, and large crop strings exact before int conversion."""
     assert validate_crop(
         {"top": value, "bottom": value, "left": value, "right": value}
     ) == {
@@ -125,6 +128,7 @@ def test_validate_crop_preserves_decimal_integer_strings(value, expected):
 
 
 def test_validate_crop_rejects_negative_decimal_integer_string():
+    """Reject negative crop strings after exact integer parsing."""
     with pytest.raises(ValueError, match="non-negative"):
         validate_crop({"top": "-1"})
 
