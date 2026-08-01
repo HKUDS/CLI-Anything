@@ -143,6 +143,15 @@ class TestWritePayload:
         assert _clean_for_api(wf)["settings"] == {}
         assert _clean_for_api({**SERVER_WORKFLOW, "settings": None})["settings"] == {}
 
+    def test_leaves_a_non_object_settings_for_the_server_to_reject(self):
+        """Replacing it with `{}` would drop what the caller wrote without saying so.
+
+        `settings` has to be an object, so a string or a list is invalid input — but
+        that is the server's verdict to give, by name.
+        """
+        for bad in ("nope", [1], 5):
+            assert _clean_for_api({**SERVER_WORKFLOW, "settings": bad})["settings"] == bad
+
     def test_reduces_the_nested_settings_object_too(self):
         """The nested object is additionalProperties:false as well, so an unreduced
         settings block fails the request even when the top level is clean."""
@@ -249,6 +258,17 @@ class TestReapplyTags:
         with patch.object(n8n_cli.workflows, "update_workflow_tags") as mock_put:
             self._reapply()("wf1", [{"name": "prod"}, {"nope": 1}], {})
             mock_put.assert_not_called()
+
+    def test_survives_a_tags_value_that_is_not_a_list(self):
+        """A scalar would raise on iteration — after the workflow already exists.
+
+        The caller would then report a failure for something that was created, and
+        a `restore-all` retry would duplicate it.
+        """
+        for bad in (1, 1.5, True):
+            with patch.object(n8n_cli.workflows, "update_workflow_tags") as mock_put:
+                self._reapply()("wf1", bad, {})  # must not raise
+                mock_put.assert_not_called()
 
     def test_survives_a_timeout_not_just_an_http_error(self):
         """The workflow is already created; a tag timeout must not fail the caller.

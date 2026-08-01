@@ -137,10 +137,12 @@ def _clean_for_api(data: dict[str, Any]) -> dict[str, Any]:
         if k in _API_WRITABLE_FIELDS and (v is not None or k in _API_NULLABLE_FIELDS)
     }
     settings = body.get("settings")
-    body["settings"] = (
-        {k: v for k, v in settings.items() if k in _API_WRITABLE_SETTINGS}
-        if isinstance(settings, dict) else {}
-    )
+    if isinstance(settings, dict):
+        body["settings"] = {k: v for k, v in settings.items() if k in _API_WRITABLE_SETTINGS}
+    elif settings is None:
+        body["settings"] = {}  # required by the schema; absent in older exports
+    # Anything else is left untouched, so the server rejects it by name rather than
+    # this quietly replacing what the caller wrote with an empty object.
     return body
 
 
@@ -258,6 +260,12 @@ def _reapply_tags(workflow_id: str | None, tags: Any, conn: dict[str, str]) -> N
     itself is already in place, and failing the whole restore over it would be worse.
     """
     if not workflow_id or tags is None:
+        return
+    if not isinstance(tags, (list, tuple)):
+        # A scalar here would raise on the comprehension below — after the workflow
+        # has already been created, so the caller would report a failure for
+        # something that exists, and a retry of restore-all would duplicate it.
+        _diag(f"Tags on {workflow_id} are not a list — left unchanged")
         return
     tag_ids = [{"id": t["id"]} for t in tags if isinstance(t, dict) and t.get("id")]
     if tags and not tag_ids:
