@@ -479,10 +479,9 @@ def workflow_import(ctx: click.Context, file_path: str, name: str | None) -> Non
     if not isinstance(data, dict):
         error("Invalid workflow format: must be a JSON object, not array or string")
         return
-    # Remove fields that would conflict on import
-    for field in ("id", "createdAt", "updatedAt", "versionId", "shared"):
-        data.pop(field, None)
-    data["active"] = False  # Never auto-activate imported workflows
+    # Keep only what n8n accepts. `active` is readOnly on the workflow endpoint, so
+    # it cannot be set here — workflows are created inactive regardless.
+    data = _clean_for_api(data)
     if name:
         data["name"] = name
     result = workflows.create_workflow(data, **_conn(ctx))
@@ -570,10 +569,9 @@ def workflow_restore_all(ctx: click.Context, backup_dir: str, dry_run: bool) -> 
                 click.echo(f"    Would import: {name}")
                 ok += 1
                 continue
-            for field in ("id", "createdAt", "updatedAt", "versionId", "shared"):
-                data.pop(field, None)
-            data["active"] = False  # Never auto-activate restored workflows
-            result = workflows.create_workflow(data, **conn)
+            # A backup keeps state the workflow endpoint refuses (`active`, `tags`);
+            # restore has to reduce it to the writable definition again.
+            result = workflows.create_workflow(_clean_for_api(data), **conn)
             click.secho(f"    {result.get('id', '?')}  {name}", fg="green")
             ok += 1
         except Exception as exc:
@@ -1086,10 +1084,11 @@ def template_deploy(ctx: click.Context, template_id: int, name: str | None) -> N
     wf_wrapper = data.get("workflow", {})
     wf_data = wf_wrapper.get("workflow", wf_wrapper) if isinstance(wf_wrapper, dict) else {}
 
-    # Clean for import — never auto-activate
-    for field in ("id", "createdAt", "updatedAt", "versionId", "shared"):
-        wf_data.pop(field, None)
-    wf_data["active"] = False
+    # Keep only what n8n accepts; `active` is readOnly, so a template always lands
+    # inactive. n8n.io templates predate `settings` and often omit it, but the API
+    # requires it, so fall back to an empty object.
+    wf_data = _clean_for_api(wf_data)
+    wf_data.setdefault("settings", {})
     if name:
         wf_data["name"] = name
     elif not wf_data.get("name"):
