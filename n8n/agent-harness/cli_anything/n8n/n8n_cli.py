@@ -151,7 +151,9 @@ def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
         status = getattr(exc.response, "status_code", None)
         if status != 400 or not extra:
             raise
-        warn(f"Target n8n rejected {', '.join(sorted(extra))} — retrying without")
+        # Say what is known — a 400 with these keys present — rather than asserting
+        # they caused it. The retry is a guess, and if it fails the real error stands.
+        warn(f"Write rejected with 400 — retrying without {', '.join(sorted(extra))}")
         return send({k: v for k, v in payload.items() if k not in _NEWER_SCHEMA_FIELDS})
 
 
