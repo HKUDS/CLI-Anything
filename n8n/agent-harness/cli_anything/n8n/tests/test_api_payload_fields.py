@@ -233,6 +233,26 @@ class TestReapplyTags:
             self._reapply()("wf1", tags, {})
             mock_put.assert_called_once_with("wf1", [{"id": "t1"}])
 
+    def test_leaves_tags_alone_when_none_of_them_carry_an_id(self):
+        """An unreadable record must not be treated as "the source had no tags".
+
+        Filtering the ids out of a non-empty list yields an empty list, and sending
+        that would clear every tag on the workflow.
+        """
+        with patch.object(n8n_cli.workflows, "update_workflow_tags") as mock_put:
+            self._reapply()("wf1", [{"name": "prod"}, {"nope": 1}], {})
+            mock_put.assert_not_called()
+
+    def test_survives_a_timeout_not_just_an_http_error(self):
+        """The workflow is already created; a tag timeout must not fail the caller.
+
+        `restore-all` would otherwise count the file as failed and a retry would
+        create a duplicate workflow.
+        """
+        for err in (requests.exceptions.Timeout(), requests.exceptions.ConnectionError()):
+            with patch.object(n8n_cli.workflows, "update_workflow_tags", side_effect=err):
+                self._reapply()("wf1", [{"id": "t1"}], {})  # must not raise
+
     def test_reports_but_does_not_raise_when_the_ids_are_unknown(self):
         """Restoring into a different instance answers 404 Some tags not found.
 
@@ -251,3 +271,59 @@ class TestReapplyTags:
         """
         exported = strip_server_fields({**SERVER_WORKFLOW, "tags": [{"id": "t1", "name": "prod"}]})
         assert exported["tags"] == [{"id": "t1", "name": "prod"}]
+
+
+# ─── Cross-version writes ───────────────────────────────────────────────────
+
+class TestNewerSchemaFallback:
+    """A file exported from n8n 2.33.3+ has to remain importable into an older one.
+
+    `nodeGroups` and `parentFolderId` do not exist in the older schema, whose
+    additionalProperties:false rejects the whole request.
+    """
+
+    @staticmethod
+    def _send():
+        fn = getattr(n8n_cli, "_send_workflow", None)
+        if fn is None:
+            pytest.skip("_send_workflow not present in this build")
+        return fn
+
+    @staticmethod
+    def _http_error(status):
+        resp = type("R", (), {"status_code": status})()
+        return requests.exceptions.HTTPError(response=resp)
+
+    def test_retries_without_the_newer_properties(self):
+        seen = []
+
+        def send(body):
+            seen.append(dict(body))
+            if "nodeGroups" in body:
+                raise self._http_error(400)
+            return {"id": "wf1"}
+
+        payload = {"name": "x", "nodes": [], "nodeGroups": [{"name": "g"}], "parentFolderId": "f1"}
+        assert self._send()(send, payload) == {"id": "wf1"}
+        assert len(seen) == 2
+        assert "nodeGroups" not in seen[1] and "parentFolderId" not in seen[1]
+        assert seen[1]["name"] == "x"  # everything else survives
+
+    def test_does_not_retry_when_the_payload_has_none_of_them(self):
+        """A 400 about something else must surface, not be masked by a pointless retry."""
+        calls = []
+
+        def send(body):
+            calls.append(body)
+            raise self._http_error(400)
+
+        with pytest.raises(requests.exceptions.HTTPError):
+            self._send()(send, {"name": "x", "nodes": []})
+        assert len(calls) == 1
+
+    def test_does_not_retry_on_other_status_codes(self):
+        def send(body):
+            raise self._http_error(401)
+
+        with pytest.raises(requests.exceptions.HTTPError):
+            self._send()(send, {"name": "x", "nodeGroups": []})

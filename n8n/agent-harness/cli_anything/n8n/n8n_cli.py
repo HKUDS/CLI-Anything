@@ -74,6 +74,12 @@ _API_WRITABLE_FIELDS = frozenset({
 # null that a GET returned is rejected outright.
 _API_NULLABLE_FIELDS = frozenset({"staticData", "pinData", "parentFolderId"})
 
+# Writable, but only present from n8n 2.33.3. An older instance does not define them
+# and rejects the request outright, so a file exported from a newer one cannot be
+# imported as-is. Rather than probe the target's version, the write is retried
+# without them — losing a canvas grouping beats losing the whole import.
+_NEWER_SCHEMA_FIELDS = frozenset({"nodeGroups", "parentFolderId"})
+
 # The nested settings object sets additionalProperties:false as well (schemas/
 # workflowSettings.yml). n8n's own editor stores keys the public API does not define
 # — `binaryMode` is written into every workflow created in the UI — so settings read
@@ -130,6 +136,33 @@ def _strip_server_fields(data: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in data.items() if k not in _INTERNAL_FIELDS}
 
 
+def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
+    """Send a workflow write, retrying once without newer-schema-only properties.
+
+    Importing a file exported from n8n 2.33.3+ into an older instance fails on
+    `nodeGroups` / `parentFolderId`, which that schema does not define. The target's
+    version is not exposed anywhere cheap to query, so this reacts to the rejection
+    instead and says what it dropped.
+    """
+    try:
+        return send(payload)
+    except requests.exceptions.HTTPError as exc:
+        extra = _NEWER_SCHEMA_FIELDS & set(payload)
+        status = getattr(exc.response, "status_code", None)
+        if status != 400 or not extra:
+            raise
+        warn(f"Target n8n rejected {', '.join(sorted(extra))} — retrying without")
+        return send({k: v for k, v in payload.items() if k not in _NEWER_SCHEMA_FIELDS})
+
+
+def _create_workflow(payload: dict[str, Any], conn: dict[str, str]) -> Any:
+    return _send_workflow(lambda body: workflows.create_workflow(body, **conn), payload)
+
+
+def _update_workflow(workflow_id: str, payload: dict[str, Any], conn: dict[str, str]) -> Any:
+    return _send_workflow(lambda body: workflows.update_workflow(workflow_id, body, **conn), payload)
+
+
 def _reapply_tags(workflow_id: str | None, tags: Any, conn: dict[str, str]) -> None:
     """Restore tag assignments through the endpoint that owns them.
 
@@ -145,9 +178,18 @@ def _reapply_tags(workflow_id: str | None, tags: Any, conn: dict[str, str]) -> N
     if not workflow_id or tags is None:
         return
     tag_ids = [{"id": t["id"]} for t in tags if isinstance(t, dict) and t.get("id")]
+    if tags and not tag_ids:
+        # The source recorded tags but none of them carry an id. Sending the empty
+        # list here would clear the assignment, which is the opposite of what an
+        # unreadable record should do.
+        warn(f"Tags on {workflow_id} could not be read from the source — left unchanged")
+        return
     try:
         workflows.update_workflow_tags(workflow_id, tag_ids, **conn)
-    except requests.exceptions.HTTPError:
+    except requests.exceptions.RequestException:
+        # Not just HTTPError: a timeout or dropped connection here would otherwise
+        # escape and make the caller count an already-created workflow as failed,
+        # so a retry would duplicate it.
         warn(f"Could not restore tags on {workflow_id} — reattach them manually")
 
 
@@ -412,7 +454,7 @@ def workflow_create(ctx: click.Context, json_data: str) -> None:
     # A file produced by `export` carries state the endpoint refuses; reduce it here
     # so hand-written and exported JSON both work. `active` is readOnly, so workflows
     # are created inactive either way.
-    data = workflows.create_workflow(_clean_for_api(payload), **_conn(ctx))
+    data = _create_workflow(_clean_for_api(payload), _conn(ctx))
     _reapply_tags(data.get("id"), tags, _conn(ctx))
     output(data, _json_flag(ctx))
 
@@ -428,7 +470,7 @@ def workflow_update(ctx: click.Context, workflow_id: str, json_data: str) -> Non
     # Same reduction as every other write: a file straight out of `export` has to be
     # usable here. `active` is readOnly, so this cannot change it — use
     # activate/deactivate. Tags likewise have their own command (`set-tags`).
-    data = workflows.update_workflow(workflow_id, _clean_for_api(payload), **_conn(ctx))
+    data = _update_workflow(workflow_id, _clean_for_api(payload), _conn(ctx))
     output(data, _json_flag(ctx))
 
 
@@ -533,7 +575,7 @@ def workflow_import(ctx: click.Context, file_path: str, name: str | None) -> Non
     data = _clean_for_api(data)
     if name:
         data["name"] = name
-    result = workflows.create_workflow(data, **_conn(ctx))
+    result = _create_workflow(data, _conn(ctx))
     _reapply_tags(result.get("id"), tags, _conn(ctx))
     success(f"Imported as workflow {result.get('id', '?')} — {result.get('name', '?')}")
     output(result, _json_flag(ctx))
@@ -622,7 +664,7 @@ def workflow_restore_all(ctx: click.Context, backup_dir: str, dry_run: bool) -> 
             # A backup keeps state the workflow endpoint refuses (`active`, `tags`);
             # restore reduces it to the writable definition and puts the tags back
             # through their own endpoint.
-            result = workflows.create_workflow(_clean_for_api(data), **conn)
+            result = _create_workflow(_clean_for_api(data), conn)
             _reapply_tags(result.get("id"), data.get("tags"), conn)
             click.secho(f"    {result.get('id', '?')}  {name}", fg="green")
             ok += 1
@@ -1145,7 +1187,7 @@ def template_deploy(ctx: click.Context, template_id: int, name: str | None) -> N
     elif not wf_data.get("name"):
         wf_data["name"] = f"Template #{template_id}"
 
-    result = workflows.create_workflow(wf_data, **conn)
+    result = _create_workflow(wf_data, conn)
     success(f"Deployed as workflow {result.get('id', '?')} — {result.get('name', '?')}")
     output(result, _json_flag(ctx))
 
@@ -1291,7 +1333,7 @@ def workflow_autofix(ctx: click.Context, source: str, apply: bool, save_path: st
     elif apply and wf_id:
         _auto_snapshot(wf_id, conn, "autofix")
         update_data = _clean_for_api(fixed_wf)
-        workflows.update_workflow(wf_id, update_data, **conn)
+        _update_workflow(wf_id, update_data, conn)
         success(f"Applied {len(fixes)} fix(es) to workflow {wf_id}")
     elif apply and not wf_id:
         error("Cannot apply fixes to a file source. Use --save instead.")
@@ -1408,7 +1450,7 @@ def workflow_patch(ctx: click.Context, workflow_id: str, rename: str | None, ena
 
     _auto_snapshot(workflow_id, conn, "patch")
     update_data = _clean_for_api(wf)
-    result = workflows.update_workflow(workflow_id, update_data, **conn)
+    result = _update_workflow(workflow_id, update_data, conn)
     output(result, _json_flag(ctx))
 
 
@@ -1553,7 +1595,7 @@ def versions_rollback(ctx: click.Context, workflow_id: str, ver_num: int | None)
         pass  # May already be inactive
     update_data = _clean_for_api(snapshot)
     update_data.pop("active", None)
-    workflows.update_workflow(workflow_id, update_data, **conn)
+    _update_workflow(workflow_id, update_data, conn)
     _reapply_tags(workflow_id, snapshot.get("tags"), conn)
     success(f"Rolled back workflow {workflow_id} to version {ver_num} (deactivated — use activate to enable)")
 
@@ -1797,7 +1839,7 @@ def workflow_scaffold(ctx: click.Context, pattern: str, name: str | None, deploy
         return
 
     if deploy:
-        result = workflows.create_workflow(wf, **_conn(ctx))
+        result = _create_workflow(_clean_for_api(wf), _conn(ctx))
         success(f"Deployed '{wf['name']}' as workflow {result.get('id', '?')}")
         output(result, _json_flag(ctx))
     elif out_path:
