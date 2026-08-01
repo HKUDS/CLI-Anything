@@ -374,6 +374,40 @@ class TestNewerSchemaFallback:
             self._send()(send, payload)
         assert len(calls) == 1, "a bad value must not trigger the compatibility retry"
 
+    def test_does_not_retry_when_the_offending_property_is_nested_deeper(self):
+        """Same wording, different meaning: this is malformed input, not a version gap.
+
+        A grouping whose item carries an unexpected member reports
+        `request/body/nodeGroups/0 must NOT have additional properties`. Treating
+        that as a compatibility problem would drop the entire grouping and could
+        then succeed — turning invalid input into a success that lost data.
+        """
+        for path in ("request/body/nodeGroups/0", "request/body/nodes/0"):
+            calls = []
+
+            def send(body):
+                calls.append(body)
+                raise self._http_error(400, f"{path} must NOT have additional properties")
+
+            with pytest.raises(requests.exceptions.HTTPError):
+                self._send()(send, {"name": "x", "nodeGroups": [{"name": "g", "bogus": 1}]})
+            assert len(calls) == 1, f"{path} must not trigger the compatibility retry"
+
+    def test_retries_for_both_reducible_paths(self):
+        """The two levels the retry actually reduces."""
+        for path in ("request/body", "request/body/settings"):
+            calls = []
+
+            def send(body):
+                calls.append(body)
+                if len(calls) == 1:
+                    raise self._http_error(400, f"{path} must NOT have additional properties")
+                return {"id": "wf1"}
+
+            payload = {"name": "x", "nodeGroups": [], "settings": {"binaryMode": "separate"}}
+            assert self._send()(send, payload) == {"id": "wf1"}
+            assert len(calls) == 2
+
     def test_does_not_retry_when_the_error_body_is_unreadable(self):
         """No message to inspect means no evidence for a compatibility problem."""
         resp = type("R", (), {"status_code": 400, "json": lambda self: (_ for _ in ()).throw(ValueError())})()

@@ -99,6 +99,12 @@ _API_WRITABLE_SETTINGS = frozenset({
 
 # The nested counterpart of _NEWER_SCHEMA_FIELDS: settings properties an older
 # instance does not define, which its additionalProperties:false rejects.
+# The validator's wording for an unexpected property, and the only two error paths
+# the compatibility retry knows how to reduce. Anything deeper — an unexpected member
+# inside a node or a grouping — is malformed input, not a version difference.
+_UNKNOWN_PROPERTY_SUFFIX = " must NOT have additional properties"
+_REDUCIBLE_ERROR_PATHS = frozenset({"request/body", "request/body/settings"})
+
 _NEWER_SCHEMA_SETTINGS = frozenset({
     "binaryMode", "credentialResolverId", "customTelemetryTags",
     "redactionPolicy", "timeSavedMode",
@@ -181,23 +187,30 @@ def _without_newer_schema_fields(payload: dict[str, Any]) -> tuple[dict[str, Any
 
 
 def _is_unknown_property_error(exc: requests.exceptions.HTTPError) -> bool:
-    """True when a 400 is about a property the schema does not define.
+    """True when a 400 says the payload has a property the target does not define.
 
-    n8n's validator separates the two cases clearly:
+    The suffix alone is not enough: the validator reports the same wording for an
+    unexpected member nested anywhere, and only the two levels this retry actually
+    reduces are safe to act on.
 
-        unknown key   request/body must NOT have additional properties
-                      request/body/settings must NOT have additional properties
-        bad value     request/body/description must be string
-                      request/body/settings/executionTimeout must be number
+        retryable      request/body must NOT have additional properties
+                       request/body/settings must NOT have additional properties
+        not retryable  request/body/nodes/0 must NOT have additional properties
+                       request/body/nodeGroups/0 must NOT have additional properties
+                       request/body/description must be string
+                       request/body/settings/executionTimeout must be number
 
-    Only the first can be resolved by dropping a property. Retrying on the second
-    would remove a setting the caller explicitly asked for and then report success.
+    The third line is the dangerous one: malformed input inside a grouping would
+    otherwise be read as a version mismatch, and dropping the whole grouping could
+    turn an invalid request into a success that quietly lost data.
     """
     try:
-        message = exc.response.json().get("message", "")
+        message = str(exc.response.json().get("message", ""))
     except (ValueError, AttributeError, TypeError):
         return False
-    return "must NOT have additional properties" in str(message)
+    if not message.endswith(_UNKNOWN_PROPERTY_SUFFIX):
+        return False
+    return message[: -len(_UNKNOWN_PROPERTY_SUFFIX)] in _REDUCIBLE_ERROR_PATHS
 
 
 def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
