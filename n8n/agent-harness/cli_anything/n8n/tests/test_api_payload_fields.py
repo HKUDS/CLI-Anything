@@ -144,13 +144,20 @@ class TestWritePayload:
         assert _clean_for_api({**SERVER_WORKFLOW, "settings": None})["settings"] == {}
 
     def test_reduces_the_nested_settings_object_too(self):
-        """Every workflow made in the n8n editor carries `binaryMode` in settings.
+        """The nested object is additionalProperties:false as well, so an unreduced
+        settings block fails the request even when the top level is clean."""
+        wf = {**SERVER_WORKFLOW, "settings": {"executionOrder": "v1", "notASetting": 1}}
+        assert _clean_for_api(wf)["settings"] == {"executionOrder": "v1"}
 
-        The nested object is additionalProperties:false as well, so an unreduced
-        settings block fails the request even when the top level is clean.
+    def test_keeps_settings_that_only_newer_schemas_define(self):
+        """`binaryMode` is written into every workflow by the editor and became
+        writable in 2.33.3, so stripping it here would reset the user's choice on a
+        current instance. An older instance rejects it, and the cross-version retry
+        is what drops it — at the cost of one failed request, which beats silently
+        changing a setting.
         """
         wf = {**SERVER_WORKFLOW, "settings": {"executionOrder": "v1", "binaryMode": "separate"}}
-        assert _clean_for_api(wf)["settings"] == {"executionOrder": "v1"}
+        assert _clean_for_api(wf)["settings"]["binaryMode"] == "separate"
 
     def test_drops_shared_even_though_the_api_tolerates_it(self):
         """`shared` is ownership data, not part of the definition.
@@ -309,6 +316,26 @@ class TestNewerSchemaFallback:
         assert "nodeGroups" not in seen[1] and "parentFolderId" not in seen[1]
         assert seen[1]["name"] == "x"  # everything else survives
 
+    def test_also_strips_newer_properties_nested_in_settings(self):
+        """`settings` is additionalProperties:false too — dropping only the outer
+        ones would retry and fail on the same request."""
+        seen = []
+
+        def send(body):
+            seen.append({**body, "settings": dict(body.get("settings", {}))})
+            if "binaryMode" in body.get("settings", {}):
+                raise self._http_error(400)
+            return {"id": "wf1"}
+
+        payload = {
+            "name": "x",
+            "nodes": [],
+            "settings": {"executionOrder": "v1", "binaryMode": "separate"},
+        }
+        assert self._send()(send, payload) == {"id": "wf1"}
+        assert len(seen) == 2
+        assert seen[1]["settings"] == {"executionOrder": "v1"}
+
     def test_does_not_retry_when_the_payload_has_none_of_them(self):
         """A 400 about something else must surface, not be masked by a pointless retry."""
         calls = []
@@ -327,3 +354,21 @@ class TestNewerSchemaFallback:
 
         with pytest.raises(requests.exceptions.HTTPError):
             self._send()(send, {"name": "x", "nodeGroups": []})
+
+
+# ─── Diagnostics ────────────────────────────────────────────────────────────
+
+class TestDiagnosticsStream:
+    def test_fallback_diagnostics_go_to_stderr(self, capsys):
+        """`--json` output has to stay parseable when a fallback fires.
+
+        `warn()` prints to stdout, so the diagnostics on these paths deliberately
+        do not use it.
+        """
+        diag = getattr(n8n_cli, "_diag", None)
+        if diag is None:
+            pytest.skip("_diag not present in this build")
+        diag("something happened")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "something happened" in captured.err

@@ -90,6 +90,18 @@ _API_WRITABLE_SETTINGS = frozenset({
     "saveDataSuccessExecution", "executionTimeout", "errorWorkflow", "timezone",
     "executionOrder", "callerPolicy", "callerIds", "timeSavedPerExecution",
     "availableInMCP",
+    # Added by 2.33.3. Listed for the same reason as the top-level ones: on a current
+    # instance these are writable, and omitting them would silently reset the user's
+    # choice. `binaryMode` in particular is written by the editor into every workflow.
+    "binaryMode", "credentialResolverId", "customTelemetryTags",
+    "redactionPolicy", "timeSavedMode",
+})
+
+# The nested counterpart of _NEWER_SCHEMA_FIELDS: settings properties an older
+# instance does not define, which its additionalProperties:false rejects.
+_NEWER_SCHEMA_SETTINGS = frozenset({
+    "binaryMode", "credentialResolverId", "customTelemetryTags",
+    "redactionPolicy", "timeSavedMode",
 })
 
 
@@ -136,6 +148,38 @@ def _strip_server_fields(data: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in data.items() if k not in _INTERNAL_FIELDS}
 
 
+def _diag(msg: str) -> None:
+    """Warn on stderr, so `--json` output stays parseable.
+
+    `warn()` prints to stdout (repl_skin.py), which is fine for the interactive
+    commands that use it but would corrupt the documented machine-readable output
+    exactly when one of these fallbacks fires. repl_skin.py is a verbatim copy of the
+    plugin's and is meant to stay that way, so this goes around it rather than
+    changing it.
+    """
+    click.secho(f"  ⚠ {msg}", fg="yellow", err=True)
+
+
+def _without_newer_schema_fields(payload: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
+    """Strip properties that only exist in newer n8n schemas, top level and nested.
+
+    `settings` carries its own additionalProperties:false, so an incompatible key in
+    there fails the request just as a top-level one does — dropping only the outer
+    ones would retry and fail again.
+    """
+    dropped = set(_NEWER_SCHEMA_FIELDS) & set(payload)
+    reduced = {k: v for k, v in payload.items() if k not in _NEWER_SCHEMA_FIELDS}
+    settings = reduced.get("settings")
+    if isinstance(settings, dict):
+        in_settings = _NEWER_SCHEMA_SETTINGS & set(settings)
+        if in_settings:
+            reduced["settings"] = {
+                k: v for k, v in settings.items() if k not in _NEWER_SCHEMA_SETTINGS
+            }
+            dropped |= {f"settings.{k}" for k in in_settings}
+    return reduced, dropped
+
+
 def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
     """Send a workflow write, retrying once without newer-schema-only properties.
 
@@ -147,14 +191,15 @@ def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
     try:
         return send(payload)
     except requests.exceptions.HTTPError as exc:
-        extra = _NEWER_SCHEMA_FIELDS & set(payload)
-        status = getattr(exc.response, "status_code", None)
-        if status != 400 or not extra:
+        if getattr(exc.response, "status_code", None) != 400:
+            raise
+        reduced, dropped = _without_newer_schema_fields(payload)
+        if not dropped:
             raise
         # Say what is known — a 400 with these keys present — rather than asserting
-        # they caused it. The retry is a guess, and if it fails the real error stands.
-        warn(f"Write rejected with 400 — retrying without {', '.join(sorted(extra))}")
-        return send({k: v for k, v in payload.items() if k not in _NEWER_SCHEMA_FIELDS})
+        # they caused it. The retry is a guess; if it fails the real error stands.
+        _diag(f"Write rejected with 400 — retrying without {', '.join(sorted(dropped))}")
+        return send(reduced)
 
 
 def _create_workflow(payload: dict[str, Any], conn: dict[str, str]) -> Any:
@@ -184,7 +229,7 @@ def _reapply_tags(workflow_id: str | None, tags: Any, conn: dict[str, str]) -> N
         # The source recorded tags but none of them carry an id. Sending the empty
         # list here would clear the assignment, which is the opposite of what an
         # unreadable record should do.
-        warn(f"Tags on {workflow_id} could not be read from the source — left unchanged")
+        _diag(f"Tags on {workflow_id} could not be read from the source — left unchanged")
         return
     try:
         workflows.update_workflow_tags(workflow_id, tag_ids, **conn)
@@ -192,7 +237,7 @@ def _reapply_tags(workflow_id: str | None, tags: Any, conn: dict[str, str]) -> N
         # Not just HTTPError: a timeout or dropped connection here would otherwise
         # escape and make the caller count an already-created workflow as failed,
         # so a retry would duplicate it.
-        warn(f"Could not restore tags on {workflow_id} — reattach them manually")
+        _diag(f"Could not restore tags on {workflow_id} — reattach them manually")
 
 
 def _auto_snapshot(workflow_id: str, conn: dict[str, str], trigger: str) -> None:
