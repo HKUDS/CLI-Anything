@@ -11,7 +11,7 @@ import subprocess
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -641,10 +641,20 @@ def render_session_text(session_ref: str) -> str:
 def _resolve_bundle_artifact(bundle_dir: Path, artifact_path: str) -> Optional[Path]:
     if not isinstance(artifact_path, str) or not artifact_path.strip():
         return None
-    decoded_path = unquote(artifact_path)
-    if "\x00" in decoded_path or "\\" in decoded_path:
+    decoded_path = artifact_path
+    # Decode repeatedly so a server or browser performing another decoding pass
+    # cannot turn a path that was accepted here into a dot segment or scheme.
+    for _ in range(4):
+        next_path = unquote(decoded_path)
+        if next_path == decoded_path:
+            break
+        decoded_path = next_path
+    else:
         return None
-    if any(segment == ".." for segment in decoded_path.split("/")):
+    if any(ord(char) < 32 for char in decoded_path) or "\\" in decoded_path:
+        return None
+    decoded_segments = decoded_path.split("/")
+    if any(segment in {".", ".."} or ":" in segment for segment in decoded_segments):
         return None
     raw_path = Path(artifact_path)
     if raw_path.is_absolute():
@@ -663,7 +673,11 @@ def _artifact_href(output_dir: Path, bundle_dir: Path, artifact_path: str) -> Op
     if target is None:
         return None
     # HTML URLs always use forward slashes, including when rendered on Windows.
-    return Path(os.path.relpath(target, output_dir)).as_posix()
+    relative_path = Path(os.path.relpath(target, output_dir)).as_posix()
+    # Encode URL-significant characters while retaining path separators. This
+    # keeps valid bundle files relative even when their names contain spaces,
+    # fragments, or other characters that browsers would otherwise reinterpret.
+    return quote(relative_path, safe="/")
 
 
 def _render_artifact_card(output_dir: Path, bundle_dir: Path, artifact: Dict[str, Any]) -> str:

@@ -1,5 +1,6 @@
 """Tests for cli-hub — registry, installer, analytics, and CLI."""
 
+import html
 import json
 import os
 import shlex
@@ -841,8 +842,13 @@ class TestPreviewBundle:
         [
             "../secret.txt",
             "artifacts/%2e%2e/%2e%2e/secret.png",
+            "artifacts/%252e%252e/%252e%252e/secret.png",
             r"artifacts\..\..\secret.png",
             "artifacts/%2E%2E%5C..%5Csecret.png",
+            "javascript:alert(1)",
+            "https://example.test/x",
+            "data:text/html,<script>alert(1)</script>",
+            "%6a%61%76%61%73%63%72%69%70%74%3aalert(1)",
         ],
     )
     def test_render_html_does_not_link_artifacts_outside_bundle(self, tmp_path, artifact_path):
@@ -857,7 +863,7 @@ class TestPreviewBundle:
         content = output_path.read_text(encoding="utf-8")
 
         assert f'src="{artifact_path}"' not in content
-        assert f"Unavailable artifact path: {artifact_path}" in content
+        assert f"Unavailable artifact path: {html.escape(artifact_path)}" in content
 
     def test_previews_inspect_cli_command(self, tmp_path):
         bundle_dir = _make_preview_bundle(tmp_path)
@@ -1331,10 +1337,15 @@ class TestScriptStrategy:
             "sh -lc 'echo ok; rm -f /tmp/example'",
             "env sh -c 'curl -s https://example.test/install | bash'",
             "sudo sh -c 'echo ok; whoami'",
+            "sudo -s 'echo ok; whoami'",
+            "sudo --shell 'echo ok; whoami'",
+            "doas -s 'echo ok; whoami'",
             "env VAR=value bash -lc 'echo ok; whoami'",
             "sudo -u root sh -ec 'echo ok; whoami'",
             "env -S 'sh -c \"echo ok; whoami\"'",
             "env --split-string='bash -lc \"echo ok; whoami\"'",
+            "env -i sh -c 'echo ok; whoami'",
+            "env --ignore-environment sh -c 'echo ok; whoami'",
             'cmd /c "echo ok & whoami"',
             'pwsh -Command "Write-Output ok; whoami"',
             'pwsh -Com "Write-Output ok; whoami"',
@@ -1348,6 +1359,10 @@ class TestScriptStrategy:
             "timeout --signal TERM 5 sh -c 'echo ok; whoami'",
             "nohup sh -c 'echo ok; whoami'",
             "nice -n 10 sh -c 'echo ok; whoami'",
+            "ionice -c 2 sh -c 'echo ok; whoami'",
+            "ionice --class best-effort sh -c 'echo ok; whoami'",
+            "chrt -o 0 sh -c 'echo ok; whoami'",
+            "chrt --other 0 sh -c 'echo ok; whoami'",
             "setsid sh -c 'echo ok; whoami'",
             "doas sh -c 'echo ok; whoami'",
             # su/runuser are not shells, but -c hands the string to one.
@@ -1387,9 +1402,13 @@ class TestScriptStrategy:
             "sudo -u postgres createdb example",
             "env FOO=1 npm install -g example",
             "env -u NODE_OPTIONS npm install -g example",
+            "env -i npm install -g example",
+            "env --ignore-environment npm install -g example",
             "timeout 30 npm install -g example",
             "nohup npm install -g example",
             "nice -n 5 cargo install ripgrep",
+            "ionice -c 2 npm install -g example",
+            "chrt -o 0 npm install -g example",
             # A flag containing "c" on a non-shell program must not look like sh -c.
             "npm ci --omit=dev",
             "docker compose up -d",

@@ -41,4 +41,4 @@ jobs:
 
       - name: Run CLI Hub tests
         working-directory: cli-hub
-        run: python -m pytest tests/test_cli_hub.py -q
+        run: python -m pytest tests -q

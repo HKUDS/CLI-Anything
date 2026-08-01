@@ -89,6 +89,89 @@ _COMMAND_WRAPPERS = {
     "proxychains4",
 }
 
+# Wrapper parsing is deliberately wrapper-specific. A shared option table
+# cannot distinguish flags such as ``env -i`` from value-taking options such as
+# ``ionice -c 2`` and can consequently skip the executable that follows. When
+# an option shape is not known, the trust gate fails closed instead of guessing
+# where the wrapped command starts.
+_WRAPPER_FLAG_OPTIONS = {
+    "env": {
+        "-i", "--ignore-environment", "-0", "--null", "-v", "--debug",
+        "--help", "--version",
+    },
+    "sudo": {
+        "-A", "--askpass", "-b", "--background", "-E", "--preserve-env",
+        "-e", "--edit", "-H", "--set-home", "-K", "--remove-timestamp",
+        "-k", "--reset-timestamp", "-l", "--list", "-n", "--non-interactive",
+        "-P", "--preserve-groups", "-S", "--stdin", "-s", "--shell", "-V",
+        "--version", "-v", "--validate", "--help",
+    },
+    "doas": {"-L", "-n", "-s"},
+    "timeout": {
+        "--foreground", "--preserve-status", "--verbose", "--help", "--version",
+    },
+    "nohup": {"--help", "--version"},
+    "nice": {"--help", "--version"},
+    "ionice": {"-t", "--ignore", "-h", "--help", "-V", "--version"},
+    "setsid": {
+        "-c", "--ctty", "-f", "--fork", "-w", "--wait", "-h", "--help",
+        "-V", "--version",
+    },
+    "stdbuf": {"--help", "--version"},
+    "chrt": {
+        "-a", "--all-tasks", "-b", "--batch", "-d", "--deadline", "-f",
+        "--fifo", "-i", "--idle", "-o", "--other", "-r", "--rr", "-m",
+        "--max", "-R", "--reset-on-fork", "-v", "--verbose", "-h", "--help",
+        "-V", "--version",
+    },
+    "eatmydata": {"--help", "--version"},
+    "proxychains": {"-q", "--quiet_mode"},
+    "proxychains4": {"-q", "--quiet_mode"},
+}
+
+_WRAPPER_VALUE_OPTIONS = {
+    "env": {
+        "-u", "--unset", "-C", "--chdir", "-S", "--split-string",
+        "--block-signal", "--default-signal", "--ignore-signal",
+    },
+    "sudo": {
+        "-a", "--auth-type", "-C", "--close-from", "-D", "--chdir", "-g",
+        "--group", "-h", "--host", "-p", "--prompt", "-R", "--chroot",
+        "-r", "--role", "-t", "--type", "-T", "--command-timeout", "-u",
+        "--user", "--other-user",
+    },
+    "doas": {"-a", "-C", "-u"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "nice": {"-n", "--adjustment"},
+    "ionice": {
+        "-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid",
+        "-u", "--uid",
+    },
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+    "chrt": {
+        "-T", "--sched-runtime", "-P", "--sched-period", "-D", "--sched-deadline",
+    },
+    "proxychains": {"-f"},
+    "proxychains4": {"-f"},
+}
+
+_WRAPPER_ATTACHED_VALUE_OPTIONS = {
+    "env": {"-u", "-C", "-S"},
+    "sudo": {"-a", "-C", "-D", "-g", "-h", "-p", "-R", "-r", "-t", "-T", "-u"},
+    "doas": {"-a", "-C", "-u"},
+    "timeout": {"-s", "-k"},
+    "nice": {"-n"},
+    "ionice": {"-c", "-n", "-p", "-P", "-u"},
+    "stdbuf": {"-i", "-o", "-e"},
+    "chrt": {"-T", "-P", "-D"},
+    "proxychains": {"-f"},
+    "proxychains4": {"-f"},
+}
+
+# These wrappers consume positional metadata before the command. timeout takes
+# DURATION; chrt takes PRIORITY in its command-execution form.
+_WRAPPER_POSITIONAL_OPERANDS = {"timeout": 1, "chrt": 1}
+
 # Programs that hand a string to a shell themselves, via -c/--command, without
 # being a shell. su(1) and runuser(1) document "-c, --command <command>" as
 # passing that command to the target user's shell.
@@ -178,6 +261,20 @@ def _directly_invokes_shell_payload(argv):
             )
             for option in options
         )
+    if executable in {"sudo", "doas"}:
+        # These wrappers can explicitly request the target user's shell. Once
+        # selected, the trailing text is shell input even when no shell binary
+        # appears as a separate argv element.
+        if any(
+            option in {"-s", "--shell", "-i", "--login"}
+            or (
+                option.startswith("-")
+                and not option.startswith("--")
+                and any(flag in option[1:] for flag in "si")
+            )
+            for option in options
+        ):
+            return True
     if executable in _SHELL_COMMAND_LAUNCHERS:
         # su/runuser do not interpret the string themselves; they hand it to the
         # target user's shell with -c, so the payload is shell-interpreted all
@@ -238,6 +335,37 @@ def _env_split_invokes_shell_payload(argv, *, _depth=0):
     return False
 
 
+def _wrapper_option_arity(wrapper, arg):
+    """Return option arity, or None when a wrapper option is not understood."""
+    flags = _WRAPPER_FLAG_OPTIONS.get(wrapper, set())
+    values = _WRAPPER_VALUE_OPTIONS.get(wrapper, set())
+    if arg in flags:
+        return 0
+    if arg in values:
+        return 1
+    if arg.startswith("--") and "=" in arg:
+        name = arg.split("=", 1)[0]
+        if name in values or (wrapper == "sudo" and name == "--preserve-env"):
+            return 0
+        return None
+    if arg.startswith("-") and not arg.startswith("--"):
+        for prefix in _WRAPPER_ATTACHED_VALUE_OPTIONS.get(wrapper, set()):
+            if arg.startswith(prefix) and len(arg) > len(prefix):
+                return 0
+        # Known one-letter flags may be bundled (for example sudo -nE).
+        if len(arg) > 2 and all(f"-{letter}" in flags for letter in arg[1:]):
+            return 0
+        # nice accepts the historical ``-N`` adjustment spelling.
+        if wrapper == "nice":
+            try:
+                int(arg)
+            except ValueError:
+                pass
+            else:
+                return 0
+    return None
+
+
 def _strip_wrapper_arguments(argv):
     """Return argv positioned at the program a wrapper will actually exec.
 
@@ -247,34 +375,40 @@ def _strip_wrapper_arguments(argv):
     walking to the wrapped program is what let ``sudo env -S '...'`` through:
     the shell never appears as a bare token there.
     """
-    value_taking = {
-        "-u", "--user", "-g", "--group", "--preserve-env", "-C", "--close-from",
-        "-s", "--signal", "-k", "--kill-after", "--chdir", "-D", "-R", "--chroot",
-        "-p", "--prompt", "-i", "--ignore-environment", "-n", "--niceness",
-        "-o", "--output", "-e", "--error",
-    }
     wrapper = Path(argv[0]).name.lower()
     index = 1
+    positional_remaining = _WRAPPER_POSITIONAL_OPERANDS.get(wrapper, 0)
     while index < len(argv):
         arg = argv[index]
         if arg == "--":
-            return argv[index + 1 :]
+            index += 1
+            break
         if not arg.startswith("-"):
             # env(1) and sudo(1) accept NAME=VALUE assignments before the
             # command, so the first bare token is not necessarily the program.
             if _is_env_assignment(arg):
                 index += 1
                 continue
-            # timeout(1) takes a duration operand before the command.
-            if wrapper == "timeout" and _looks_like_duration(arg):
+            if positional_remaining:
+                if wrapper == "timeout" and not _looks_like_duration(arg):
+                    return None
+                positional_remaining -= 1
                 index += 1
                 continue
             return argv[index:]
-        if arg in value_taking:
-            index += 2
-            continue
+        arity = _wrapper_option_arity(wrapper, arg)
+        if arity is None or index + arity >= len(argv):
+            return None
+        index += arity + 1
+
+    while positional_remaining and index < len(argv):
+        if wrapper == "timeout" and not _looks_like_duration(argv[index]):
+            return None
+        positional_remaining -= 1
         index += 1
-    return []
+    if positional_remaining:
+        return []
+    return argv[index:]
 
 
 def _is_env_assignment(token):
@@ -314,6 +448,8 @@ def _invokes_shell_payload(argv, _depth=0):
     if Path(argv[0]).name.lower() not in _COMMAND_WRAPPERS:
         return False
     wrapped = _strip_wrapper_arguments(argv)
+    if wrapped is None:
+        return True
     if not wrapped:
         return False
     return _invokes_shell_payload(wrapped, _depth=_depth + 1)
