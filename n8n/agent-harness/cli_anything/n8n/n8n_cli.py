@@ -130,6 +130,27 @@ def _strip_server_fields(data: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in data.items() if k not in _INTERNAL_FIELDS}
 
 
+def _reapply_tags(workflow_id: str | None, tags: Any, conn: dict[str, str]) -> None:
+    """Restore tag assignments through the endpoint that owns them.
+
+    `tags` is readOnly on the workflow body, so anything that recreates or rewinds a
+    workflow leaves them behind unless they are set separately. Passing None means
+    the source did not record any (an older export, say) and the current assignment
+    is left alone; an empty list means the source had none and clears them.
+
+    Tag ids are per-instance, so restoring into a different n8n answers
+    `404 Some tags not found`. That is reported rather than raised — the workflow
+    itself is already in place, and failing the whole restore over it would be worse.
+    """
+    if not workflow_id or tags is None:
+        return
+    tag_ids = [{"id": t["id"]} for t in tags if isinstance(t, dict) and t.get("id")]
+    try:
+        workflows.update_workflow_tags(workflow_id, tag_ids, **conn)
+    except requests.exceptions.HTTPError:
+        warn(f"Could not restore tags on {workflow_id} — reattach them manually")
+
+
 def _auto_snapshot(workflow_id: str, conn: dict[str, str], trigger: str) -> None:
     """Save a version snapshot before modifying a workflow."""
     try:
@@ -500,10 +521,12 @@ def workflow_import(ctx: click.Context, file_path: str, name: str | None) -> Non
         return
     # Keep only what n8n accepts. `active` is readOnly on the workflow endpoint, so
     # it cannot be set here — workflows are created inactive regardless.
+    tags = data.get("tags")
     data = _clean_for_api(data)
     if name:
         data["name"] = name
     result = workflows.create_workflow(data, **_conn(ctx))
+    _reapply_tags(result.get("id"), tags, _conn(ctx))
     success(f"Imported as workflow {result.get('id', '?')} — {result.get('name', '?')}")
     output(result, _json_flag(ctx))
 
@@ -589,8 +612,10 @@ def workflow_restore_all(ctx: click.Context, backup_dir: str, dry_run: bool) -> 
                 ok += 1
                 continue
             # A backup keeps state the workflow endpoint refuses (`active`, `tags`);
-            # restore has to reduce it to the writable definition again.
+            # restore reduces it to the writable definition and puts the tags back
+            # through their own endpoint.
             result = workflows.create_workflow(_clean_for_api(data), **conn)
+            _reapply_tags(result.get("id"), data.get("tags"), conn)
             click.secho(f"    {result.get('id', '?')}  {name}", fg="green")
             ok += 1
         except Exception as exc:
@@ -1521,6 +1546,7 @@ def versions_rollback(ctx: click.Context, workflow_id: str, ver_num: int | None)
     update_data = _clean_for_api(snapshot)
     update_data.pop("active", None)
     workflows.update_workflow(workflow_id, update_data, **conn)
+    _reapply_tags(workflow_id, snapshot.get("tags"), conn)
     success(f"Rolled back workflow {workflow_id} to version {ver_num} (deactivated — use activate to enable)")
 
 

@@ -14,8 +14,10 @@ No n8n instance required.
 """
 
 import json
+from unittest.mock import patch
 
 import pytest
+import requests
 
 from cli_anything.n8n import n8n_cli
 from cli_anything.n8n.n8n_cli import _clean_for_api, _load_json_arg
@@ -32,6 +34,7 @@ SERVER_WORKFLOW = {
     "pinData": {"Test Node": [{"json": {"x": 1}}]},
     "description": "a description",
     "nodeGroups": [{"name": "group A"}],
+    "parentFolderId": "fld123",
     "active": False,
     "activeVersion": None,
     "activeVersionId": None,
@@ -72,6 +75,7 @@ WRITABLE = (
     "staticData",
     "pinData",
     "nodeGroups",
+    "parentFolderId",
 )
 
 
@@ -118,9 +122,12 @@ class TestWritePayload:
         added carries `pinData: null`, and omitting that key would leave today's
         pinned data in place while the command reports a successful rollback.
         """
-        cleaned = _clean_for_api({**SERVER_WORKFLOW, "pinData": None, "staticData": None})
+        cleaned = _clean_for_api(
+            {**SERVER_WORKFLOW, "pinData": None, "staticData": None, "parentFolderId": None}
+        )
         assert cleaned["pinData"] is None
         assert cleaned["staticData"] is None
+        assert cleaned["parentFolderId"] is None  # documented as "move to the project root"
 
     def test_always_supplies_the_required_settings_object(self):
         """`settings` is required by the schema; handwritten and older exports omit it."""
@@ -136,6 +143,15 @@ class TestWritePayload:
         """
         wf = {**SERVER_WORKFLOW, "settings": {"executionOrder": "v1", "binaryMode": "separate"}}
         assert _clean_for_api(wf)["settings"] == {"executionOrder": "v1"}
+
+    def test_drops_shared_even_though_the_api_tolerates_it(self):
+        """`shared` is ownership data, not part of the definition.
+
+        Unlike the rejected fields it does not draw a 400 — the API answers 200 and
+        ignores it (confirmed by reading the workflow back afterwards). That is
+        precisely why it needs pinning here: a failing request would not catch it.
+        """
+        assert "shared" not in _clean_for_api(SERVER_WORKFLOW)
 
     def test_export_output_can_be_fed_back_to_update(self, tmp_path):
         """Helper-level stand-in for `workflow export` -> `workflow update @file.json`.
@@ -179,3 +195,50 @@ class TestLocalPayload:
         a = {**SERVER_WORKFLOW, "active": False}
         b = {**SERVER_WORKFLOW, "active": True}
         assert self._strip(a) != self._strip(b)
+
+
+# ─── Tag reassignment ───────────────────────────────────────────────────────
+
+class TestReapplyTags:
+    """`tags` is readOnly on the workflow body and has its own endpoint.
+
+    Anything that recreates or rewinds a workflow therefore loses its tags unless
+    they are set separately — and loses them *silently*, since the create itself
+    succeeds.
+    """
+
+    @staticmethod
+    def _reapply():
+        fn = getattr(n8n_cli, "_reapply_tags", None)
+        if fn is None:
+            pytest.skip("_reapply_tags not present in this build")
+        return fn
+
+    def test_leaves_tags_alone_when_the_source_recorded_none(self):
+        """An older export has no `tags` key at all — that is not "clear the tags"."""
+        with patch.object(n8n_cli.workflows, "update_workflow_tags") as mock_put:
+            self._reapply()("wf1", None, {})
+            mock_put.assert_not_called()
+
+    def test_clears_tags_when_the_source_had_an_empty_list(self):
+        """Rolling back to a snapshot taken before any tag existed must remove them."""
+        with patch.object(n8n_cli.workflows, "update_workflow_tags") as mock_put:
+            self._reapply()("wf1", [], {})
+            mock_put.assert_called_once_with("wf1", [])
+
+    def test_sends_only_ids(self):
+        """A backup records the whole tag object; the endpoint takes ids."""
+        tags = [{"id": "t1", "name": "prod", "createdAt": "2026-01-01"}, {"name": "no id"}]
+        with patch.object(n8n_cli.workflows, "update_workflow_tags") as mock_put:
+            self._reapply()("wf1", tags, {})
+            mock_put.assert_called_once_with("wf1", [{"id": "t1"}])
+
+    def test_reports_but_does_not_raise_when_the_ids_are_unknown(self):
+        """Restoring into a different instance answers 404 Some tags not found.
+
+        The workflow itself is already created at that point, so failing the whole
+        restore over its tags would lose more than it protects.
+        """
+        err = requests.exceptions.HTTPError("404 Some tags not found")
+        with patch.object(n8n_cli.workflows, "update_workflow_tags", side_effect=err):
+            self._reapply()("wf1", [{"id": "gone"}], {})  # must not raise
