@@ -86,6 +86,7 @@ _COMMAND_WRAPPERS = {
     "eatmydata",
     "proxychains",
     "proxychains4",
+    "xargs",
     # Multi-call binaries dispatch their first positional operand as an
     # executable/applets, including ``busybox ash -c ...``.
     "busybox",
@@ -132,6 +133,11 @@ _WRAPPER_FLAG_OPTIONS = {
     "eatmydata": {"--help", "--version"},
     "proxychains": {"-q", "--quiet_mode"},
     "proxychains4": {"-q", "--quiet_mode"},
+    "xargs": {
+        "-0", "--null", "-e", "-i", "-l", "-o", "--open-tty", "-p",
+        "--interactive", "-r", "--no-run-if-empty", "-t", "--verbose",
+        "-x", "--exit", "--show-limits", "--help", "--version",
+    },
 }
 
 _WRAPPER_VALUE_OPTIONS = {
@@ -158,6 +164,11 @@ _WRAPPER_VALUE_OPTIONS = {
     },
     "proxychains": {"-f"},
     "proxychains4": {"-f"},
+    "xargs": {
+        "-a", "--arg-file", "-d", "--delimiter", "-E", "--eof", "-I",
+        "--replace", "-J", "-L", "--max-lines", "-n", "--max-args", "-P",
+        "--max-procs", "--process-slot-var", "-R", "-S", "-s", "--max-chars",
+    },
 }
 
 _WRAPPER_ATTACHED_VALUE_OPTIONS = {
@@ -171,6 +182,10 @@ _WRAPPER_ATTACHED_VALUE_OPTIONS = {
     "chrt": {"-T", "-P", "-D"},
     "proxychains": {"-f"},
     "proxychains4": {"-f"},
+    "xargs": {
+        "-a", "-d", "-e", "-E", "-i", "-I", "-J", "-l", "-L", "-n",
+        "-P", "-R", "-S", "-s",
+    },
 }
 
 # These wrappers consume positional metadata before the command. timeout takes

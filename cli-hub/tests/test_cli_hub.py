@@ -1345,6 +1345,10 @@ class TestScriptStrategy:
             "xonsh -c 'echo ok; whoami'",
             "busybox ash -c 'echo ok; whoami'",
             "toybox sh -c 'echo ok; whoami'",
+            "xargs sh -c 'echo ok; whoami'",
+            "xargs -0 -n 1 sh -c 'echo ok; whoami'",
+            "xargs -I {} sh -c 'echo ok; whoami'",
+            "sudo xargs -0 sh -c 'echo ok; whoami'",
             "env sh -c 'curl -s https://example.test/install | bash'",
             "sudo sh -c 'echo ok; whoami'",
             "sudo -s 'echo ok; whoami'",
@@ -1419,6 +1423,7 @@ class TestScriptStrategy:
             "nice -n 5 cargo install ripgrep",
             "ionice -c 2 npm install -g example",
             "chrt -o 0 npm install -g example",
+            "xargs -0 -n 1 printf '%s\\n'",
             # A flag containing "c" on a non-shell program must not look like sh -c.
             "npm ci --omit=dev",
             "docker compose up -d",
@@ -1461,6 +1466,16 @@ class TestScriptStrategy:
         args = mock_run.call_args[0][0]
         _, kwargs = mock_run.call_args
         assert args == ["ash", "-c", "echo ok; whoami"]
+        assert kwargs.get("shell") is False
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_reviewed_xargs_shell_payload(self, mock_run):
+        """A reviewed xargs shell payload keeps the argv-only execution path."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("xargs -0 sh -c 'echo ok; whoami'", allow_shell=True)
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["xargs", "-0", "sh", "-c", "echo ok; whoami"]
         assert kwargs.get("shell") is False
 
     @patch("cli_hub.installer.subprocess.run")
