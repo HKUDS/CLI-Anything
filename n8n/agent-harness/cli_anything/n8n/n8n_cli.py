@@ -45,8 +45,36 @@ def _safe_filename(name: str) -> str:
     return name[:60] or "workflow"
 
 
-# Fields to strip when sending workflow data to n8n API
+# Server-owned fields, stripped from workflow data kept locally (backups, diffs) so
+# instance-specific noise does not drown the actual content.
 _INTERNAL_FIELDS = frozenset({"id", "createdAt", "updatedAt", "versionId", "shared"})
+
+# Fields n8n accepts in a create/update body: the non-readOnly properties of the
+# public API workflow schema
+# (packages/cli/src/public-api/v1/handlers/workflows/spec/schemas/workflow.yml).
+# That schema sets additionalProperties:false and marks `active`, `tags`, `meta`,
+# `isArchived`, `triggerCount` and the id/timestamp fields readOnly, so sending any
+# of them rejects the entire request with 400. `active` and `tags` are changed
+# through their own endpoints (activate/deactivate, PUT /workflows/{id}/tags).
+# Checked against the schema on n8n 2.16.1 and 2.33.3; `nodeGroups` and
+# `parentFolderId` only exist on the latter, and are listed so an edit made against
+# a newer instance does not silently drop node groups or move a workflow to the root.
+_API_WRITABLE_FIELDS = frozenset({
+    "name", "description", "nodes", "connections", "settings",
+    "staticData", "pinData", "nodeGroups", "parentFolderId",
+})
+
+# The nested settings object sets additionalProperties:false as well (schemas/
+# workflowSettings.yml). n8n's own editor stores keys the public API does not define
+# — `binaryMode` is written into every workflow created in the UI — so settings read
+# back from the server have to be reduced too, or the whole request is rejected with
+# `request/body/settings must NOT have additional properties`.
+_API_WRITABLE_SETTINGS = frozenset({
+    "saveExecutionProgress", "saveManualExecutions", "saveDataErrorExecution",
+    "saveDataSuccessExecution", "executionTimeout", "errorWorkflow", "timezone",
+    "executionOrder", "callerPolicy", "callerIds", "timeSavedPerExecution",
+    "availableInMCP",
+})
 
 
 def _conn(ctx: click.Context) -> dict[str, str]:
@@ -59,7 +87,27 @@ def _json_flag(ctx: click.Context) -> bool:
 
 
 def _clean_for_api(data: dict[str, Any]) -> dict[str, Any]:
-    """Remove n8n internal fields before sending to API."""
+    """Keep only the fields n8n accepts in a workflow create/update body.
+
+    Nulls are dropped too. Not every writable property is nullable in the schema —
+    `description` is a plain string — so echoing back a null that came from a GET
+    response is rejected with `request/body/description must be string`. Omitting a
+    field leaves the stored value untouched, so dropping is the safe direction.
+    """
+    body = {k: v for k, v in data.items() if k in _API_WRITABLE_FIELDS and v is not None}
+    settings = body.get("settings")
+    if isinstance(settings, dict):
+        body["settings"] = {k: v for k, v in settings.items() if k in _API_WRITABLE_SETTINGS}
+    return body
+
+
+def _strip_server_fields(data: dict[str, Any]) -> dict[str, Any]:
+    """Drop server-owned fields from a workflow kept locally.
+
+    Unlike _clean_for_api this preserves state such as `active` and `tags`, which a
+    backup has to record and a diff has to compare even though neither can be sent
+    back through the workflow endpoint.
+    """
     return {k: v for k, v in data.items() if k not in _INTERNAL_FIELDS}
 
 
@@ -475,7 +523,7 @@ def workflow_backup_all(ctx: click.Context, out_dir: str, active_only: bool) -> 
         wf_id = w.get("id", "unknown")
         try:
             full = workflows.get_workflow(wf_id, **conn)
-            export_data = _clean_for_api(full)
+            export_data = _strip_server_fields(full)
             name_safe = _safe_filename(full.get("name", wf_id))
             filename = f"{wf_id}_{name_safe}.json"
             (out_path / filename).write_text(json.dumps(export_data, indent=2, default=str))
@@ -557,7 +605,7 @@ def workflow_diff(ctx: click.Context, source: str, target: str) -> None:
         return workflows.get_workflow(ref, **conn)
 
     def _clean(data: dict) -> dict:
-        return _clean_for_api(data)
+        return _strip_server_fields(data)
 
     src = _clean(_load(source))
     tgt = _clean(_load(target))
@@ -1493,7 +1541,7 @@ def versions_diff(ctx: click.Context, workflow_id: str, version_a: int, version_
         return
 
     def _clean(d: dict) -> str:
-        clean = {k: v for k, v in d.items() if k not in ("id", "createdAt", "updatedAt", "versionId", "shared")}
+        clean = _strip_server_fields(d)
         return json.dumps(clean, indent=2, sort_keys=True, default=str)
 
     lines_a = _clean(snap_a).splitlines(keepends=True)
