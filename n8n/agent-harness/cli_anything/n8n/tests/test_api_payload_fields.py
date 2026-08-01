@@ -297,8 +297,8 @@ class TestNewerSchemaFallback:
         return fn
 
     @staticmethod
-    def _http_error(status):
-        resp = type("R", (), {"status_code": status})()
+    def _http_error(status, message="request/body must NOT have additional properties"):
+        resp = type("R", (), {"status_code": status, "json": lambda self: {"message": message}})()
         return requests.exceptions.HTTPError(response=resp)
 
     def test_retries_without_the_newer_properties(self):
@@ -354,6 +354,39 @@ class TestNewerSchemaFallback:
 
         with pytest.raises(requests.exceptions.HTTPError):
             self._send()(send, {"name": "x", "nodeGroups": []})
+
+    def test_does_not_retry_when_the_400_is_about_a_bad_value(self):
+        """A rejected *value* must surface, not be silenced by dropping the property.
+
+        n8n answers `must be number` / `must be string` for these, as opposed to
+        `must NOT have additional properties`. Retrying without the property would
+        drop configuration the caller asked for and then report success — which is
+        worse than the original failure, because it looks like it worked.
+        """
+        calls = []
+
+        def send(body):
+            calls.append(body)
+            raise self._http_error(400, "request/body/settings/executionTimeout must be number")
+
+        payload = {"name": "x", "nodes": [], "nodeGroups": [{"name": "g"}]}
+        with pytest.raises(requests.exceptions.HTTPError):
+            self._send()(send, payload)
+        assert len(calls) == 1, "a bad value must not trigger the compatibility retry"
+
+    def test_does_not_retry_when_the_error_body_is_unreadable(self):
+        """No message to inspect means no evidence for a compatibility problem."""
+        resp = type("R", (), {"status_code": 400, "json": lambda self: (_ for _ in ()).throw(ValueError())})()
+        calls = []
+
+        def send(body):
+            calls.append(body)
+            raise requests.exceptions.HTTPError(response=resp)
+
+        with pytest.raises(requests.exceptions.HTTPError):
+            self._send()(send, {"name": "x", "nodeGroups": []})
+        assert len(calls) == 1
+
 
 
 # ─── Diagnostics ────────────────────────────────────────────────────────────

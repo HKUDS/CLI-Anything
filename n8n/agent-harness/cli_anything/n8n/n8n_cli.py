@@ -180,6 +180,26 @@ def _without_newer_schema_fields(payload: dict[str, Any]) -> tuple[dict[str, Any
     return reduced, dropped
 
 
+def _is_unknown_property_error(exc: requests.exceptions.HTTPError) -> bool:
+    """True when a 400 is about a property the schema does not define.
+
+    n8n's validator separates the two cases clearly:
+
+        unknown key   request/body must NOT have additional properties
+                      request/body/settings must NOT have additional properties
+        bad value     request/body/description must be string
+                      request/body/settings/executionTimeout must be number
+
+    Only the first can be resolved by dropping a property. Retrying on the second
+    would remove a setting the caller explicitly asked for and then report success.
+    """
+    try:
+        message = exc.response.json().get("message", "")
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return "must NOT have additional properties" in str(message)
+
+
 def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
     """Send a workflow write, retrying once without newer-schema-only properties.
 
@@ -192,6 +212,8 @@ def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
         return send(payload)
     except requests.exceptions.HTTPError as exc:
         if getattr(exc.response, "status_code", None) != 400:
+            raise
+        if not _is_unknown_property_error(exc):
             raise
         reduced, dropped = _without_newer_schema_fields(payload)
         if not dropped:
