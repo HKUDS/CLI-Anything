@@ -102,7 +102,7 @@ class TestWritePayload:
         cleaned = _clean_for_api({**SERVER_WORKFLOW, "someFieldAddedLater": "x"})
         assert "someFieldAddedLater" not in cleaned
 
-    def test_drops_nulls_read_back_from_the_server(self):
+    def test_drops_nulls_for_non_nullable_properties(self):
         """`description` is a plain string in the schema, so a null round-trip 400s.
 
         A workflow with no description reads back as `"description": null`, which is
@@ -110,6 +110,23 @@ class TestWritePayload:
         """
         cleaned = _clean_for_api({**SERVER_WORKFLOW, "description": None})
         assert "description" not in cleaned
+
+    def test_keeps_nulls_for_nullable_properties(self):
+        """For these, null is the only way to clear the value — dropping it is a bug.
+
+        `versions rollback` restores a snapshot: one taken before any pinned data was
+        added carries `pinData: null`, and omitting that key would leave today's
+        pinned data in place while the command reports a successful rollback.
+        """
+        cleaned = _clean_for_api({**SERVER_WORKFLOW, "pinData": None, "staticData": None})
+        assert cleaned["pinData"] is None
+        assert cleaned["staticData"] is None
+
+    def test_always_supplies_the_required_settings_object(self):
+        """`settings` is required by the schema; handwritten and older exports omit it."""
+        wf = {k: v for k, v in SERVER_WORKFLOW.items() if k != "settings"}
+        assert _clean_for_api(wf)["settings"] == {}
+        assert _clean_for_api({**SERVER_WORKFLOW, "settings": None})["settings"] == {}
 
     def test_reduces_the_nested_settings_object_too(self):
         """Every workflow made in the n8n editor carries `binaryMode` in settings.

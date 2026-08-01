@@ -64,6 +64,16 @@ _API_WRITABLE_FIELDS = frozenset({
     "staticData", "pinData", "nodeGroups", "parentFolderId",
 })
 
+# Of those, the ones that are nullable in the schema. For them null is meaningful —
+# it clears the stored value, whereas omitting the key leaves it alone — so their
+# nulls have to be forwarded. `versions rollback` depends on this: a snapshot taken
+# before any pinned data was added carries `pinData: null`, and dropping it would
+# leave today's pinned data in place while reporting a successful rollback.
+# `parentFolderId` documents null as "move it to the project root".
+# The rest are non-nullable (`description` is a plain string), and echoing back the
+# null that a GET returned is rejected outright.
+_API_NULLABLE_FIELDS = frozenset({"staticData", "pinData", "parentFolderId"})
+
 # The nested settings object sets additionalProperties:false as well (schemas/
 # workflowSettings.yml). n8n's own editor stores keys the public API does not define
 # — `binaryMode` is written into every workflow created in the UI — so settings read
@@ -89,15 +99,24 @@ def _json_flag(ctx: click.Context) -> bool:
 def _clean_for_api(data: dict[str, Any]) -> dict[str, Any]:
     """Keep only the fields n8n accepts in a workflow create/update body.
 
-    Nulls are dropped too. Not every writable property is nullable in the schema —
-    `description` is a plain string — so echoing back a null that came from a GET
-    response is rejected with `request/body/description must be string`. Omitting a
-    field leaves the stored value untouched, so dropping is the safe direction.
+    Nulls are dropped for the non-nullable properties: `description` is a plain
+    string in the schema, so echoing back the null a GET returned is rejected with
+    `request/body/description must be string`, and omitting the key instead leaves
+    the stored value untouched. Nulls for `_API_NULLABLE_FIELDS` are kept, because
+    for those null is the only way to clear the value.
+
+    `settings` is required and has its own additionalProperties:false, so it is
+    always present and always reduced.
     """
-    body = {k: v for k, v in data.items() if k in _API_WRITABLE_FIELDS and v is not None}
+    body = {
+        k: v for k, v in data.items()
+        if k in _API_WRITABLE_FIELDS and (v is not None or k in _API_NULLABLE_FIELDS)
+    }
     settings = body.get("settings")
-    if isinstance(settings, dict):
-        body["settings"] = {k: v for k, v in settings.items() if k in _API_WRITABLE_SETTINGS}
+    body["settings"] = (
+        {k: v for k, v in settings.items() if k in _API_WRITABLE_SETTINGS}
+        if isinstance(settings, dict) else {}
+    )
     return body
 
 
@@ -1085,10 +1104,9 @@ def template_deploy(ctx: click.Context, template_id: int, name: str | None) -> N
     wf_data = wf_wrapper.get("workflow", wf_wrapper) if isinstance(wf_wrapper, dict) else {}
 
     # Keep only what n8n accepts; `active` is readOnly, so a template always lands
-    # inactive. n8n.io templates predate `settings` and often omit it, but the API
-    # requires it, so fall back to an empty object.
+    # inactive. n8n.io templates often omit `settings`, which the API requires —
+    # _clean_for_api supplies it.
     wf_data = _clean_for_api(wf_data)
-    wf_data.setdefault("settings", {})
     if name:
         wf_data["name"] = name
     elif not wf_data.get("name"):
