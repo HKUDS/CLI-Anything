@@ -35,6 +35,19 @@ def runner():
 
 
 @pytest.fixture
+def split_runner():
+    """Click runner that keeps stdout and stderr apart.
+
+    Click < 8.2 merges the two unless asked not to; 8.2+ always separates them
+    and dropped the keyword.
+    """
+    try:
+        return CliRunner(mix_stderr=False)
+    except TypeError:
+        return CliRunner()
+
+
+@pytest.fixture
 def sample_workflow():
     """Minimal valid ComfyUI workflow (API format)."""
     return {
@@ -564,6 +577,29 @@ class TestCLIWorkflow:
         assert "valid" in data
         assert "node_count" in data
 
+    def test_workflow_validate_json_output_invalid_workflow(self, runner, tmp_path):
+        """--json output must stay parseable when validation fails."""
+        p = tmp_path / "not_a_workflow.json"
+        p.write_text(json.dumps({"tokens": "abc", "pages": [1, 2]}))
+
+        result = runner.invoke(cli, ["--json", "workflow", "validate", str(p)])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["valid"] is False
+        assert len(data["errors"]) == 2
+
+    def test_workflow_validate_human_summary(self, runner, tmp_path, workflow_file):
+        """Without --json the human-readable summary line is still printed."""
+        result = runner.invoke(cli, ["workflow", "validate", workflow_file])
+        assert result.exit_code == 0
+        assert "Workflow is valid." in result.output
+
+        p = tmp_path / "not_a_workflow.json"
+        p.write_text(json.dumps({"tokens": "abc", "pages": [1, 2]}))
+        result = runner.invoke(cli, ["workflow", "validate", str(p)])
+        assert result.exit_code == 0
+        assert "2 error(s) found." in result.output
+
 
 class TestCLIQueue:
     """Test CLI queue commands."""
@@ -593,6 +629,14 @@ class TestCLIQueue:
 
         assert result.exit_code == 0
         assert "cleared" in result.output
+
+    def test_queue_clear_json_prompt_not_on_stdout(self, split_runner):
+        """The confirmation prompt must not corrupt --json stdout."""
+        result = split_runner.invoke(cli, ["--json", "queue", "clear"], input="n\n")
+
+        assert result.exit_code == 1
+        data = json.loads(result.stdout)
+        assert data["type"] == "Abort"
 
     def test_queue_history_json(self, runner):
         """queue history --json should return valid JSON."""

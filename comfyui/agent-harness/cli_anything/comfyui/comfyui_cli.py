@@ -58,6 +58,17 @@ def output(data, message: str = ""):
             click.echo(str(data))
 
 
+def echo_human(message: str, err: bool = False):
+    """Print a human-facing message. No-op in JSON mode.
+
+    Keeps `--json` output a single parseable document — anything written for
+    humans must go through here so it never lands beside the JSON payload.
+    """
+    if _json_output:
+        return
+    click.echo(message, err=err)
+
+
 def _print_dict(d: dict, indent: int = 0):
     prefix = "  " * indent
     for k, v in d.items():
@@ -153,9 +164,9 @@ def workflow_validate(path):
     result = workflow_mod.validate_workflow(wf)
     output(result, f"Validation: {path}")
     if result["valid"]:
-        click.echo("  Workflow is valid.")
+        echo_human("  Workflow is valid.")
     else:
-        click.echo(f"  {len(result['errors'])} error(s) found.", err=True)
+        echo_human(f"  {len(result['errors'])} error(s) found.", err=True)
 
 
 # ── Queue Commands ──────────────────────────────────────────────
@@ -191,7 +202,8 @@ def queue_status():
 def queue_clear(confirm):
     """Clear all pending items from the queue."""
     if not confirm:
-        click.confirm("Clear the queue?", abort=True)
+        # In JSON mode the prompt goes to stderr so stdout stays parseable.
+        click.confirm("Clear the queue?", abort=True, err=_json_output)
     result = queue_mod.clear_queue(_base_url)
     output(result, "Queue cleared.")
 

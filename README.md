@@ -1366,7 +1366,7 @@ eth2-quickstart 18 passed ✅   (18 unit + 3 e2e skipped)
 mermaid        10 passed  ✅   (5 unit + 5 e2e)
 anygen         50 passed  ✅   (40 unit + 10 e2e)
 notebooklm     21 passed  ✅   (21 unit + 0 e2e)
-comfyui        70 passed  ✅   (60 unit + 10 e2e)
+comfyui        73 passed  ✅   (63 unit + 10 e2e)
 adguardhome    36 passed  ✅   (24 unit + 12 e2e)
 ollama         98 passed  ✅   (87 unit + 11 e2e)
 sketch         19 passed  ✅   (19 jest, Node.js)
@@ -1380,7 +1380,7 @@ cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 3mf            50 passed  ✅   (50 unit)
 joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,461 passed  ✅   100% pass rate
+TOTAL        2,464 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1460,7 +1460,7 @@ cli-anything/
 ├── ⛓️ eth2-quickstart/agent-harness/    # ETH2 QuickStart CLI (18 unit, 3 e2e skipped)
 ├── 🧜 mermaid/agent-harness/            # Mermaid Live Editor CLI (10 tests)
 ├── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)
-├── 🖼️ comfyui/agent-harness/            # ComfyUI CLI (70 tests)
+├── 🖼️ comfyui/agent-harness/            # ComfyUI CLI (73 tests)
 ├── 🧠 notebooklm/agent-harness/         # NotebookLM CLI (experimental, 21 tests)
 ├── 🧩 dify-workflow/agent-harness/      # Dify Workflow CLI wrapper (11 tests)
 ├── 🛡️ adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
