@@ -67,7 +67,6 @@ _UV_INSTALL_HINT = (
 
 
 _ALLOW_SHELL_ENV = "CLI_HUB_ALLOW_SHELL_COMMANDS"
-_POSIX_SHELLS = {"bash", "dash", "ksh", "sh", "zsh"}
 _WINDOWS_SHELLS = {"cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh", "pwsh.exe"}
 
 # Programs that run another program given as their trailing operands. Reaching
@@ -87,6 +86,12 @@ _COMMAND_WRAPPERS = {
     "eatmydata",
     "proxychains",
     "proxychains4",
+    # Multi-call binaries dispatch their first positional operand as an
+    # executable/applets, including ``busybox ash -c ...``.
+    "busybox",
+    "busybox.exe",
+    "toybox",
+    "toybox.exe",
 }
 
 # Wrapper parsing is deliberately wrapper-specific. A shared option table
@@ -189,6 +194,18 @@ _PWSH_PAYLOAD_ALIASES = {"c", "cwa", "e", "ec", "enc", "f"}
 _MAX_WRAPPER_DEPTH = 8
 
 
+def _is_posix_shell_executable(executable):
+    """Recognize shell families without a brittle finite executable list.
+
+    POSIX-style shells conventionally end in ``sh`` (``ash``, ``csh``,
+    ``fish``, ``tcsh``, ``xonsh``, and future variants).  Treat every such
+    executable conservatively, including ``.exe`` ports.  PowerShell names
+    also end in ``sh`` but have their own parameter grammar below.
+    """
+    name = executable[:-4] if executable.endswith(".exe") else executable
+    return name not in {"powershell", "pwsh"} and (name == "sh" or name.endswith("sh"))
+
+
 def _contains_shell_operator(cmd):
     """Return True when cmd contains shell syntax outside literal quoting."""
     quote = None
@@ -239,7 +256,7 @@ def _directly_invokes_shell_payload(argv):
         return False
     executable = Path(argv[0]).name.lower()
     options = {arg.lower() for arg in argv[1:]}
-    if executable in _POSIX_SHELLS:
+    if _is_posix_shell_executable(executable):
         return any(
             option == "--command"
             or (

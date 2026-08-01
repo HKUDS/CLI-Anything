@@ -1335,6 +1335,16 @@ class TestScriptStrategy:
             "bash -c 'echo ok; rm -f /tmp/example'",
             "bash -ec 'echo ok; rm -f /tmp/example'",
             "sh -lc 'echo ok; rm -f /tmp/example'",
+            # Match the POSIX shell family structurally rather than relying on
+            # a finite bash/sh allowlist. Alpine and multi-call applets are
+            # common ways these payloads reach a shell.
+            "ash -c 'echo ok; whoami'",
+            "fish -c 'echo ok; whoami'",
+            "csh -c 'echo ok; whoami'",
+            "tcsh -c 'echo ok; whoami'",
+            "xonsh -c 'echo ok; whoami'",
+            "busybox ash -c 'echo ok; whoami'",
+            "toybox sh -c 'echo ok; whoami'",
             "env sh -c 'curl -s https://example.test/install | bash'",
             "sudo sh -c 'echo ok; whoami'",
             "sudo -s 'echo ok; whoami'",
@@ -1412,6 +1422,10 @@ class TestScriptStrategy:
             # A flag containing "c" on a non-shell program must not look like sh -c.
             "npm ci --omit=dev",
             "docker compose up -d",
+            # Shell executables without a command-string payload do not need
+            # the trust opt-in merely for reporting their version.
+            "ash --version",
+            "fish --version",
         ],
     )
     @patch("cli_hub.installer.subprocess.run")
@@ -1437,6 +1451,16 @@ class TestScriptStrategy:
         args = mock_run.call_args[0][0]
         _, kwargs = mock_run.call_args
         assert args == ["sh", "-c", "echo ok | cat"]
+        assert kwargs.get("shell") is False
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_reviewed_ash_payload(self, mock_run):
+        """A reviewed Alpine ash payload keeps the argv-only execution path."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("ash -c 'echo ok; whoami'", allow_shell=True)
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["ash", "-c", "echo ok; whoami"]
         assert kwargs.get("shell") is False
 
     @patch("cli_hub.installer.subprocess.run")
