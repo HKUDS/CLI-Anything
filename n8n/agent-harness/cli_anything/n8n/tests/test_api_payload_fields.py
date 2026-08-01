@@ -79,6 +79,14 @@ WRITABLE = (
 )
 
 
+def strip_server_fields(data):
+    """`_strip_server_fields` via the module, so upstream builds skip instead of erroring."""
+    fn = getattr(n8n_cli, "_strip_server_fields", None)
+    if fn is None:
+        pytest.skip("_strip_server_fields not present in this build")
+    return fn(data)
+
+
 # ─── Write payload ──────────────────────────────────────────────────────────
 
 class TestWritePayload:
@@ -159,12 +167,11 @@ class TestWritePayload:
         It repeats what those two commands do to the payload rather than invoking
         them, so it pins the reduction, not the click plumbing.
         """
-        exported = _clean_for_api(SERVER_WORKFLOW)
+        exported = strip_server_fields(SERVER_WORKFLOW)  # what workflow_export writes
         out = tmp_path / "export.json"
         out.write_text(json.dumps(exported, indent=2))
 
-        payload = _load_json_arg(f"@{out}")
-        payload.pop("active", None)  # workflow_update drops this before the PUT
+        payload = _clean_for_api(_load_json_arg(f"@{out}"))  # what workflow_update sends
         leaked = [f for f in REJECTED_BY_API if f in payload]
         assert not leaked, f"export cannot be fed back into update, extra fields: {leaked}"
 
@@ -172,21 +179,14 @@ class TestWritePayload:
 # ─── Local-only payload ─────────────────────────────────────────────────────
 
 class TestLocalPayload:
-    @staticmethod
-    def _strip(data):
-        strip = getattr(n8n_cli, "_strip_server_fields", None)
-        if strip is None:
-            pytest.skip("_strip_server_fields not present in this build")
-        return strip(data)
-
     def test_backup_keeps_state_the_api_refuses(self):
         """A backup that drops `active`/`tags` cannot restore what it recorded."""
-        kept = self._strip(SERVER_WORKFLOW)
+        kept = strip_server_fields(SERVER_WORKFLOW)
         for field in ("active", "tags", "isArchived"):
             assert field in kept, f"{field} must stay in a backup"
 
     def test_backup_drops_instance_specific_fields(self):
-        kept = self._strip(SERVER_WORKFLOW)
+        kept = strip_server_fields(SERVER_WORKFLOW)
         for field in ("id", "createdAt", "updatedAt", "versionId", "shared"):
             assert field not in kept
 
@@ -194,7 +194,7 @@ class TestLocalPayload:
         """Two workflows differing only in `active` must not compare as identical."""
         a = {**SERVER_WORKFLOW, "active": False}
         b = {**SERVER_WORKFLOW, "active": True}
-        assert self._strip(a) != self._strip(b)
+        assert strip_server_fields(a) != strip_server_fields(b)
 
 
 # ─── Tag reassignment ───────────────────────────────────────────────────────
@@ -242,3 +242,12 @@ class TestReapplyTags:
         err = requests.exceptions.HTTPError("404 Some tags not found")
         with patch.object(n8n_cli.workflows, "update_workflow_tags", side_effect=err):
             self._reapply()("wf1", [{"id": "gone"}], {})  # must not raise
+
+    def test_export_keeps_tags_so_import_can_restore_them(self):
+        """`export` writes the local form; the tags are what `import` reattaches.
+
+        Reducing the export to the writable set instead would drop them silently —
+        the file would still import, just without its tags.
+        """
+        exported = strip_server_fields({**SERVER_WORKFLOW, "tags": [{"id": "t1", "name": "prod"}]})
+        assert exported["tags"] == [{"id": "t1", "name": "prod"}]

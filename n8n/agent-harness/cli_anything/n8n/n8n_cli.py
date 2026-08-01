@@ -408,8 +408,12 @@ def workflow_get(ctx: click.Context, workflow_id: str) -> None:
 def workflow_create(ctx: click.Context, json_data: str) -> None:
     """Create a workflow from JSON (inline or @file.json). Workflows are created inactive."""
     payload = _load_json_arg(json_data)
-    payload.pop("active", None)  # Never auto-activate on create
-    data = workflows.create_workflow(payload, **_conn(ctx))
+    tags = payload.get("tags")
+    # A file produced by `export` carries state the endpoint refuses; reduce it here
+    # so hand-written and exported JSON both work. `active` is readOnly, so workflows
+    # are created inactive either way.
+    data = workflows.create_workflow(_clean_for_api(payload), **_conn(ctx))
+    _reapply_tags(data.get("id"), tags, _conn(ctx))
     output(data, _json_flag(ctx))
 
 
@@ -421,8 +425,10 @@ def workflow_update(ctx: click.Context, workflow_id: str, json_data: str) -> Non
     """Update a workflow. Does not change active status — use activate/deactivate."""
     _auto_snapshot(workflow_id, _conn(ctx), "update")
     payload = _load_json_arg(json_data)
-    payload.pop("active", None)  # Don't change active status via update
-    data = workflows.update_workflow(workflow_id, payload, **_conn(ctx))
+    # Same reduction as every other write: a file straight out of `export` has to be
+    # usable here. `active` is readOnly, so this cannot change it — use
+    # activate/deactivate. Tags likewise have their own command (`set-tags`).
+    data = workflows.update_workflow(workflow_id, _clean_for_api(payload), **_conn(ctx))
     output(data, _json_flag(ctx))
 
 
@@ -499,8 +505,10 @@ def workflow_export(ctx: click.Context, workflow_id: str, out_path: str | None) 
     if not out_path:
         name = _safe_filename(data.get("name", workflow_id))
         out_path = f"{name}.json"
-    # Remove server-specific fields for portability
-    export_data = _clean_for_api(data)
+    # Remove server-specific fields for portability, but keep the state an export is
+    # expected to carry (`tags`, `active`). Reducing it to the writable set here would
+    # lose the tags, which `import` puts back through their own endpoint.
+    export_data = _strip_server_fields(data)
     out = Path(out_path)
     if out.exists():
         warn(f"File {out_path} already exists — overwriting")
