@@ -14,11 +14,15 @@ Run with:
 """
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 from click.testing import CliRunner
 
+from cli_anything.comfyui import comfyui_cli as cli_module
 from cli_anything.comfyui.comfyui_cli import cli
 from cli_anything.comfyui.core import workflows as workflow_mod
 from cli_anything.comfyui.core import queue as queue_mod
@@ -34,17 +38,28 @@ def runner():
     return CliRunner()
 
 
-@pytest.fixture
-def split_runner():
-    """Click runner that keeps stdout and stderr apart.
+def run_cli_subprocess(args, stdin=""):
+    """Run the CLI in a real subprocess and return the completed process.
 
-    Click < 8.2 merges the two unless asked not to; 8.2+ always separates them
-    and dropped the keyword.
+    `CliRunner` emulates a terminal by echoing the answer typed at a prompt
+    onto stdout — on click < 8.2 it lands there even when the prompt itself
+    was sent to stderr. That echo would hide exactly the kind of stdout
+    contamination the JSON-purity tests are looking for, so those tests read
+    the real streams instead.
     """
-    try:
-        return CliRunner(mix_stderr=False)
-    except TypeError:
-        return CliRunner()
+    harness_root = Path(cli_module.__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (str(harness_root), env.get("PYTHONPATH", "")) if p
+    )
+    return subprocess.run(
+        [sys.executable, "-m", "cli_anything.comfyui.comfyui_cli", *args],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
 
 
 @pytest.fixture
@@ -630,13 +645,18 @@ class TestCLIQueue:
         assert result.exit_code == 0
         assert "cleared" in result.output
 
-    def test_queue_clear_json_prompt_not_on_stdout(self, split_runner):
-        """The confirmation prompt must not corrupt --json stdout."""
-        result = split_runner.invoke(cli, ["--json", "queue", "clear"], input="n\n")
+    def test_queue_clear_json_prompt_not_on_stdout(self):
+        """The confirmation prompt must not corrupt --json stdout.
 
-        assert result.exit_code == 1
-        data = json.loads(result.stdout)
+        Answering "n" aborts before any request is made, so no server is
+        needed.
+        """
+        proc = run_cli_subprocess(["--json", "queue", "clear"], stdin="n\n")
+
+        assert proc.returncode == 1
+        data = json.loads(proc.stdout)
         assert data["type"] == "Abort"
+        assert "Clear the queue?" in proc.stderr
 
     def test_queue_history_json(self, runner):
         """queue history --json should return valid JSON."""
