@@ -1,7 +1,7 @@
 ---
 name: "cli-anything-minimax"
 description: >-
-  Command-line interface for MiniMax AI — chat (MiniMax-M3) and TTS (speech-2.8-hd) via the MiniMax API.
+  Command-line interface for MiniMax AI — chat (MiniMax-M3, MiniMax-M2.7) and speech-2.x TTS via the MiniMax API.
 ---
 
 # cli-anything-minimax
@@ -32,8 +32,8 @@ cli-anything-minimax
 # Chat with MiniMax-M3
 cli-anything-minimax chat --prompt "What is AI?"
 
-# High-speed model
-cli-anything-minimax chat --prompt "Quick answer" --model MiniMax-M2.7-highspeed
+# Alternate chat model
+cli-anything-minimax chat --prompt "Quick answer" --model MiniMax-M2.7
 
 # Stream chat response
 cli-anything-minimax stream --prompt "Write a poem about code"
@@ -123,7 +123,6 @@ cli-anything-minimax tts --text "Fast" --model speech-2.8-turbo --voice English_
 |----------|-------------|
 | `MiniMax-M3` | Next-generation flagship model (default) |
 | `MiniMax-M2.7` | Peak Performance. Ultimate Value. |
-| `MiniMax-M2.7-highspeed` | Same performance, faster and more agile |
 
 ## TTS Models
 
@@ -131,6 +130,12 @@ cli-anything-minimax tts --text "Fast" --model speech-2.8-turbo --voice English_
 |----------|-------------|
 | `speech-2.8-hd` | High-definition TTS (default) |
 | `speech-2.8-turbo` | Fast TTS |
+| `speech-2.6-hd` | High-definition TTS |
+| `speech-2.6-turbo` | Fast TTS |
+| `speech-02-hd` | High-definition TTS |
+| `speech-02-turbo` | Fast TTS |
+| `speech-01-hd` | High-definition TTS |
+| `speech-01-turbo` | Fast TTS |
 
 ## For AI Agents
 

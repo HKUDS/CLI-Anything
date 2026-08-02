@@ -158,11 +158,25 @@ class TestCLISubprocessSmoke:
         models = self._run(["models"], tmp_path)
         assert "MiniMax-M3" in models.stdout
         assert "MiniMax-M2.7" in models.stdout
+        assert "MiniMax-M2.7-highspeed" not in models.stdout
 
         models_json = self._run(["--json", "models"], tmp_path)
         model_payload = json.loads(models_json.stdout)
         assert isinstance(model_payload, list)
-        assert model_payload[0]["id"] == "MiniMax-M3"
+        assert [m["id"] for m in model_payload] == ["MiniMax-M3", "MiniMax-M2.7"]
+
+        tts_models = self._run(["--json", "models", "--tts"], tmp_path)
+        tts_model_payload = json.loads(tts_models.stdout)
+        assert [m["id"] for m in tts_model_payload] == [
+            "speech-2.8-hd",
+            "speech-2.8-turbo",
+            "speech-2.6-hd",
+            "speech-2.6-turbo",
+            "speech-02-hd",
+            "speech-02-turbo",
+            "speech-01-hd",
+            "speech-01-turbo",
+        ]
 
         voices = self._run(["voices"], tmp_path)
         assert "English_Graceful_Lady" in voices.stdout
@@ -274,8 +288,8 @@ def test_chat_completion_e2e():
     assert result["choices"][0]["message"]["content"]
 
 
-def test_chat_completion_highspeed_model_e2e():
-    """Test MiniMax-M2.7-highspeed model."""
+def test_chat_completion_m27_model_e2e():
+    """Test MiniMax-M2.7 model."""
     if not API_KEY:
         mock_response = {
             "choices": [{"message": {"role": "assistant", "content": "done"}}],
@@ -289,17 +303,17 @@ def test_chat_completion_highspeed_model_e2e():
 
             result = chat_completion(
                 api_key="sk-mock",
-                model="MiniMax-M2.7-highspeed",
+                model="MiniMax-M2.7",
                 messages=[{"role": "user", "content": "Say done"}],
             )
             body = mock_post.call_args[1]["json"]
-            assert body["model"] == "MiniMax-M2.7-highspeed"
+            assert body["model"] == "MiniMax-M2.7"
             assert result["choices"][0]["message"]["content"] == "done"
         return
 
     result = chat_completion(
         api_key=API_KEY,
-        model="MiniMax-M2.7-highspeed",
+        model="MiniMax-M2.7",
         messages=[{"role": "user", "content": "Say 'done'"}],
         max_tokens=10,
     )

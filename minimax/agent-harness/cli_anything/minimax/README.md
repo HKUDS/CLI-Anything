@@ -37,8 +37,8 @@ cli-anything-minimax tts --text "Hello world" --output hello.mp3
 # Simple chat (default model: MiniMax-M3)
 cli-anything-minimax chat --prompt "Explain quantum computing"
 
-# High-speed model
-cli-anything-minimax chat --prompt "Quick answer please" --model MiniMax-M2.7-highspeed
+# Alternate chat model
+cli-anything-minimax chat --prompt "Quick answer please" --model MiniMax-M2.7
 
 # Streaming output
 cli-anything-minimax stream --prompt "Write a haiku about AI"
@@ -109,7 +109,6 @@ cli-anything-minimax models --tts
 |-------|-------------|
 | `MiniMax-M3` | Next-generation flagship model (default) |
 | `MiniMax-M2.7` | Peak Performance. Ultimate Value. |
-| `MiniMax-M2.7-highspeed` | Same performance, faster and more agile |
 
 ### TTS
 
@@ -117,12 +116,19 @@ cli-anything-minimax models --tts
 |-------|-------------|
 | `speech-2.8-hd` | High-definition TTS (default) |
 | `speech-2.8-turbo` | Fast TTS |
+| `speech-2.6-hd` | High-definition TTS |
+| `speech-2.6-turbo` | Fast TTS |
+| `speech-02-hd` | High-definition TTS |
+| `speech-02-turbo` | Fast TTS |
+| `speech-01-hd` | High-definition TTS |
+| `speech-01-turbo` | Fast TTS |
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `MINIMAX_API_KEY` | MiniMax API key (required) |
+| `MINIMAX_REGION` | Select `global_en` or `cn_zh` regional endpoints |
 | `MINIMAX_BASE_URL` | Override API base URL (optional) |
 
 ## Validation

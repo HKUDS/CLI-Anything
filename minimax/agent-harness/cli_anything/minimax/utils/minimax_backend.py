@@ -13,21 +13,185 @@ except ImportError:
     print("requests library not found. Install with: pip3 install requests", file=sys.stderr)
     sys.exit(1)
 
-CHAT_API_BASE = os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/v1").rstrip("/")
-TTS_API_BASE = os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io").rstrip("/")
 CONFIG_DIR = Path.home() / ".config" / "cli-anything-minimax"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 ENV_API_KEY = "MINIMAX_API_KEY"
+MINIMAX_REGION_ENV = "MINIMAX_REGION"
+
+REGIONAL_ENDPOINTS = [
+    {
+        "region": "global_en",
+        "openai_base_url": "https://api.minimax.io/v1",
+        "anthropic_base_url": "https://api.minimax.io/anthropic",
+        "docs_root": "https://platform.minimax.io/docs",
+    },
+    {
+        "region": "cn_zh",
+        "openai_base_url": "https://api.minimaxi.com/v1",
+        "anthropic_base_url": "https://api.minimaxi.com/anthropic",
+        "docs_root": "https://platform.minimaxi.com/docs",
+    },
+]
+
+_REGIONAL_ENDPOINTS_BY_REGION = {item["region"]: item for item in REGIONAL_ENDPOINTS}
+
+TEXT_MODEL_CONFIG = {
+    "reason_codes": {
+        "provider_add": "provider-add",
+        "model_add": "model-add",
+        "parameter_refresh": "parameter-refresh",
+        "input_capability": "input-capability",
+    },
+    "model_id": "MiniMax-M3",
+    "model_ids": ["MiniMax-M3", "MiniMax-M2.7"],
+    "models": [
+        {
+            "model_id": "MiniMax-M3",
+            "context_window": 1000000,
+            "pricing_usd_per_million_tokens": {
+                "input": 0.6,
+                "output": 2.4,
+                "cache_read": 0.12,
+                "cache_write": None,
+            },
+            "input_modalities": ["text", "image", "video"],
+            "thinking": ["adaptive", "disabled"],
+        },
+        {
+            "model_id": "MiniMax-M2.7",
+            "context_window": 204800,
+            "pricing_usd_per_million_tokens": {
+                "input": 0.3,
+                "output": 1.2,
+                "cache_read": 0.06,
+                "cache_write": 0.375,
+            },
+            "input_modalities": ["text"],
+            "thinking": ["always_on"],
+        },
+    ],
+    "anthropic_base_url": "https://api.minimax.io/anthropic",
+    "openai_base_url": "https://api.minimax.io/v1",
+    "context_window": 1000000,
+    "pricing_usd_per_million_tokens": {
+        "input": 0.6,
+        "output": 2.4,
+        "cache_read": 0.12,
+        "cache_write": None,
+    },
+    "thinking": ["adaptive", "disabled"],
+}
+
+MULTIMODAL_CONFIG = {
+    "speech": {
+        "reason_code": "tts-tool",
+        "reason_codes": {"tts": "tts-tool"},
+        "docs_urls": [
+            "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+            "https://platform.minimax.io/docs/api-reference/speech-t2a-async-create",
+            "https://platform.minimax.io/docs/api-reference/speech-t2a-websocket",
+            "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+            "https://platform.minimaxi.com/docs/api-reference/speech-t2a-async-create",
+            "https://platform.minimaxi.com/docs/api-reference/speech-t2a-websocket",
+        ],
+        "endpoints": [
+            {"region": "global_en", "url": "https://api.minimax.io/v1/t2a_v2"},
+            {"region": "cn_zh", "url": "https://api.minimaxi.com/v1/t2a_v2"},
+        ],
+        "default_model": "speech-2.8-hd",
+        "models": [
+            "speech-2.8-hd",
+            "speech-2.8-turbo",
+            "speech-2.6-hd",
+            "speech-2.6-turbo",
+            "speech-02-hd",
+            "speech-02-turbo",
+            "speech-01-hd",
+            "speech-01-turbo",
+        ],
+        "reference": {
+            "authorization": "Bearer",
+            "operations": [
+                {
+                    "operation_id": "textToAudioHttp",
+                    "method": "POST",
+                    "path": "/v1/t2a_v2",
+                    "required_fields": ["model", "text"],
+                    "request_fields": [
+                        "model",
+                        "text",
+                        "stream",
+                        "language_boost",
+                        "output_format",
+                        "voice_setting",
+                        "pronunciation_dict",
+                        "audio_setting",
+                        "voice_modify",
+                        "subtitle_enable",
+                    ],
+                },
+                {
+                    "operation_id": "textToAudioAsyncCreate",
+                    "method": "POST",
+                    "path": "/v1/t2a_async_v2",
+                    "required_fields": ["model", "text"],
+                    "request_fields": [
+                        "model",
+                        "text",
+                        "voice_setting",
+                        "audio_setting",
+                        "language_boost",
+                        "pronunciation_dict",
+                        "voice_modify",
+                    ],
+                },
+                {
+                    "operation_id": "textToAudioWebSocket",
+                    "method": "WSS",
+                    "path": "/ws/v1/t2a_v2",
+                    "required_fields": ["model", "text"],
+                },
+                {
+                    "operation_id": "textToAudioAsyncQuery",
+                    "method": "POST",
+                    "path": "/v1/query/t2a_async_query_v2",
+                    "required_fields": ["task_id"],
+                },
+            ],
+            "audio_formats": ["mp3", "wav", "flac", "pcm"],
+            "response_fields": ["data.audio", "data.status", "base_resp.status_code"],
+        },
+    }
+}
 
 CHAT_MODELS = [
-    {"id": "MiniMax-M3", "description": "Next-generation flagship model (default)"},
-    {"id": "MiniMax-M2.7", "description": "Peak Performance. Ultimate Value. Master the Complex"},
-    {"id": "MiniMax-M2.7-highspeed", "description": "Same performance, faster and more agile"},
+    {
+        "id": model["model_id"],
+        "description": (
+            "Next-generation flagship model (default)"
+            if model["model_id"] == "MiniMax-M3"
+            else "Peak Performance. Ultimate Value."
+        ),
+        "context_window": model["context_window"],
+        "pricing_usd_per_million_tokens": model["pricing_usd_per_million_tokens"],
+        "input_modalities": model["input_modalities"],
+        "thinking": model["thinking"],
+    }
+    for model in TEXT_MODEL_CONFIG["models"]
 ]
 
 TTS_MODELS = [
-    {"id": "speech-2.8-hd", "description": "High-definition TTS (recommended default)"},
-    {"id": "speech-2.8-turbo", "description": "Fast TTS"},
+    {"id": model_id, "description": description}
+    for model_id, description in [
+        ("speech-2.8-hd", "High-definition TTS (recommended default)"),
+        ("speech-2.8-turbo", "Fast TTS"),
+        ("speech-2.6-hd", "High-definition TTS"),
+        ("speech-2.6-turbo", "Fast TTS"),
+        ("speech-02-hd", "High-definition TTS"),
+        ("speech-02-turbo", "Fast TTS"),
+        ("speech-01-hd", "High-definition TTS"),
+        ("speech-01-turbo", "Fast TTS"),
+    ]
 ]
 
 TTS_VOICES = [
@@ -90,6 +254,20 @@ def _make_auth_headers(api_key: str) -> dict:
     }
 
 
+def _get_region_endpoint(region: Optional[str] = None) -> dict:
+    selected_region = region or os.environ.get(MINIMAX_REGION_ENV, "global_en")
+    return _REGIONAL_ENDPOINTS_BY_REGION.get(
+        selected_region, _REGIONAL_ENDPOINTS_BY_REGION["global_en"]
+    )
+
+
+def _get_api_base() -> str:
+    override = os.environ.get("MINIMAX_BASE_URL")
+    if override:
+        return override.rstrip("/")
+    return _get_region_endpoint()["openai_base_url"].rstrip("/")
+
+
 def chat_completion(
     api_key: Optional[str] = None,
     model: str = "MiniMax-M3",
@@ -107,9 +285,10 @@ def chat_completion(
         body["max_tokens"] = max_tokens
     headers = _make_auth_headers(api_key)
     resp = None
+    api_base = _get_api_base()
     try:
         resp = requests.post(
-            f"{CHAT_API_BASE}/chat/completions",
+            f"{api_base}/chat/completions",
             json=body,
             headers=headers,
             timeout=60,
@@ -144,9 +323,10 @@ def chat_completion_stream(
         body["max_tokens"] = max_tokens
     headers = _make_auth_headers(api_key)
     full_response = ""
+    api_base = _get_api_base()
     try:
         resp = requests.post(
-            f"{CHAT_API_BASE}/chat/completions",
+            f"{api_base}/chat/completions",
             json=body,
             headers=headers,
             timeout=120,
@@ -211,9 +391,11 @@ def tts_synthesize(
             "channel": channel,
         },
     }
+    api_base = _get_api_base()
+    tts_path = "/v1/t2a_v2" if os.environ.get("MINIMAX_BASE_URL") else "/t2a_v2"
     try:
         resp = requests.post(
-            f"{TTS_API_BASE}/v1/t2a_v2",
+            f"{api_base}{tts_path}",
             json=body,
             headers=headers,
             timeout=120,
