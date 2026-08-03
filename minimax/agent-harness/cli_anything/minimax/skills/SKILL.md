@@ -2,7 +2,7 @@
 name: >-
   cli-anything-minimax
 description: >-
-  Command-line interface for MiniMax AI — chat (MiniMax-M3) and TTS (speech-2.8-hd) via the MiniMax API.
+  Command-line interface for MiniMax AI — chat (MiniMax-M3, MiniMax-M2.7) and speech-2.x TTS via the MiniMax API.
 ---
 
 # cli-anything-minimax
