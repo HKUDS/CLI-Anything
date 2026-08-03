@@ -1,7 +1,6 @@
 """OBS Studio CLI - Source management."""
 
 import copy
-import math
 from typing import Dict, Any, List, Optional
 from cli_anything.obs_studio.utils.obs_utils import (
     generate_id,
@@ -11,6 +10,7 @@ from cli_anything.obs_studio.utils.obs_utils import (
     validate_position,
     validate_size,
     validate_crop,
+    _finite_number,
 )
 
 
@@ -144,7 +144,7 @@ def add_source(
 def remove_source(project: Dict[str, Any], source_index: int, scene_index: int = 0) -> Dict[str, Any]:
     """Remove a source from a scene."""
     sources = _get_scene_sources(project, scene_index)
-    source = get_item(sources, source_index, "source")
+    get_item(sources, source_index, "source")
     return sources.pop(source_index)
 
 
@@ -205,29 +205,43 @@ def transform_source(
     sources = _get_scene_sources(project, scene_index)
     source = get_item(sources, source_index, "source")
 
+    new_pos = None
     if position:
-        source["position"] = validate_position(
+        new_pos = validate_position(
             {
                 "x": position.get("x", source["position"]["x"]),
                 "y": position.get("y", source["position"]["y"]),
             }
         )
+
+    new_size = None
     if size:
-        source["size"] = validate_size(
+        new_size = validate_size(
             {
                 "width": size.get("width", source["size"]["width"]),
                 "height": size.get("height", source["size"]["height"]),
             }
         )
+
+    new_crop = None
     if crop:
         merged_crop = dict(source.get("crop") or {})
         merged_crop.update(crop)
-        source["crop"] = validate_crop(merged_crop)
+        new_crop = validate_crop(merged_crop)
+
+    new_rot = None
     if rotation is not None:
-        rot = float(rotation)
-        if not math.isfinite(rot):
-            raise ValueError(f"Rotation must be a finite number, got {rot}")
-        source["rotation"] = rot
+        rot = _finite_number(rotation, "Rotation")
+        new_rot = float(rot)
+
+    if new_pos is not None:
+        source["position"] = new_pos
+    if new_size is not None:
+        source["size"] = new_size
+    if new_crop is not None:
+        source["crop"] = new_crop
+    if new_rot is not None:
+        source["rotation"] = new_rot
 
     return source
 

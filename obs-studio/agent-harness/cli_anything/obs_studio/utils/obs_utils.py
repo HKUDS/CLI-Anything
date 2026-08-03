@@ -8,30 +8,63 @@ from typing import Dict, Any, List, Optional
 
 
 
-def _finite_number(value: Any, name: str):
-    """Reject non-finite values without float-rounding large ints."""
+def _finite_number(value: Any, name: str) -> float | int:
+    """Reject non-finite values without float-rounding large ints or integer strings."""
     if isinstance(value, bool):
         raise ValueError(f"{name} must be a finite number, got {value!r}")
     if isinstance(value, int):
         return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be a finite number, got {value!r}")
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            pass
+        try:
+            num = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a finite number, got {value!r}") from exc
+        if not math.isfinite(num):
+            raise ValueError(f"{name} must be a finite number, got {value!r}")
+        return num
+    try:
+        ival = int(value)
+        if ival == value:
+            return ival
+    except Exception:
+        pass
     try:
         num = float(value)
-    except (TypeError, ValueError) as exc:
+    except Exception as exc:
         raise ValueError(f"{name} must be a finite number, got {value!r}") from exc
     if not math.isfinite(num):
         raise ValueError(f"{name} must be a finite number, got {value!r}")
     return num
 
 
-def _finite_integer(value: Any, name: str) -> int:
-    """Convert a finite value without rounding decimal integer strings."""
+def _finite_int(value: Any, name: str) -> int:
+    """Reject non-finite or non-integer-form values without float rounding."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a finite integer, got {value!r}")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be a finite integer, got {value!r}")
+        return int(value)
     if isinstance(value, str):
         try:
             return int(value)
-        except ValueError:
-            pass
-    return int(_finite_number(value, name))
-
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a finite integer, got {value!r}") from exc
+    try:
+        val = int(value)
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        raise ValueError(f"{name} must be a finite integer, got {value!r}") from exc
+    return val
 
 def generate_id(items: List[Dict[str, Any]]) -> int:
     """Generate the next unique ID for a list of items."""
@@ -68,8 +101,8 @@ def validate_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 
 def validate_size(size: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a size dict."""
-    w = _finite_integer(size.get("width", 1920), "Size width")
-    h = _finite_integer(size.get("height", 1080), "Size height")
+    w = _finite_int(size.get("width", 1920), "Size width")
+    h = _finite_int(size.get("height", 1080), "Size height")
     if w < 1:
         raise ValueError(f"Width must be positive, got {w}")
     if h < 1:
@@ -81,7 +114,7 @@ def validate_crop(crop: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and normalize a crop dict."""
     result = {}
     for key in ("top", "bottom", "left", "right"):
-        val = _finite_integer(crop.get(key, 0), f"Crop {key}")
+        val = _finite_int(crop.get(key, 0), f"Crop {key}")
         if val < 0:
             raise ValueError(f"Crop {key} must be non-negative, got {val}")
         result[key] = val

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from decimal import Decimal
+from fractions import Fraction
+
 
 from cli_anything.obs_studio.core.sources import add_source, transform_source
 from cli_anything.obs_studio.utils.obs_utils import (
@@ -145,3 +148,42 @@ def test_add_source_rejects_nan_position():
 def test_transform_source_rejects_nan_position():
     with pytest.raises(ValueError, match="finite"):
         transform_source(_project(), 0, position={"x": float("nan")})
+def test_validate_size_preserves_large_int_string():
+    """Locks out regression where string integers were converted to float."""
+    val = str(2 ** 53 + 1)
+    assert validate_size({"width": val, "height": "1080"}) == {
+        "width": 2 ** 53 + 1,
+        "height": 1080,
+    }
+
+
+def test_validate_size_preserves_decimal_and_fraction():
+    """Locks out regression where Decimal and Fraction were converted to float."""
+    dec = Decimal(2 ** 53 + 1)
+    frac = Fraction(2 ** 53 + 3, 1)
+    assert validate_size({"width": dec, "height": frac}) == {
+        "width": 2 ** 53 + 1,
+        "height": 2 ** 53 + 3,
+    }
+
+
+def test_validate_size_rejects_float_strings():
+    """Locks out regression where float strings '1.5' or '1e3' were truncated/accepted as size ints."""
+    with pytest.raises(ValueError, match="integer"):
+        validate_size({"width": "1.5", "height": 1080})
+    with pytest.raises(ValueError, match="integer"):
+        validate_size({"width": "1e3", "height": 1080})
+
+
+def test_transform_source_atomic_validation_on_invalid_rotation():
+    """Locks out regression where earlier fields were mutated prior to rotation validation."""
+    proj = _project()
+    orig_pos = dict(proj["scenes"][0]["sources"][0]["position"])
+    with pytest.raises(ValueError, match="finite"):
+        transform_source(
+            proj,
+            0,
+            position={"x": 100.0, "y": 200.0},
+            rotation=float("nan"),
+        )
+    assert proj["scenes"][0]["sources"][0]["position"] == orig_pos
