@@ -59,7 +59,7 @@ CLI 是人类和 AI Agent 共通的万能接口：
 
 - **Python 3.10+**
 - 目标软件已安装（如 GIMP、Blender、LibreOffice 或你自己的应用）
-- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [更多平台](#-更多平台即将支持)
+- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [Cursor](#-cursor) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [更多平台](#-更多平台即将支持)
 
 ### 选择你的平台
 
@@ -257,6 +257,62 @@ cp CLI-Anything/openclaw-skill/SKILL.md ~/.openclaw/skills/cli-anything/SKILL.md
 
 <details>
 
+<summary><h4 id="-cursor">⚡ Cursor</h4></summary>
+
+Cursor 同时提供两条能力：
+
+| 轨道 | 用途 | 安装方式 |
+|------|------|----------|
+| **生成器** | 用 `/cli-anything` 等斜杠命令构建新 harness | `cursor-plugin/` Cursor 插件 |
+| **消费端** | 从 CLI-Hub 查找/安装/使用已发布 CLI | `npx skills` + `cli-hub`（不变） |
+
+**生成器 — 安装 Cursor 插件**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+bash CLI-Anything/cursor-plugin/scripts/install.sh
+```
+
+Windows PowerShell：
+
+```powershell
+.\CLI-Anything\cursor-plugin\scripts\install.ps1
+```
+
+升级使用 `--force` / `-Force`。默认安装路径为
+`~/.cursor/plugins/local/cli-anything`（`CURSOR_PLUGINS_HOME` 必须指向名为 `plugins` 的目录）。
+安装器会把 `cli-anything-plugin/` 中的方法论资源 vendor 进插件，并写入 `PLUGIN_ROOT.txt`
+与 `~/.cursor/cli-anything-generator.root`，以便 Cursor Agent 用绝对路径读取 HARNESS。
+
+在 Cursor 中执行 **Developer: Reload Window**，然后：
+
+```text
+/cli-anything ./gimp
+/cli-anything-refine ./shotcut "picture-in-picture workflows"
+/cli-anything-test ./libreoffice
+/cli-anything-validate ./libreoffice
+/cli-anything-list
+```
+
+**消费端 — Hub / skills（与生成器插件分离）**
+
+```bash
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
+# 或某个单应用 skill，例如 cli-anything-blender
+pip install cli-anything-hub
+```
+
+本地验证安装器：
+
+```bash
+bash CLI-Anything/cursor-plugin/tests/test_install.sh
+```
+
+更多说明见 [`cursor-plugin/README.md`](cursor-plugin/README.md)。
+</details>
+
+<details>
+
 <summary><h4 id="-codex">⚡ Codex <sup><code>实验性</code></sup> <sup><code>社区贡献</code></sup></h4></summary>
 
 **第一步：安装 Skill**
@@ -333,8 +389,8 @@ copilot plugin install ./cli-anything-plugin
 
 CLI-Anything 的设计是平台无关的，计划支持更多 AI 编程工具：
 
+- **Cursor** — 已通过 `cursor-plugin/` 提供生成器插件，消费端继续用 Hub/skills
 - **Codex** — 已通过 `codex-skill/` 提供接入
-- **Cursor** — 即将支持
 - **Windsurf** — 即将支持
 - **你喜欢的工具** — 欢迎贡献！参考 `opencode-commands/` 目录的实现。
 
@@ -757,6 +813,13 @@ cli-anything/
 │   ├── cli-anything-validate.md         # 标准验证
 │   └── cli-anything-list.md             # 列出所有 CLI 工具
 │
+├── 🖱️ cursor-plugin/                     # Cursor Desktop 生成器插件
+│   ├── .cursor-plugin/plugin.json        # Cursor 插件清单
+│   ├── commands/                         # /cli-anything 斜杠命令
+│   ├── skills/                           # 辅助生成器 skill
+│   ├── rules/                            # 阶段门禁规则
+│   ├── scripts/                          # 安装脚本与 vendor 辅助文件
+│   └── tests/                            # 安装器回归测试
 ├── 🤖 codex-skill/                      # 可独立安装的 Codex skill
 │   ├── SKILL.md                         # Codex 工作流入口
 │   ├── agents/                          # Codex 界面元数据

@@ -1,0 +1,26 @@
+---
+description: >-
+  CLI-Anything generator phase gates and absolute PLUGIN_ROOT resolution.
+  Apply when building, refining, testing, or validating CLI-Anything harnesses,
+  editing agent-harness/, or using /cli-anything commands.
+alwaysApply: false
+globs:
+  - "**/agent-harness/**"
+  - "**/.cli-anything-progress.json"
+  - "**/cli_anything/**"
+---
+
+# CLI-Anything Generator Rule
+
+When building, refining, testing, validating, or listing CLI-Anything harnesses — or when `/cli-anything*` is used — apply these rules:
+
+1. Resolve `PLUGIN_ROOT` before reading methodology:
+   - Read `%USERPROFILE%\.cursor\cli-anything-generator.root` or `~/.cursor/cli-anything-generator.root`
+   - Else `{plugins}/local/cli-anything/PLUGIN_ROOT.txt` (default plugins dir or `$CURSOR_PLUGINS_HOME`)
+   - Use absolute paths only; never workspace-relative `./HARNESS.md`
+2. Read `{PLUGIN_ROOT}/references/HARNESS.md` and the matching `references/commands/*.md`.
+3. Prefer slash commands `/cli-anything`, `/cli-anything-refine`, `/cli-anything-test`, `/cli-anything-validate`, `/cli-anything-list`.
+4. Persist progress at `{software-root}/agent-harness/.cli-anything-progress.json`.
+   Create `agent-harness/` when tracking starts. Do not advance a phase until the previous is `completed`. Resume non-terminal runs.
+5. Keep generated harness format identical to Claude Code / Codex outputs.
+6. Consumer Hub/skills (`cli-hub-meta-skill`, `skills/cli-anything-*`) are separate from this generator.
