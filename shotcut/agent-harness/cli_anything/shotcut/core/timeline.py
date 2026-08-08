@@ -441,10 +441,11 @@ def add_clip(session: Session, clip_id: str, track_index: int,
              position: Optional[int] = None,
              at_time: Optional[str] = None,
              caption: Optional[str] = None) -> dict:
-    """Add a clip to a track by referencing an imported media clip_id.
+    """Add an independently editable clip instance to a track.
 
-    The timeline chain is shared — same clip_id always maps to the same chain.
-    Each call creates a new playlist entry with its own in/out range.
+    Each call creates a unique timeline chain while reusing the imported
+    media resource. Shotcut uses the chain identity when editing a clip, so
+    timeline occurrences must not share one chain.
     """
     if position is not None and at_time is not None:
         raise ValueError("Cannot specify both position and at_time")
@@ -460,27 +461,24 @@ def add_clip(session: Session, clip_id: str, track_index: int,
     resource = mlt_xml.get_property(bin_chain, "resource", "")
     session.checkpoint()
 
-    # Reuse timeline chain for same clip_id
-    timeline_chain_id = f"tl_{clip_id}"
-    timeline_chain = mlt_xml.find_element_by_id(session.root, timeline_chain_id)
-
-    if timeline_chain is None or mlt_xml.get_parent(timeline_chain) is None:
-        length_tc = mlt_xml.get_property(bin_chain, "length")
-        source_out = bin_chain.get("out") or length_tc
-        video_index = mlt_xml.get_property(bin_chain, "video_index") or "0"
-        audio_index = mlt_xml.get_property(bin_chain, "audio_index") or "1"
-
-        timeline_chain = mlt_xml.create_chain(
-            session.root, resource,
-            in_point="00:00:00.000",
-            out_point=source_out,
-            caption=caption or os.path.basename(resource),
-            extra_props={"video_index": video_index, "audio_index": audio_index},
-            insert_idx=session._timeline_insert_idx,
-            length=length_tc,
-            id_override=timeline_chain_id,
-        )
-        session._timeline_insert_idx += 1
+    length_tc = mlt_xml.get_property(bin_chain, "length")
+    source_out = bin_chain.get("out") or length_tc
+    video_index = mlt_xml.get_property(bin_chain, "video_index") or "0"
+    audio_index = mlt_xml.get_property(bin_chain, "audio_index") or "1"
+    timeline_chain = mlt_xml.create_chain(
+        session.root, resource,
+        in_point="00:00:00.000",
+        out_point=source_out,
+        caption=caption or os.path.basename(resource),
+        extra_props={
+            "video_index": video_index,
+            "audio_index": audio_index,
+            "shotcut:uuid": uuid.uuid4().hex,
+        },
+        insert_idx=session._timeline_insert_idx,
+        length=length_tc,
+    )
+    session._timeline_insert_idx += 1
 
     playlist = _get_track_playlist(session, track_index)
     final_in = in_point or timeline_chain.get("in", "00:00:00.000")

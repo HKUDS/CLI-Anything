@@ -66,6 +66,11 @@ def write_mlt(root: ET.Element, filepath: str) -> None:
     """
     pretty = copy.deepcopy(root)
     normalize_top_level_order(pretty)
+    main_tractor = get_main_tractor(pretty)
+    if main_tractor is not None and main_tractor.get("id"):
+        # Shotcut opens the root producer as the active timeline. Keep the
+        # media bin available, but make saved projects open on the tractor.
+        pretty.set("producer", main_tractor.get("id"))
     ET.indent(pretty, space="  ")
     tree = ET.ElementTree(pretty)
     tree.write(filepath, xml_declaration=True, encoding="utf-8")
@@ -200,7 +205,9 @@ def create_blank_project(profile: dict) -> ET.Element:
     root.set("LC_NUMERIC", "C")
     root.set("version", "7.36.1")
     root.set("title", "Shotcut version 26.2.26")
-    root.set("producer", "main_bin")
+    # Shotcut opens the root producer as the active timeline. The media bin
+    # remains available as main_bin, but it must not be the project output.
+    root.set("producer", "tractor0")
 
     # Profile
     prof = ET.SubElement(root, "profile")

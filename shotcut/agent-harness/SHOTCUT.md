@@ -47,7 +47,7 @@ manipulate projects entirely by reading and writing this XML format.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
-<mlt LC_NUMERIC="C" version="7.x" title="Shotcut" producer="main_bin">
+<mlt LC_NUMERIC="C" version="7.x" title="Shotcut" producer="tractor0">
 
   <!-- Video/Audio Profile -->
   <profile description="HD 1080p 30fps"
@@ -99,6 +99,13 @@ manipulate projects entirely by reading and writing this XML format.
 | Clip on track | `<entry>` | Clip placed on timeline |
 | Effect | `<filter>` | Applied filter |
 | Transition | `<transition>` | Cross-dissolve, etc. |
+
+### Saved Project Entry Point
+
+`main_bin` stores imported media, but the root `producer` must reference the
+main timeline tractor (normally `tractor0`) for Shotcut to open the project on
+the editable timeline. The writer preserves `main_bin` and updates the root
+producer when saving.
 
 ### Shotcut-Specific Properties
 
@@ -230,7 +237,8 @@ melt command for the user to run elsewhere.
 | File → Export | `export render <output> [--preset name]` |
 | Add video track | `timeline add-track --type video --name "V1"` |
 | Add audio track | `timeline add-track --type audio --name "A1"` |
-| Drag clip to timeline | `timeline add-clip <file> --track <n> --in <tc> --out <tc>` |
+| Import media | `media import <file>` |
+| Drag clip to timeline | `timeline add-clip <clip_id> --track <n> --in <tc> --out <tc>` |
 | Trim clip | `timeline trim <track> <clip> --in/--out <tc>` |
 | Split clip | `timeline split <track> <clip> --at <tc>` |
 | Remove clip | `timeline remove-clip <track> <clip>` |

@@ -58,14 +58,45 @@ def _validate_extra_args(extra_args: list) -> list:
     return extra_args
 
 
+def _is_mlt_melt(path: str) -> bool:
+    """Return whether an executable identifies itself as MLT melt."""
+    try:
+        result = subprocess.run(
+            [path, "-version"], capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    output = f"{result.stdout}\n{result.stderr}".lower()
+    return result.returncode == 0 and "mlt" in output and "melt" in output
+
+
 def find_melt() -> str:
-    """Find the melt executable. Raises RuntimeError if not found."""
-    path = shutil.which("melt")
-    if path:
-        return path
+    """Find a validated MLT melt executable.
+
+    ``SHOTCUT_MELT`` takes precedence. On macOS, Shotcut bundles its own
+    MLT binary, which is preferred over unrelated executables named ``melt``.
+    """
+    candidates = []
+    for env_name in ("SHOTCUT_MELT", "MLT_MELT"):
+        configured = os.environ.get(env_name)
+        if configured:
+            candidates.append(configured)
+
+    candidates.extend([
+        "/Applications/Shotcut.app/Contents/MacOS/melt",
+        shutil.which("melt"),
+    ])
+
+    seen = set()
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK) and _is_mlt_melt(candidate):
+                return candidate
+
     raise RuntimeError(
-        "melt is not installed. Install it with:\n"
-        "  apt install melt   # Debian/Ubuntu"
+        "An MLT melt executable was not found. Set SHOTCUT_MELT to its path "
+        "or install Shotcut/MLT."
     )
 
 

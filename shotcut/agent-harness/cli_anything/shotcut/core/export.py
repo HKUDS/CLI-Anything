@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import shutil
 from typing import Optional
 
 from ..utils import mlt_xml
@@ -172,12 +171,8 @@ def render(session: Session, output_path: str,
         available = ", ".join(sorted(EXPORT_PRESETS.keys()))
         raise ValueError(f"Unknown preset: {preset!r}. Available: {available}")
 
-    melt = shutil.which("melt")
-    if not melt:
-        raise RuntimeError(
-            "melt is required for rendering but not found. "
-            "Install it with: apt install melt  (or equivalent for your OS)"
-        )
+    from ..utils.melt_backend import find_melt
+    melt = find_melt()
     # No ffmpeg fallback — melt is the only render path because it natively
     # reads MLT XML and handles all project features (transitions, compositing,
     # multi-track). Direct ffmpeg encoding cannot interpret MLT projects.

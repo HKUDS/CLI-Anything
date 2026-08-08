@@ -8,7 +8,8 @@ Usage:
     # One-shot commands
     shotcut-cli project new --profile hd1080p30 -o my_project.mlt
     shotcut-cli timeline add-track --type video
-    shotcut-cli timeline add-clip video.mp4 --track 1
+    shotcut-cli media import video.mp4
+    shotcut-cli timeline add-clip clip0 --track 1
 
     # Interactive REPL
     shotcut-cli repl
@@ -257,7 +258,7 @@ def project():
 
 @project.command("new")
 @click.option("--profile", default="hd1080p30",
-              help="Video profile (hd1080p30, hd1080p60, 4k30, etc.)")
+              help="Video profile (vertical1080p30, hd1080p30, hd1080p60, 4k30, etc.)")
 @click.option("-o", "--output", "output_path", default=None,
               help="Save the new project to this path")
 @handle_error

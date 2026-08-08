@@ -11,6 +11,10 @@ without a GUI.
 - `melt` (MLT CLI) — **required** for rendering and playback
 - `ffmpeg` / `ffprobe` — required for media probing and export
 
+On macOS, the bundled Shotcut MLT executable is detected automatically. Set
+`SHOTCUT_MELT=/path/to/melt` to override it when multiple `melt` executables
+are installed.
+
 Optional (for interactive REPL):
 - `prompt_toolkit`
 
@@ -150,7 +154,7 @@ project profiles                             # List available profiles
 project xml                                  # Print raw MLT XML
 ```
 
-Available profiles: `hd1080p30`, `hd1080p60`, `hd1080p24`, `hd720p30`, `4k30`, `4k60`, `sd480p`
+Available profiles: `vertical1080p30`, `hd1080p30`, `hd1080p60`, `hd1080p24`, `hd720p30`, `4k30`, `4k60`, `sd480p`
 
 ### Timeline
 

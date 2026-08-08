@@ -199,6 +199,11 @@ class Session:
         if not save_path:
             raise RuntimeError("No save path specified and project has no path")
         save_path = os.path.abspath(save_path)
+        # Mutations normally refresh this value, but saving must also make
+        # projects created through older sessions/render workflows valid.
+        from .timeline import _update_tractor_out
+        if self.main_tractor is not None:
+            _update_tractor_out(self)
         mlt_xml.write_mlt(self.root, save_path)
         self.project_path = save_path
         self._modified = False

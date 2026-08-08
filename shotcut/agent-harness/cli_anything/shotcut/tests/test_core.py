@@ -20,6 +20,7 @@ from cli_anything.shotcut.core import export as export_mod
 from cli_anything.shotcut.core import transitions as trans_mod
 from cli_anything.shotcut.core import compositing as comp_mod
 from cli_anything.shotcut.core import preview as preview_mod
+from cli_anything.shotcut.utils import melt_backend
 from cli_anything.shotcut.utils.time import (
     timecode_to_frames, frames_to_timecode, parse_time_input,
     frames_to_seconds, seconds_to_frames,
@@ -134,6 +135,14 @@ class TestMltXml:
             if child.tag == "chain" and child.get("id") == "late_chain"
         )
         assert late_idx < first_playlist_or_tractor
+
+    def test_write_mlt_points_root_at_timeline(self, tmp_path):
+        root = create_blank_project(PROFILE_HD1080)
+        tmpfile = str(tmp_path / "timeline-root.mlt")
+        write_mlt(root, tmpfile)
+        parsed = parse_mlt(tmpfile)
+        tractor = get_main_tractor(parsed)
+        assert parsed.get("producer") == tractor.get("id")
 
     def test_properties(self):
         import xml.etree.ElementTree as ET
@@ -679,11 +688,28 @@ class TestProject:
         assert "hd1080p30" in profiles
         assert "4k30" in profiles
 
+    def test_vertical_profile(self):
+        profile = proj_mod.list_profiles()["vertical1080p30"]
+        assert profile["resolution"] == "1080x1920"
+        assert profile["fps"] == 29.97
+
     def test_save_project(self, session, tmp_path):
         path = str(tmp_path / "test.mlt")
         result = proj_mod.save_project(session, path)
         assert result["path"] == path
         assert os.path.isfile(path)
+
+    def test_save_project_refreshes_duration(self, session_with_track, dummy_file, tmp_path):
+        clip_id = media_mod.import_media(session_with_track, dummy_file)["clip_id"]
+        tl_mod.add_clip(
+            session_with_track, clip_id, 1,
+            in_point="00:00:00.000", out_point="00:00:05.000",
+        )
+        path = str(tmp_path / "duration.mlt")
+        proj_mod.save_project(session_with_track, path)
+        parsed = parse_mlt(path)
+        assert parsed.get("producer") == "tractor0"
+        assert get_main_tractor(parsed).get("out") != "00:00:00.000"
 
     def test_open_and_info(self, session, tmp_path):
         path = str(tmp_path / "test.mlt")
@@ -904,7 +930,14 @@ class TestTimeline:
         playlist = session_with_track._track_playlists[1]
         children = list(playlist)
         entry_producers = [c.get("producer") for c in children if c.tag == "entry"]
-        assert entry_producers == ["tl_clip0", "tl_clip0", "tl_clip0"]
+        assert len(entry_producers) == 3
+        assert len(set(entry_producers)) == 3
+        timeline_chains = [find_element_by_id(session_with_track.root, producer_id)
+                           for producer_id in entry_producers]
+        assert all(chain is not None for chain in timeline_chains)
+        uuids = [get_property(chain, "shotcut:uuid") for chain in timeline_chains]
+        assert all(uuids)
+        assert len(set(uuids)) == 3
 
     def test_add_clip_at_after_two_clips(self, session_with_track, dummy_file):
         clip_id = media_mod.import_media(session_with_track, dummy_file)["clip_id"]
@@ -1381,6 +1414,29 @@ class TestExport:
         tractor = get_main_tractor(s.root)
 
         assert tractor.get("out") == "00:00:00.000"
+
+
+class TestMeltBackend:
+    def test_find_melt_prefers_configured_path(self, monkeypatch, tmp_path):
+        configured = tmp_path / "melt"
+        configured.write_text("melt")
+        configured.chmod(0o755)
+        monkeypatch.setenv("SHOTCUT_MELT", str(configured))
+        monkeypatch.setattr(melt_backend, "_is_mlt_melt", lambda path: path == str(configured))
+        monkeypatch.setattr(melt_backend.shutil, "which", lambda name: None)
+
+        assert melt_backend.find_melt() == str(configured)
+
+    def test_find_melt_rejects_unrelated_binary(self, monkeypatch, tmp_path):
+        unrelated = tmp_path / "melt"
+        unrelated.write_text("not MLT")
+        unrelated.chmod(0o755)
+        monkeypatch.setenv("SHOTCUT_MELT", str(unrelated))
+        monkeypatch.setattr(melt_backend, "_is_mlt_melt", lambda path: False)
+        monkeypatch.setattr(melt_backend.shutil, "which", lambda name: None)
+
+        with pytest.raises(RuntimeError, match="MLT melt executable"):
+            melt_backend.find_melt()
 
 
 # ============================================================================

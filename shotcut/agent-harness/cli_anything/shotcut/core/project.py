@@ -8,6 +8,13 @@ from .session import Session
 
 # Standard video profiles
 PROFILES = {
+    "vertical1080p30": {
+        "width": "1080", "height": "1920",
+        "frame_rate_num": "30000", "frame_rate_den": "1001",
+        "sample_aspect_num": "1", "sample_aspect_den": "1",
+        "display_aspect_num": "9", "display_aspect_den": "16",
+        "progressive": "1", "colorspace": "709",
+    },
     "hd1080p30": {
         "width": "1920", "height": "1080",
         "frame_rate_num": "30000", "frame_rate_den": "1001",

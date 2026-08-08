@@ -1010,6 +1010,46 @@ class TestPreviewE2E:
 
 
 class TestMeltRenderE2E:
+    def test_saved_vertical_project_renders_non_black(self, preview_video):
+        session = Session()
+        proj_mod.new_project(session, "vertical1080p30")
+        tl_mod.add_track(session, "video", "Main Video")
+        clip_id = media_mod.import_media(session, preview_video)["clip_id"]
+        tl_mod.add_clip(
+            session, clip_id, 1,
+            in_point="00:00:00.000", out_point="00:00:02.000",
+            caption="Preview Clip",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_path = os.path.join(tmp_dir, "project.mlt")
+            output_path = os.path.join(tmp_dir, "render.mp4")
+            frame_path = os.path.join(tmp_dir, "frame.png")
+            proj_mod.save_project(session, project_path)
+
+            import xml.etree.ElementTree as ET
+            root = ET.parse(project_path).getroot()
+            tractor = root.find(".//tractor[@id='tractor0']")
+            assert root.get("producer") == "tractor0"
+            assert tractor is not None
+            assert tractor.get("out") != "00:00:00.000"
+
+            result = export_mod.render(session, output_path, "h264-fast", overwrite=True)
+            assert result["success"] is True
+
+            probe = media_mod.probe_media(output_path)
+            video_stream = probe["video_streams"][0]
+            assert video_stream["width"] == 1080
+            assert video_stream["height"] == 1920
+            assert probe["duration_seconds"] > 1.0
+
+            subprocess.run(
+                ["ffmpeg", "-y", "-ss", "00:00:00.500", "-i", output_path,
+                 "-frames:v", "1", frame_path],
+                check=True, capture_output=True, text=True, timeout=120,
+            )
+            assert _luma_yavg(frame_path) > 10.0
+
     def test_render_color_bars_mp4(self):
         from cli_anything.shotcut.utils.melt_backend import render_color_bars
 
