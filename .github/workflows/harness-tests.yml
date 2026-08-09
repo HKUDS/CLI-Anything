@@ -47,12 +47,15 @@ jobs:
       - name: Run unit tests
         shell: bash
         run: |
-          python .github/scripts/run_harness_unit_tests.py --test "${{ matrix.test }}" --out "${{ runner.temp }}/unit-result.json"
+          python .github/scripts/run_harness_unit_tests.py --test "${{ matrix.test }}" --out "${{ runner.temp }}/unit-result-${{ matrix.os }}-${{ strategy.job-index }}.json"
       - name: Upload result
+        # 看门狗核心：测试失败（退出码非 0）时也要把逐 harness 结果传上去，
+        # 否则恰好看不到失败集合。continue-on-error 只保工作流不红，不会让本步执行。
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: unit-${{ matrix.os }}-${{ strategy.job-index }}
-          path: "${{ runner.temp }}/unit-result.json"
+          path: "${{ runner.temp }}/unit-result-${{ matrix.os }}-${{ strategy.job-index }}.json"
           if-no-files-found: ignore
 
   report:
