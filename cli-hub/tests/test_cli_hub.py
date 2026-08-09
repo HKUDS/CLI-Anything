@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -1508,6 +1509,24 @@ class TestCLI:
         assert "matrix" in result.output
         assert "previews" in result.output
         assert result.exit_code == 0
+
+    def test_gbk_console_utf8_stdio(self):
+        """中文 Windows（GBK 管道）下 ✓/✗ 输出不再 UnicodeEncodeError（回归）。"""
+        import contextlib
+        import io
+
+        import click
+
+        from cli_hub import cli as cli_mod
+
+        buf = io.BytesIO()
+        gbk = io.TextIOWrapper(buf, encoding="gbk", errors="strict")
+        with contextlib.redirect_stdout(gbk):
+            cli_mod._ensure_utf8_stdio()
+            assert sys.stdout.encoding == "utf-8"
+            click.secho("✓ Installed Obsidian CLI (obsidian-agent)", fg="green")
+        out = buf.getvalue().decode("utf-8", errors="replace")
+        assert "Installed Obsidian CLI" in out
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
