@@ -5,12 +5,27 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
+class TranscriptWord:
+    word: str
+    start_seconds: float
+    end_seconds: float
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "word": self.word,
+            "start_seconds": self.start_seconds,
+            "end_seconds": self.end_seconds,
+        }
+
+
+@dataclass(frozen=True)
 class TranscriptSegment:
     start_seconds: float
     end_seconds: float
     text: str
     score: float | None = None
     speaker_id: str | None = None
+    words: tuple[TranscriptWord, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -22,6 +37,8 @@ class TranscriptSegment:
             result["score"] = self.score
         if self.speaker_id is not None:
             result["speaker_id"] = self.speaker_id
+        if self.words:
+            result["words"] = [word.to_dict() for word in self.words]
         return result
 
 
@@ -29,6 +46,7 @@ class TranscriptSegment:
 class ProviderTranscription:
     text: str
     segments: tuple[TranscriptSegment, ...] = ()
+    words: tuple[TranscriptWord, ...] = ()
     language: str | None = None
 
 
@@ -50,6 +68,7 @@ class TranscriptionResult:
     model: str
     playback_speed: float
     segments: tuple[TranscriptSegment, ...] = ()
+    words: tuple[TranscriptWord, ...] = ()
     language: str | None = None
     transcript_path: Path | None = None
 
@@ -61,6 +80,7 @@ class TranscriptionResult:
             "playback_speed": self.playback_speed,
             "language": self.language,
             "segments": [segment.to_dict() for segment in self.segments],
+            "words": [word.to_dict() for word in self.words],
         }
         if self.transcript_path is not None:
             result["transcript_path"] = str(self.transcript_path)

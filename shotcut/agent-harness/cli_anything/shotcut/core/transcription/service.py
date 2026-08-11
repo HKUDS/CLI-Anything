@@ -3,7 +3,7 @@
 from pathlib import Path
 from dataclasses import replace
 
-from .models import TranscriptSegment, TranscriptionRequest, TranscriptionResult
+from .models import TranscriptSegment, TranscriptWord, TranscriptionRequest, TranscriptionResult
 from .ports import (
     AudioExtractor,
     TranscriptionProvider,
@@ -47,11 +47,15 @@ class TranscriptionService:
                 source=request.source,
                 model=self._provider.model,
                 playback_speed=request.playback_speed,
-                segments=self._restore_video_timestamps(
-                    provider_result.segments,
-                    request.playback_speed,
-                ),
-                language=provider_result.language,
+                    segments=self._restore_video_timestamps(
+                        provider_result.segments,
+                        request.playback_speed,
+                    ),
+                    words=self._restore_video_words(
+                        provider_result.words,
+                        request.playback_speed,
+                    ),
+                    language=provider_result.language,
             )
             transcript_path = request.output_path or self._default_output_path(
                 request.source, video_path
@@ -82,13 +86,34 @@ class TranscriptionService:
     ) -> tuple[TranscriptSegment, ...]:
         return tuple(
             TranscriptSegment(
-                start_seconds=segment.start_seconds / playback_speed,
-                end_seconds=segment.end_seconds / playback_speed,
+                start_seconds=segment.start_seconds * playback_speed,
+                end_seconds=segment.end_seconds * playback_speed,
                 text=segment.text,
                 score=segment.score,
                 speaker_id=segment.speaker_id,
+                words=tuple(
+                    TranscriptWord(
+                        word=word.word,
+                        start_seconds=word.start_seconds * playback_speed,
+                        end_seconds=word.end_seconds * playback_speed,
+                    )
+                    for word in segment.words
+                ),
             )
             for segment in segments
+        )
+
+    @staticmethod
+    def _restore_video_words(
+        words: tuple[TranscriptWord, ...], playback_speed: float
+    ) -> tuple[TranscriptWord, ...]:
+        return tuple(
+            TranscriptWord(
+                word=word.word,
+                start_seconds=word.start_seconds * playback_speed,
+                end_seconds=word.end_seconds * playback_speed,
+            )
+            for word in words
         )
 
     @staticmethod

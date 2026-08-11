@@ -26,6 +26,7 @@ class JsonTranscriptionWriter:
                         "timestamps_are_original_video_seconds": True,
                         "text": result.text,
                         "segments": [segment.to_dict() for segment in result.segments],
+                        "words": [word.to_dict() for word in result.words],
                     },
                     indent=2,
                     ensure_ascii=False,

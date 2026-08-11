@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from ..transcription.models import TranscriptSegment
+from ..transcription.models import TranscriptSegment, TranscriptWord
 from .models import SubtitleDocument, SubtitleRequest, SubtitleResult
 from .ports import SubtitleRenderer
 
@@ -30,7 +30,7 @@ class SubtitleService:
             ass_path.write_text(self._to_ass(document), encoding="utf-8")
             self._renderer.render(video_path, ass_path, output_path, request.overwrite)
 
-        return SubtitleResult(video_path, transcript_path, output_path, len(document.segments))
+        return SubtitleResult(video_path, transcript_path, output_path, self._subtitle_count(document))
 
     @staticmethod
     def _existing_file(path: Path, label: str) -> Path:
@@ -56,9 +56,18 @@ class SubtitleService:
             if start < 0 or end <= start or not text:
                 raise ValueError(f"Invalid transcript segment at index {index}")
             segments.append(TranscriptSegment(start, end, text))
-        if not segments:
+        words = tuple(
+            TranscriptWord(
+                word=str(item["word"]).strip(),
+                start_seconds=float(item["start_seconds"]),
+                end_seconds=float(item["end_seconds"]),
+            )
+            for item in payload.get("words", [])
+            if item.get("word") and float(item["end_seconds"]) > float(item["start_seconds"])
+        )
+        if not segments and not words:
             raise ValueError(f"Transcript contains no subtitle segments: {path}")
-        return SubtitleDocument(tuple(segments))
+        return SubtitleDocument(tuple(segments), words)
 
     @classmethod
     def _to_ass(cls, document: SubtitleDocument) -> str:
@@ -78,9 +87,28 @@ class SubtitleService:
         ]
         lines.extend(
             f"Dialogue: 0,{cls._time(segment.start_seconds)},{cls._time(segment.end_seconds)},Default,,0,0,0,,{cls._escape(segment.text)}"
-            for segment in document.segments
+            for segment in cls._subtitle_segments(document)
         )
         return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _subtitle_segments(document: SubtitleDocument) -> tuple[TranscriptSegment, ...]:
+        if not document.words:
+            return document.segments
+        return tuple(
+            TranscriptSegment(
+                start_seconds=chunk[0].start_seconds,
+                end_seconds=chunk[-1].end_seconds,
+                text=" ".join(word.word for word in chunk),
+                words=tuple(chunk),
+            )
+            for chunk_start in range(0, len(document.words), 5)
+            for chunk in (document.words[chunk_start : chunk_start + 5],)
+        )
+
+    @classmethod
+    def _subtitle_count(cls, document: SubtitleDocument) -> int:
+        return len(cls._subtitle_segments(document))
 
     @staticmethod
     def _time(seconds: float) -> str:

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ..models import ProviderTranscription, TranscriptSegment
+from ..models import ProviderTranscription, TranscriptSegment, TranscriptWord
 
 
 class MistralTranscriber:
@@ -33,7 +33,7 @@ class MistralTranscriber:
                 response = client.audio.transcriptions.complete(
                     model=self.model,
                     file=File(content=audio_file.read(), fileName=audio_path.name),
-                    timestamp_granularities=["segment"],
+                    timestamp_granularities=["segment", "word"],
                 )
 
         text = getattr(response, "text", None)
@@ -52,11 +52,34 @@ class MistralTranscriber:
                     speaker_id=getattr(segment, "speaker_id", None),
                 )
             )
+        words = []
+        for word in getattr(response, "words", None) or []:
+            word_text = self._field(word, "word")
+            if word_text is None:
+                word_text = self._field(word, "text")
+            start = self._field(word, "start")
+            end = self._field(word, "end")
+            if word_text is None or start is None or end is None:
+                continue
+            words.append(
+                TranscriptWord(
+                    word=str(word_text).strip(),
+                    start_seconds=float(start),
+                    end_seconds=float(end),
+                )
+            )
         return ProviderTranscription(
             text=text,
             segments=tuple(segments),
+            words=tuple(words),
             language=getattr(response, "language", None),
         )
+
+    @staticmethod
+    def _field(value: object, name: str) -> object | None:
+        if isinstance(value, dict):
+            return value.get(name)
+        return getattr(value, name, None)
 
     @staticmethod
     def _optional_float(value: object) -> float | None:

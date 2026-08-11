@@ -57,3 +57,35 @@ def test_subtitle_service_rejects_empty_transcript(tmp_path):
         assert "no subtitle segments" in str(error)
     else:
         raise AssertionError("Expected empty transcripts to be rejected")
+
+
+def test_subtitle_service_groups_word_timestamps_in_groups_of_five(tmp_path):
+    video = tmp_path / "video.mp4"
+    transcript = tmp_path / "transcript.json"
+    output = tmp_path / "out.mp4"
+    video.write_bytes(b"video")
+    transcript.write_text(
+        json.dumps(
+            {
+                "segments": [],
+                "words": [
+                    {"word": f"word{i}", "start_seconds": i, "end_seconds": i + 0.5}
+                    for i in range(6)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class FakeRenderer:
+        def render(self, video_path, ass_path, output_path, overwrite):
+            captured["ass"] = ass_path.read_text(encoding="utf-8")
+
+    result = SubtitleService(FakeRenderer()).add_subtitles(
+        SubtitleRequest(video, transcript, output)
+    )
+
+    assert result.subtitle_count == 2
+    assert "word0 word1 word2 word3 word4" in captured["ass"]
+    assert "word5" in captured["ass"]

@@ -10,6 +10,7 @@ from cli_anything.shotcut.core.transcription.adapters.json_transcription_writer 
 from cli_anything.shotcut.core.transcription.models import (
     ProviderTranscription,
     TranscriptSegment,
+    TranscriptWord,
     TranscriptionRequest,
 )
 from cli_anything.shotcut.core.transcription.service import TranscriptionService
@@ -64,6 +65,7 @@ class FakeProvider:
         return ProviderTranscription(
             text="hello from the fake provider",
             segments=(TranscriptSegment(0.0, 2.0, "hello from the fake provider"),),
+            words=(TranscriptWord("hello", 0.0, 0.5),),
             language="en",
         )
 
@@ -91,7 +93,9 @@ def test_transcribes_local_video_at_cost_saving_speed(tmp_path):
     result = service.transcribe(TranscriptionRequest(source=str(source)))
 
     assert result.text == "hello from the fake provider"
-    assert result.segments[0].end_seconds == 1.0
+    assert result.segments[0].end_seconds == 4.0
+    assert result.words[0].start_seconds == 0.0
+    assert result.words[0].end_seconds == 1.0
     assert result.transcript_path == (tmp_path / "video.transcript.json").resolve()
     assert result.transcript_path.is_file()
     assert downloader.calls == []

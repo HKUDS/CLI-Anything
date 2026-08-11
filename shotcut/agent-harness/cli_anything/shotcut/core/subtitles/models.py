@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..transcription.models import TranscriptSegment
+from ..transcription.models import TranscriptSegment, TranscriptWord
 
 
 @dataclass(frozen=True)
@@ -33,3 +33,4 @@ class SubtitleResult:
 @dataclass(frozen=True)
 class SubtitleDocument:
     segments: tuple[TranscriptSegment, ...]
+    words: tuple[TranscriptWord, ...] = ()
