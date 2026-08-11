@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowCyto — Befundwerkzeug für Durchflusszytometrie</title>
+<style>
+/* ------------------------------------------------------------------
+   Farbtoken in drei Zustaenden.
+
+   Ohne ausdrueckliche Wahl richtet sich die Anwendung nach der
+   Systemeinstellung; die Schaltflaeche im Kopf setzt data-theme und hat
+   dann Vorrang in beide Richtungen. Alle Farben -- auch die der Plots --
+   stammen aus diesen Token, damit der Canvas-Renderer beide Faelle
+   korrekt zeichnet.
+   ------------------------------------------------------------------ */
+:root {
+  /* Hell */
+  --bg: #f4f6f9;
+  --bg-panel: #ffffff;
+  --bg-elevated: #eef1f6;
+  --bg-input: #ffffff;
+  --border: #d8dee8;
+  --border-strong: #b6c0ce;
+  --fg: #17202e;
+  --fg-muted: #5d6a7d;
+  --accent: #0b7ea3;
+  --accent-dim: #7fc4dc;
+  /* Gefuellte Akzentflaechen brauchen einen eigenen Grund: der helle
+     --accent-dim traegt keine weisse Schrift. */
+  --accent-fill: #0b7ea3;
+  --on-accent: #ffffff;
+  --on-accent-muted: rgba(255,255,255,.82);
+  --ok: #15803d;
+  --warn: #a16207;
+  --crit: #b91c1c;
+  --plot-bg: #ffffff;
+  --plot-axis: #b6c0ce;
+  --plot-point: #2b5fb8;
+  --plot-backgate: #dde3ec;
+  --plot-label-bg: rgba(255,255,255,0.85);
+  --radius: 6px;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0e13;
+    --bg-panel: #12161e;
+    --bg-elevated: #1a1f2a;
+    --bg-input: #0e1219;
+    --border: #262d3a;
+    --border-strong: #39414f;
+    --fg: #e6e9ef;
+    --fg-muted: #8b95a5;
+    --accent: #4cc9f0;
+    --accent-dim: #2a7f96;
+    --accent-fill: #2a7f96;
+    --on-accent: #ffffff;
+    --on-accent-muted: rgba(255,255,255,.82);
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --crit: #f87171;
+    --plot-bg: #0e1116;
+    --plot-axis: #39414d;
+    --plot-point: #7aa2f7;
+    --plot-backgate: #2a3140;
+    --plot-label-bg: rgba(14,17,22,0.80);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0e13;
+  --bg-panel: #12161e;
+  --bg-elevated: #1a1f2a;
+  --bg-input: #0e1219;
+  --border: #262d3a;
+  --border-strong: #39414f;
+  --fg: #e6e9ef;
+  --fg-muted: #8b95a5;
+  --accent: #4cc9f0;
+  --accent-dim: #2a7f96;
+  --accent-fill: #2a7f96;
+  --on-accent: #ffffff;
+  --on-accent-muted: rgba(255,255,255,.82);
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --crit: #f87171;
+  --plot-bg: #0e1116;
+  --plot-axis: #39414d;
+  --plot-point: #7aa2f7;
+  --plot-backgate: #2a3140;
+  --plot-label-bg: rgba(14,17,22,0.80);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* --- Kopfzeile ---------------------------------------------------- */
+header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 8px 14px; background: var(--bg-panel);
+  border-bottom: 1px solid var(--border); flex: none;
+}
+.brand { font-weight: 650; letter-spacing: .2px; display: flex; align-items: baseline; gap: 8px; }
+.brand small { color: var(--fg-muted); font-weight: 400; font-size: 11px; }
+header .spacer { flex: 1; }
+header .gruppe { display: flex; align-items: center; gap: 6px; }
+
+button, .btn, select, input[type=text], input[type=number], input[type=date], textarea {
+  font: inherit; color: var(--fg); background: var(--bg-input);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  padding: 5px 9px;
+}
+button, .btn { cursor: pointer; background: var(--bg-elevated); white-space: nowrap; }
+button:hover, .btn:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
+button.aktiv { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.btn input[type=file] { display: none; }
+textarea { width: 100%; resize: vertical; font-family: inherit; }
+label.feld { display: block; margin-bottom: 8px; }
+label.feld span { display: block; color: var(--fg-muted); font-size: 11px; margin-bottom: 2px; }
+label.feld input, label.feld select, label.feld textarea { width: 100%; }
+
+/* --- Grundraster -------------------------------------------------- */
+main { display: grid; grid-template-columns: 250px 1fr 300px; flex: 1; min-height: 0; }
+aside { background: var(--bg-panel); overflow-y: auto; }
+#links { border-right: 1px solid var(--border); }
+#rechts { border-left: 1px solid var(--border); }
+#mitte { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+aside section { border-bottom: 1px solid var(--border); }
+aside h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--fg-muted); margin: 0; padding: 9px 12px 6px;
+}
+aside .inhalt { padding: 0 12px 12px; }
+
+/* --- Reiter ------------------------------------------------------- */
+nav.reiter { display: flex; gap: 2px; padding: 6px 10px 0; background: var(--bg-panel); border-bottom: 1px solid var(--border); flex: none; }
+nav.reiter button {
+  border: 1px solid transparent; border-bottom: none; background: none;
+  border-radius: var(--radius) var(--radius) 0 0; color: var(--fg-muted); padding: 6px 13px;
+}
+nav.reiter button.aktiv { background: var(--bg); border-color: var(--border); color: var(--fg); box-shadow: none; }
+.reiterinhalt { flex: 1; overflow: auto; min-height: 0; display: none; padding: 12px; }
+.reiterinhalt.aktiv { display: block; }
+#inhaltPlots.aktiv { display: flex; flex-direction: column; padding: 0; }
+
+/* --- Werkzeugleiste ----------------------------------------------- */
+.werkzeuge {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 12px; border-bottom: 1px solid var(--border); flex: none;
+}
+.werkzeuge .trenner { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.werkzeuge label { color: var(--fg-muted); font-size: 11px; }
+
+/* --- Plotraster --------------------------------------------------- */
+#plotRaster {
+  flex: 1; overflow: auto; padding: 12px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px; align-content: start;
+}
+.kachel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; }
+.kachel.aktiv { border-color: var(--accent); }
+.kachel .kopf { display: flex; gap: 4px; align-items: center; padding: 6px; border-bottom: 1px solid var(--border); }
+.kachel .kopf select { flex: 1; min-width: 0; padding: 3px 5px; font-size: 11px; }
+.kachel .kopf button { padding: 3px 7px; font-size: 11px; }
+.kachel canvas { width: 100%; height: 300px; display: block; cursor: crosshair; }
+.kachel.zeiger canvas { cursor: default; }
+
+/* --- Gate-Baum ---------------------------------------------------- */
+.gatebaum { font-size: 12px; }
+.gatebaum .knoten {
+  display: flex; align-items: center; gap: 6px; padding: 3px 4px;
+  border-radius: 4px; cursor: pointer;
+}
+.gatebaum .knoten:hover { background: var(--bg-elevated); }
+.gatebaum .knoten.aktiv { background: var(--accent-fill); color: var(--on-accent); }
+.gatebaum .punkt { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.gatebaum .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gatebaum .zahl { color: var(--fg-muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+.gatebaum .knoten.aktiv .zahl { color: var(--on-accent-muted); }
+.gatebaum .vorlaeufig::after { content: "?"; color: var(--warn); font-weight: 700; }
+
+.probenliste .eintrag { padding: 5px 6px; border-radius: 4px; cursor: pointer; }
+.probenliste .eintrag:hover { background: var(--bg-elevated); }
+.probenliste .eintrag.aktiv { background: var(--accent-fill); color: var(--on-accent); }
+.probenliste .meta { font-size: 11px; color: var(--fg-muted); }
+.probenliste .eintrag.aktiv .meta { color: var(--on-accent-muted); }
+
+/* --- Tabellen ----------------------------------------------------- */
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+th { color: var(--fg-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; position: sticky; top: 0; background: var(--bg); }
+td.zahl, th.zahl { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+tr.hervor { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.status-erhoeht { color: var(--crit); font-weight: 600; }
+.status-erniedrigt { color: var(--warn); font-weight: 600; }
+.status-normal { color: var(--ok); }
+
+/* --- Karten ------------------------------------------------------- */
+.karte { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; }
+.karte h3 { margin: 0 0 8px; font-size: 13px; }
+.karte h4 { margin: 12px 0 4px; font-size: 12px; color: var(--fg-muted); }
+.karte p { margin: 4px 0; }
+
+.marke { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.marke.ok { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.marke.warnung { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.marke.kritisch { background: color-mix(in srgb, var(--crit) 20%, transparent); color: var(--crit); }
+
+.hinweisbox { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); padding: 8px 12px; border-radius: 0 var(--radius) var(--radius) 0; margin: 8px 0; }
+.hinweisbox.kritisch { border-color: var(--crit); background: color-mix(in srgb, var(--crit) 8%, transparent); }
+.hinweisbox.info { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.balken { height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
+.balken > div { height: 100%; background: var(--accent); }
+
+pre.befund { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; overflow-x: auto; }
+
+.matrix { font-size: 10px; font-family: var(--mono); }
+.matrix input { width: 46px; padding: 2px 3px; font-size: 10px; text-align: right; }
+.matrix th { font-size: 9px; text-transform: none; letter-spacing: 0; }
+
+footer {
+  flex: none; padding: 4px 14px; background: var(--bg-panel);
+  border-top: 1px solid var(--border); color: var(--fg-muted); font-size: 11px;
+  display: flex; gap: 16px; align-items: center;
+}
+footer .warnhinweis { color: var(--warn); }
+
+.leer { color: var(--fg-muted); padding: 14px; text-align: center; font-size: 12px; }
+.reihe { display: flex; gap: 8px; align-items: center; }
+.reihe > * { flex: 1; }
+.reihe > button { flex: none; }
+
+@media print {
+  header, aside, nav.reiter, .werkzeuge, footer, .nichtdrucken { display: none !important; }
+  main { display: block; }
+  .reiterinhalt { display: block !important; overflow: visible; }
+  #inhaltBefund:not(.aktiv) ~ * { display: none; }
+  body { overflow: visible; background: #fff; color: #000; }
+  pre.befund { border: none; padding: 0; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">FlowCyto <small>Durchflusszytometrie-Befundung</small></div>
+    <div class="gruppe">
+      <label class="btn">Dateien öffnen<input type="file" id="dateiEingabe" multiple accept=".fcs,.csv,.tsv,.txt,.lmd"></label>
+      <select id="panelAuswahl" title="Panel-Vorlage"><option value="">Panel wählen …</option></select>
+      <button id="btnPanelAnwenden" class="primary" disabled>Anwenden</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="gruppe">
+      <button id="btnSitzungSpeichern" title="Gates, Panel, Befund als Datei sichern">Sitzung sichern</button>
+      <label class="btn">Sitzung laden<input type="file" id="sitzungEingabe" accept=".json"></label>
+      <button id="btnDesign" title="Hell / Dunkel">◐</button>
+    </div>
+  </header>
+
+  <main>
+    <aside id="links">
+      <section>
+        <h2>Proben</h2>
+        <div class="inhalt"><div id="probenliste" class="probenliste"><div class="leer">Noch keine Datei geladen</div></div></div>
+      </section>
+      <section>
+        <h2>Gate-Hierarchie</h2>
+        <div class="inhalt">
+          <div id="gatebaum" class="gatebaum"><div class="leer">Keine Gates</div></div>
+          <div class="reihe" style="margin-top:8px">
+            <button id="btnVorgating" title="Zeitfenster, Zellen und Singlets automatisch setzen">Vorgating</button>
+            <button id="btnGateLoeschen" title="Ausgewähltes Gate mit allen Kindgates entfernen">Löschen</button>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h2>Panel</h2>
+        <div class="inhalt"><div id="panelInfo"><div class="leer">Kein Panel gewählt</div></div></div>
+      </section>
+    </aside>
+
+    <section id="mitte">
+      <nav class="reiter" id="reiterleiste">
+        <button data-reiter="Plots" class="aktiv">Plots</button>
+        <button data-reiter="Cluster">Clusteranalyse</button>
+        <button data-reiter="Statistik">Statistik</button>
+        <button data-reiter="QC">Qualität</button>
+        <button data-reiter="Befund">Befund</button>
+      </nav>
+
+      <div id="inhaltPlots" class="reiterinhalt aktiv">
+        <div class="werkzeuge">
+          <label>Werkzeug</label>
+          <button data-werkzeug="zeiger" class="aktiv">Zeiger</button>
+          <button data-werkzeug="rect">Rechteck</button>
+          <button data-werkzeug="polygon">Polygon</button>
+          <button data-werkzeug="ellipse">Ellipse</button>
+          <button data-werkzeug="interval">Intervall</button>
+          <button data-werkzeug="quadrant">Quadranten</button>
+          <div class="trenner"></div>
+          <label>Darstellung</label>
+          <select id="plottyp">
+            <option value="density">Dichte (Pseudofarbe)</option>
+            <option value="dot">Punkte</option>
+            <option value="contour">Kontur</option>
+            <option value="histogram">Histogramm</option>
+          </select>
+          <div class="trenner"></div>
+          <button id="btnPlotHinzu">+ Plot</button>
+          <label><input type="checkbox" id="chkBackgate"> Backgating</label>
+          <div class="trenner"></div>
+          <label>max. Ereignisse</label>
+          <select id="ereignislimit">
+            <option value="50000">50 000</option>
+            <option value="150000" selected>150 000</option>
+            <option value="500000">500 000</option>
+          </select>
+        </div>
+        <div id="plotRaster"><div class="leer">Datei öffnen, um zu beginnen</div></div>
+      </div>
+
+      <div id="inhaltCluster" class="reiterinhalt">
+        <div class="karte nichtdrucken">
+          <h3>Unüberwachte Analyse</h3>
+          <p style="color:var(--fg-muted)">Findet Populationen ohne feste Gating-Strategie — hilfreich, um aberrante Zellen zu entdecken, die eine Standardstrategie übersieht. Jeder Cluster lässt sich als Gate übernehmen und erscheint dann in Statistik und Befund.</p>
+          <div class="reihe" style="margin-top:10px">
+            <select id="clusterBasis" title="Ausgangspopulation"></select>
+            <select id="clusterVerfahren">
+              <option value="flowsom">FlowSOM (SOM + Metacluster)</option>
+              <option value="tsne">t-SNE</option>
+              <option value="pca">Hauptkomponenten (PCA)</option>
+            </select>
+            <label style="flex:none;color:var(--fg-muted)">Cluster</label>
+            <input type="number" id="clusterAnzahl" value="12" min="2" max="18" style="flex:none;width:64px">
+            <button id="btnClusterStart" class="primary" style="flex:none">Berechnen</button>
+          </div>
+        </div>
+        <div id="clusterAusgabe"><div class="leer">Noch keine Analyse berechnet</div></div>
+      </div>
+
+      <div id="inhaltStatistik" class="reiterinhalt"><div class="leer">Keine Auswertung vorhanden</div></div>
+      <div id="inhaltQC" class="reiterinhalt"><div class="leer">Keine Probe geladen</div></div>
+      <div id="inhaltBefund" class="reiterinhalt"><div class="leer">Keine Auswertung vorhanden</div></div>
+    </section>
+
+    <aside id="rechts">
+      <section>
+        <h2>Auftrag und Patient</h2>
+        <div class="inhalt" id="patientenformular"></div>
+      </section>
+      <section>
+        <h2>Eigenschaften</h2>
+        <div class="inhalt" id="inspektor"><div class="leer">Nichts ausgewählt</div></div>
+      </section>
+      <section>
+        <h2>Kompensation</h2>
+        <div class="inhalt" id="kompensationsbereich"><div class="leer">Keine Probe geladen</div></div>
+      </section>
+      <section>
+        <h2>Referenzbereiche</h2>
+        <div class="inhalt" id="referenzbereich"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer>
+    <span id="statusZeile">Bereit</span>
+    <span class="spacer" style="flex:1"></span>
+    <span class="warnhinweis">Entscheidungsunterstützung — kein zertifiziertes In-vitro-Diagnostikum. Ärztliche Prüfung erforderlich.</span>
+  </footer>
+</div>
+
+<script type="module" src="./src/ui/main.js"></script>
+</body>
+</html>

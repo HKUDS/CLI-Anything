@@ -1513,6 +1513,20 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "flowcyto",
+      "display_name": "FlowCyto",
+      "version": "1.0.0",
+      "description": "Flow cytometry analysis and clinical reporting - FCS parsing, compensation, Logicle scaling, gating strategies from 15 panel templates, FlowSOM/t-SNE clustering, acquisition QC, reference ranges, established scores and structured reports with FHIR export",
+      "requires": "Bun 1.0+ or Node 22+ (no runtime dependencies, works offline)",
+      "homepage": "https://github.com/xhuljanoshehu/CLI-Anything/tree/main/flowcyto/agent-harness",
+      "source_url": null,
+      "install_cmd": "git clone https://github.com/xhuljanoshehu/CLI-Anything.git && cd CLI-Anything/flowcyto/agent-harness && bun install",
+      "entry_point": "bun cli.mjs",
+      "skill_md": "skills/cli-anything-flowcyto/SKILL.md",
+      "category": "science",
+      "contributors": []
     }
   ]
 }

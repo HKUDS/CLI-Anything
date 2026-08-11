@@ -1,0 +1,25 @@
+{
+  "name": "flowcyto",
+  "version": "1.0.0",
+  "description": "Befundwerkzeug fuer durchflusszytometrische Daten: FCS-Analyse, Gating, Clustering, Qualitaetskontrolle und strukturierte Befunderstellung",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "bun build.mjs",
+    "test": "bun test",
+    "smoke": "bun build.mjs && node test/browser-smoke.mjs",
+    "smoke:bilder": "bun build.mjs && node test/browser-smoke.mjs --screenshots",
+    "start": "bun build.mjs && echo 'dist/flowcyto.html im Browser oeffnen'"
+  },
+  "keywords": [
+    "durchflusszytometrie",
+    "flow-cytometry",
+    "fcs",
+    "immunphaenotypisierung",
+    "gating",
+    "logicle",
+    "flowsom",
+    "befund"
+  ]
+}

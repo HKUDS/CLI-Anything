@@ -1,0 +1,3 @@
+# Erzeugte Einzeldatei und Screenshots -- werden aus der Quelle gebaut
+dist/
+node_modules/
