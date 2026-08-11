@@ -39,6 +39,12 @@ setup(
         "defusedxml>=0.7.1",
     ],
     extras_require={
+        "transcription": [
+            "mistralai>=1.0.0",
+        ],
+        "local-tts": [
+            "coqui-tts>=0.27.0",
+        ],
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",

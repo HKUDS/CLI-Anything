@@ -10,6 +10,22 @@ without a GUI.
 - `click` (CLI framework)
 - `melt` (MLT CLI) — **required** for rendering and playback
 - `ffmpeg` / `ffprobe` — required for media probing and export
+- `MISTRAL_API_KEY` — required for transcription
+- `ELEVENLABS_API_KEY` — required for text-to-speech
+- `BRIGHT_DATA_API_KEY` — required for Instagram video downloads
+
+API keys can be stored in macOS Keychain instead of a workspace `.env` file.
+The CLI looks for Keychain entries with account `cli-anything-shotcut` and
+service names `BRIGHT_DATA_API_KEY`, `MISTRAL_API_KEY`, and `ELEVENLABS_API_KEY`.
+
+```bash
+read -r -s BRIGHT_DATA_API_KEY
+security add-generic-password -U -a cli-anything-shotcut -s BRIGHT_DATA_API_KEY -w "$BRIGHT_DATA_API_KEY"
+unset BRIGHT_DATA_API_KEY
+```
+
+The CLI checks environment variables first, then macOS Keychain. Do not create
+a real `.env` file inside the repository.
 
 On macOS, the bundled Shotcut MLT executable is detected automatically. Set
 `SHOTCUT_MELT=/path/to/melt` to override it when multiple `melt` executables
@@ -88,6 +104,9 @@ Inside the REPL, type `help` for all available commands.
 | Command | Description |
 |---------|-------------|
 | `media import <file> [--caption name]` | Import media file, returns `clip_id` |
+| `media transcribe <file-or-url> [--speed 2.0]` | Transcribe video audio |
+| `media add-subtitles <video> --transcript <json> -o <output>` | Burn timestamped subtitles into a video |
+| `media tts <text> --voice <id> -o <file>` | Generate speech with ElevenLabs |
 | `media` | List all imported media |
 | `probe <file>` | Analyze a media file |
 
@@ -219,12 +238,33 @@ Available blend modes: `normal`, `add`, `multiply`, `screen`, `overlay`, `darken
 ### Media
 
 ```bash
+media download-instagram <url> -o <output.mp4> [--overwrite]
+media transcribe <file-or-url> [--speed 2.0] [--model voxtral-mini-latest] [-o transcript.json]
+media add-subtitles <video> --transcript transcript.json -o subtitled.mp4 [--overwrite]
+media tts "Hello from Shotcut" --voice <id> -o speech.mp3
+media tts --text-file script.txt --voice <id> -o speech.mp3
+media tts "Hello locally" --provider local --voice-sample my-voice.wav -o speech.wav
 media import <file> [--caption name]               # Import media into project bin
 media list                                         # List media in project
 media probe <file>                                 # Analyze media file
 media check                                        # Check all files exist
 media thumbnail <file> -o <output> [--time tc]     # Extract thumbnail
 ```
+
+Install the optional transcription dependency with `pip install cli-anything-shotcut[transcription]`.
+Install local XTTS support with `pip install cli-anything-shotcut[local-tts]`.
+Local XTTS uses a reference recording and requires `--format wav`; use `--language`
+for non-English speech and `--device mps` to force Apple Silicon acceleration.
+Instagram downloads use BrightData and require `BRIGHT_DATA_API_KEY`.
+
+Transcription always writes a JSON sidecar with timestamped segments. For a
+local video, the default path is `<video>.transcript.json`; use `-o` to choose
+another path. Segment timestamps are mapped back to the original video when
+the cost-saving 2x audio speed is used.
+
+Use `media add-subtitles` with that sidecar to burn bold, centered, outlined ASS
+captions into a rendered MP4. The command requires ffmpeg with the subtitles
+filter enabled.
 
 ### Export
 

@@ -11,3 +11,4 @@ htmlcov/
 *.mlt
 *.egg
 .worktrees/
+.env

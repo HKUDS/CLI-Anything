@@ -22,6 +22,7 @@ import shlex
 import shutil
 import subprocess
 import click
+from pathlib import Path
 from typing import Optional
 
 # Add parent to path for imports
@@ -36,6 +37,41 @@ from cli_anything.shotcut.core import export as export_mod
 from cli_anything.shotcut.core import transitions as trans_mod
 from cli_anything.shotcut.core import compositing as comp_mod
 from cli_anything.shotcut.core import preview as preview_mod
+from cli_anything.shotcut.core.transcription import TranscriptionRequest, TranscriptionService
+from cli_anything.shotcut.core.transcription.adapters import (
+    FfmpegAudioExtractor,
+    HttpVideoDownloader,
+    MistralTranscriber,
+    JsonTranscriptionWriter,
+    TemporaryWorkspaceProvider,
+)
+from cli_anything.shotcut.core.media_download import (
+    DownloadRequest,
+    MediaDownloadService,
+    MediaResolverRegistry,
+)
+from cli_anything.shotcut.core.media_download.adapters import (
+    BrightDataApiClient,
+    HttpFileDownloader,
+)
+from cli_anything.shotcut.core.media_download.adapters.platforms import (
+    BrightDataInstagramVideoResolver,
+)
+from cli_anything.shotcut.core.credentials import (
+    CompositeCredentialProvider,
+    EnvironmentCredentialProvider,
+    MacOSKeychainCredentialProvider,
+)
+from cli_anything.shotcut.core.text_to_speech import (
+    TextToSpeechRequest,
+    TextToSpeechService,
+)
+from cli_anything.shotcut.core.text_to_speech.adapters import (
+    ElevenLabsTextToSpeech,
+    XTTSVoiceProvider,
+)
+from cli_anything.shotcut.core.subtitles import SubtitleRequest, SubtitleService
+from cli_anything.shotcut.core.subtitles.adapters import FfmpegSubtitleRenderer
 
 # Global session state (persists across commands in REPL mode)
 _session: Optional[Session] = None
@@ -172,7 +208,7 @@ def handle_error(func):
             else:
                 click.echo(f"Error: {e}", err=True)
             sys.exit(1) if not _repl_mode else None
-        except (ValueError, IndexError, RuntimeError) as e:
+        except (ValueError, IndexError, RuntimeError, FileExistsError) as e:
             if _json_output:
                 click.echo(json.dumps({"error": str(e), "type": type(e).__name__}))
             else:
@@ -191,6 +227,10 @@ def handle_error(func):
 
 _repl_mode = False
 _dry_run = False
+_credentials = CompositeCredentialProvider([
+    EnvironmentCredentialProvider(),
+    MacOSKeychainCredentialProvider(),
+])
 
 
 # ============================================================================
@@ -700,7 +740,7 @@ def filter_duck(track_index, clip_index, windows, normal_level, duck_level, atta
 
 @cli.group()
 def media():
-    """Media operations: probe, list, check files."""
+    """Media operations: probe, list, check files, and transcribe."""
     pass
 
 
@@ -740,6 +780,157 @@ def media_import(resource, caption):
     session = get_session()
     result = media_mod.import_media(session, resource, caption)
     output(result, f"Imported {os.path.basename(resource)} as {result['clip_id']}")
+
+
+@media.command("download-instagram")
+@click.argument("source_url")
+@click.option("-o", "--output", "output_path", required=True, help="Output video path")
+@click.option("--overwrite", is_flag=True, help="Replace an existing output file")
+@handle_error
+def media_download_instagram(source_url, output_path, overwrite):
+    """Download a public Instagram post or reel video through BrightData."""
+    brightdata_api = BrightDataApiClient(
+        api_key=_credentials.get_required("BRIGHT_DATA_API_KEY"),
+        retry_count=int(os.getenv("BRIGHT_DATA_SNAPSHOT_RETRY_COUNT", "60")),
+        poll_interval_seconds=float(
+            os.getenv("BRIGHT_DATA_SNAPSHOT_POLL_INTERVAL_SECONDS", "2")
+        ),
+    )
+    service = MediaDownloadService(
+        resolver_registry=MediaResolverRegistry(
+            [BrightDataInstagramVideoResolver(brightdata_api)]
+        ),
+        file_downloader=HttpFileDownloader(),
+    )
+    result = service.download(
+        DownloadRequest(
+            source_url=source_url,
+            output_path=Path(output_path),
+            overwrite=overwrite,
+        )
+    )
+    output(result.to_dict(), f"Downloaded Instagram video to: {result.output_path}")
+
+
+@media.command("transcribe")
+@click.argument("source")
+@click.option(
+    "--speed",
+    "playback_speed",
+    default=2.0,
+    type=click.FloatRange(min=0.5, max=2.0),
+    show_default=True,
+    help="Audio playback speed used to reduce transcription cost.",
+)
+@click.option("--model", default="voxtral-mini-latest", show_default=True)
+@click.option("-o", "--output", "output_path", default=None, help="Transcript JSON path")
+@handle_error
+def media_transcribe(source, playback_speed, model, output_path):
+    """Transcribe a local video file or HTTP(S) video URL."""
+    api_key = _credentials.get_required("MISTRAL_API_KEY")
+    service = TranscriptionService(
+        downloader=HttpVideoDownloader(),
+        audio_extractor=FfmpegAudioExtractor(),
+        provider=MistralTranscriber(api_key=api_key, model=model),
+        workspace_provider=TemporaryWorkspaceProvider(),
+        writer=JsonTranscriptionWriter(),
+    )
+    result = service.transcribe(
+        TranscriptionRequest(
+            source=source,
+            playback_speed=playback_speed,
+            output_path=Path(output_path) if output_path else None,
+        )
+    )
+    output(result.to_dict(), "Transcription complete")
+
+
+@media.command("add-subtitles")
+@click.argument("video", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--transcript",
+    "transcript_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Timestamped transcript JSON produced by media transcribe",
+)
+@click.option("-o", "output_path", required=True, type=click.Path(dir_okay=False),
+              help="Output video path")
+@click.option("--overwrite", is_flag=True, help="Replace an existing output file")
+@handle_error
+def media_add_subtitles(video, transcript_path, output_path, overwrite):
+    """Burn timestamped transcript segments into VIDEO."""
+    service = SubtitleService(FfmpegSubtitleRenderer())
+    result = service.add_subtitles(
+        SubtitleRequest(
+            video_path=Path(video),
+            transcript_path=Path(transcript_path),
+            output_path=Path(output_path),
+            overwrite=overwrite,
+        )
+    )
+    output(result.to_dict(), f"Subtitles added to: {result.output_path}")
+
+
+@media.command("tts")
+@click.argument("text", required=False)
+@click.option("--provider", type=click.Choice(["elevenlabs", "local"]),
+              default="elevenlabs", show_default=True,
+              help="Speech provider")
+@click.option("--text-file", type=click.Path(exists=True, dir_okay=False),
+              help="Read the text to synthesize from a UTF-8 file")
+@click.option("--voice", "voice_id", default=None, help="ElevenLabs voice ID")
+@click.option("--voice-sample", type=click.Path(exists=True, dir_okay=False),
+              help="Reference WAV/audio file for local XTTS voice cloning")
+@click.option("--language", default="en", show_default=True,
+              help="Language code for local XTTS, e.g. en or nl")
+@click.option("--device", type=click.Choice(["auto", "mps", "cpu"]), default="auto",
+              show_default=True, help="Local XTTS execution device")
+@click.option("-o", "output_path", required=True, type=click.Path(dir_okay=False),
+              help="Output audio path")
+@click.option("--model", default=None,
+              help="Provider model ID (defaults to the provider's recommended model)")
+@click.option("--format", "output_format", default=None,
+              help="Audio format; local XTTS currently requires wav")
+@handle_error
+def media_tts(text, provider, text_file, voice_id, voice_sample, language, device,
+              output_path, model, output_format):
+    """Generate speech from TEXT or --text-file."""
+    if text is not None and text_file is not None:
+        raise ValueError("Provide TEXT or --text-file, not both")
+    if text is None and text_file is None:
+        raise ValueError("Provide TEXT or --text-file")
+
+    source_text = Path(text_file).read_text(encoding="utf-8") if text_file else text
+    if provider == "local":
+        if voice_sample is None:
+            raise ValueError("Local XTTS requires --voice-sample")
+        tts_provider = XTTSVoiceProvider(device=device, model=model or XTTSVoiceProvider.MODEL)
+        selected_model = model or XTTSVoiceProvider.MODEL
+        selected_format = output_format or "wav"
+    else:
+        if not voice_id:
+            raise ValueError("ElevenLabs requires --voice")
+        if voice_sample is not None:
+            raise ValueError("--voice-sample is only valid with --provider local")
+        api_key = _credentials.get_required("ELEVENLABS_API_KEY")
+        tts_provider = ElevenLabsTextToSpeech(api_key=api_key)
+        selected_model = model or "eleven_multilingual_v2"
+        selected_format = output_format or "mp3_44100_128"
+
+    service = TextToSpeechService(tts_provider)
+    result = service.synthesize(
+        TextToSpeechRequest(
+            text=source_text,
+            voice_id=voice_id,
+            output_path=Path(output_path),
+            model=selected_model,
+            output_format=selected_format,
+            voice_sample=Path(voice_sample) if voice_sample else None,
+            language=language,
+        )
+    )
+    output(result.to_dict(), f"Speech saved to: {result.output_path}")
 
 
 @media.command("thumbnail")
@@ -1209,6 +1400,8 @@ def _run_repl(s: Session, skin):
         "add-track <video|audio> [name]": "Add a track",
         "add-clip <clip_id> <track> [in] [out] [--at time]": "Add imported clip to track",
         "media import <file> [--caption name]": "Import media file into project bin",
+        "media transcribe <file-or-url> [--speed 2.0]": "Transcribe video audio",
+        "media add-subtitles <video> --transcript <json> -o <output>": "Burn transcript subtitles into video",
         "clips <track>": "List clips on a track",
         "remove-clip <track> <clip>": "Remove a clip",
         "trim <track> <clip> [--in tc] [--out tc]": "Trim a clip",
@@ -1558,6 +1751,37 @@ def _run_repl(s: Session, skin):
                         i += 1
                 result = media_mod.import_media(s, args[1], caption)
                 output(result, f"Imported {os.path.basename(args[1])} as {result['clip_id']}")
+
+            elif cmd == "media" and args and args[0] == "transcribe":
+                if len(args) < 2:
+                    click.echo("Usage: media transcribe <file-or-url> [--speed 2.0] [--model name]")
+                    continue
+                playback_speed = 2.0
+                model = "voxtral-mini-latest"
+                i = 2
+                while i < len(args):
+                    if args[i] == "--speed" and i + 1 < len(args):
+                        playback_speed = float(args[i + 1])
+                        i += 2
+                    elif args[i] == "--model" and i + 1 < len(args):
+                        model = args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                api_key = os.getenv("MISTRAL_API_KEY", "")
+                service = TranscriptionService(
+                    downloader=HttpVideoDownloader(),
+                    audio_extractor=FfmpegAudioExtractor(),
+                    provider=MistralTranscriber(api_key=api_key, model=model),
+                    workspace_provider=TemporaryWorkspaceProvider(),
+                )
+                result = service.transcribe(
+                    TranscriptionRequest(
+                        source=args[1],
+                        playback_speed=playback_speed,
+                    )
+                )
+                output(result.to_dict(), "Transcription complete")
 
             elif cmd == "media":
                 result = media_mod.list_media(s)

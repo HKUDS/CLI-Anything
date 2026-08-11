@@ -68,6 +68,11 @@ cli-anything-shotcut --project my_project.mlt
 - `media import <file> [--caption name]` — Import file into project bin, returns `clip_id` (e.g., `clip0`)
 - `media` — List all imported media
 - `probe <file>` — Analyze a media file
+- `media transcribe <file-or-url> [--speed 2.0] [-o transcript.json]` — Transcribe video audio with Mistral Voxtral and save timestamped JSON
+- `media add-subtitles <video> --transcript <json> -o <output.mp4> [--overwrite]` — Burn timestamped ASS subtitles into a video
+- `media tts <text> --voice <id> -o <output.mp3>` — Generate speech with ElevenLabs; use `--text-file` for longer scripts
+- `media tts <text> --provider local --voice-sample <file> -o <output.wav>` — Generate speech locally with XTTS v2
+- `media download-instagram <url> -o <output.mp4>` — Download an Instagram post or reel video through BrightData
 
 **Timeline:**
 - `add-track <video|audio> [name]` — Add a track
@@ -160,6 +165,8 @@ Media operations: probe, list, check files.
 | `list` | List all media clips in the current project |
 | `check` | Check all media files for existence |
 | `thumbnail` | Generate a thumbnail from a video file |
+| `transcribe` | Transcribe a local video or HTTP(S) video URL |
+| `download-instagram` | Download an Instagram post or reel video |
 
 
 ### Export
