@@ -740,7 +740,15 @@ def filter_duck(track_index, clip_index, windows, normal_level, duck_level, atta
 
 @cli.group()
 def media():
-    """Media operations: probe, list, check files, and transcribe."""
+    """Media operations: probe, transcribe, and burn subtitles.
+
+    One-shot workflow: run ``media transcribe VIDEO -o VIDEO.transcript.json``;
+    then run ``media add-subtitles VIDEO --transcript VIDEO.transcript.json
+    -o subtitled.mp4``.
+
+    Transcription requests Mistral word timestamps without forcing a language.
+    Subtitle rendering groups at most five timed words per caption.
+    """
     pass
 
 
@@ -826,7 +834,12 @@ def media_download_instagram(source_url, output_path, overwrite):
 @click.option("-o", "--output", "output_path", default=None, help="Transcript JSON path")
 @handle_error
 def media_transcribe(source, playback_speed, model, output_path):
-    """Transcribe a local video file or HTTP(S) video URL."""
+    """Transcribe VIDEO/URL and write word-timestamped JSON.
+
+    The output JSON is ready for ``media add-subtitles``. Mistral language
+    detection is used because word timestamps cannot currently be combined
+    with an explicit language parameter.
+    """
     api_key = _credentials.get_required("MISTRAL_API_KEY")
     service = TranscriptionService(
         downloader=HttpVideoDownloader(),
@@ -852,14 +865,18 @@ def media_transcribe(source, playback_speed, model, output_path):
     "transcript_path",
     required=True,
     type=click.Path(exists=True, dir_okay=False),
-    help="Timestamped transcript JSON produced by media transcribe",
+    help="Word-timestamped JSON produced by media transcribe",
 )
 @click.option("-o", "output_path", required=True, type=click.Path(dir_okay=False),
               help="Output video path")
 @click.option("--overwrite", is_flag=True, help="Replace an existing output file")
 @handle_error
 def media_add_subtitles(video, transcript_path, output_path, overwrite):
-    """Burn timestamped transcript segments into VIDEO."""
+    """Burn timed subtitles from TRANSCRIPT into VIDEO.
+
+    Word-timestamped transcripts are rendered as captions of at most five
+    words. Older segment-only transcript JSON remains supported.
+    """
     service = SubtitleService(FfmpegSubtitleRenderer())
     result = service.add_subtitles(
         SubtitleRequest(

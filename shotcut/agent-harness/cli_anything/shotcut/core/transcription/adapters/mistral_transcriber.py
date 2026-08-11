@@ -33,7 +33,7 @@ class MistralTranscriber:
                 response = client.audio.transcriptions.complete(
                     model=self.model,
                     file=File(content=audio_file.read(), fileName=audio_path.name),
-                    timestamp_granularities=["segment", "word"],
+                    timestamp_granularities=["word"],
                 )
 
         text = getattr(response, "text", None)
@@ -53,7 +53,10 @@ class MistralTranscriber:
                 )
             )
         words = []
-        for word in getattr(response, "words", None) or []:
+        response_words = getattr(response, "words", None)
+        if not response_words:
+            response_words = getattr(response, "segments", None)
+        for word in response_words or []:
             word_text = self._field(word, "word")
             if word_text is None:
                 word_text = self._field(word, "text")

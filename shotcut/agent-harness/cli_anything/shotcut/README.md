@@ -239,7 +239,7 @@ Available blend modes: `normal`, `add`, `multiply`, `screen`, `overlay`, `darken
 
 ```bash
 media download-instagram <url> -o <output.mp4> [--overwrite]
-media transcribe <file-or-url> [--speed 2.0] [--model voxtral-mini-latest] [-o transcript.json]
+media transcribe <file-or-url> [--speed 2.0] [--model voxtral-mini-latest] [-o transcript.json]  # Word timestamps
 media add-subtitles <video> --transcript transcript.json -o subtitled.mp4 [--overwrite]
 media tts "Hello from Shotcut" --voice <id> -o speech.mp3
 media tts --text-file script.txt --voice <id> -o speech.mp3
@@ -257,10 +257,19 @@ Local XTTS uses a reference recording and requires `--format wav`; use `--langua
 for non-English speech and `--device mps` to force Apple Silicon acceleration.
 Instagram downloads use BrightData and require `BRIGHT_DATA_API_KEY`.
 
-Transcription always writes a JSON sidecar with timestamped segments. For a
-local video, the default path is `<video>.transcript.json`; use `-o` to choose
-another path. Segment timestamps are mapped back to the original video when
-the cost-saving 2x audio speed is used.
+For a one-shot subtitle workflow, first transcribe the exact video that will be
+rendered, then pass its JSON sidecar to `media add-subtitles`:
+
+```bash
+media transcribe input.mp4 -o input.transcript.json
+media add-subtitles input.mp4 --transcript input.transcript.json -o subtitled.mp4
+```
+
+Transcription writes word timestamps and maps them back to the original video
+when the cost-saving 2x audio speed is used. Mistral language detection is used
+because its current API does not allow an explicit language together with word
+timestamps. Subtitle captions contain at most five timed words. Older
+segment-only JSON transcripts remain supported.
 
 Use `media add-subtitles` with that sidecar to burn bold, centered, outlined ASS
 captions into a rendered MP4. The command requires ffmpeg with the subtitles

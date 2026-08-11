@@ -54,6 +54,8 @@ class SubtitleService:
             except (KeyError, TypeError, ValueError) as error:
                 raise ValueError(f"Invalid transcript segment at index {index}") from error
             if start < 0 or end <= start or not text:
+                if payload.get("words"):
+                    continue
                 raise ValueError(f"Invalid transcript segment at index {index}")
             segments.append(TranscriptSegment(start, end, text))
         words = tuple(
