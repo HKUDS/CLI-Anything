@@ -424,6 +424,25 @@
     @media (max-width: 560px) { .deck-arrow-btn { display: none; } .deck-separator { display: none; } }
 
     /* ===================== Deck stage ===================== */
+    /* ── Render-skip for offscreen page regions ──
+       content-visibility:auto lets the engine skip layout+paint for sections far
+       from the viewport, so a fast fling doesn't rasterize ~30k px of cards at
+       once (the iOS Safari tab-kill scenario). JS measurement inside a skipped
+       subtree (masonry offsetHeight) still works: layout APIs force layout, only
+       paint stays skipped. contain-intrinsic-size uses the `auto` keyword so the
+       placeholder snaps to the real size after first render; the px values are
+       only the pre-render estimate. Engines without support just ignore this. */
+    /* Each rule sets a plain-length fallback first: Safari 15.4–16 supports
+       content-visibility but not the `auto` keyword here, and would otherwise
+       drop the whole declaration and give skipped sections no height. */
+    .demos-teaser, .marketplace-prelude, .matrices, .deck-stage, .footer { content-visibility: auto; }
+    .demos-teaser { contain-intrinsic-size: 1000px; contain-intrinsic-size: auto 1000px; }
+    .marketplace-prelude { contain-intrinsic-size: 220px; contain-intrinsic-size: auto 220px; }
+    .matrices { contain-intrinsic-size: 900px; contain-intrinsic-size: auto 900px; }
+    .deck-stage { contain-intrinsic-size: 9500px; contain-intrinsic-size: auto 9500px; }
+    @media (max-width: 640px) { .deck-stage { contain-intrinsic-size: 28000px; contain-intrinsic-size: auto 28000px; } }
+    .footer { contain-intrinsic-size: 320px; contain-intrinsic-size: auto 320px; }
+
     .deck-stage { max-width: 1180px; margin: 0 auto; padding: 0 22px; }
     .deck-viewport { overflow: hidden; touch-action: pan-y; cursor: grab; }
     .deck-viewport.dragging { cursor: grabbing; }
@@ -919,7 +938,7 @@
     .dt-chrome .lv { display: inline-flex; align-items: center; gap: 4px; font-size: 0.56rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
     .dt-chrome .lv i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 7px var(--accent); animation: dtpulse 1.6s infinite; }
     @keyframes dtpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-    .dt-media img { display: block; width: 100%; height: 170px; object-fit: cover; }
+    .dt-media img, .dt-media video { display: block; width: 100%; height: 170px; object-fit: cover; }
     .dposter .dt-cat { display: inline-flex; align-items: center; gap: 6px; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 13px;
       color: hsl(var(--ch) var(--tint-s) 74%); }
     [data-theme="light"] .dposter .dt-cat { color: hsl(var(--ch) calc(var(--tint-s) + 12%) 36%); }
@@ -1115,7 +1134,7 @@
       <a class="dposter" href="demos.html#freecad" style="--ch:210">
         <div class="dt-media">
           <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-freecad · preview live</span><span class="lv"><i></i>live</span></div>
-          <img loading="lazy" src="assets/demos/freecad-curiosity-preview-trajectory.gif" alt="FreeCAD Curiosity rover demo">
+          <video class="lazy-vid" muted loop playsinline preload="none" poster="assets/demos/freecad-curiosity-preview-trajectory-poster.jpg" src="assets/demos/freecad-curiosity-preview-trajectory.mp4" aria-label="FreeCAD Curiosity rover demo"></video>
         </div>
         <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>3D / CAD</span>
         <h3><span class="ap">FreeCAD</span> — Curiosity Rover</h3>
@@ -1126,7 +1145,7 @@
       <a class="dposter" href="demos.html#blender" style="--ch:28">
         <div class="dt-media">
           <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-blender · preview live</span><span class="lv"><i></i>live</span></div>
-          <img loading="lazy" src="assets/demos/blender-orbital-relay-drone-preview-trajectory.gif" alt="Blender orbital relay drone demo">
+          <video class="lazy-vid" muted loop playsinline preload="none" poster="assets/demos/blender-orbital-relay-drone-preview-trajectory-poster.jpg" src="assets/demos/blender-orbital-relay-drone-preview-trajectory.mp4" aria-label="Blender orbital relay drone demo"></video>
         </div>
         <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>3D · Hard-surface</span>
         <h3><span class="ap">Blender</span> — Orbital Relay Drone</h3>
@@ -1137,7 +1156,7 @@
       <a class="dposter" href="demos.html#drawio" style="--ch:250">
         <div class="dt-media">
           <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-drawio · build</span><span class="lv"><i></i>live</span></div>
-          <img loading="lazy" src="assets/demos/drawio-demo.gif" alt="Draw.io HTTPS handshake diagram demo">
+          <video class="lazy-vid" muted loop playsinline preload="none" poster="assets/demos/drawio-demo-poster.jpg" src="assets/demos/drawio-demo.mp4" aria-label="Draw.io HTTPS handshake diagram demo"></video>
         </div>
         <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v4a2 2 0 0 0 2 2h9"/></svg>Diagramming</span>
         <h3><span class="ap">Draw.io</span> — HTTPS Handshake</h3>
@@ -1481,6 +1500,38 @@
       menu.addEventListener('click', (e) => { if (e.target.closest('a')) setOpen(false); });
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
       window.addEventListener('resize', () => { if (window.innerWidth > 860) setOpen(false); });
+    })();
+
+    // ── Demo videos: play near the viewport, tear down far from it ──
+    // Demos ship as H.264 <video> (hardware-decoded, a few MB) instead of animated GIF
+    // (hundreds of MB of decoded frames — the iOS Safari tab-kill culprit). preload="none"
+    // keeps them free until scrolled near. Two rings: within 200px play/pause; beyond
+    // 1200px drop the src entirely so the media pipeline is fully released (poster stays).
+    (function () {
+      const vids = document.querySelectorAll('video.lazy-vid');
+      if (!vids.length) return;
+      const start = (v) => {
+        if (!v.getAttribute('src') && v.dataset.src) { v.setAttribute('src', v.dataset.src); v.load(); }
+        v.muted = true; const p = v.play(); if (p) p.catch(() => {});
+      };
+      if (!('IntersectionObserver' in window)) { vids.forEach(start); return; }
+      const near = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          if (en.isIntersecting) start(en.target);
+          else if (!en.target.paused) en.target.pause();
+        });
+      }, { rootMargin: '200px 0px' });
+      const far = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          const v = en.target;
+          if (!en.isIntersecting && v.getAttribute('src')) {
+            v.dataset.src = v.getAttribute('src');
+            if (!v.paused) v.pause();
+            v.removeAttribute('src'); v.load();
+          }
+        });
+      }, { rootMargin: '1200px 0px' });
+      vids.forEach(v => { near.observe(v); far.observe(v); });
     })();
 
     const REPO = 'https://github.com/HKUDS/CLI-Anything';
