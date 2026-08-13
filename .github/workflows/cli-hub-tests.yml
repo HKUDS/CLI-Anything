@@ -1,0 +1,44 @@
+name: CLI Hub tests
+
+on:
+  pull_request:
+    paths:
+      - "cli-hub/**"
+      - "registry.json"
+      - "public_registry.json"
+      - ".github/workflows/cli-hub-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cli-hub/**"
+      - "registry.json"
+      - "public_registry.json"
+      - ".github/workflows/cli-hub-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: cli-hub/setup.py
+
+      - name: Install CLI Hub and test dependencies
+        working-directory: cli-hub
+        run: python -m pip install --disable-pip-version-check -e . pytest
+
+      - name: Run CLI Hub tests
+        working-directory: cli-hub
+        run: python -m pytest tests -q

@@ -117,7 +117,7 @@ def get_weight_info():
             "custom_dir": 'UNIMOL_WEIGHT_DIR' in os.environ,
             "exists": os.path.exists(weighthub.WEIGHT_DIR)
         }
-    except:
+    except (ImportError, AttributeError, OSError):
         return {
             "error": "unimol_tools not available"
         }

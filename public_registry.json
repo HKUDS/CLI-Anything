@@ -286,6 +286,7 @@
       "source_url": null,
       "package_manager": "script",
       "install_strategy": "command",
+      "requires_shell": true,
       "install_cmd": "curl -s https://jimeng.jianying.com/cli | bash",
       "skill_md": "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg",
       "entry_point": "dreamina",

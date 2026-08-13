@@ -63,7 +63,7 @@ def extract_version_from_setup(setup_path):
         content = Path(setup_path).read_text()
         match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
         return match.group(1) if match else None
-    except:
+    except (OSError, UnicodeDecodeError):
         return None
 
 def build_glob_patterns(base_path, depth):

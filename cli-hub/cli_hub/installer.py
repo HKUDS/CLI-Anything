@@ -1,6 +1,7 @@
 """Install, uninstall, and manage CLIs and matrices."""
 
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ from cli_hub.matrix_skill import render_matrix_skill_file
 
 INSTALLED_FILE = Path.home() / ".cli-hub" / "installed.json"
 MATRIX_STATE_FILE = Path.home() / ".cli-hub" / "matrix_state.json"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_installed():
@@ -64,23 +66,465 @@ _UV_INSTALL_HINT = (
 )
 
 
-_SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
+_ALLOW_SHELL_ENV = "CLI_HUB_ALLOW_SHELL_COMMANDS"
+_WINDOWS_SHELLS = {"cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh", "pwsh.exe"}
+
+# Programs that run another program given as their trailing operands. Reaching
+# the real executable means walking past the wrapper rather than trusting
+# argv[0], and wrappers nest (``sudo env -S ...``), so the walk recurses.
+_COMMAND_WRAPPERS = {
+    "env",
+    "sudo",
+    "doas",
+    "timeout",
+    "nohup",
+    "nice",
+    "ionice",
+    "setsid",
+    "stdbuf",
+    "chrt",
+    "eatmydata",
+    "proxychains",
+    "proxychains4",
+    "xargs",
+    # Multi-call binaries dispatch their first positional operand as an
+    # executable/applets, including ``busybox ash -c ...``.
+    "busybox",
+    "busybox.exe",
+    "toybox",
+    "toybox.exe",
+}
+
+# Wrapper parsing is deliberately wrapper-specific. A shared option table
+# cannot distinguish flags such as ``env -i`` from value-taking options such as
+# ``ionice -c 2`` and can consequently skip the executable that follows. When
+# an option shape is not known, the trust gate fails closed instead of guessing
+# where the wrapped command starts.
+_WRAPPER_FLAG_OPTIONS = {
+    "env": {
+        "-i", "--ignore-environment", "-0", "--null", "-v", "--debug",
+        "--help", "--version",
+    },
+    "sudo": {
+        "-A", "--askpass", "-b", "--background", "-E", "--preserve-env",
+        "-e", "--edit", "-H", "--set-home", "-K", "--remove-timestamp",
+        "-k", "--reset-timestamp", "-l", "--list", "-n", "--non-interactive",
+        "-P", "--preserve-groups", "-S", "--stdin", "-s", "--shell", "-V",
+        "--version", "-v", "--validate", "--help",
+    },
+    "doas": {"-L", "-n", "-s"},
+    "timeout": {
+        "--foreground", "--preserve-status", "--verbose", "--help", "--version",
+    },
+    "nohup": {"--help", "--version"},
+    "nice": {"--help", "--version"},
+    "ionice": {"-t", "--ignore", "-h", "--help", "-V", "--version"},
+    "setsid": {
+        "-c", "--ctty", "-f", "--fork", "-w", "--wait", "-h", "--help",
+        "-V", "--version",
+    },
+    "stdbuf": {"--help", "--version"},
+    "chrt": {
+        "-a", "--all-tasks", "-b", "--batch", "-d", "--deadline", "-f",
+        "--fifo", "-i", "--idle", "-o", "--other", "-r", "--rr", "-m",
+        "--max", "-R", "--reset-on-fork", "-v", "--verbose", "-h", "--help",
+        "-V", "--version",
+    },
+    "eatmydata": {"--help", "--version"},
+    "proxychains": {"-q", "--quiet_mode"},
+    "proxychains4": {"-q", "--quiet_mode"},
+    "xargs": {
+        "-0", "--null", "-e", "-i", "-l", "-o", "--open-tty", "-p",
+        "--interactive", "-r", "--no-run-if-empty", "-t", "--verbose",
+        "-x", "--exit", "--show-limits", "--help", "--version",
+    },
+}
+
+_WRAPPER_VALUE_OPTIONS = {
+    "env": {
+        "-u", "--unset", "-C", "--chdir", "-S", "--split-string",
+        "--block-signal", "--default-signal", "--ignore-signal",
+    },
+    "sudo": {
+        "-a", "--auth-type", "-C", "--close-from", "-D", "--chdir", "-g",
+        "--group", "-h", "--host", "-p", "--prompt", "-R", "--chroot",
+        "-r", "--role", "-t", "--type", "-T", "--command-timeout", "-u",
+        "--user", "--other-user",
+    },
+    "doas": {"-a", "-C", "-u"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "nice": {"-n", "--adjustment"},
+    "ionice": {
+        "-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid",
+        "-u", "--uid",
+    },
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+    "chrt": {
+        "-T", "--sched-runtime", "-P", "--sched-period", "-D", "--sched-deadline",
+    },
+    "proxychains": {"-f"},
+    "proxychains4": {"-f"},
+    "xargs": {
+        "-a", "--arg-file", "-d", "--delimiter", "-E", "--eof", "-I",
+        "--replace", "-J", "-L", "--max-lines", "-n", "--max-args", "-P",
+        "--max-procs", "--process-slot-var", "-R", "-S", "-s", "--max-chars",
+    },
+}
+
+_WRAPPER_ATTACHED_VALUE_OPTIONS = {
+    "env": {"-u", "-C", "-S"},
+    "sudo": {"-a", "-C", "-D", "-g", "-h", "-p", "-R", "-r", "-t", "-T", "-u"},
+    "doas": {"-a", "-C", "-u"},
+    "timeout": {"-s", "-k"},
+    "nice": {"-n"},
+    "ionice": {"-c", "-n", "-p", "-P", "-u"},
+    "stdbuf": {"-i", "-o", "-e"},
+    "chrt": {"-T", "-P", "-D"},
+    "proxychains": {"-f"},
+    "proxychains4": {"-f"},
+    "xargs": {
+        "-a", "-d", "-e", "-E", "-i", "-I", "-J", "-l", "-L", "-n",
+        "-P", "-R", "-S", "-s",
+    },
+}
+
+# These wrappers consume positional metadata before the command. timeout takes
+# DURATION; chrt takes PRIORITY in its command-execution form.
+_WRAPPER_POSITIONAL_OPERANDS = {"timeout": 1, "chrt": 1}
+
+# Programs that hand a string to a shell themselves, via -c/--command, without
+# being a shell. su(1) and runuser(1) document "-c, --command <command>" as
+# passing that command to the target user's shell.
+_SHELL_COMMAND_LAUNCHERS = {"su", "runuser", "doas"}
+
+# PowerShell payload switches. Microsoft documents these as aliases rather than
+# prefixes, so "ec" cannot be found by prefix-matching "encodedcommand", and
+# about_PowerShell_exe allows either "-" or "/" for parameters under cmd.exe.
+_PWSH_PAYLOAD_PARAMETERS = ("command", "commandwithargs", "encodedcommand", "file")
+_PWSH_PAYLOAD_ALIASES = {"c", "cwa", "e", "ec", "enc", "f"}
+
+# Depth bound for wrapper unwrapping. Exceeding it means the command nests
+# wrappers beyond anything a registry entry legitimately needs, so the gate
+# fails closed rather than guessing.
+_MAX_WRAPPER_DEPTH = 8
 
 
-def _run_command(cmd):
+def _is_posix_shell_executable(executable):
+    """Recognize shell families without a brittle finite executable list.
+
+    POSIX-style shells conventionally end in ``sh`` (``ash``, ``csh``,
+    ``fish``, ``tcsh``, ``xonsh``, and future variants).  Treat every such
+    executable conservatively, including ``.exe`` ports.  PowerShell names
+    also end in ``sh`` but have their own parameter grammar below.
+    """
+    name = executable[:-4] if executable.endswith(".exe") else executable
+    return name not in {"powershell", "pwsh"} and (name == "sh" or name.endswith("sh"))
+
+
+def _contains_shell_operator(cmd):
+    """Return True when cmd contains shell syntax outside literal quoting."""
+    quote = None
+    escaped = False
+    i = 0
+    while i < len(cmd):
+        ch = cmd[i]
+        if quote == "'":
+            # POSIX shells treat backslashes literally inside single quotes.
+            # Check the closing quote before applying generic escaping so a
+            # trailing backslash cannot hide an operator that follows it.
+            if ch == "'":
+                quote = None
+            i += 1
+            continue
+        if escaped:
+            escaped = False
+            i += 1
+            continue
+        if ch == "\\":
+            escaped = True
+            i += 1
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            elif quote == '"' and (ch == "`" or (ch == "$" and i + 1 < len(cmd) and cmd[i + 1] == "(")):
+                return True
+            i += 1
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+        elif ch in {"|", "&", ";", "<", ">"} or ch in {"\n", "\r"}:
+            return True
+        elif ch == "`" or (ch == "$" and i + 1 < len(cmd) and cmd[i + 1] == "("):
+            return True
+        i += 1
+    return False
+
+
+def _allows_shell(cli):
+    return bool(cli and cli.get("requires_shell") is True)
+
+
+def _directly_invokes_shell_payload(argv):
+    """Return True when argv starts a shell that will interpret a payload."""
+    if not argv:
+        return False
+    executable = Path(argv[0]).name.lower()
+    options = {arg.lower() for arg in argv[1:]}
+    if _is_posix_shell_executable(executable):
+        return any(
+            option == "--command"
+            or (
+                option.startswith("-")
+                and not option.startswith("--")
+                and "c" in option[1:]
+            )
+            for option in options
+        )
+    if executable in {"cmd", "cmd.exe"}:
+        return bool(options & {"/c", "/k"})
+    if executable in _WINDOWS_SHELLS:
+        return any(
+            option.startswith(("-", "/"))
+            and bool(parameter := option.lstrip("-/"))
+            and (
+                parameter in _PWSH_PAYLOAD_ALIASES
+                or any(name.startswith(parameter) for name in _PWSH_PAYLOAD_PARAMETERS)
+            )
+            for option in options
+        )
+    if executable in {"sudo", "doas"}:
+        # These wrappers can explicitly request the target user's shell. Once
+        # selected, the trailing text is shell input even when no shell binary
+        # appears as a separate argv element.
+        if any(
+            option in {"-s", "--shell", "-i", "--login"}
+            or (
+                option.startswith("-")
+                and not option.startswith("--")
+                and any(flag in option[1:] for flag in "si")
+            )
+            for option in options
+        ):
+            return True
+    if executable in _SHELL_COMMAND_LAUNCHERS:
+        # su/runuser do not interpret the string themselves; they hand it to the
+        # target user's shell with -c, so the payload is shell-interpreted all
+        # the same.
+        return any(
+            option in {"-c", "--command"}
+            or option.startswith("--command=")
+            or (
+                option.startswith("-")
+                and not option.startswith("--")
+                and "c" in option[1:]
+            )
+            for option in options
+        )
+    return False
+
+
+def _iter_env_split_strings(argv):
+    """Yield GNU env -S/--split-string payloads embedded in argv."""
+    if not argv or Path(argv[0]).name.lower() != "env":
+        return
+    index = 1
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--":
+            return
+        if arg == "-S":
+            if index + 1 < len(argv):
+                yield argv[index + 1]
+                index += 2
+                continue
+            return
+        if arg.startswith("-S") and len(arg) > 2:
+            yield arg[2:]
+            index += 1
+            continue
+        if arg == "--split-string":
+            if index + 1 < len(argv):
+                yield argv[index + 1]
+                index += 2
+                continue
+            return
+        if arg.startswith("--split-string="):
+            yield arg.split("=", 1)[1]
+        index += 1
+
+
+def _env_split_invokes_shell_payload(argv, *, _depth=0):
+    for split_string in _iter_env_split_strings(argv):
+        try:
+            split_argv = shlex.split(split_string)
+        except ValueError:
+            return True
+        if _contains_shell_operator(split_string):
+            return True
+        if _invokes_shell_payload(split_argv, _depth=_depth + 1):
+            return True
+    return False
+
+
+def _wrapper_option_arity(wrapper, arg):
+    """Return option arity, or None when a wrapper option is not understood."""
+    flags = _WRAPPER_FLAG_OPTIONS.get(wrapper, set())
+    values = _WRAPPER_VALUE_OPTIONS.get(wrapper, set())
+    if arg in flags:
+        return 0
+    if arg in values:
+        return 1
+    if arg.startswith("--") and "=" in arg:
+        name = arg.split("=", 1)[0]
+        if name in values or (wrapper == "sudo" and name == "--preserve-env"):
+            return 0
+        return None
+    if arg.startswith("-") and not arg.startswith("--"):
+        for prefix in _WRAPPER_ATTACHED_VALUE_OPTIONS.get(wrapper, set()):
+            if arg.startswith(prefix) and len(arg) > len(prefix):
+                return 0
+        # Known one-letter flags may be bundled (for example sudo -nE).
+        if len(arg) > 2 and all(f"-{letter}" in flags for letter in arg[1:]):
+            return 0
+        # nice accepts the historical ``-N`` adjustment spelling.
+        if wrapper == "nice":
+            try:
+                int(arg)
+            except ValueError:
+                pass
+            else:
+                return 0
+    return None
+
+
+def _strip_wrapper_arguments(argv):
+    """Return argv positioned at the program a wrapper will actually exec.
+
+    Wrappers take their own options before the command, and some of those
+    options take a value (``timeout --signal TERM 5 sh -c ...``, ``env -u VAR``,
+    ``sudo -u root``). Scanning the whole argv for a shell name instead of
+    walking to the wrapped program is what let ``sudo env -S '...'`` through:
+    the shell never appears as a bare token there.
+    """
+    wrapper = Path(argv[0]).name.lower()
+    index = 1
+    positional_remaining = _WRAPPER_POSITIONAL_OPERANDS.get(wrapper, 0)
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--":
+            index += 1
+            break
+        if not arg.startswith("-"):
+            # env(1) and sudo(1) accept NAME=VALUE assignments before the
+            # command, so the first bare token is not necessarily the program.
+            if _is_env_assignment(arg):
+                index += 1
+                continue
+            if positional_remaining:
+                if wrapper == "timeout" and not _looks_like_duration(arg):
+                    return None
+                positional_remaining -= 1
+                index += 1
+                continue
+            return argv[index:]
+        arity = _wrapper_option_arity(wrapper, arg)
+        if arity is None or index + arity >= len(argv):
+            return None
+        index += arity + 1
+
+    while positional_remaining and index < len(argv):
+        if wrapper == "timeout" and not _looks_like_duration(argv[index]):
+            return None
+        positional_remaining -= 1
+        index += 1
+    if positional_remaining:
+        return []
+    return argv[index:]
+
+
+def _is_env_assignment(token):
+    """True for ``NAME=VALUE`` operands that env/sudo consume before the command."""
+    name, sep, _ = token.partition("=")
+    return bool(sep) and bool(name) and (name[0].isalpha() or name[0] == "_") and all(
+        ch.isalnum() or ch == "_" for ch in name
+    )
+
+
+def _looks_like_duration(token):
+    """True for timeout(1) durations such as ``5``, ``2.5``, ``10s``, ``1h``."""
+    body = token[:-1] if token[-1:] in {"s", "m", "h", "d"} else token
+    try:
+        float(body)
+    except ValueError:
+        return False
+    return True
+
+
+def _invokes_shell_payload(argv, _depth=0):
+    """Return True for direct, wrapped or nested shell payload invocations.
+
+    Wrappers nest and each layer can hide the next (``sudo env -S 'sh -c ...'``),
+    so this walks through them rather than inspecting a single level. The depth
+    bound fails closed: a command nesting wrappers deeper than any real registry
+    entry needs is treated as requiring shell trust rather than waved through.
+    """
+    if not argv:
+        return False
+    if _depth > _MAX_WRAPPER_DEPTH:
+        return True
+    if _directly_invokes_shell_payload(argv):
+        return True
+    if _env_split_invokes_shell_payload(argv, _depth=_depth):
+        return True
+    if Path(argv[0]).name.lower() not in _COMMAND_WRAPPERS:
+        return False
+    wrapped = _strip_wrapper_arguments(argv)
+    if wrapped is None:
+        return True
+    if not wrapped:
+        return False
+    return _invokes_shell_payload(wrapped, _depth=_depth + 1)
+
+
+def _run_command(cmd, *, allow_shell=False, cwd=None):
     """Run a command string.
 
-    Uses shell=True when the command contains shell operators (pipes, &&, etc.)
-    so that script-type installs like ``curl … | bash`` work correctly.
-    Commands come from the trusted registry, not from user input.
+    Simple commands run without a shell. Commands containing shell operators
+    such as pipes, redirections, or command substitutions require a reviewed
+    registry entry with ``requires_shell: true``. CLI_HUB_ALLOW_SHELL_COMMANDS=1
+    remains a hard override for callers that have reviewed the command locally.
     """
-    use_shell = any(c in cmd for c in _SHELL_METACHARACTERS)
+    use_shell = _contains_shell_operator(cmd)
+    try:
+        argv = None if use_shell else shlex.split(cmd)
+    except ValueError as exc:
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=2,
+            stdout="",
+            stderr=f"Invalid command syntax: {exc}",
+        )
+    requires_shell_trust = use_shell or _invokes_shell_payload(argv)
+    if requires_shell_trust and not allow_shell and os.environ.get(_ALLOW_SHELL_ENV) != "1":
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=2,
+            stdout="",
+            stderr=(
+                "Command invokes shell interpretation and was not executed. "
+                "Registry entries that intentionally need shell syntax must "
+                f"set requires_shell=true. Set {_ALLOW_SHELL_ENV}=1 only after "
+                "reviewing the registry entry and install command."
+            ),
+        )
     try:
         return subprocess.run(
-            cmd if use_shell else shlex.split(cmd),
+            cmd if use_shell else argv,
             capture_output=True,
             text=True,
             shell=use_shell,
+            cwd=cwd,
         )
     except FileNotFoundError as exc:
         missing = exc.filename or shlex.split(cmd)[0]
@@ -123,10 +567,27 @@ def _generic_install(cli):
     install_cmd = cli.get("install_cmd")
     if not install_cmd:
         return False, f"No install command is defined for {cli['display_name']}."
-    result = _run_command(install_cmd)
+    cwd, cwd_error = _resolve_command_cwd(cli.get("install_cwd"))
+    if cwd_error:
+        return False, cwd_error
+    result = _run_command(install_cmd, allow_shell=_allows_shell(cli), cwd=cwd)
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
     return False, f"Install failed:\n{result.stderr or result.stdout}"
+
+
+def _resolve_command_cwd(value):
+    """Resolve a reviewed registry working-directory marker."""
+    if value is None:
+        return None, None
+    if value != "repository_root":
+        return None, f"Unsupported registry command working directory: {value}"
+    if not (REPOSITORY_ROOT / "registry.json").is_file():
+        return None, (
+            "This install requires a CLI-Anything source checkout; "
+            "registry.json was not found beside the installed cli-hub package."
+        )
+    return REPOSITORY_ROOT, None
 
 
 def _generic_uninstall(cli):
@@ -134,7 +595,7 @@ def _generic_uninstall(cli):
     if not uninstall_cmd:
         note = cli.get("uninstall_notes") or f"No uninstall command is defined for {cli['display_name']}."
         return False, note
-    result = _run_command(uninstall_cmd)
+    result = _run_command(uninstall_cmd, allow_shell=_allows_shell(cli))
     if result.returncode == 0:
         return True, f"Uninstalled {cli['display_name']}"
     return False, f"Uninstall failed:\n{result.stderr or result.stdout}"
@@ -145,7 +606,7 @@ def _generic_update(cli):
     if not update_cmd:
         note = cli.get("update_notes") or f"No update command is defined for {cli['display_name']}."
         return False, note
-    result = _run_command(update_cmd)
+    result = _run_command(update_cmd, allow_shell=_allows_shell(cli))
     if result.returncode == 0:
         return True, f"Updated {cli['display_name']}"
     return False, f"Update failed:\n{result.stderr or result.stdout}"
@@ -221,7 +682,7 @@ def _pip_update(cli):
 def _uv_install(cli):
     if _find_uv() is None:
         return False, _UV_INSTALL_HINT
-    result = _run_command(cli["install_cmd"])
+    result = _run_command(cli["install_cmd"], allow_shell=_allows_shell(cli))
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
     return False, f"uv install failed:\n{result.stderr or result.stdout}"
@@ -233,7 +694,7 @@ def _uv_uninstall(cli):
     uninstall_cmd = cli.get("uninstall_cmd")
     if not uninstall_cmd:
         return False, f"No uninstall command is defined for {cli['display_name']}."
-    result = _run_command(uninstall_cmd)
+    result = _run_command(uninstall_cmd, allow_shell=_allows_shell(cli))
     if result.returncode == 0:
         return True, f"Uninstalled {cli['display_name']}"
     return False, f"uv uninstall failed:\n{result.stderr or result.stdout}"
@@ -245,7 +706,7 @@ def _uv_update(cli):
     update_cmd = cli.get("update_cmd")
     if not update_cmd:
         return False, f"No update command is defined for {cli['display_name']}."
-    result = _run_command(update_cmd)
+    result = _run_command(update_cmd, allow_shell=_allows_shell(cli))
     if result.returncode == 0:
         return True, f"Updated {cli['display_name']}"
     return False, f"uv update failed:\n{result.stderr or result.stdout}"
@@ -330,6 +791,8 @@ def _installed_entry(cli, source, strategy):
         entry["uninstall_cmd"] = cli["uninstall_cmd"]
     if cli.get("update_cmd"):
         entry["update_cmd"] = cli["update_cmd"]
+    if cli.get("requires_shell") is True:
+        entry["requires_shell"] = True
     return entry
 
 

@@ -1,8 +1,12 @@
 """Tests for cli-hub — registry, installer, analytics, and CLI."""
 
+import html
 import json
 import os
+import shlex
+import subprocess
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -18,7 +22,6 @@ from cli_hub.matrix import (
     capability_matches,
     check_provider_requirements,
     fetch_matrix_registry,
-    fetch_all_matrices,
     get_matrix,
     preflight_matrix,
     provider_cli_name,
@@ -46,17 +49,50 @@ from cli_hub.preview import (
 )
 from cli_hub.installer import (
     install_cli,
-    install_matrix,
     uninstall_cli,
-    get_installed,
     _load_installed,
     _save_installed,
     _run_command,
+    _contains_shell_operator,
+    _invokes_shell_payload,
     _install_strategy,
-    _UV_INSTALL_HINT,
 )
 from cli_hub.analytics import _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent, detect_invocation_context
 from cli_hub.cli import main
+
+
+@pytest.fixture(autouse=True)
+def isolate_installed_file(tmp_path, monkeypatch):
+    monkeypatch.setattr("cli_hub.installer.INSTALLED_FILE", tmp_path / "installed.json")
+
+
+@contextmanager
+def _clean_environment(home: Path | None = None):
+    """Clear agent signals without making the OS home directory unusable."""
+    clean = {}
+    if home is not None:
+        clean.update(HOME=str(home), USERPROFILE=str(home))
+    else:
+        for name in ("HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"):
+            if value := os.environ.get(name):
+                clean[name] = value
+    with patch.dict(os.environ, clean, clear=True):
+        yield
+
+
+def _link_directory(link: Path, target: Path) -> None:
+    """Create a directory link without requiring Windows Developer Mode."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        if os.name != "nt" or getattr(exc, "winerror", None) != 1314:
+            raise
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
 
 # ─── Sample registry data ─────────────────────────────────────────────
@@ -282,10 +318,16 @@ def _make_preview_bundle(tmp_path: Path, *, with_trajectory: bool = False) -> Pa
                 }
             ],
         }
-        (tmp_path / "trajectory.json").write_text(json.dumps(trajectory, indent=2))
+        (tmp_path / "trajectory.json").write_text(
+            json.dumps(trajectory, indent=2), encoding="utf-8"
+        )
         manifest["context"] = {"trajectory_path": "../trajectory.json"}
-    (bundle_dir / "summary.json").write_text(json.dumps(summary, indent=2))
-    (bundle_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    (bundle_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2), encoding="utf-8"
+    )
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
+    )
     return bundle_dir
 
 
@@ -293,7 +335,7 @@ def _make_preview_session(tmp_path: Path, *, with_trajectory: bool = False) -> P
     bundle_dir = _make_preview_bundle(tmp_path)
     session_dir = tmp_path / "live-session"
     session_dir.mkdir()
-    (session_dir / "current").symlink_to(bundle_dir, target_is_directory=True)
+    _link_directory(session_dir / "current", bundle_dir)
     session = {
         "protocol_version": "preview-live/v1",
         "software": "shotcut",
@@ -357,7 +399,9 @@ def _make_preview_session(tmp_path: Path, *, with_trajectory: bool = False) -> P
                 },
             ],
         }
-        (session_dir / "trajectory.json").write_text(json.dumps(trajectory, indent=2))
+        (session_dir / "trajectory.json").write_text(
+            json.dumps(trajectory, indent=2), encoding="utf-8"
+        )
         session.update(
             {
                 "trajectory_path": "trajectory.json",
@@ -368,7 +412,9 @@ def _make_preview_session(tmp_path: Path, *, with_trajectory: bool = False) -> P
                 "latest_publish_reason": "manual-push",
             }
         )
-    (session_dir / "session.json").write_text(json.dumps(session, indent=2))
+    (session_dir / "session.json").write_text(
+        json.dumps(session, indent=2), encoding="utf-8"
+    )
     return session_dir
 
 
@@ -379,14 +425,14 @@ class TestRegistry:
     """Tests for registry.py — fetch, cache, search, and lookup."""
 
     @patch("cli_hub.registry.requests.get")
-    @patch("cli_hub.registry.CACHE_FILE", Path(tempfile.mktemp()))
-    def test_fetch_registry_from_remote(self, mock_get):
+    def test_fetch_registry_from_remote(self, mock_get, tmp_path):
         mock_resp = MagicMock()
         mock_resp.json.return_value = SAMPLE_REGISTRY
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        result = fetch_registry(force_refresh=True)
+        with patch("cli_hub.registry.CACHE_FILE", tmp_path / "registry.json"):
+            result = fetch_registry(force_refresh=True)
         assert result["clis"][0]["name"] == "gimp"
         mock_get.assert_called_once()
 
@@ -394,7 +440,7 @@ class TestRegistry:
     def test_fetch_registry_uses_cache_on_refresh_failure(self, mock_get, tmp_path):
         cache_file = tmp_path / "registry_cache.json"
         cache_payload = {"_cached_at": 0, "data": SAMPLE_REGISTRY}
-        cache_file.write_text(json.dumps(cache_payload, indent=2))
+        cache_file.write_text(json.dumps(cache_payload, indent=2), encoding="utf-8")
 
         with patch("cli_hub.registry.CACHE_FILE", cache_file):
             result = fetch_registry(force_refresh=True)
@@ -658,7 +704,7 @@ class TestMatrixSkill:
         mock_resolve.side_effect = lambda cli: f"/tmp/{cli['name']}/skills/SKILL.md" if cli["name"] != "blender" else None
 
         rendered = render_matrix_skill_file(SAMPLE_MATRIX_REGISTRY["matrices"][0], installed={"gimp": {}, "audacity": {}})
-        content = Path(rendered).read_text()
+        content = Path(rendered).read_text(encoding="utf-8")
         assert "## Installed CLI Skills" in content
         assert "/tmp/gimp/skills/SKILL.md" in content
         assert "skills/cli-anything-gimp/SKILL.md" in content
@@ -749,7 +795,7 @@ class TestMultiApproachRendering:
         mock_resolve.return_value = None
 
         rendered = render_matrix_skill_file(SAMPLE_MATRIX_REGISTRY["matrices"][0], installed={"gimp": {}})
-        content = Path(rendered).read_text()
+        content = Path(rendered).read_text(encoding="utf-8")
         assert "## Stage Tooling Overview" in content
         assert "## Skill Discovery Commands" not in content
         assert "npx skills search" not in content
@@ -785,11 +831,39 @@ class TestPreviewBundle:
         output_path = tmp_path / "preview.html"
         rendered = render_html(str(bundle_dir), str(output_path))
         assert rendered == str(output_path.resolve())
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "CLI-Anything Preview Bundle" in content
         assert "Quick preview rendered" in content
         assert "artifacts/hero.png" in content
         assert "artifacts/preview.mp4" in content
+
+    @pytest.mark.parametrize(
+        "artifact_path",
+        [
+            "../secret.txt",
+            "artifacts/%2e%2e/%2e%2e/secret.png",
+            "artifacts/%252e%252e/%252e%252e/secret.png",
+            r"artifacts\..\..\secret.png",
+            "artifacts/%2E%2E%5C..%5Csecret.png",
+            "javascript:alert(1)",
+            "https://example.test/x",
+            "data:text/html,<script>alert(1)</script>",
+            "%6a%61%76%61%73%63%72%69%70%74%3aalert(1)",
+        ],
+    )
+    def test_render_html_does_not_link_artifacts_outside_bundle(self, tmp_path, artifact_path):
+        bundle_dir = _make_preview_bundle(tmp_path)
+        manifest_path = bundle_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["artifacts"][0]["path"] = artifact_path
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        output_path = tmp_path / "preview.html"
+        render_html(str(bundle_dir), str(output_path))
+        content = output_path.read_text(encoding="utf-8")
+
+        assert f'src="{artifact_path}"' not in content
+        assert f"Unavailable artifact path: {html.escape(artifact_path)}" in content
 
     def test_previews_inspect_cli_command(self, tmp_path):
         bundle_dir = _make_preview_bundle(tmp_path)
@@ -841,17 +915,41 @@ class TestPreviewBundle:
         output_path = tmp_path / "live.html"
         rendered = render_live_html(str(session_dir), str(output_path), poll_ms=800)
         assert rendered == str(output_path.resolve())
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert "CLI-Anything Live Preview Session" in content
         assert 'const CURRENT_LINK = "current";' in content
-        assert "manifest = await fetchJson(`${CURRENT_LINK}/manifest.json`);" in content
+        assert "manifest = await fetchJson(`${currentLink}/manifest.json`);" in content
         assert "const POLL_MS = 800;" in content
+
+    def test_render_live_html_escapes_artifact_urls(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path)
+        output_path = tmp_path / "live.html"
+        render_live_html(str(session_dir), str(output_path), poll_ms=800)
+        content = output_path.read_text(encoding="utf-8")
+
+        assert "function safeRelativeUrlPath(value)" in content
+        assert "artifact.path}?rev=" not in content
+        assert 'src="${escapeHtml(url)}"' in content
+
+    def test_render_live_html_escapes_script_json(self, tmp_path):
+        session_dir = _make_preview_session(tmp_path)
+        session_path = session_dir / "session.json"
+        session = json.loads(session_path.read_text(encoding="utf-8"))
+        session["current_link"] = "</script><img src=x onerror=alert(1)>"
+        session_path.write_text(json.dumps(session), encoding="utf-8")
+
+        output_path = tmp_path / "live.html"
+        render_live_html(str(session_dir), str(output_path), poll_ms=800)
+        content = output_path.read_text(encoding="utf-8")
+
+        assert "</script><img" not in content
+        assert "\\u003c/script\\u003e" in content
 
     def test_render_live_html_with_trajectory(self, tmp_path):
         session_dir = _make_preview_session(tmp_path, with_trajectory=True)
         output_path = tmp_path / "live-trajectory.html"
         render_live_html(str(session_dir), str(output_path), poll_ms=600)
-        content = output_path.read_text()
+        content = output_path.read_text(encoding="utf-8")
         assert 'const TRAJECTORY_CANDIDATES = ["trajectory.json", "timeline.json"];' in content
         assert "function normalizeTrajectory(session, payload)" in content
         assert "Trajectory Timeline" in content
@@ -882,7 +980,7 @@ class TestPreviewBundle:
         result = runner.invoke(main, ["previews", "html", str(session_dir), "-o", str(output_path), "--poll-ms", "700"])
         assert result.exit_code == 0
         assert output_path.is_file()
-        assert "const POLL_MS = 700;" in output_path.read_text()
+        assert "const POLL_MS = 700;" in output_path.read_text(encoding="utf-8")
 
     def test_previews_help_and_cli(self, tmp_path):
         session_dir = _make_preview_session(tmp_path, with_trajectory=True)
@@ -918,7 +1016,6 @@ class TestInstaller:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_success(self, mock_get_cli, mock_run):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
         mock_run.return_value = MagicMock(returncode=0)
@@ -936,7 +1033,6 @@ class TestInstaller:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_pip_failure(self, mock_get_cli, mock_run):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
         mock_run.return_value = MagicMock(returncode=1, stderr="some error")
@@ -947,7 +1043,6 @@ class TestInstaller:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_uninstall_success(self, mock_get_cli, mock_run):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
         mock_run.return_value = MagicMock(returncode=0)
@@ -958,7 +1053,6 @@ class TestInstaller:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_command_strategy_success(self, mock_get_cli, mock_run):
         mock_get_cli.return_value = {
             "name": "onepassword-cli",
@@ -979,7 +1073,6 @@ class TestInstaller:
 
     @patch("cli_hub.installer.subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "brew"))
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_command_strategy_missing_executable(self, mock_get_cli, mock_run):
         mock_get_cli.return_value = {
             "name": "onepassword-cli",
@@ -999,7 +1092,6 @@ class TestInstaller:
 
     @patch("cli_hub.installer.shutil.which", return_value="/usr/local/bin/obsidian")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_bundled_strategy_success_when_detected(self, mock_get_cli, mock_which):
         mock_get_cli.return_value = {
             "name": "obsidian-cli",
@@ -1045,7 +1137,6 @@ class TestUvStrategy:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
     def test_install_uv_success(self, mock_find_uv, mock_get_cli, mock_run):
         mock_get_cli.return_value = GENERATE_VEO_CLI
@@ -1066,7 +1157,6 @@ class TestUvStrategy:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
     def test_uninstall_uv_success(self, mock_find_uv, mock_get_cli, mock_run):
         mock_get_cli.return_value = GENERATE_VEO_CLI
@@ -1085,7 +1175,6 @@ class TestUvStrategy:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
     def test_update_uv_success(self, mock_find_uv, mock_get_cli, mock_run):
         mock_get_cli.return_value = GENERATE_VEO_CLI
@@ -1118,7 +1207,22 @@ JIMENG_CLI = {
     "_source": "public",
     "install_strategy": "command",
     "package_manager": "script",
+    "requires_shell": True,
     "install_cmd": "curl -s https://jimeng.jianying.com/cli | bash",
+}
+
+
+SKETCH_CLI = {
+    "name": "sketch",
+    "display_name": "Sketch",
+    "version": "1.0.0",
+    "description": "Generate Sketch design files",
+    "entry_point": "sketch-cli",
+    "_source": "harness",
+    "install_strategy": "command",
+    "package_manager": "npm",
+    "install_cmd": "npm install -g ./sketch/agent-harness",
+    "install_cwd": "repository_root",
 }
 
 
@@ -1137,13 +1241,27 @@ class TestScriptStrategy:
         del cli["install_strategy"]
         assert _install_strategy(cli) == "command"
 
+    def test_strategy_sketch_uses_safe_command_shape(self):
+        """Sketch is a harness entry, but its npm install command is not pip."""
+        assert _install_strategy(SKETCH_CLI) == "command"
+
     # ── _run_command shell detection ───────────────────────────────────
 
     @patch("cli_hub.installer.subprocess.run")
-    def test_run_command_uses_shell_true_for_pipe(self, mock_run):
-        """Pipe character triggers shell=True so bash can interpret it."""
+    def test_run_command_blocks_pipe_without_shell_opt_in(self, mock_run):
+        """Pipe commands without per-entry trust are blocked by default."""
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        _run_command("curl -s https://jimeng.jianying.com/cli | bash")
+        result = _run_command("curl -s https://jimeng.jianying.com/cli | bash")
+        mock_run.assert_not_called()
+        assert result.returncode == 2
+        assert "requires_shell=true" in result.stderr
+        assert "CLI_HUB_ALLOW_SHELL_COMMANDS" in result.stderr
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_uses_shell_true_for_pipe_with_per_entry_trust(self, mock_run):
+        """Reviewed pipe commands can run when the registry entry opted in."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("curl -s https://jimeng.jianying.com/cli | bash", allow_shell=True)
         mock_run.assert_called_once()
         _, kwargs = mock_run.call_args
         assert kwargs.get("shell") is True
@@ -1151,6 +1269,15 @@ class TestScriptStrategy:
         args = mock_run.call_args[0][0]
         assert isinstance(args, str)
         assert "| bash" in args
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_env_override_allows_unreviewed_shell_command(self, mock_run):
+        """Power users can still override after locally reviewing the command."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        with patch.dict(os.environ, {"CLI_HUB_ALLOW_SHELL_COMMANDS": "1"}):
+            _run_command("curl -s https://jimeng.jianying.com/cli | bash")
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("shell") is True
 
     @patch("cli_hub.installer.subprocess.run")
     def test_run_command_uses_shell_false_for_simple_command(self, mock_run):
@@ -1161,20 +1288,235 @@ class TestScriptStrategy:
         assert kwargs.get("shell") is False or kwargs.get("shell") is None
 
     @patch("cli_hub.installer.subprocess.run")
-    def test_run_command_uses_shell_true_for_and_operator(self, mock_run):
-        """&& operator also triggers shell=True."""
+    def test_run_command_uses_shell_false_for_quoted_operator_literal(self, mock_run):
+        """Quoted metacharacters are arguments, not shell operators."""
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        _run_command("curl -O https://example.com/install.sh && bash install.sh")
+        _run_command('curl "https://foo.example/?q=a|b" -o out')
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["curl", "https://foo.example/?q=a|b", "-o", "out"]
+        assert kwargs.get("shell") is False or kwargs.get("shell") is None
+
+    def test_shell_operator_after_single_quote_backslash_is_detected(self):
+        """A backslash cannot escape a closing POSIX single quote."""
+        assert _contains_shell_operator("echo 'safe\\'; whoami")
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_uses_shell_false_for_sketch_safe_install(self, mock_run):
+        """The Sketch registry command no longer needs shell execution."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command(SKETCH_CLI["install_cmd"])
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["npm", "install", "-g", "./sketch/agent-harness"]
+        assert kwargs.get("shell") is False or kwargs.get("shell") is None
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_blocks_redirection_without_shell_trust(self, mock_run):
+        """Redirection is shell syntax and needs the same trust gate as pipes."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        result = _run_command("echo hi > out")
+        assert result.returncode == 2
+        assert "requires_shell=true" in result.stderr
+        mock_run.assert_not_called()
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_uses_shell_true_for_and_operator(self, mock_run):
+        """&& operator uses shell=True only after per-entry shell trust."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("curl -O https://example.com/install.sh && bash install.sh", allow_shell=True)
         _, kwargs = mock_run.call_args
         assert kwargs.get("shell") is True
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "sh -c 'curl -s https://example.test/install | bash'",
+            "bash -c 'echo ok; rm -f /tmp/example'",
+            "bash -ec 'echo ok; rm -f /tmp/example'",
+            "sh -lc 'echo ok; rm -f /tmp/example'",
+            # Match the POSIX shell family structurally rather than relying on
+            # a finite bash/sh allowlist. Alpine and multi-call applets are
+            # common ways these payloads reach a shell.
+            "ash -c 'echo ok; whoami'",
+            "fish -c 'echo ok; whoami'",
+            "csh -c 'echo ok; whoami'",
+            "tcsh -c 'echo ok; whoami'",
+            "xonsh -c 'echo ok; whoami'",
+            "busybox ash -c 'echo ok; whoami'",
+            "toybox sh -c 'echo ok; whoami'",
+            "xargs sh -c 'echo ok; whoami'",
+            "xargs -0 -n 1 sh -c 'echo ok; whoami'",
+            "xargs -I {} sh -c 'echo ok; whoami'",
+            "sudo xargs -0 sh -c 'echo ok; whoami'",
+            "env sh -c 'curl -s https://example.test/install | bash'",
+            "sudo sh -c 'echo ok; whoami'",
+            "sudo -s 'echo ok; whoami'",
+            "sudo --shell 'echo ok; whoami'",
+            "doas -s 'echo ok; whoami'",
+            "env VAR=value bash -lc 'echo ok; whoami'",
+            "sudo -u root sh -ec 'echo ok; whoami'",
+            "env -S 'sh -c \"echo ok; whoami\"'",
+            "env --split-string='bash -lc \"echo ok; whoami\"'",
+            "env -i sh -c 'echo ok; whoami'",
+            "env --ignore-environment sh -c 'echo ok; whoami'",
+            'cmd /c "echo ok & whoami"',
+            'pwsh -Command "Write-Output ok; whoami"',
+            'pwsh -Com "Write-Output ok; whoami"',
+            'powershell /Command "Write-Output ok; whoami"',
+            "powershell -EncodedCo ZQBjAGgAbwAgAG8AawA=",
+            "powershell /EncodedCommand ZQBjAGgAbwAgAG8AawA=",
+            'pwsh -cwa "Write-Output ok; whoami"',
+            # Launchers that run their trailing operands. Scanning only argv[0]
+            # or a fixed {env, sudo} set let these through.
+            "timeout 5 sh -c 'echo ok; whoami'",
+            "timeout --signal TERM 5 sh -c 'echo ok; whoami'",
+            "nohup sh -c 'echo ok; whoami'",
+            "nice -n 10 sh -c 'echo ok; whoami'",
+            "ionice -c 2 sh -c 'echo ok; whoami'",
+            "ionice --class best-effort sh -c 'echo ok; whoami'",
+            "chrt -o 0 sh -c 'echo ok; whoami'",
+            "chrt --other 0 sh -c 'echo ok; whoami'",
+            "setsid sh -c 'echo ok; whoami'",
+            "doas sh -c 'echo ok; whoami'",
+            # su/runuser are not shells, but -c hands the string to one.
+            "su -c 'echo ok; whoami'",
+            "su --command 'echo ok; whoami'",
+            "runuser -c 'echo ok; whoami'",
+            "runuser -u root -c 'echo ok; whoami'",
+            # Wrappers nest, and env -S re-splits its own argument.
+            "sudo env -S 'sh -c \"echo ok; whoami\"'",
+            "timeout 5 env -S 'bash -lc \"echo ok; whoami\"'",
+            "sudo timeout 5 sh -c 'echo ok; whoami'",
+            # PowerShell documents these as aliases, so prefix matching
+            # ("encodedcommand".startswith("ec") is False) never reached them.
+            "pwsh -ec ZQBjAGgAbwAgAG8AawA=",
+            "powershell /ec ZQBjAGgAbwAgAG8AawA=",
+            "pwsh -e ZQBjAGgAbwAgAG8AawA=",
+        ],
+    )
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_blocks_explicit_shell_payload_without_trust(self, mock_run, command):
+        """Quoted shell payloads cannot bypass the per-entry trust gate."""
+        result = _run_command(command)
+        assert result.returncode == 2
+        assert "requires_shell=true" in result.stderr
+        mock_run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "npm install -g @anthropic-ai/claude-code",
+            "pip install uv",
+            "uv tool install ruff",
+            "cargo install ripgrep",
+            "go install github.com/example/tool@latest",
+            # Wrappers used the ordinary way: the wrapped program is not a shell.
+            "sudo apt-get install -y jq",
+            "sudo -u postgres createdb example",
+            "env FOO=1 npm install -g example",
+            "env -u NODE_OPTIONS npm install -g example",
+            "env -i npm install -g example",
+            "env --ignore-environment npm install -g example",
+            "timeout 30 npm install -g example",
+            "nohup npm install -g example",
+            "nice -n 5 cargo install ripgrep",
+            "ionice -c 2 npm install -g example",
+            "chrt -o 0 npm install -g example",
+            "xargs -0 -n 1 printf '%s\\n'",
+            # A flag containing "c" on a non-shell program must not look like sh -c.
+            "npm ci --omit=dev",
+            "docker compose up -d",
+            # Shell executables without a command-string payload do not need
+            # the trust opt-in merely for reporting their version.
+            "ash --version",
+            "fish --version",
+        ],
+    )
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_plain_installs_without_shell_trust(self, mock_run, command):
+        """The trust gate must not swallow ordinary installs.
+
+        Every hardening round widens what counts as a shell payload, so pin the
+        other side too: these commands invoke no shell and must keep running
+        without requires_shell.
+        """
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        result = _run_command(command)
+        assert result.returncode == 0
+        mock_run.assert_called_once()
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("shell") is False
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_reviewed_explicit_shell_payload(self, mock_run):
+        """A reviewed explicit shell payload runs without adding a second shell."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("sh -c 'echo ok | cat'", allow_shell=True)
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["sh", "-c", "echo ok | cat"]
+        assert kwargs.get("shell") is False
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_reviewed_ash_payload(self, mock_run):
+        """A reviewed Alpine ash payload keeps the argv-only execution path."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("ash -c 'echo ok; whoami'", allow_shell=True)
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["ash", "-c", "echo ok; whoami"]
+        assert kwargs.get("shell") is False
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_reviewed_xargs_shell_payload(self, mock_run):
+        """A reviewed xargs shell payload keeps the argv-only execution path."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("xargs -0 sh -c 'echo ok; whoami'", allow_shell=True)
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["xargs", "-0", "sh", "-c", "echo ok; whoami"]
+        assert kwargs.get("shell") is False
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_reviewed_bundled_shell_option(self, mock_run):
+        """Reviewed bundled shell flags remain argv-based, not shell=True."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("bash -ec 'echo ok | cat'", allow_shell=True)
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["bash", "-ec", "echo ok | cat"]
+        assert kwargs.get("shell") is False
+
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_allows_reviewed_wrapped_shell_payload(self, mock_run):
+        """Reviewed wrappers preserve their argv and do not add another shell."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _run_command("env sh -c 'echo ok | cat'", allow_shell=True)
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["env", "sh", "-c", "echo ok | cat"]
+        assert kwargs.get("shell") is False
 
     # ── Full install flow ──────────────────────────────────────────────
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_success(self, mock_get_cli, mock_run):
-        """install_cli('jimeng') succeeds and invokes the pipe command via shell."""
+    def test_install_shell_command_blocked_without_requires_shell(self, mock_get_cli, mock_run):
+        """Registry shell commands must declare per-entry shell trust."""
+        mock_get_cli.return_value = {k: v for k, v in JIMENG_CLI.items() if k != "requires_shell"}
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        success, msg = install_cli("jimeng")
+
+        assert not success
+        assert "not executed" in msg
+        mock_run.assert_not_called()
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_install_jimeng_success_with_requires_shell(self, mock_get_cli, mock_run):
+        """install_cli('jimeng') can run because the reviewed entry opted in."""
         mock_get_cli.return_value = JIMENG_CLI
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
@@ -1190,7 +1532,58 @@ class TestScriptStrategy:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
+    def test_install_sketch_uses_command_without_shell(self, mock_get_cli, mock_run):
+        """install_cli('sketch') uses the reviewed npm command without shell=True."""
+        mock_get_cli.return_value = SKETCH_CLI
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        success, msg = install_cli("sketch")
+
+        assert success, f"Expected success but got: {msg}"
+        assert "Sketch" in msg
+        args = mock_run.call_args[0][0]
+        _, kwargs = mock_run.call_args
+        assert args == ["npm", "install", "-g", "./sketch/agent-harness"]
+        assert kwargs.get("shell") is False or kwargs.get("shell") is None
+        assert kwargs["cwd"] == Path(__file__).resolve().parents[2]
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_install_sketch_fails_clearly_without_source_checkout(
+        self, mock_get_cli, mock_run, tmp_path
+    ):
+        mock_get_cli.return_value = SKETCH_CLI
+        with patch("cli_hub.installer.REPOSITORY_ROOT", tmp_path):
+            success, msg = install_cli("sketch")
+
+        assert not success
+        assert "source checkout" in msg
+        mock_run.assert_not_called()
+
+    @pytest.mark.parametrize("registry_name", ["registry.json", "public_registry.json"])
+    def test_registry_shell_commands_declare_trust(self, registry_name):
+        """Every registry shell payload must opt in explicitly."""
+        registry_path = Path(__file__).resolve().parents[2] / registry_name
+        entries = json.loads(registry_path.read_text(encoding="utf-8"))["clis"]
+        missing = []
+        for cli in entries:
+            for field in ("install_cmd", "uninstall_cmd", "update_cmd"):
+                command = cli.get(field)
+                if not command:
+                    continue
+                try:
+                    argv = shlex.split(command)
+                except ValueError:
+                    argv = []
+                if (
+                    _contains_shell_operator(command)
+                    or _invokes_shell_payload(argv)
+                ) and cli.get("requires_shell") is not True:
+                    missing.append(f"{cli['name']}:{field}")
+        assert not missing, f"commands missing requires_shell=true: {missing}"
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
     def test_install_jimeng_failure_propagated(self, mock_get_cli, mock_run):
         """A non-zero exit from the curl|bash script surfaces as failure."""
         mock_get_cli.return_value = JIMENG_CLI
@@ -1216,20 +1609,20 @@ class TestScriptStrategy:
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
-    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_recorded_in_installed_json(self, mock_get_cli, mock_run):
+    def test_install_jimeng_recorded_in_installed_json(self, mock_get_cli, mock_run, tmp_path):
         """After a successful install, jimeng appears in installed.json."""
-        installed_file = Path(tempfile.mktemp())
+        installed_file = tmp_path / "jimeng-installed.json"
         mock_get_cli.return_value = JIMENG_CLI
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         with patch("cli_hub.installer.INSTALLED_FILE", installed_file):
             success, _ = install_cli("jimeng")
             assert success
-            data = json.loads(installed_file.read_text())
+            data = json.loads(installed_file.read_text(encoding="utf-8"))
             assert "jimeng" in data
             assert data["jimeng"]["strategy"] == "command"
             assert data["jimeng"]["package_manager"] == "script"
+            assert data["jimeng"]["requires_shell"] is True
 
 # ─── Analytics tests ──────────────────────────────────────────────────
 
@@ -1238,7 +1631,7 @@ class TestAnalytics:
     """Tests for analytics.py — opt-out, event firing, event names."""
 
     def test_analytics_enabled_by_default(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             assert _is_enabled()
 
     def test_analytics_disabled_by_env(self):
@@ -1251,7 +1644,7 @@ class TestAnalytics:
 
     @patch("cli_hub.analytics._send_event")
     def test_track_event_sends_request(self, mock_send):
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             track_event("test-event", data={"key": "value"})
             import time
             time.sleep(0.2)
@@ -1283,7 +1676,7 @@ class TestAnalytics:
     @patch("cli_hub.analytics._send_event")
     def test_track_install_event_name_is_flat(self, mock_send):
         """cli-install event name is static; CLI name lives in properties.cli."""
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             track_install("gimp", "1.0.0")
             import time
             time.sleep(0.2)
@@ -1298,7 +1691,7 @@ class TestAnalytics:
     @patch("cli_hub.analytics._send_event")
     def test_track_uninstall_event_name_is_flat(self, mock_send):
         """cli-uninstall event name is static; CLI name lives in properties.cli."""
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             analytics_track_uninstall("blender")
             import time
             time.sleep(0.2)
@@ -1313,7 +1706,7 @@ class TestAnalytics:
     def test_track_launch_fires(self, mock_send):
         """cli-launch event fires with the CLI name in properties."""
         from cli_hub.analytics import track_launch
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             track_launch("gimp")
             import time
             time.sleep(0.2)
@@ -1326,7 +1719,7 @@ class TestAnalytics:
     @patch("cli_hub.analytics._send_event")
     def test_track_visit_human(self, mock_send):
         """cli-hub call event sent when not detected as agent."""
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             track_visit(is_agent=False)
             import time
             time.sleep(0.2)
@@ -1341,7 +1734,7 @@ class TestAnalytics:
     @patch("cli_hub.analytics._send_event")
     def test_track_visit_agent(self, mock_send):
         """cli-hub call event captures the agent flag."""
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             track_visit(is_agent=True, command="--version")
             import time
             time.sleep(0.2)
@@ -1362,7 +1755,7 @@ class TestAnalytics:
 
     @patch("cli_hub.analytics._parent_process_commands", return_value=["/usr/local/bin/codex --run"])
     def test_detect_agent_from_parent_process(self, mock_cmds):
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             context = detect_invocation_context()
             assert context["is_agent"] is True
             assert context["reason"] == "codex-process"
@@ -1385,7 +1778,7 @@ class TestAnalytics:
     @patch("cli_hub.analytics._parent_process_commands")
     def test_detect_agent_from_expanded_parent_process_names(self, mock_cmds, command, expected_reason):
         mock_cmds.return_value = [command]
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             context = detect_invocation_context()
             assert context["is_agent"] is True
             assert context["reason"] == expected_reason
@@ -1394,14 +1787,14 @@ class TestAnalytics:
     @patch("cli_hub.analytics._parent_process_commands", return_value=[])
     def test_detect_not_agent_clean_env(self, mock_cmds):
         """Clean env with a tty should not detect as agent."""
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             with patch("sys.stdin") as mock_stdin:
                 mock_stdin.isatty.return_value = True
                 assert _detect_is_agent() is False
 
     @patch("cli_hub.analytics._parent_process_commands", return_value=[])
     def test_detect_non_tty_is_agent(self, mock_cmds):
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             with patch("sys.stdin") as mock_stdin:
                 mock_stdin.isatty.return_value = False
                 context = detect_invocation_context()
@@ -1421,7 +1814,7 @@ class TestAnalytics:
             "stdin_tty": False,
             "is_interactive": False,
         }
-        with patch.dict(os.environ, {}, clear=True):
+        with _clean_environment():
             track_visit(command="search", detection=detection)
             import time
             time.sleep(0.2)
@@ -1436,7 +1829,7 @@ class TestAnalytics:
     @patch("cli_hub.analytics._send_event")
     def test_first_run_sends_event(self, mock_send, tmp_path):
         """First invocation sends cli-hub-installed event."""
-        with patch.dict(os.environ, {"HOME": str(tmp_path)}, clear=False):
+        with _clean_environment(tmp_path):
             track_first_run()
             import time
             time.sleep(0.2)
@@ -1452,8 +1845,8 @@ class TestAnalytics:
         """Second invocation does NOT send cli-hub-installed event."""
         cli_hub_dir = tmp_path / ".cli-hub"
         cli_hub_dir.mkdir()
-        (cli_hub_dir / ".first_run_sent").write_text("0.1.0")
-        with patch.dict(os.environ, {"HOME": str(tmp_path)}, clear=False):
+        (cli_hub_dir / ".first_run_sent").write_text("0.1.0", encoding="utf-8")
+        with _clean_environment(tmp_path):
             track_first_run()
             import time
             time.sleep(0.2)
@@ -1548,7 +1941,7 @@ class TestCLI:
     @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.get_matrix", return_value=SAMPLE_MATRIX_REGISTRY["matrices"][0])
     @patch("cli_hub.cli.get_installed", return_value={"gimp": {"version": "1.0.0"}})
-    @patch("cli_hub.cli.get_rendered_matrix_skill_path", return_value=Path("/tmp/video-creation.SKILL.md"))
+    @patch("cli_hub.cli.get_rendered_matrix_skill_path")
     @patch("pathlib.Path.exists", return_value=True)
     def test_matrix_info_command(
         self,
@@ -1559,13 +1952,16 @@ class TestCLI:
         mock_detect,
         mock_visit,
         mock_first_run,
+        tmp_path,
     ):
+        rendered_path = tmp_path / "video-creation.SKILL.md"
+        mock_rendered.return_value = rendered_path
         mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["matrix", "info", "video-creation"])
         assert "Video Creation & Editing" in result.output
         assert "cli-hub matrix install video-creation" in result.output
         assert "cli-hub-matrix/video-creation/SKILL.md" in result.output
-        assert "Local skill: /tmp/video-creation.SKILL.md" in result.output
+        assert f"Local skill: {rendered_path}" in result.output
         assert "Capabilities:" in result.output
         assert "package.thumbnail" in result.output
         assert "Known Gaps:" in result.output
@@ -1793,6 +2189,7 @@ class TestCLI:
         """When agent env detected, track_visit is called with the new cli-hub call metadata."""
         mock_detect.return_value = self.agent_detection
         result = self.runner.invoke(main, ["--version"])
+        assert result.exit_code == 0
         mock_visit.assert_called_once_with(command="--version", detection=self.agent_detection)
 
     @patch("cli_hub.cli.track_first_run")
@@ -1819,6 +2216,7 @@ class TestCLI:
         """launch execs the CLI entry point, passing through extra args."""
         mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["launch", "jimeng", "login"])
+        assert result.exit_code == 0
         mock_execvp.assert_called_once_with("dreamina", ["dreamina", "login"])
 
     @patch("cli_hub.cli.track_first_run")

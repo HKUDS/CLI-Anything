@@ -63,7 +63,7 @@ def test_project():
     # Cleanup: Delete project (if implemented)
     try:
         run_cli_command(["project", "delete", "--name", project_name])
-    except:
+    except Exception:
         pass
 
 

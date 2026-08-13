@@ -37,6 +37,25 @@ cli-hub update gimp
 cli-hub uninstall gimp
 ```
 
+## Shell install commands
+
+Most registry install commands run without a shell. Commands that intentionally
+need shell syntax such as pipes, `&&` chains, command substitution, or
+redirection must be reviewed in the registry and marked with
+`requires_shell: true`.
+
+If an install fails with `Command contains shell operators and was not
+executed`, the registry entry is missing that reviewed opt-in. Use one of these
+paths:
+
+- Prefer updating the registry entry to a safer command shape or adding
+  `requires_shell: true` after reviewing the command.
+- For a one-off local override, run `CLI_HUB_ALLOW_SHELL_COMMANDS=1 cli-hub
+  install <name>` only after reviewing the registry entry and install command.
+
+This applies to script-style entries such as `curl ... | bash` and older
+multi-step commands like `cd ... && npm install && npm link`.
+
 ## Preview Viewer
 
 `cli-hub` also includes the generic preview consumer for preview-capable

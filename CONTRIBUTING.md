@@ -145,6 +145,12 @@ python3 -m pytest cli_anything/<software>/tests/ -v
 - Click 8.0+
 - pytest 7.0+
 
+### Downstream fork maintenance
+
+If you maintain a downstream mirror or temporary patch branch, follow
+[Downstream Fork Maintenance](docs/FORK_MAINTENANCE.md) before carrying local
+changes for more than one upstream sync cycle.
+
 ## Code Style
 
 - Follow PEP 8 conventions.
