@@ -440,7 +440,7 @@
     .marketplace-prelude { contain-intrinsic-size: 220px; contain-intrinsic-size: auto 220px; }
     .matrices { contain-intrinsic-size: 900px; contain-intrinsic-size: auto 900px; }
     .deck-stage { contain-intrinsic-size: 9500px; contain-intrinsic-size: auto 9500px; }
-    @media (max-width: 640px) { .deck-stage { contain-intrinsic-size: 28000px; contain-intrinsic-size: auto 28000px; } }
+    @media (max-width: 640px) { .deck-stage { contain-intrinsic-size: 7200px; contain-intrinsic-size: auto 7200px; } }
     .footer { contain-intrinsic-size: 320px; contain-intrinsic-size: auto 320px; }
 
     .deck-stage { max-width: 1180px; margin: 0 auto; padding: 0 22px; }
@@ -456,6 +456,7 @@
        between decks. (Replaces the old over-wide "peek" carousel that mis-measured its
        width and clipped the active panel on the right while bleeding the other on the left.) */
     .deck-panel { flex: 0 0 100%; min-width: 0; position: relative; }
+    .deck-sentinel { height: 1px; }
     /* Perf — Safari especially. While the deck moves we collapse every effect that forces a
        per-frame re-rasterization of the large card subtree, so each panel caches as a flat
        layer the GPU can translate cheaply. All effects return the moment motion stops.
@@ -1254,6 +1255,7 @@
           <div class="grid" id="grid-harness">
             <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
           </div>
+          <div class="deck-sentinel" id="sentinel-harness" data-deck="harness" hidden aria-hidden="true"></div>
         </div>
 
         <!-- Public CLI deck -->
@@ -1271,6 +1273,7 @@
           </div>
           <div class="filter-row" id="filters-public"></div>
           <div class="grid" id="grid-public"></div>
+          <div class="deck-sentinel" id="sentinel-public" data-deck="public" hidden aria-hidden="true"></div>
         </div>
 
       </div>
@@ -2055,12 +2058,55 @@
       const grid = document.getElementById('grid-' + deck);
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="empty">No CLIs match your search.</div>';
+        state.fullList = []; state.shownCount = 0;
+        updateDeckSentinel(deck);
         return;
       }
-      if (deck === 'harness') grid.innerHTML = filtered.map(renderHarnessCard).join('');
-      else grid.innerHTML = filtered.map(renderNpmCard).join('');
+      // Phones (single-column) render in growing batches: a full 79-card render
+      // means ~28k px of live DOM, and laying out + rasterizing it during a fast
+      // fling is what killed the tab on iPhones. Desktop masonry keeps the full
+      // set so its shortest-column balancing stays exact.
+      state.fullList = filtered;
+      state.shownCount = Math.min(deckBatchLimit(grid), filtered.length);
+      const shown = filtered.slice(0, state.shownCount);
+      if (deck === 'harness') grid.innerHTML = shown.map(renderHarnessCard).join('');
+      else grid.innerHTML = shown.map(renderNpmCard).join('');
       layoutMasonry(grid);
+      updateDeckSentinel(deck);
     }
+
+    // ── Progressive deck batches (phones) ──
+    const DECK_BATCH_SIZE = 20;
+    function deckBatchLimit(grid) {
+      // Batch only in single-column layout and only when IO can grow the list.
+      return (deckSentinelIO && masonryColumnCount(grid) === 1) ? DECK_BATCH_SIZE : Infinity;
+    }
+    function appendDeckBatch(deck) {
+      const state = deckState[deck];
+      if (!state.fullList || state.shownCount >= state.fullList.length) return;
+      const grid = document.getElementById('grid-' + deck);
+      const next = state.fullList.slice(state.shownCount, state.shownCount + DECK_BATCH_SIZE);
+      state.shownCount += next.length;
+      grid.insertAdjacentHTML('beforeend', next.map(deck === 'harness' ? renderHarnessCard : renderNpmCard).join(''));
+      layoutMasonry(grid);
+      updateDeckSentinel(deck);
+    }
+    function updateDeckSentinel(deck) {
+      const s = document.getElementById('sentinel-' + deck);
+      if (!s || !deckSentinelIO) return;
+      const state = deckState[deck];
+      const more = !!(state.fullList && state.shownCount < state.fullList.length);
+      s.hidden = !more;
+      // Re-observe so IO re-evaluates even when the sentinel never left the
+      // margin band (otherwise a still-intersecting sentinel fires no new event).
+      deckSentinelIO.unobserve(s);
+      if (more) deckSentinelIO.observe(s);
+    }
+    const deckSentinelIO = ('IntersectionObserver' in window)
+      ? new IntersectionObserver((entries) => {
+          entries.forEach((en) => { if (en.isIntersecting) appendDeckBatch(en.target.dataset.deck); });
+        }, { rootMargin: '1600px 0px' })
+      : null;
 
     // ── Engine-independent JS masonry: shortest-column distribution ──
     // Rebuilds the grid's .grid-col wrappers from the current set of .card elements and
@@ -2368,6 +2414,13 @@
       const si = document.getElementById('search-' + deck); if (si) si.value = '';
       setFilter(deck, 'all');
       switchDeck(deck);
+      // phones render the deck in batches — materialize until the target exists
+      let guard = 0;
+      while (!document.getElementById('tool-' + cssId(name)) &&
+             deckState[deck].fullList && deckState[deck].shownCount < deckState[deck].fullList.length &&
+             guard++ < 50) {
+        appendDeckBatch(deck);
+      }
       requestAnimationFrame(() => {
         const el = document.getElementById('tool-' + cssId(name));
         if (el) {
@@ -2774,8 +2827,15 @@
     });
 
     let masonryResizeTimer = null;
+    let masonryLastWidth = window.innerWidth;
     window.addEventListener('resize', () => {
       updateDeckPosition();
+      // iOS Safari fires resize when its toolbar collapses during scroll — a
+      // height-only change. Rebuilding both masonry grids mid-fling is a huge
+      // main-thread stall for a layout that cannot have changed (columns depend
+      // only on width), so bail unless the width actually moved.
+      if (window.innerWidth === masonryLastWidth) return;
+      masonryLastWidth = window.innerWidth;
       // debounce the (re)layout: recompute column count + redistribute cards
       clearTimeout(masonryResizeTimer);
       masonryResizeTimer = setTimeout(relayoutAllGrids, 150);
