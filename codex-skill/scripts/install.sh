@@ -40,6 +40,16 @@ trap cleanup EXIT
 
 STAGING_DIR="$(mktemp -d "${DEST_ROOT}/.cli-anything.tmp.XXXXXX")"
 cp -R "${SKILL_DIR}/." "${STAGING_DIR}/"
+
+# Drop repo-internal symlinks — the canonical copies below re-vendor the real
+# files from cli-anything-plugin/ so the installed skill is fully self-contained.
+rm -rf \
+  "${STAGING_DIR}/references" \
+  "${STAGING_DIR}/scripts/templates" \
+  "${STAGING_DIR}/scripts/repl_skin.py" \
+  "${STAGING_DIR}/scripts/preview_bundle.py" \
+  "${STAGING_DIR}/scripts/skill_generator.py"
+
 mkdir -p \
   "${STAGING_DIR}/references/commands" \
   "${STAGING_DIR}/references/docs" \
