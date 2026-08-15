@@ -93,6 +93,11 @@ class TestAdGuardHomeClient:
             assert result == {}
             mock_post.assert_called_once()
 
+    def test_connection_error_docker_hint_maps_to_container_port(self):
+        client = AdGuardHomeClient(host="localhost", port=3001)
+        message = str(client._connection_error(Exception("refused")))
+        assert "-p 3001:3000" in message
+
     def test_connection_error_raises_runtime(self):
         c = make_client()
         with patch.object(c.session, "get", side_effect=requests.exceptions.ConnectionError("refused")):

@@ -38,7 +38,8 @@ class AdGuardHomeClient:
             f"Cannot connect to AdGuardHome at {self.base_url}.\n"
             f"Ensure AdGuardHome is running and accessible.\n"
             f"Install: curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v\n"
-            f"Or Docker: docker run --name adguardhome -p {self.port}:{self.port} adguard/adguardhome\n"
+            f"Or Docker: docker run --name adguardhome -p {self.port}:3000 adguard/adguardhome\n"
+            f"(the container serves its web interface on port 3000 - keep that port in the setup wizard)\n"
             f"Error: {e}"
         )
 
