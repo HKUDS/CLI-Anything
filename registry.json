@@ -122,7 +122,7 @@
     {
       "name": "adguardhome",
       "display_name": "AdGuardHome",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "DNS ad-blocking and network infrastructure management via AdGuardHome REST API",
       "requires": "AdGuardHome instance running",
       "homepage": "https://adguard.com/adguard-home/overview.html",

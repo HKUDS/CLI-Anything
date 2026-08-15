@@ -186,10 +186,12 @@ class TestCLISubprocess:
     def test_rewrite_help(self):
         result = self._run(["rewrite", "--help"])
         assert result.returncode == 0
+        assert "list" in result.stdout
 
     def test_blocking_help(self):
         result = self._run(["blocking", "--help"])
         assert result.returncode == 0
+        assert "parental" in result.stdout
 
 
 # ---------------------------------------------------------------------------
