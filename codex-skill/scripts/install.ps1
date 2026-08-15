@@ -37,6 +37,10 @@ try {
     New-Item -ItemType Directory -Path $stagingDir | Out-Null
     Get-ChildItem -LiteralPath $skillDir -Force | Copy-Item -Destination $stagingDir -Recurse -Force
 
+    # Drop repo-internal symlinks — the canonical copies below re-vendor the real
+    # files from cli-anything-plugin/ so the installed skill is fully self-contained.
+    Remove-Item -LiteralPath (Join-Path $stagingDir "references"), (Join-Path $stagingDir "scripts\templates"), (Join-Path $stagingDir "scripts\repl_skin.py"), (Join-Path $stagingDir "scripts\preview_bundle.py"), (Join-Path $stagingDir "scripts\skill_generator.py") -Recurse -Force -ErrorAction SilentlyContinue
+
     $referenceDir = Join-Path $stagingDir "references"
     $referenceCommands = Join-Path $referenceDir "commands"
     $referenceDocs = Join-Path $referenceDir "docs"

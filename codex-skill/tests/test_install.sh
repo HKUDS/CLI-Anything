@@ -79,6 +79,30 @@ fi
 grep -q 'references/HARNESS.md' "${INSTALLED_DIR}/SKILL.md" ||
   fail "installed SKILL.md does not point to vendored HARNESS.md"
 
+# Simulate `npx skills add HKUDS/CLI-Anything --skill cli-anything`, which copies
+# the skill directory resolving symlinks (fs.cp dereference:true) but does NOT run
+# install.sh. The vendored resources must be present in the repo checkout itself.
+NPX_STYLE_DIR="${TMP_DIR}/npx-style"
+mkdir -p "${NPX_STYLE_DIR}"
+cp -rL "${SKILL_DIR}/." "${NPX_STYLE_DIR}/"
+assert_file "${NPX_STYLE_DIR}/references/HARNESS.md"
+assert_file "${NPX_STYLE_DIR}/references/commands/cli-anything.md"
+assert_file "${NPX_STYLE_DIR}/references/commands/refine.md"
+assert_file "${NPX_STYLE_DIR}/references/commands/test.md"
+assert_file "${NPX_STYLE_DIR}/references/commands/validate.md"
+assert_file "${NPX_STYLE_DIR}/references/commands/list.md"
+assert_file "${NPX_STYLE_DIR}/references/guides/session-locking.md"
+assert_file "${NPX_STYLE_DIR}/scripts/repl_skin.py"
+assert_file "${NPX_STYLE_DIR}/scripts/preview_bundle.py"
+assert_file "${NPX_STYLE_DIR}/scripts/skill_generator.py"
+assert_file "${NPX_STYLE_DIR}/scripts/templates/SKILL.md.template"
+assert_file "${NPX_STYLE_DIR}/references/docs/PREVIEW_PROTOCOL.md"
+assert_same "${PLUGIN_DIR}/HARNESS.md" "${NPX_STYLE_DIR}/references/HARNESS.md"
+assert_same "${REPO_ROOT}/docs/PREVIEW_PROTOCOL.md" "${NPX_STYLE_DIR}/references/docs/PREVIEW_PROTOCOL.md"
+assert_tree_same "${PLUGIN_DIR}/commands" "${NPX_STYLE_DIR}/references/commands"
+[[ ! -L "${NPX_STYLE_DIR}/references/HARNESS.md" ]] ||
+  fail "npx-style copy left a symlink behind (dereference failed)"
+
 DETACHED_ROOT="${TMP_DIR}/detached"
 DETACHED_LOG="${TMP_DIR}/detached-install.log"
 mkdir -p "${DETACHED_ROOT}"

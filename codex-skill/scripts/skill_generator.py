@@ -1,0 +1,1 @@
+../../cli-anything-plugin/skill_generator.py
