@@ -765,3 +765,7 @@ __all__ = [
     "session_state_dir",
     "session_state_path",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(entrypoint())

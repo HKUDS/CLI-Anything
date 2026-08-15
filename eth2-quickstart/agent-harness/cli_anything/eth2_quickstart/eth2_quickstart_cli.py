@@ -282,3 +282,7 @@ def health_check_cmd(ctx):
     backend = backend_from_context(ctx)
     result = health_check(backend)
     emit(result, ctx.obj["as_json"])
+
+
+if __name__ == "__main__":
+    main()
