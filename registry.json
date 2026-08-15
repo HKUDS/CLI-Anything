@@ -6,6 +6,25 @@
   },
   "clis": [
     {
+      "name": "meta2d",
+      "display_name": "Meta2d.js",
+      "version": "0.1.0",
+      "description": "Agent-Native CLI for Meta2d.js — create, edit and export Meta2dData diagrams headlessly in Node.js without a browser",
+      "requires": "Node.js 18+ with meta2d.js monorepo",
+      "homepage": "https://github.com/lixi523/meta2d.js",
+      "source_url": "https://github.com/lixi523/meta2d.js",
+      "install_cmd": "pnpm install && pnpm --filter @meta2d/cli build",
+      "entry_point": "meta2d",
+      "skill_md": "https://github.com/lixi523/meta2d.js/blob/main/packages/cli/SKILL.md",
+      "category": "diagrams",
+      "contributors": [
+        {
+          "name": "Tony Stark (Multica Agent)",
+          "url": "https://github.com/lixi523"
+        }
+      ]
+    },
+    {
       "name": "jumpserver",
       "display_name": "JumpServer",
       "version": "0.1.0",
