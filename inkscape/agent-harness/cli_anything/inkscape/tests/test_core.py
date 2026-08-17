@@ -16,7 +16,7 @@ from cli_anything.inkscape.utils.svg_utils import (
     parse_style, serialize_style, validate_color, generate_id,
     reset_id_counter, create_svg_element, serialize_svg,
     find_defs, find_element_by_id, remove_element_by_id,
-    SVG_NS, INKSCAPE_NS,
+    SVG_NS, INKSCAPE_NS, SODIPODI_NS,
 )
 from cli_anything.inkscape.core.document import (
     create_document, open_document, save_document, get_document_info,
@@ -254,6 +254,17 @@ class TestDocument:
         assert len(text_nodes) == 1
         tspans = list(text_nodes[0].iter(f"{{{SVG_NS}}}tspan"))
         assert len(tspans) > 1
+
+    def test_project_to_svg_star_uses_standard_path_only(self):
+        proj = create_document(name="svg_star", background="none")
+        add_star(proj, cx=100, cy=100, points_count=5, outer_r=50, inner_r=25)
+
+        svg = project_to_svg(proj)
+        star_paths = list(svg.iter(f"{{{SVG_NS}}}path"))
+
+        assert len(star_paths) == 1
+        assert star_paths[0].get("d")
+        assert f"{{{SODIPODI_NS}}}type" not in star_paths[0].attrib
 
 
 class TestCliBootstrap:
