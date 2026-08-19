@@ -867,11 +867,11 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<software>/tests/ 
 CLI-Anythingがあなたのソフトウェアをエージェントネイティブにするのに役立ったら、スターをお願いします！ ⭐
 
 <div align="center">
-  <a href="https://star-history.com/#HKUDS/CLI-Anything&Date">
+  <a href="https://star-history.dera.page/#HKUDS/CLI-Anything&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date" />
-      <img alt="スター履歴チャート" src="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date" />
+      <img alt="スター履歴チャート" src="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date" />
     </picture>
   </a>
 </div>

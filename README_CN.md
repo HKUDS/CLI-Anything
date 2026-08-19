@@ -995,11 +995,11 @@ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/<软件名>/tests/
 
 <!-- Uncomment when published:
 <div align="center">
-  <a href="https://star-history.com/#HKUDS/CLI-Anything&Date">
+  <a href="https://star-history.dera.page/#HKUDS/CLI-Anything&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date" />
+      <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date" />
     </picture>
   </a>
 </div>
