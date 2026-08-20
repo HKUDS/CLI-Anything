@@ -219,10 +219,24 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
     # - Docstrings on the same line or following line after function definition
     # - Various Click decorator patterns like @click.option(), @click.argument()
     # Uses re.DOTALL to match across newlines between decorator and def
-    optional_decorator_pattern = r'(?:\s*@[\w.]+(?:\([^)]*\))?)*'
+    # A decorator may contain nested calls such as ``type=click.Choice(...)``.
+    # Match its closing parenthesis by requiring the next token to be another
+    # decorator or the decorated function, rather than stopping at the first
+    # parenthesis in the argument list.
+    decorator_args_body = r'[\s\S]*?'
+    decorator_end_pattern = r'\)(?=\s*(?:@|def\s))'
+    captured_decorator_args_pattern = (
+        r'(' + decorator_args_body + r')' + decorator_end_pattern
+    )
+    optional_decorator_pattern = (
+        r'(?:\s*@[\w.]+(?:\('
+        + decorator_args_body
+        + decorator_end_pattern
+        + r')?)*'
+    )
 
     group_pattern = (
-        r'@(\w+)\.group\(([^)]*)\)'  # @xxx.group(...)
+        r'@(\w+)\.group\(' + captured_decorator_args_pattern  # @xxx.group(...)
         + optional_decorator_pattern  # optional additional decorators
         + r'\s*def\s+(\w+)\([^)]*\)'  # def xxx(...):
         + r':\s*'  # colon with optional whitespace
@@ -273,7 +287,7 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
     # - Docstrings on the same line or following line after function definition
     # - Various Click decorator patterns like @click.option(), @click.argument()
     command_pattern = (
-        r'@(\w+)\.command\(([^)]*)\)'  # @xxx.command(...)
+        r'@(\w+)\.command\(' + captured_decorator_args_pattern  # @xxx.command(...)
         + optional_decorator_pattern  # optional additional decorators
         + r'\s*def\s+(\w+)\([^)]*\)'  # def xxx(...):
         + r':\s*'  # colon with optional whitespace

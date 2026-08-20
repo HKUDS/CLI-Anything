@@ -282,6 +282,34 @@ class TestExtractCliMetadata:
         assert [cmd.name for cmd in groups["Devices"].commands] == ["list"]
         assert [cmd.name for cmd in groups["Alerts Configs"].commands] == ["enable"]
 
+    def test_extracts_nested_decorator_arguments(self, tmp_path):
+        software = "nested_args"
+        cli_pkg = tmp_path / "cli_anything" / software
+        cli_pkg.mkdir(parents=True)
+        (cli_pkg / "__init__.py").write_text("")
+        (cli_pkg / f"{software}_cli.py").write_text(
+            textwrap.dedent("""\
+            import click
+            from pathlib import Path
+
+            @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
+            @click.option("--format", type=click.Choice(["json", "text"]))
+            def cli(format):
+                pass
+
+            @cli.command(context_settings=dict(ignore_unknown_options=True))
+            @click.option("--output", type=click.Path(path_type=Path))
+            def render(output):
+                \"\"\"Render output.\"\"\"
+                pass
+            """)
+        )
+
+        metadata = extract_cli_metadata(str(tmp_path))
+        groups = {group.name: group for group in metadata.command_groups}
+
+        assert [cmd.name for cmd in groups["Cli"].commands] == ["render"]
+
     def test_generates_examples(self, harness_dir):
         metadata = extract_cli_metadata(str(harness_dir))
         assert len(metadata.examples) > 0
