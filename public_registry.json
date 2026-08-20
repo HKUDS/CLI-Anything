@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-06-19"
+    "updated": "2026-08-20"
   },
   "clis": [
     {
@@ -68,6 +68,29 @@
         {
           "name": "WecomTeam",
           "url": "https://github.com/WecomTeam"
+        }
+      ]
+    },
+    {
+      "name": "x-twitter-scraper",
+      "display_name": "X Twitter Scraper CLI",
+      "version": "0.13.1",
+      "description": "CLI for Twitter search, profile and follower exports, monitoring, webhooks, and approved X actions through Xquik. Not affiliated with X Corp.",
+      "category": "communication",
+      "requires": "Go 1.26.6+ or automatic Go toolchain downloads; Xquik API key or OAuth bearer token for API requests",
+      "homepage": "https://xquik.com",
+      "source_url": "https://github.com/Xquik-dev/x-twitter-scraper-cli",
+      "package_manager": "go",
+      "install_strategy": "command",
+      "install_cmd": "go install github.com/Xquik-dev/x-twitter-scraper-cli/cmd/x-twitter-scraper@v0.13.1",
+      "update_notes": "Install a newer tagged release after reviewing its release notes.",
+      "uninstall_notes": "Remove x-twitter-scraper from the directory reported by go env GOBIN or GOPATH/bin.",
+      "skill_md": "https://github.com/Xquik-dev/x-twitter-scraper/blob/v2.6.5/skills/x-twitter-scraper/SKILL.md",
+      "entry_point": "x-twitter-scraper",
+      "contributors": [
+        {
+          "name": "Xquik-dev",
+          "url": "https://github.com/Xquik-dev"
         }
       ]
     },
