@@ -11,6 +11,7 @@ The generated SKILL.md files contain:
 - Examples for AI agents
 """
 
+import ast
 import re
 from pathlib import Path
 from typing import Optional
@@ -30,14 +31,50 @@ def _canonical_skill_name(harness_path: Path, software_name: str) -> str:
     return f"cli-anything-{software_dir.replace('_', '-')}"
 
 
-def _click_declared_name(decorator_args: str, fallback: str) -> str:
-    """Return the Click command/group name declared in a decorator."""
-    match = re.search(r'^\s*["\']([^"\']+)["\']', decorator_args)
-    if not match:
-        match = re.search(r'\bname\s*=\s*["\']([^"\']+)["\']', decorator_args)
-    if match:
-        return match.group(1)
-    return fallback.replace("_", "-")
+def _click_decorator_info(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    kind: str,
+) -> Optional[tuple[str, str]]:
+    """Return the owner and declared name for a Click decorator."""
+    for decorator in function.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if not (
+            isinstance(target, ast.Attribute)
+            and target.attr == kind
+            and isinstance(target.value, ast.Name)
+        ):
+            continue
+
+        declared_name = None
+        if isinstance(decorator, ast.Call):
+            if decorator.args:
+                first_arg = decorator.args[0]
+                if (
+                    isinstance(first_arg, ast.Constant)
+                    and isinstance(first_arg.value, str)
+                ):
+                    declared_name = first_arg.value
+            if declared_name is None:
+                for keyword in decorator.keywords:
+                    if (
+                        keyword.arg == "name"
+                        and isinstance(keyword.value, ast.Constant)
+                        and isinstance(keyword.value.value, str)
+                    ):
+                        declared_name = keyword.value.value
+                        break
+
+        return target.value.id, declared_name or function.name.replace("_", "-")
+
+    return None
+
+
+def _function_docstring(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """Return a function docstring without changing its internal formatting."""
+    docstring = ast.get_docstring(function, clean=False)
+    if docstring:
+        return docstring.strip()
+    return ""
 
 
 @dataclass
@@ -211,55 +248,35 @@ def extract_version_from_setup(setup_path: Path) -> str:
 def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
     """Extract command groups and commands from CLI file."""
     content = cli_path.read_text(encoding="utf-8")
+    tree = ast.parse(content, filename=str(cli_path))
+    functions = sorted(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ),
+        key=lambda node: (node.lineno, node.col_offset),
+    )
     groups = []
-
-    # Find Click group decorators
-    # Pattern handles:
-    # - Multi-line decorators (decorators on separate lines)
-    # - Docstrings on the same line or following line after function definition
-    # - Various Click decorator patterns like @click.option(), @click.argument()
-    # Uses re.DOTALL to match across newlines between decorator and def
-    # A decorator may contain nested calls such as ``type=click.Choice(...)``.
-    # Match its closing parenthesis by requiring the next token to be another
-    # decorator or the decorated function, rather than stopping at the first
-    # parenthesis in the argument list.
-    decorator_args_body = r'[\s\S]*?'
-    decorator_end_pattern = r'\)(?=\s*(?:@|def\s))'
-    captured_decorator_args_pattern = (
-        r'(' + decorator_args_body + r')' + decorator_end_pattern
-    )
-    optional_decorator_pattern = (
-        r'(?:\s*@[\w.]+(?:\('
-        + decorator_args_body
-        + decorator_end_pattern
-        + r')?)*'
-    )
-
-    group_pattern = (
-        r'@(\w+)\.group\(' + captured_decorator_args_pattern  # @xxx.group(...)
-        + optional_decorator_pattern  # optional additional decorators
-        + r'\s*def\s+(\w+)\([^)]*\)'  # def xxx(...):
-        + r':\s*'  # colon with optional whitespace
-        + r'(?:"""([\s\S]*?)"""|\'\'\'([\s\S]*?)\'\'\')?'  # optional docstring (""" or ''')
-    )
 
     group_lookup = {}
     group_display_paths = {}
-    group_matches = list(re.finditer(group_pattern, content))
+    group_functions = [
+        (function, decorator_info)
+        for function in functions
+        if (decorator_info := _click_decorator_info(function, "group"))
+    ]
     root_group_funcs = {
-        match.group(3).lower()
-        for match in group_matches
-        if match.group(1).lower() == "click"
+        function.name.lower()
+        for function, (parent, _) in group_functions
+        if parent.lower() == "click"
     }
 
-    for match in group_matches:
-        group_parent = match.group(1)
-        group_args = match.group(2)
-        group_func = match.group(3)
-        # Docstring can be in group 4 (triple-double) or group 5 (triple-single)
-        group_doc = (match.group(4) or match.group(5) or "").strip()
+    for function, (group_parent, declared_name) in group_functions:
+        group_func = function.name
+        group_doc = _function_docstring(function)
 
-        local_group_name = _format_display_name(_click_declared_name(group_args, group_func))
+        local_group_name = _format_display_name(declared_name)
         parent_key = group_parent.lower()
         if parent_key == "click" or parent_key in root_group_funcs:
             group_path = [local_group_name]
@@ -281,32 +298,21 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
         group_lookup[group_func.lower()] = group
         group_display_paths[group_func.lower()] = group_path
 
-    # Find Click command decorators
-    # Pattern handles:
-    # - Multi-line decorators (decorators on separate lines)
-    # - Docstrings on the same line or following line after function definition
-    # - Various Click decorator patterns like @click.option(), @click.argument()
-    command_pattern = (
-        r'@(\w+)\.command\(' + captured_decorator_args_pattern  # @xxx.command(...)
-        + optional_decorator_pattern  # optional additional decorators
-        + r'\s*def\s+(\w+)\([^)]*\)'  # def xxx(...):
-        + r':\s*'  # colon with optional whitespace
-        + r'(?:"""([\s\S]*?)"""|\'\'\'([\s\S]*?)\'\'\')?'  # optional docstring (""" or ''')
-    )
+    command_functions = [
+        (function, decorator_info)
+        for function in functions
+        if (decorator_info := _click_decorator_info(function, "command"))
+    ]
 
-    for match in re.finditer(command_pattern, content):
-        group_name = match.group(1)
-        cmd_args = match.group(2)
-        cmd_func = match.group(3)
-        # Docstring can be in group 4 (triple-double) or group 5 (triple-single)
-        cmd_doc = (match.group(4) or match.group(5) or "").strip()
+    for function, (group_name, declared_name) in command_functions:
+        cmd_func = function.name
+        cmd_doc = _function_docstring(function)
 
         # Find the matching group
         group = group_lookup.get(group_name.lower())
         if group:
-            cmd_name = _click_declared_name(cmd_args, cmd_func)
             group.commands.append(CommandInfo(
-                name=cmd_name,
+                name=declared_name,
                 description=cmd_doc or f"Execute {cmd_func} operation."
             ))
 
@@ -318,14 +324,11 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
             commands=[]
         )
 
-        for match in re.finditer(command_pattern, content):
-            cmd_args = match.group(2)
-            cmd_func = match.group(3)
-            # Docstring can be in group 4 (triple-double) or group 5 (triple-single)
-            cmd_doc = (match.group(4) or match.group(5) or "").strip()
-            cmd_name = _click_declared_name(cmd_args, cmd_func)
+        for function, (_, declared_name) in command_functions:
+            cmd_func = function.name
+            cmd_doc = _function_docstring(function)
             default_group.commands.append(CommandInfo(
-                name=cmd_name,
+                name=declared_name,
                 description=cmd_doc or f"Execute {cmd_func} operation."
             ))
 

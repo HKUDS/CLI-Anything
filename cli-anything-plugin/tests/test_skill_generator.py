@@ -10,6 +10,7 @@ import os
 import sys
 import textwrap
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ else:
 
 from skill_generator import (
     extract_cli_metadata,
+    extract_commands_from_cli,
     generate_skill_md,
     generate_skill_md_simple,
     generate_skill_file,
@@ -309,6 +311,54 @@ class TestExtractCliMetadata:
         groups = {group.name: group for group in metadata.command_groups}
 
         assert [cmd.name for cmd in groups["Cli"].commands] == ["render"]
+
+    def test_does_not_cross_annotated_decorated_function(self, tmp_path):
+        software = "annotated"
+        cli_pkg = tmp_path / "cli_anything" / software
+        cli_pkg.mkdir(parents=True)
+        (cli_pkg / "__init__.py").write_text("")
+        (cli_pkg / f"{software}_cli.py").write_text(
+            textwrap.dedent("""\
+            import click
+
+            @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
+            @click.option("--json", is_flag=True)
+            def cli(json_output: bool) -> None:
+                pass
+
+            @cli.group("document")
+            def document_group():
+                \"\"\"Document commands.\"\"\"
+                pass
+
+            @document_group.command("new")
+            def new_document() -> None:
+                pass
+            """)
+        )
+
+        metadata = extract_cli_metadata(str(tmp_path))
+        groups = {group.name: group for group in metadata.command_groups}
+
+        assert list(groups) == ["Cli", "Document"]
+        assert [cmd.name for cmd in groups["Document"].commands] == ["new"]
+
+    def test_large_cli_extraction_avoids_regex_backtracking(self):
+        cli_path = (
+            _PLUGIN_DIR.parent
+            / "cc-switch"
+            / "agent-harness"
+            / "cli_anything"
+            / "ccswitch"
+            / "ccswitch_cli.py"
+        )
+
+        started_at = time.perf_counter()
+        groups = extract_commands_from_cli(cli_path)
+        elapsed = time.perf_counter() - started_at
+
+        assert groups
+        assert elapsed < 2.0
 
     def test_generates_examples(self, harness_dir):
         metadata = extract_cli_metadata(str(harness_dir))
