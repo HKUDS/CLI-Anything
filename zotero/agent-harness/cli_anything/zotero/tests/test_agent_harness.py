@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -37,11 +39,17 @@ class AgentHarnessPackagingTests(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "0.1.0")
 
     def test_skill_generator_regenerates_skill(self):
-        output_path = HARNESS_ROOT / "tmp-SKILL.md"
-        try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            copied_harness = Path(tmp_dir) / "agent-harness"
+            shutil.copytree(HARNESS_ROOT, copied_harness)
+            output_path = Path(tmp_dir) / "generated-SKILL.md"
+            compatibility_path = copied_harness / "cli_anything" / "zotero" / "skills" / "SKILL.md"
+            existing_content = "# Existing packaged skill\n"
+            compatibility_path.write_text(existing_content, encoding="utf-8")
+
             result = subprocess.run(
-                [sys.executable, str(HARNESS_ROOT / "skill_generator.py"), str(HARNESS_ROOT), "--output", str(output_path)],
-                cwd=HARNESS_ROOT,
+                [sys.executable, str(copied_harness / "skill_generator.py"), str(copied_harness), "--output", str(output_path)],
+                cwd=copied_harness,
                 capture_output=True,
                 text=True,
             )
@@ -55,5 +63,4 @@ class AgentHarnessPackagingTests(unittest.TestCase):
             self.assertIn("### Item", content)
             self.assertIn("### Note", content)
             self.assertIn("| `add` |", content)
-        finally:
-            output_path.unlink(missing_ok=True)
+            self.assertEqual(compatibility_path.read_text(encoding="utf-8"), existing_content)
