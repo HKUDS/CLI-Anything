@@ -1103,11 +1103,11 @@ Jedes generierte Harness enthält zusätzlich:
 Wenn CLI-Anything dir hilft, deine Software agent-native zu machen, freuen wir uns über einen Stern! ⭐
 
 <div align="center">
-  <a href="https://star-history.com/#HKUDS/CLI-Anything&Date">
+  <a href="https://star-history.dera.page/#HKUDS/CLI-Anything&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date" />
-      <img alt="Star-History-Diagramm" src="https://api.star-history.com/svg?repos=HKUDS/CLI-Anything&type=Date" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date" />
+      <img alt="Star-History-Diagramm" src="https://star-history.dera.page/svg?repos=HKUDS/CLI-Anything&type=Date" />
     </picture>
   </a>
 </div>
