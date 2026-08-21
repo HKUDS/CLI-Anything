@@ -81,3 +81,9 @@ def test_extract_pypi_package_returns_none_for_editable_only_install():
     install_cmd = "pip install -e ."
 
     assert MODULE._extract_pypi_package(install_cmd) is None
+
+
+def test_extract_pypi_package_strips_extras_and_version_specifier():
+    install_cmd = "pip install 'requests[socks]>=2.32'"
+
+    assert MODULE._extract_pypi_package(install_cmd) == "requests"
