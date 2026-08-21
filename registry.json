@@ -350,7 +350,7 @@
     {
       "name": "inkscape",
       "display_name": "Inkscape",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "SVG vector graphics with export via inkscape --export-filename",
       "requires": "inkscape (apt install inkscape)",
       "homepage": "https://inkscape.org",
