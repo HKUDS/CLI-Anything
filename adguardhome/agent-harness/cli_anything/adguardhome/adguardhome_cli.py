@@ -674,3 +674,7 @@ def tls_(ctx: click.Context):
 def tls_status(ctx: click.Context):
     client = make_client(ctx)
     output(server_core.get_tls_status(client), ctx.obj["as_json"])
+
+
+if __name__ == "__main__":
+    main()
