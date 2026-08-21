@@ -13,6 +13,7 @@ import math
 import struct
 from typing import Dict, Any, Optional, List, Tuple
 
+from cli_anything.audacity.core.effects import EFFECT_REGISTRY
 from cli_anything.audacity.utils.audio_utils import (
     generate_sine_wave,
     generate_silence,
@@ -167,16 +168,22 @@ def render_mix(
             continue
 
         track_audio = _render_track(track, sample_rate, out_channels)
+        track_effects = track.get("effects", [])
+        has_generator = any(
+            EFFECT_REGISTRY.get(effect.get("name"), {}).get("category") == "generate"
+            for effect in track_effects
+        )
 
-        if track_audio:
+        if track_audio or has_generator:
             # Apply track-level effects
             track_audio = _apply_track_effects(
-                track_audio, track.get("effects", []),
+                track_audio or [], track_effects,
                 sample_rate, out_channels,
             )
-            rendered_tracks.append(track_audio)
-            track_volumes.append(track.get("volume", 1.0))
-            track_pans.append(track.get("pan", 0.0))
+            if track_audio:
+                rendered_tracks.append(track_audio)
+                track_volumes.append(track.get("volume", 1.0))
+                track_pans.append(track.get("pan", 0.0))
 
     # Mix all tracks together
     if rendered_tracks:
