@@ -492,6 +492,28 @@
           "url": "https://github.com/goddardoven110907"
         }
       ]
+    },
+    {
+      "name": "vivideo",
+      "display_name": "Vivideo CLI",
+      "version": "1.0.2",
+      "description": "Vivideo AI video generation CLI — create avatar and text-to-video content from the terminal, scripts, CI, or agents. Supports auto and manual modes, model/avatar/voice/brand-kit listing, credit estimates, and status/wait polling.",
+      "category": "ai",
+      "requires": "Node.js >= 18.17, VIVIDEO_API_KEY",
+      "homepage": "https://vivideo.ai",
+      "source_url": null,
+      "package_manager": "npm",
+      "npm_package": "@vivideo/cli",
+      "install_cmd": "npm install -g @vivideo/cli",
+      "npx_cmd": "npx @vivideo/cli",
+      "skill_md": "https://vivideo.ai",
+      "entry_point": "vivideo",
+      "contributors": [
+        {
+          "name": "Vivideo",
+          "url": "https://vivideo.ai"
+        }
+      ]
     }
   ]
 }
