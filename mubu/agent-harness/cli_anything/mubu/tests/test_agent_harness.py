@@ -1,5 +1,7 @@
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -100,17 +102,23 @@ class AgentHarnessPackagingTests(unittest.TestCase):
         self.assertIn("skin.print_goodbye()", repl_skin)
 
     def test_skill_generator_can_regenerate_skill_from_canonical_harness(self):
-        output_path = HARNESS_ROOT / "tmp-generated-SKILL.md"
-        try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            copied_harness = Path(tmp_dir) / "agent-harness"
+            shutil.copytree(HARNESS_ROOT, copied_harness)
+            output_path = Path(tmp_dir) / "generated-SKILL.md"
+            compatibility_path = copied_harness / "cli_anything" / "mubu" / "skills" / "SKILL.md"
+            existing_content = "# Existing packaged skill\n"
+            compatibility_path.write_text(existing_content, encoding="utf-8")
+
             result = subprocess.run(
                 [
                     sys.executable,
-                    str(HARNESS_ROOT / "skill_generator.py"),
-                    str(HARNESS_ROOT),
+                    str(copied_harness / "skill_generator.py"),
+                    str(copied_harness),
                     "--output",
                     str(output_path),
                 ],
-                cwd=HARNESS_ROOT,
+                cwd=copied_harness,
                 capture_output=True,
                 text=True,
             )
@@ -130,8 +138,7 @@ class AgentHarnessPackagingTests(unittest.TestCase):
             self.assertNotIn("Workspace/Daily tasks", content)
             self.assertNotIn("Daily tasks resolution", content)
             self.assertIn("## Version\n\n0.1.1", content)
-        finally:
-            output_path.unlink(missing_ok=True)
+            self.assertEqual(compatibility_path.read_text(encoding="utf-8"), existing_content)
 
 
 if __name__ == "__main__":

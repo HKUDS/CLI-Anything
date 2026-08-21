@@ -536,8 +536,9 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
 
     Args:
         harness_path: Path to the agent-harness directory
-        output_path: Optional output path for SKILL.md
-                     (default: skills/cli-anything-<software>/SKILL.md)
+        output_path: Optional explicit output path for SKILL.md. When provided,
+                     only this path is written. When omitted, writes the canonical
+                     skill and packaged compatibility copy.
         template_path: Optional path to custom Jinja2 template
 
     Returns:
@@ -552,6 +553,7 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
     # Determine output path
     harness_path_obj = Path(harness_path)
     compatibility_path = harness_path_obj / "cli_anything" / metadata.software_name / "skills" / "SKILL.md"
+    write_compatibility_copy = output_path is None
     if output_path is None:
         repo_root = harness_path_obj.parent.parent
         output_path = repo_root / "skills" / metadata.skill_name / "SKILL.md"
@@ -563,7 +565,7 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
 
     # Write file
     output_path.write_text(content, encoding="utf-8")
-    if compatibility_path != output_path:
+    if write_compatibility_copy and compatibility_path != output_path:
         compatibility_path.parent.mkdir(parents=True, exist_ok=True)
         compatibility_path.write_text(content, encoding="utf-8")
 
