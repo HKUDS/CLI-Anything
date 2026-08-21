@@ -1,0 +1,25 @@
+{
+  "name": "cli-anything",
+  "owner": {
+    "name": "cli-anything contributors"
+  },
+  "metadata": {
+    "description": "CLI-Anything Cursor marketplace: generator plugin with slash commands. Consumer Hub/skills install separately via npx skills."
+  },
+  "plugins": [
+    {
+      "name": "cli-anything",
+      "source": "./cursor-plugin",
+      "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology.",
+      "author": {
+        "name": "cli-anything contributors"
+      },
+      "category": "development",
+      "keywords": [
+        "cli-anything",
+        "harness",
+        "generator"
+      ]
+    }
+  ]
+}

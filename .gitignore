@@ -21,6 +21,7 @@
 !/.pi-extension/
 /.pi-extension/cli-anything/node_modules
 !/.claude-plugin/
+!/.cursor-plugin/
 !/.github/
 /.github/*
 !/.github/workflows/
@@ -32,6 +33,7 @@
 
 # Step 3: Allow cli-anything-plugin, codex-skill, and skill_generation tests
 !/cli-anything-plugin/
+!/cursor-plugin/
 !/codex-skill/
 !/hermes-skill/
 !/reasonix-skill/
