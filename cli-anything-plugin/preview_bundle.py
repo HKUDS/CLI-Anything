@@ -146,6 +146,7 @@ def find_latest_manifest(
         search_root = Path.home() / ".cli-anything" / "previews" / _slug(software)
     if recipe:
         search_root = search_root / _slug(recipe)
+    latest: Optional[tuple[str, str, Path, Dict[str, Any]]] = None
     for manifest_path in _iter_manifests(search_root):
         try:
             manifest = _load_json(manifest_path)
@@ -159,13 +160,23 @@ def find_latest_manifest(
             continue
         if manifest.get("status") not in {"ok", "partial"}:
             continue
-        manifest["_manifest_path"] = str(manifest_path.resolve())
-        manifest["_bundle_dir"] = str(manifest_path.parent.resolve())
-        manifest["_summary_path"] = str(
-            (manifest_path.parent / manifest.get("summary_path", "summary.json")).resolve()
+        candidate = (
+            str(manifest.get("created_at") or ""),
+            str(manifest.get("bundle_id") or ""),
+            manifest_path,
+            manifest,
         )
-        return manifest
-    return None
+        if latest is None or candidate[:2] > latest[:2]:
+            latest = candidate
+    if latest is None:
+        return None
+    _, _, manifest_path, manifest = latest
+    manifest["_manifest_path"] = str(manifest_path.resolve())
+    manifest["_bundle_dir"] = str(manifest_path.parent.resolve())
+    manifest["_summary_path"] = str(
+        (manifest_path.parent / manifest.get("summary_path", "summary.json")).resolve()
+    )
+    return manifest
 
 
 def prepare_bundle(
