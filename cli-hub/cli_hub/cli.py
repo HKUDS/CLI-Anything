@@ -125,12 +125,57 @@ def _plural(count, singular, plural=None):
     return f"{count} {singular if count == 1 else (plural or singular + 's')}"
 
 
+def _approval_streams_are_interactive():
+    """Return whether the approval prompt can be both seen and answered."""
+    try:
+        return sys.stdin.isatty() and sys.stderr.isatty()
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def _approve_registry_command(display_name, command, assume_yes=False, allow_prompt=True):
+    """Show a registry-provided install command and request approval."""
+    click.secho(
+        f"Warning: installing {json_mod.dumps(display_name)} will execute a command "
+        "provided by the CLI registry:",
+        fg="yellow",
+        bold=True,
+        err=True,
+    )
+    # JSON string escaping keeps control characters from spoofing the prompt
+    # while preserving a complete, reviewable representation of the command.
+    click.echo(f"  {json_mod.dumps(command)}", err=True)
+    if assume_yes:
+        return True
+    if not allow_prompt or not _approval_streams_are_interactive():
+        click.secho(
+            "Refusing to run a registry command non-interactively. "
+            "After reviewing it, re-run with --yes.",
+            fg="yellow",
+            err=True,
+        )
+        return False
+    return click.confirm("Execute this command?", default=False, err=True)
+
+
 @main.command()
 @click.argument("name")
-def install(name):
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided install commands without prompting.",
+)
+def install(name, assume_yes):
     """Install a CLI by name."""
     click.echo(f"Installing {name}...")
-    success, msg = install_cli(name)
+    success, msg = install_cli(
+        name,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes
+        ),
+    )
     if success:
         cli = get_cli(name)
         track_install(name, cli["version"] if cli else "unknown")
@@ -147,9 +192,21 @@ def install(name):
 
 @main.command()
 @click.argument("name")
-def uninstall(name):
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided commands without prompting.",
+)
+def uninstall(name, assume_yes):
     """Uninstall a CLI by name."""
-    success, msg = uninstall_cli(name)
+    success, msg = uninstall_cli(
+        name,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes
+        ),
+    )
     if success:
         track_uninstall(name)
         click.secho(f"✓ {msg}", fg="green")
@@ -160,10 +217,22 @@ def uninstall(name):
 
 @main.command()
 @click.argument("name")
-def update(name):
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided commands without prompting.",
+)
+def update(name, assume_yes):
     """Update a CLI to the latest version."""
     click.echo(f"Updating {name}...")
-    success, msg = update_cli(name)
+    success, msg = update_cli(
+        name,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes
+        ),
+    )
     if success:
         cli = get_cli(name)
         track_install(name, cli["version"] if cli else "unknown")
@@ -280,6 +349,15 @@ def info(name):
             click.echo(f"  npx command: {cli['npx_cmd']}")
         if cli.get("install_cmd"):
             click.echo(f"  Install cmd: {cli['install_cmd']}")
+        if cli.get("install_instructions_url"):
+            click.echo(f"  Instructions: {cli['install_instructions_url']}")
+        if cli.get("remote_script"):
+            script = cli["remote_script"]
+            click.echo(f"  Remote script: {script.get('url', 'N/A')}")
+            if script.get("sha256"):
+                click.echo(f"  Script SHA-256: {script['sha256']}")
+            if script.get("integrity_scope"):
+                click.echo(f"  Integrity scope: {script['integrity_scope']}")
         if cli.get("install_notes"):
             click.echo(f"  Notes:       {cli['install_notes']}")
     click.echo(f"  Version:     {cli['version']}")
@@ -784,6 +862,7 @@ def _render_dry_run(payload):
     skips = [p for p in payload["plan"] if p["action"] == "skip"]
     installs = [p for p in payload["plan"] if p["action"] == "install"]
     errors = [p for p in payload["plan"] if p["action"] == "error"]
+    manual = [p for p in payload["plan"] if p["action"] == "manual"]
 
     if skips:
         names = ", ".join(p["name"] for p in skips)
@@ -796,6 +875,9 @@ def _render_dry_run(payload):
     if errors:
         names = ", ".join(p["name"] for p in errors)
         click.secho(f"  ! Not in CLI registry ({len(errors)}): {names}", fg="yellow")
+    if manual:
+        names = ", ".join(p["name"] for p in manual)
+        click.secho(f"  ! Manual install required ({len(manual)}): {names}", fg="yellow")
 
     not_managed = payload.get("not_managed", {})
     if not_managed:
@@ -850,8 +932,15 @@ def _scope_args(scope):
     is_flag=True,
     help="Render the matrix skill (SKILL.md + references/ + scripts/) without installing member CLIs.",
 )
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Approve registry-provided install commands without prompting.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Output the plan or result as JSON.")
-def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, as_json):
+def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, assume_yes, as_json):
     """Install the CLIs in a matrix (optionally scoped to a capability, recipe, or subset).
 
     Exit codes: 0 success · 3 partial failure · 1 total failure or not found ·
@@ -895,7 +984,14 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
         return
 
     success, payload = install_matrix(
-        name, capability=capability, recipe=recipe, only=only, resume=resume
+        name,
+        capability=capability,
+        recipe=recipe,
+        only=only,
+        resume=resume,
+        command_approver=lambda display_name, command: _approve_registry_command(
+            display_name, command, assume_yes, allow_prompt=not as_json
+        ),
     )
     if payload.get("error"):
         track_matrix_install(
