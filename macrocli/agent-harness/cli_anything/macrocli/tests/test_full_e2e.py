@@ -267,12 +267,14 @@ class TestPostconditionE2E:
 class TestCLISubprocess:
     CLI_BASE = _resolve_cli("cli-anything-macrocli")
 
-    def _run(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    def _run(self, args: list[str], check: bool = True,
+             env: dict | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(
             self.CLI_BASE + args,
             capture_output=True,
             text=True,
             check=check,
+            env=env,
         )
 
     def test_help(self):
@@ -331,6 +333,41 @@ class TestCLISubprocess:
         data = json.loads(result.stdout)
         assert "session_id" in data
         print(f"\n  Session: {data['session_id']}")
+
+    def test_named_session_save_json(self, tmp_path):
+        env = os.environ.copy()
+        env["HOME"] = str(tmp_path)
+
+        result = self._run(
+            ["--json", "--session-id", "release_2026", "session", "save"],
+            env=env,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        data = json.loads(result.stdout)
+        assert data["session_id"] == "release_2026"
+        assert (tmp_path / ".macrocli" / "sessions" / "release_2026.json").is_file()
+
+        resumed = self._run(
+            ["--json", "--session-id", "release_2026", "session", "status"],
+            env=env,
+        )
+        assert resumed.returncode == 0, f"stderr: {resumed.stderr}"
+        assert json.loads(resumed.stdout)["session_id"] == "release_2026"
+
+    def test_session_id_path_traversal_is_rejected(self, tmp_path):
+        env = os.environ.copy()
+        env["HOME"] = str(tmp_path)
+
+        result = self._run(
+            ["--session-id", "../escape", "session", "save"],
+            check=False,
+            env=env,
+        )
+
+        assert result.returncode == 2
+        assert "Invalid value for '--session-id'" in result.stderr
+        assert not (tmp_path / "escape.json").exists()
 
     def test_macro_run_json_transform_workflow(self, tmp_path):
         """Full E2E: create a JSON file, run transform_json macro, verify output."""

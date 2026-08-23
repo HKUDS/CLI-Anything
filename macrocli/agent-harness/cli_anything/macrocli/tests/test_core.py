@@ -593,3 +593,93 @@ class TestExecutionSession:
         assert loaded is not None
         assert loaded.session_id == "save_test"
         assert loaded.last().macro_name == "m1"
+
+    @pytest.mark.parametrize("session_id", [
+        "../escape",
+        r"..\escape",
+        "/tmp/escape",
+        r"C:\temp\escape",
+        "C:relative",
+        "nested/session",
+        "",
+        "x" * 129,
+        "CON",
+        "nul",
+        "COM1",
+        "LPT9",
+    ])
+    def test_rejects_unsafe_session_ids(self, session_id):
+        from cli_anything.macrocli.core.session import ExecutionSession
+
+        with pytest.raises(ValueError, match="session_id"):
+            ExecutionSession(session_id=session_id)
+
+    def test_save_revalidates_mutated_session_id(self, tmp_path, monkeypatch):
+        import cli_anything.macrocli.core.session as sess_module
+        from cli_anything.macrocli.core.session import ExecutionSession
+
+        session_dir = tmp_path / "sessions"
+        monkeypatch.setattr(sess_module, "SESSION_DIR", session_dir)
+        sess = ExecutionSession(session_id="safe_session")
+        sess.session_id = "../escape"
+
+        with pytest.raises(ValueError, match="session_id"):
+            sess.save()
+
+        assert not (tmp_path / "escape.json").exists()
+
+    def test_load_rejects_path_traversal(self, tmp_path, monkeypatch):
+        import cli_anything.macrocli.core.session as sess_module
+        from cli_anything.macrocli.core.session import ExecutionSession
+
+        monkeypatch.setattr(sess_module, "SESSION_DIR", tmp_path / "sessions")
+        (tmp_path / "outside.json").write_text(
+            json.dumps({"session_id": "outside", "history": []}),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="session_id"):
+            ExecutionSession.load("../outside")
+
+    def test_load_uses_filename_as_canonical_session_id(self, tmp_path, monkeypatch):
+        import cli_anything.macrocli.core.session as sess_module
+        from cli_anything.macrocli.core.session import ExecutionSession
+
+        session_dir = tmp_path / "sessions"
+        session_dir.mkdir()
+        monkeypatch.setattr(sess_module, "SESSION_DIR", session_dir)
+        (session_dir / "safe_session.json").write_text(
+            json.dumps({"session_id": "../escape", "history": []}),
+            encoding="utf-8",
+        )
+
+        loaded = ExecutionSession.load("safe_session")
+        assert loaded is not None
+        assert loaded.session_id == "safe_session"
+        loaded.save()
+        assert not (tmp_path / "escape.json").exists()
+
+    def test_load_rejects_session_file_symlink_outside_session_dir(self, tmp_path, monkeypatch):
+        import cli_anything.macrocli.core.session as sess_module
+        from cli_anything.macrocli.core.session import ExecutionSession
+
+        session_dir = tmp_path / "sessions"
+        session_dir.mkdir()
+        outside = tmp_path / "outside.json"
+        outside.write_text(
+            json.dumps({"session_id": "outside", "history": []}),
+            encoding="utf-8",
+        )
+        session_file = session_dir / "safe_session.json"
+        try:
+            session_file.symlink_to(outside)
+        except OSError:
+            pytest.skip("symlink creation is unavailable in this environment")
+        monkeypatch.setattr(sess_module, "SESSION_DIR", session_dir)
+
+        sentinel = outside.read_text(encoding="utf-8")
+        with pytest.raises(ValueError, match="outside the session directory"):
+            ExecutionSession.load("safe_session")
+        with pytest.raises(ValueError, match="outside the session directory"):
+            ExecutionSession(session_id="safe_session").save()
+        assert outside.read_text(encoding="utf-8") == sentinel
