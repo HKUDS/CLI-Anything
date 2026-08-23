@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-SOFTWARE_VERSION = "cli-anything-freecad 1.0.0"
+SOFTWARE_VERSION = "cli-anything-freecad 1.2.0"
 PROJECT_SCHEMA_VERSION = "1.0"
 
 # ---------------------------------------------------------------------------

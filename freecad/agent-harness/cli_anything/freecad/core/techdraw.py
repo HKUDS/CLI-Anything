@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set
 
 from .document import ensure_collection
+from cli_anything.freecad.utils.compat import require_version, V1_1
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +436,9 @@ def add_annotation(
         position = _validate_vec2(position, "position")
     else:
         position = [0.0, 0.0]
+
+    if area_mode:
+        require_version(V1_1, "area mode annotations")
 
     annotation: Dict[str, Any] = {
         "type": "annotation",
