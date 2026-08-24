@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "opencti",
+      "display_name": "OpenCTI",
+      "version": "1.0.0",
+      "description": "Threat intelligence queries and writes over OpenCTI GraphQL API v7 — observables, indicators, reports, cases, entities, relationships",
+      "requires": "A running OpenCTI instance (>= 6.x schema, verified on 7.x) with an API token",
+      "homepage": "https://github.com/OpenCTI-Platform/opencti",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=opencti/agent-harness",
+      "entry_point": "cli-anything-opencti",
+      "skill_md": "skills/cli-anything-opencti/SKILL.md",
+      "category": "osint",
+      "contributors": [
+        {
+          "name": "hodgeluke",
+          "url": "https://github.com/hodgeluke"
+        }
+      ]
     }
   ]
 }
