@@ -1513,6 +1513,44 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "geoskills",
+      "display_name": "GEO Skills",
+      "version": "0.1.0",
+      "description": "Twenty-nine GEO and AI-search Agent Skills plus a CLI for discovery, validation, page inspection, citability scoring, prompt packs, and owner-intent handoffs",
+      "requires": "Python 3.10+; optional web extra for live page inspection and citability scoring",
+      "homepage": "https://github.com/TheSmokeDev/geo-skills",
+      "source_url": "https://github.com/TheSmokeDev/geo-skills",
+      "install_cmd": "pip install git+https://github.com/TheSmokeDev/geo-skills.git",
+      "entry_point": "geoskills",
+      "skill_md": "https://github.com/TheSmokeDev/geo-skills/blob/main/skills/geoskills-cli/SKILL.md",
+      "category": "search",
+      "contributors": [
+        {
+          "name": "SmokeDev",
+          "url": "https://github.com/TheSmokeDev"
+        }
+      ]
+    },
+    {
+      "name": "tokenmax",
+      "display_name": "TokenMax Site Factory",
+      "version": "0.6.0",
+      "description": "Fail-closed programmatic SEO and GEO factory with evidence packets, owner-intent validation, hard content gates, installed workflows, and provenance receipts",
+      "requires": "Python 3.10+; Archon CLI 0.5.0+ for agent-driven generation workflows",
+      "homepage": "https://github.com/TheSmokeDev/token-max-site-factory",
+      "source_url": "https://github.com/TheSmokeDev/token-max-site-factory",
+      "install_cmd": "pip install git+https://github.com/TheSmokeDev/token-max-site-factory.git",
+      "entry_point": "tokenmax",
+      "skill_md": "https://github.com/TheSmokeDev/token-max-site-factory/blob/main/skills/tokenmax-cli/SKILL.md",
+      "category": "search",
+      "contributors": [
+        {
+          "name": "SmokeDev",
+          "url": "https://github.com/TheSmokeDev"
+        }
+      ]
     }
   ]
 }
