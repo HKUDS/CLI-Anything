@@ -113,7 +113,11 @@ def graphql_request(
                 last_error = requests.HTTPError(f"{resp.status_code}", response=resp)
                 _sleep_backoff(attempt, resp)
                 continue
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                snippet = resp.text[:300] if resp.text else ""
+                raise OpenCTIError(
+                    f"OpenCTI API returned HTTP {resp.status_code}: {snippet}"
+                )
         except requests.ConnectionError as exc:
             last_error = exc
             if attempt < MAX_ATTEMPTS:
@@ -141,7 +145,10 @@ def graphql_request(
         return data
 
     if isinstance(last_error, requests.HTTPError):
-        raise last_error
+        raise OpenCTIError(
+            f"OpenCTI API returned HTTP {last_error.response.status_code} "
+            "after retries"
+        ) from last_error
     raise ConnectionError("exhausted retries contacting OpenCTI")
 
 

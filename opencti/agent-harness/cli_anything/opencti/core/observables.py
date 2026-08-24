@@ -115,7 +115,9 @@ def add_observable(
     if obs_type in FILE_TYPES:
         gql_type = "StixFile"
         typed_field = "StixFile"
-        typed_value: Dict[str, Any] = {"hashes": {FILE_TYPES[obs_type]: value}}
+        typed_value: Dict[str, Any] = {
+            "hashes": [{"algorithm": FILE_TYPES[obs_type], "hash": value}]
+        }
         var_type = "StixFileAddInput"
     elif obs_type in ADD_INPUTS:
         gql_type, typed_field = ADD_INPUTS[obs_type]

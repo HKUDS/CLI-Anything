@@ -66,7 +66,12 @@ def _json_flag(ctx: click.Context) -> bool:
 def cli(ctx: click.Context, url: str | None, token: str | None,
         timeout: int | None, as_json: bool) -> None:
     """Agent-native CLI for the OpenCTI threat intelligence platform."""
-    conn = resolve_connection(url, token)
+    if ctx.invoked_subcommand != "config":
+        # `config set`/`config test` must work on an unconfigured machine;
+        # resolve lazily for everything that actually talks to the API.
+        conn = resolve_connection(url, token)
+    else:
+        conn = {"base_url": None, "api_key": None}
     ctx.obj = {
         "base_url": conn["base_url"],
         "api_key": conn["api_key"],
@@ -111,7 +116,11 @@ def observable_() -> None:
 def observable_search(ctx: click.Context, query: str, obs_types: str | None,
                       limit: int, all_pages: bool) -> None:
     """Search observables by value substring."""
-    types = [t.strip() for t in obs_types.split(",")] if obs_types else None
+    if obs_types:
+        types = [observables.TYPE_MAP.get(t.strip().lower(), t.strip())
+                 for t in obs_types.split(",")]
+    else:
+        types = None
     data = observables.list_observables(search=query, types=types, first=limit,
                                         all_pages=all_pages, **_conn(ctx))
     output(data, _json_flag(ctx))

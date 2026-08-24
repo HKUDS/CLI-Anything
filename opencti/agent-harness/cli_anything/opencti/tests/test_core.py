@@ -6,6 +6,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from click.testing import CliRunner
 
 from cli_anything.opencti.core import (
     cases,
@@ -26,6 +27,7 @@ def mock_response(status_code: int = 200, body: dict | None = None) -> MagicMock
     resp.status_code = status_code
     resp.json.return_value = body or {}
     resp.content = json.dumps(body or {}).encode()
+    resp.text = json.dumps(body or {})
     resp.headers = {}
     resp.raise_for_status = MagicMock()
     return resp
@@ -111,13 +113,20 @@ class TestGraphqlRequest:
                                             base_url=BASE, api_key="bad")
 
     @patch("cli_anything.opencti.utils.opencti_backend.requests.post")
-    def test_http_error_surfaces(self, mock_post):
-        resp = mock_response(401, {})
-        resp.raise_for_status.side_effect = opencti_backend.requests.HTTPError("401")
-        mock_post.return_value = resp
-        with pytest.raises(opencti_backend.requests.HTTPError):
+    def test_http_401_raises_opencti_error(self, mock_post):
+        mock_post.return_value = mock_response(401, {})
+        with pytest.raises(opencti_backend.OpenCTIError, match="HTTP 401"):
             opencti_backend.graphql_request("query { me { name } }",
                                             base_url=BASE, api_key=KEY)
+
+    @patch("cli_anything.opencti.utils.opencti_backend._sleep_backoff")
+    @patch("cli_anything.opencti.utils.opencti_backend.requests.post")
+    def test_final_retry_5xx_raises_opencti_error(self, mock_post, _backoff):
+        mock_post.side_effect = [mock_response(503) for _ in range(4)]
+        with pytest.raises(opencti_backend.OpenCTIError, match="HTTP 503"):
+            opencti_backend.graphql_request("query { me { name } }",
+                                            base_url=BASE, api_key=KEY)
+        assert mock_post.call_count == 4
 
 
 class TestPaginated:
@@ -282,7 +291,9 @@ class TestObservableWrites:
         observables.add_observable("file-sha256", "abc123", base_url=BASE,
                                    api_key=KEY)
         _, variables = mock_gql.call_args[0]
-        assert variables["inp"] == {"hashes": {"SHA-256": "abc123"}}
+        assert variables["inp"] == {
+            "hashes": [{"algorithm": "SHA-256", "hash": "abc123"}]
+        }
 
     def test_unsupported_type(self):
         with pytest.raises(ValueError, match="unsupported observable type"):
@@ -360,3 +371,49 @@ class TestEntityAndCaseWrites:
         inp = variables["input"]
         assert inp["fromId"] == "src-1"
         assert inp["relationship_type"] == "related-to"
+
+
+# ─── CLI wiring (review fixes) ──────────────────────────────────────────────
+
+class TestCliOffline:
+    """config subcommands must work on an unconfigured machine (PR review)."""
+
+    def test_config_set_without_connection(self, tmp_path):
+        from cli_anything.opencti import opencti_cli
+
+        cfg = tmp_path / "config.json"
+        runner = CliRunner()
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.object(opencti_backend, "CONFIG_DIR", tmp_path), \
+             patch.object(opencti_backend, "CONFIG_FILE", cfg):
+            result = runner.invoke(opencti_cli.cli,
+                                   ["config", "set", "--url", BASE])
+        assert result.exit_code == 0, result.output
+        assert json.loads(cfg.read_text())["base_url"] == BASE
+
+    def test_config_test_without_connection_reports_error(self):
+        from cli_anything.opencti import opencti_cli
+
+        runner = CliRunner()
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.object(opencti_backend, "_load_config_file",
+                          return_value={}):
+            result = runner.invoke(
+                opencti_cli.cli, ["config", "test", "--url", BASE])
+        # reaches the command (fails on connect, not on missing config)
+        assert "Usage:" not in result.output
+
+    @patch(GQL["observables"])
+    def test_observable_search_maps_type_tokens(self, mock_gql):
+        from cli_anything.opencti import opencti_cli
+
+        mock_gql.return_value = {"stixCyberObservables": {
+            "edges": [], "pageInfo": {"endCursor": None, "hasNextPage": False}}}
+        runner = CliRunner()
+        result = runner.invoke(
+            opencti_cli.cli,
+            ["--url", BASE, "--token", KEY,
+             "observable", "search", "evil", "--type", "ipv4-addr,domain-name"])
+        assert result.exit_code == 0, result.output
+        _, variables = mock_gql.call_args[0]
+        assert variables["types"] == ["IPv4-Addr", "Domain-Name"]
