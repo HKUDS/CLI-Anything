@@ -16,6 +16,18 @@ from typing import Optional
 _FRAME_SUFFIXES = ("0001", "0000", "1")
 
 
+def _fingerprint(path: str) -> Optional[tuple[int, int]]:
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _is_fresh(path: str, prior: dict[str, tuple[int, int]]) -> bool:
+    return prior.get(os.path.abspath(path)) != _fingerprint(path)
+
+
 def _windows_install_candidates() -> list[str]:
     """Common Blender install locations when PATH lookup misses."""
     candidates: list[str] = []
@@ -62,10 +74,15 @@ def get_version() -> str:
     return result.stdout.strip().split("\n")[0]
 
 
-def find_render_outputs(output_path: str, animation: bool = False) -> list[str]:
+def find_render_outputs(
+    output_path: str,
+    animation: bool = False,
+    prior: Optional[dict[str, tuple[int, int]]] = None,
+) -> list[str]:
     """Resolve Blender's actual output file(s) for a requested render path."""
     abs_output_path = os.path.abspath(output_path)
     base, ext = os.path.splitext(abs_output_path)
+    stale = prior or {}
 
     direct_candidates = [abs_output_path]
     if ext:
@@ -73,16 +90,17 @@ def find_render_outputs(output_path: str, animation: bool = False) -> list[str]:
     else:
         direct_candidates.extend(f"{abs_output_path}{suffix}" for suffix in _FRAME_SUFFIXES)
 
-    for candidate in direct_candidates:
-        if os.path.exists(candidate):
-            return [candidate]
+    if not animation:
+        for candidate in direct_candidates:
+            if os.path.exists(candidate) and _is_fresh(candidate, stale):
+                return [candidate]
 
     patterns = [f"{base}*{ext}"] if ext else [f"{abs_output_path}*"]
     matches = sorted(
         path
         for pattern in patterns
         for path in glob.glob(pattern)
-        if os.path.isfile(path)
+        if os.path.isfile(path) and _is_fresh(path, stale)
     )
     if animation:
         return matches
@@ -93,7 +111,7 @@ def render_script(
     script_path: str,
     output_path: Optional[str] = None,
     animation: bool = False,
-    timeout: int = 300,
+    timeout: Optional[int] = 300,
 ) -> dict:
     """Run a bpy script using Blender headless.
 
@@ -101,7 +119,7 @@ def render_script(
         script_path: Path to the Python script to execute
         output_path: Expected render output path
         animation: Whether Blender is expected to render an animation sequence
-        timeout: Maximum seconds to wait
+        timeout: Maximum seconds to wait, or None to wait until Blender exits
 
     Returns:
         Dict with stdout, stderr, return code, and optional output metadata
@@ -111,12 +129,24 @@ def render_script(
 
     blender = find_blender()
     cmd = [blender, "--background", "--python", script_path]
+    prior = None
+    if output_path:
+        prior = {}
+        for path in find_render_outputs(output_path, animation=True):
+            fp = _fingerprint(path)
+            if fp is not None:
+                prior[os.path.abspath(path)] = fp
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True, text=True,
-        timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True, text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Blender render timed out after {timeout} seconds"
+        ) from exc
 
     render_result = {
         "command": " ".join(cmd),
@@ -129,7 +159,7 @@ def render_script(
         return render_result
 
     if output_path:
-        outputs = find_render_outputs(output_path, animation=animation)
+        outputs = find_render_outputs(output_path, animation=animation, prior=prior)
         if not outputs:
             raise RuntimeError(
                 "Blender render produced no output file.\n"

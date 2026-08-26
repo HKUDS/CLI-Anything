@@ -186,7 +186,7 @@ def render_scene(
     animation: bool = False,
     overwrite: bool = False,
     execute: bool = False,
-    timeout: int = 300,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Prepare a render script, and optionally execute it with Blender.
 
@@ -197,7 +197,7 @@ def render_scene(
         animation: If True, render the full animation range
         overwrite: Allow overwriting existing files
         execute: If True, run Blender headless after generating the script
-        timeout: Maximum seconds to wait when execute=True
+        timeout: Maximum seconds to wait when execute=True, or None for no limit
 
     Returns:
         Dict with render info, script path, and optional backend output metadata

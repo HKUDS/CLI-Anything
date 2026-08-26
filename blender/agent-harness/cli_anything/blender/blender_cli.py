@@ -862,14 +862,15 @@ def render_presets():
 @click.option("--frame", "-f", type=int, default=None, help="Specific frame to render")
 @click.option("--animation", "-a", is_flag=True, help="Render full animation")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
+@click.option("--timeout", type=int, default=None, help="Seconds to wait for Blender; omit for no limit")
 @handle_error
-def render_execute(output_path, frame, animation, overwrite):
+def render_execute(output_path, frame, animation, overwrite, timeout):
     """Render the scene with Blender headless."""
     sess = get_session()
     result = render_mod.render_scene(
         sess.get_project(), output_path,
         frame=frame, animation=animation, overwrite=overwrite,
-        execute=True,
+        execute=True, timeout=timeout,
     )
     rendered = result.get("output", result["output_path"])
     file_size = result.get("file_size")

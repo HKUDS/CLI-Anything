@@ -5,6 +5,7 @@ Tests use synthetic data only — no real 3D files or Blender installation.
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -896,8 +897,9 @@ class TestRender:
         add_object(proj, name="Cube")
         calls = {"count": 0}
 
-        def fake_render_script(script_path, output_path=None, animation=False, timeout=300):
+        def fake_render_script(script_path, output_path=None, animation=False, timeout=None):
             calls["count"] += 1
+            calls["timeout"] = timeout
             assert os.path.exists(script_path)
             Path(output_path).write_bytes(b"\x89PNG\r\n\x1a\n")
             return {
@@ -920,14 +922,18 @@ class TestRender:
             output_path = os.path.join(tmp, "render.png")
             result = render_scene(proj, output_path, overwrite=True, execute=True)
             assert calls["count"] == 1
+            assert calls["timeout"] is None
             assert result["executed"] is True
             assert result["method"] == "blender-headless"
             assert result["file_size"] == 8
 
+            render_scene(proj, output_path, overwrite=True, execute=True, timeout=60)
+            assert calls["timeout"] == 60
+
     def test_render_scene_execution_failure(self, monkeypatch):
         proj = self._make_scene()
 
-        def fake_render_script(script_path, output_path=None, animation=False, timeout=300):
+        def fake_render_script(script_path, output_path=None, animation=False, timeout=None):
             return {
                 "command": "blender --background --python script.py",
                 "returncode": 1,
@@ -968,6 +974,43 @@ class TestRender:
         framed = tmp_path / "render0001.png"
         framed.write_bytes(b"png")
         assert blender_backend.find_render_outputs(str(output_path)) == [str(framed)]
+
+    def test_find_render_outputs_animation_sequence(self, tmp_path):
+        output_path = tmp_path / "render.png"
+        frame1 = tmp_path / "render0001.png"
+        frame2 = tmp_path / "render0002.png"
+        frame1.write_bytes(b"a")
+        frame2.write_bytes(b"b")
+        assert blender_backend.find_render_outputs(str(output_path), animation=True) == [
+            str(frame1),
+            str(frame2),
+        ]
+
+    def test_render_script_rejects_stale_overwrite(self, monkeypatch, tmp_path):
+        script = tmp_path / "_render_script.py"
+        script.write_text("print('ok')")
+        output_path = tmp_path / "out.png"
+        output_path.write_bytes(b"old")
+
+        def fake_run(cmd, capture_output=True, text=True, timeout=None):
+            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(blender_backend, "find_blender", lambda: "blender")
+        monkeypatch.setattr(blender_backend.subprocess, "run", fake_run)
+        with pytest.raises(RuntimeError, match="produced no output"):
+            blender_backend.render_script(str(script), output_path=str(output_path))
+
+    def test_render_script_timeout_is_loud(self, monkeypatch, tmp_path):
+        script = tmp_path / "_render_script.py"
+        script.write_text("print('ok')")
+
+        def fake_run(cmd, capture_output=True, text=True, timeout=None):
+            raise subprocess.TimeoutExpired(cmd, timeout)
+
+        monkeypatch.setattr(blender_backend, "find_blender", lambda: "blender")
+        monkeypatch.setattr(blender_backend.subprocess, "run", fake_run)
+        with pytest.raises(RuntimeError, match="timed out after 1 seconds"):
+            blender_backend.render_script(str(script), timeout=1)
 
     def test_render_scene_overwrite_protection(self):
         proj = self._make_scene()
