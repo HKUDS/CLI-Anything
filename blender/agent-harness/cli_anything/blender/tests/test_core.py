@@ -1149,7 +1149,7 @@ class TestRender:
 
         webm = tmp_path / "render.webm"
         assert _expected_animation_outputs(proj, str(webm)) == [
-            f"{tmp_path}/render0001-0250.mp4"
+            f"{tmp_path}/render0001-0250.webm"
         ]
 
     def test_expected_animation_outputs_none_for_stills(self, tmp_path):

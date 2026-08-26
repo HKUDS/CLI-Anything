@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, List
 # file aligned with the requested output path.
 FFMPEG_CONTAINER_FORMATS = {
     ".mp4": "MPEG4", ".m4v": "MPEG4", ".mov": "QUICKTIME",
-    ".avi": "AVI", ".mkv": "MKV",
+    ".avi": "AVI", ".mkv": "MKV", ".webm": "WEBM",
 }
 FFMPEG_DEFAULT_FORMAT = "MPEG4"
 
