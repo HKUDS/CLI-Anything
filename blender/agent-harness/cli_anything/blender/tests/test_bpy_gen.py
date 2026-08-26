@@ -133,7 +133,7 @@ class TestFFMPEGContainerPin:
         project = _minimal_project()
         project["render"]["output_format"] = "FFMPEG"
         script = generate_full_script(project, "/tmp/render.mkv")
-        assert "scene.render.ffmpeg.format = 'MATROSKA'" in script
+        assert "scene.render.ffmpeg.format = 'MKV'" in script
 
     def test_non_ffmpeg_output_has_no_container_line(self) -> None:
         project = _minimal_project()

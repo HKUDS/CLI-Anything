@@ -31,7 +31,7 @@ from . import scene as scene_mod
 from .lighting import add_camera, add_light
 from .session import Session
 
-HARNESS_VERSION = "1.0.0"
+HARNESS_VERSION = "1.0.1"
 LIVE_PROTOCOL_VERSION = "preview-live/v1"
 DEFAULT_REFRESH_HINT_MS = 1500
 DEFAULT_SOURCE_POLL_MS = 500
