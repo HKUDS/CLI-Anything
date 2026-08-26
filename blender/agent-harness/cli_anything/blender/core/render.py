@@ -202,8 +202,14 @@ def render_scene(
     Returns:
         Dict with render info, script path, and optional backend output metadata
     """
-    if os.path.exists(output_path) and not overwrite and not animation:
-        raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite.")
+    if not overwrite:
+        existing = (
+            blender_backend.find_render_outputs(output_path, animation=True)
+            if animation
+            else ([output_path] if os.path.exists(output_path) else [])
+        )
+        if existing:
+            raise FileExistsError(f"Output file exists: {existing[0]}. Use --overwrite.")
 
     render_settings = project.get("render", {})
     scene_settings = project.get("scene", {})

@@ -109,17 +109,18 @@ def find_render_outputs(
 
 def render_script(
     script_path: str,
+    timeout: Optional[int] = 300,
+    *,
     output_path: Optional[str] = None,
     animation: bool = False,
-    timeout: Optional[int] = 300,
 ) -> dict:
     """Run a bpy script using Blender headless.
 
     Args:
         script_path: Path to the Python script to execute
+        timeout: Maximum seconds to wait, or None to wait until Blender exits
         output_path: Expected render output path
         animation: Whether Blender is expected to render an animation sequence
-        timeout: Maximum seconds to wait, or None to wait until Blender exits
 
     Returns:
         Dict with stdout, stderr, return code, and optional output metadata

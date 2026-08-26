@@ -1012,6 +1012,20 @@ class TestRender:
         with pytest.raises(RuntimeError, match="timed out after 1 seconds"):
             blender_backend.render_script(str(script), timeout=1)
 
+    def test_render_script_positional_timeout(self, monkeypatch, tmp_path):
+        script = tmp_path / "_render_script.py"
+        script.write_text("print('ok')")
+        seen = {}
+
+        def fake_run(cmd, capture_output=True, text=True, timeout=None):
+            seen["timeout"] = timeout
+            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(blender_backend, "find_blender", lambda: "blender")
+        monkeypatch.setattr(blender_backend.subprocess, "run", fake_run)
+        blender_backend.render_script(str(script), 120)
+        assert seen["timeout"] == 120
+
     def test_render_scene_overwrite_protection(self):
         proj = self._make_scene()
         with tempfile.TemporaryDirectory() as tmp:
@@ -1021,6 +1035,21 @@ class TestRender:
                 f.write("existing")
             with pytest.raises(FileExistsError):
                 render_scene(proj, output_path, overwrite=False)
+
+    def test_render_scene_animation_requires_overwrite(self, tmp_path):
+        proj = self._make_scene()
+        output_path = tmp_path / "render.png"
+        (tmp_path / "render0001.png").write_bytes(b"old")
+        with pytest.raises(FileExistsError, match="--overwrite"):
+            render_scene(proj, str(output_path), animation=True, overwrite=False)
+        result = render_scene(proj, str(output_path), animation=True, overwrite=True)
+        assert result["animation"] is True
+        assert result["executed"] is False
+
+        fresh_dir = tmp_path / "fresh"
+        fresh_dir.mkdir()
+        fresh = render_scene(proj, str(fresh_dir / "render.png"), animation=True, overwrite=False)
+        assert fresh["executed"] is False
 
     def test_all_engines_valid(self):
         assert "CYCLES" in VALID_ENGINES
