@@ -889,6 +889,85 @@ class TestRender:
             assert os.path.exists(result["script_path"])
             assert "blender" in result["command"]
             assert result["engine"] == "CYCLES"
+            assert result["executed"] is False
+
+    def test_render_scene_executes_blender(self, monkeypatch):
+        proj = self._make_scene()
+        add_object(proj, name="Cube")
+        calls = {"count": 0}
+
+        def fake_render_script(script_path, output_path=None, animation=False, timeout=300):
+            calls["count"] += 1
+            assert os.path.exists(script_path)
+            Path(output_path).write_bytes(b"\x89PNG\r\n\x1a\n")
+            return {
+                "command": "blender --background --python script.py",
+                "returncode": 0,
+                "stdout": "ok",
+                "stderr": "",
+                "output": output_path,
+                "outputs": [output_path],
+                "output_count": 1,
+                "format": "png",
+                "method": "blender-headless",
+                "blender_version": "Blender 5.2",
+                "file_size": 8,
+            }
+
+        monkeypatch.setattr(blender_backend, "render_script", fake_render_script)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = os.path.join(tmp, "render.png")
+            result = render_scene(proj, output_path, overwrite=True, execute=True)
+            assert calls["count"] == 1
+            assert result["executed"] is True
+            assert result["method"] == "blender-headless"
+            assert result["file_size"] == 8
+
+    def test_render_scene_execution_failure(self, monkeypatch):
+        proj = self._make_scene()
+
+        def fake_render_script(script_path, output_path=None, animation=False, timeout=300):
+            return {
+                "command": "blender --background --python script.py",
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "render failed",
+            }
+
+        monkeypatch.setattr(blender_backend, "render_script", fake_render_script)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = os.path.join(tmp, "render.png")
+            with pytest.raises(RuntimeError, match="Blender render failed"):
+                render_scene(proj, output_path, overwrite=True, execute=True)
+
+    def test_render_scene_execute_missing_blender(self, monkeypatch):
+        proj = self._make_scene()
+        monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+        monkeypatch.setattr(blender_backend.shutil, "which", lambda name: None)
+        monkeypatch.setattr(blender_backend.platform, "system", lambda: "Darwin")
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = os.path.join(tmp, "render.png")
+            with pytest.raises(RuntimeError, match="Blender is not installed"):
+                render_scene(proj, output_path, overwrite=True, execute=True)
+
+    def test_find_blender_windows_default_install(self, monkeypatch, tmp_path):
+        fake = tmp_path / "Blender Foundation" / "Blender 5.2" / "blender.exe"
+        fake.parent.mkdir(parents=True)
+        fake.write_bytes(b"")
+        monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+        monkeypatch.setenv("ProgramFiles", str(tmp_path))
+        monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "x86"))
+        monkeypatch.setattr(blender_backend.shutil, "which", lambda name: None)
+        monkeypatch.setattr(blender_backend.platform, "system", lambda: "Windows")
+        assert blender_backend.find_blender() == str(fake)
+
+    def test_find_render_outputs_frame_suffix(self, tmp_path):
+        output_path = tmp_path / "render.png"
+        framed = tmp_path / "render0001.png"
+        framed.write_bytes(b"png")
+        assert blender_backend.find_render_outputs(str(output_path)) == [str(framed)]
 
     def test_render_scene_overwrite_protection(self):
         proj = self._make_scene()
