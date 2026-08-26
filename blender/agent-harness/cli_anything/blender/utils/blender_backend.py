@@ -114,10 +114,11 @@ def find_render_outputs(
     abs_output_path = os.path.abspath(output_path)
     base, _ = os.path.splitext(abs_output_path)
     stale = prior or {}
+    glob_base = base if "#" not in base else base[:base.index("#")]
 
     matches = sorted(
         path
-        for path in glob.glob(f"{glob.escape(base)}*")
+        for path in glob.glob(f"{glob.escape(glob_base)}*")
         if os.path.isfile(path) and _is_fresh(path, stale)
         and _is_render_output(path, abs_output_path, animation)
     )

@@ -1081,6 +1081,15 @@ class TestRender:
             str(output_path), animation=True
         ) == [str(frame1)]
 
+    def test_find_render_outputs_expands_frame_placeholders(self, tmp_path):
+        output_path = tmp_path / "frame_####.png"
+        frame1 = tmp_path / "frame_0001.png"
+        frame1.write_bytes(b"frame")
+
+        assert blender_backend.find_render_outputs(
+            str(output_path), animation=True
+        ) == [str(frame1)]
+
     def test_render_script_rejects_directory_output(self, monkeypatch, tmp_path):
         script = tmp_path / "_render_script.py"
         script.write_text("print('ok')")
