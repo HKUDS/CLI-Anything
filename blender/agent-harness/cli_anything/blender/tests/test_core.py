@@ -897,7 +897,9 @@ class TestRender:
         add_object(proj, name="Cube")
         calls = {"count": 0}
 
-        def fake_render_script(script_path, output_path=None, animation=False, timeout=None):
+        def fake_render_script(
+            script_path, output_path=None, animation=False, expected_outputs=None, timeout=None
+        ):
             calls["count"] += 1
             calls["timeout"] = timeout
             assert os.path.exists(script_path)
@@ -930,10 +932,46 @@ class TestRender:
             render_scene(proj, output_path, overwrite=True, execute=True, timeout=60)
             assert calls["timeout"] == 60
 
+    def test_render_scene_uses_exact_ffmpeg_animation_output(self, monkeypatch, tmp_path):
+        proj = self._make_scene()
+        set_render_settings(proj, output_format="FFMPEG")
+        proj["scene"]["frame_start"] = 1
+        proj["scene"]["frame_end"] = 250
+        expected = tmp_path / "render0001-0250.mp4"
+        seen = {}
+
+        def fake_render_script(
+            script_path, output_path=None, animation=False, expected_outputs=None, timeout=None
+        ):
+            seen["expected_outputs"] = expected_outputs
+            return {
+                "returncode": 0,
+                "output": str(expected),
+                "outputs": [str(expected)],
+                "output_count": 1,
+                "file_size": 1,
+                "blender_version": "Blender 5.2",
+                "method": "blender-headless",
+            }
+
+        monkeypatch.setattr(blender_backend, "render_script", fake_render_script)
+        result = render_scene(proj, str(tmp_path / "render.mp4"), animation=True, execute=True)
+        assert seen["expected_outputs"] == [str(expected)]
+        assert result["output"] == str(expected)
+
+    def test_render_scene_ffmpeg_animation_requires_overwrite(self, tmp_path):
+        proj = self._make_scene()
+        set_render_settings(proj, output_format="FFMPEG")
+        (tmp_path / "render0001-0250.mp4").write_bytes(b"old")
+        with pytest.raises(FileExistsError, match="--overwrite"):
+            render_scene(proj, str(tmp_path / "render.mp4"), animation=True)
+
     def test_render_scene_execution_failure(self, monkeypatch):
         proj = self._make_scene()
 
-        def fake_render_script(script_path, output_path=None, animation=False, timeout=None):
+        def fake_render_script(
+            script_path, output_path=None, animation=False, expected_outputs=None, timeout=None
+        ):
             return {
                 "command": "blender --background --python script.py",
                 "returncode": 1,
@@ -1056,6 +1094,25 @@ class TestRender:
         monkeypatch.setattr(blender_backend.subprocess, "run", fail_run)
         with pytest.raises(ValueError, match="not a file"):
             blender_backend.render_script(str(script), output_path=str(out_dir))
+
+    def test_render_script_collects_explicit_ffmpeg_output(self, monkeypatch, tmp_path):
+        script = tmp_path / "_render_script.py"
+        script.write_text("print('ok')")
+        output_path = tmp_path / "render.mp4"
+        expected = tmp_path / "render0001-0250.mp4"
+
+        def fake_run(cmd, capture_output=True, text=True, timeout=None):
+            expected.write_bytes(b"movie")
+            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(blender_backend, "find_blender", lambda: "blender")
+        monkeypatch.setattr(blender_backend, "get_version", lambda: "Blender 5.2")
+        monkeypatch.setattr(blender_backend.subprocess, "run", fake_run)
+        result = blender_backend.render_script(
+            str(script), output_path=str(output_path), animation=True,
+            expected_outputs=[str(expected)],
+        )
+        assert result["outputs"] == [str(expected)]
 
     def test_render_scene_overwrite_protection(self):
         proj = self._make_scene()

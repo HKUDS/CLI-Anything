@@ -106,6 +106,7 @@ def render_script(
     *,
     output_path: Optional[str] = None,
     animation: bool = False,
+    expected_outputs: Optional[list[str]] = None,
 ) -> dict:
     """Run a bpy script using Blender headless.
 
@@ -114,6 +115,7 @@ def render_script(
         timeout: Maximum seconds to wait, or None to wait until Blender exits
         output_path: Expected render output path
         animation: Whether Blender is expected to render an animation sequence
+        expected_outputs: Exact artifact paths derived by the render caller
 
     Returns:
         Dict with stdout, stderr, return code, and optional output metadata
@@ -128,7 +130,8 @@ def render_script(
     prior = None
     if output_path:
         prior = {}
-        for path in find_render_outputs(output_path, animation=True):
+        candidates = expected_outputs or find_render_outputs(output_path, animation=True)
+        for path in candidates:
             fp = _fingerprint(path)
             if fp is not None:
                 prior[os.path.abspath(path)] = fp
@@ -155,7 +158,14 @@ def render_script(
         return render_result
 
     if output_path:
-        outputs = find_render_outputs(output_path, animation=animation, prior=prior)
+        outputs = (
+            [
+                path for path in expected_outputs
+                if os.path.isfile(path) and _is_fresh(path, prior or {})
+            ]
+            if expected_outputs is not None
+            else find_render_outputs(output_path, animation=animation, prior=prior)
+        )
         if not outputs:
             raise RuntimeError(
                 "Blender render produced no output file.\n"

@@ -61,6 +61,20 @@ VALID_ENGINES = ["CYCLES", "EEVEE", "WORKBENCH"]
 VALID_OUTPUT_FORMATS = ["PNG", "JPEG", "BMP", "TIFF", "OPEN_EXR", "HDR", "FFMPEG"]
 
 
+def _expected_animation_outputs(
+    project: Dict[str, Any], output_path: str
+) -> Optional[List[str]]:
+    """Return the explicit movie artifact path Blender uses for FFMPEG."""
+    if project.get("render", {}).get("output_format") != "FFMPEG":
+        return None
+
+    scene = project.get("scene", {})
+    base, ext = os.path.splitext(os.path.abspath(output_path))
+    start = scene.get("frame_start", 1)
+    end = scene.get("frame_end", 250)
+    return [f"{base}{start:04d}-{end:04d}{ext}"]
+
+
 def set_render_settings(
     project: Dict[str, Any],
     engine: Optional[str] = None,
@@ -202,9 +216,13 @@ def render_scene(
     Returns:
         Dict with render info, script path, and optional backend output metadata
     """
+    expected_outputs = _expected_animation_outputs(project, output_path) if animation else None
+
     if not overwrite:
         existing = (
-            blender_backend.find_render_outputs(output_path, animation=True)
+            [path for path in expected_outputs if os.path.isfile(path)]
+            if expected_outputs is not None
+            else blender_backend.find_render_outputs(output_path, animation=True)
             if animation
             else ([output_path] if os.path.exists(output_path) else [])
         )
@@ -248,6 +266,7 @@ def render_scene(
             result["script_path"],
             output_path=result["output_path"],
             animation=animation,
+            expected_outputs=expected_outputs,
             timeout=timeout,
         )
         if backend_result["returncode"] != 0:
