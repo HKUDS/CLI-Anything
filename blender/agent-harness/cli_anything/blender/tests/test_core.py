@@ -37,7 +37,7 @@ from cli_anything.blender.core.animation import (
 )
 from cli_anything.blender.core.render import (
     set_render_settings, get_render_settings, list_render_presets,
-    render_scene, RENDER_PRESETS, VALID_ENGINES,
+    render_scene, RENDER_PRESETS, VALID_ENGINES, _expected_animation_outputs,
 )
 from cli_anything.blender.core import preview as preview_mod
 from cli_anything.blender.utils import blender_backend
@@ -1138,6 +1138,23 @@ class TestRender:
         fresh_dir.mkdir()
         fresh = render_scene(proj, str(fresh_dir / "render.png"), animation=True, overwrite=False)
         assert fresh["executed"] is False
+
+    def test_expected_animation_outputs_follow_container_extension(self, tmp_path):
+        proj = self._make_scene()
+        proj["render"]["output_format"] = "FFMPEG"
+        output = tmp_path / "render.mp4"
+        assert _expected_animation_outputs(proj, str(output)) == [
+            f"{tmp_path}/render0001-0250.mp4"
+        ]
+
+        webm = tmp_path / "render.webm"
+        assert _expected_animation_outputs(proj, str(webm)) == [
+            f"{tmp_path}/render0001-0250.mp4"
+        ]
+
+    def test_expected_animation_outputs_none_for_stills(self, tmp_path):
+        proj = self._make_scene()
+        assert _expected_animation_outputs(proj, str(tmp_path / "render.png")) is None
 
     def test_all_engines_valid(self):
         assert "CYCLES" in VALID_ENGINES

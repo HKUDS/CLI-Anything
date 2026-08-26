@@ -118,3 +118,24 @@ def _excerpt(err: SyntaxError, script: str) -> str:
         marker = " >>> " if i == lineno else "     "
         result += f"{marker}{i}: {line}\n"
     return result
+
+
+class TestFFMPEGContainerPin:
+    """Generated FFMPEG renders pin the container to the requested extension."""
+
+    def test_mp4_output_pins_mpeg4_container(self) -> None:
+        project = _minimal_project()
+        project["render"]["output_format"] = "FFMPEG"
+        script = generate_full_script(project, "/tmp/render.mp4")
+        assert "scene.render.ffmpeg.format = 'MPEG4'" in script
+
+    def test_mkv_output_pins_matroska_container(self) -> None:
+        project = _minimal_project()
+        project["render"]["output_format"] = "FFMPEG"
+        script = generate_full_script(project, "/tmp/render.mkv")
+        assert "scene.render.ffmpeg.format = 'MATROSKA'" in script
+
+    def test_non_ffmpeg_output_has_no_container_line(self) -> None:
+        project = _minimal_project()
+        script = generate_full_script(project, "/tmp/render.png")
+        assert "scene.render.ffmpeg.format" not in script

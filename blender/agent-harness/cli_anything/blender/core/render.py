@@ -68,10 +68,13 @@ def _expected_animation_outputs(
     if project.get("render", {}).get("output_format") != "FFMPEG":
         return None
 
+    from cli_anything.blender.utils.bpy_gen import ffmpeg_movie_extension
+
     scene = project.get("scene", {})
-    base, ext = os.path.splitext(os.path.abspath(output_path))
+    base, _ = os.path.splitext(os.path.abspath(output_path))
     start = scene.get("frame_start", 1)
     end = scene.get("frame_end", 250)
+    ext = ffmpeg_movie_extension(output_path)
     return [f"{base}{start:04d}-{end:04d}{ext}"]
 
 

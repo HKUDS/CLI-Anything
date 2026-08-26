@@ -6,7 +6,33 @@ run with: blender --background --python script.py
 
 import json
 import math
+import os
 from typing import Dict, Any, Optional, List
+
+# Blender's FFmpegSettings.format defaults to Matroska, which rewrites the
+# movie extension the user asked for; pinning the container keeps the written
+# file aligned with the requested output path.
+FFMPEG_CONTAINER_FORMATS = {
+    ".mp4": "MPEG4", ".m4v": "MPEG4", ".mov": "QUICKTIME",
+    ".avi": "AVI", ".mkv": "MATROSKA",
+}
+FFMPEG_DEFAULT_FORMAT = "MPEG4"
+
+
+def _ffmpeg_container(output_path: str) -> str:
+    """Blender FFmpegSettings.format value matching the requested extension."""
+    ext = os.path.splitext(output_path)[1].lower()
+    return FFMPEG_CONTAINER_FORMATS.get(ext, FFMPEG_DEFAULT_FORMAT)
+
+
+def ffmpeg_movie_extension(output_path: str) -> str:
+    """The filename extension an FFMPEG render actually writes.
+
+    A recognized movie extension is kept as-is; anything else falls back to
+    Blender's default MPEG4 container and gains the .mp4 extension.
+    """
+    ext = os.path.splitext(output_path)[1].lower()
+    return ext if ext in FFMPEG_CONTAINER_FORMATS else ".mp4"
 
 
 def generate_full_script(
@@ -534,6 +560,8 @@ def _gen_render_output(
         f"scene.render.image_settings.file_format = '{bpy_format}'",
         f"scene.render.filepath = {output_path!r}",
     ]
+    if bpy_format == "FFMPEG":
+        lines.append(f"scene.render.ffmpeg.format = '{_ffmpeg_container(output_path)}'")
 
     if animation:
         lines.extend([
