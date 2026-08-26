@@ -7,32 +7,106 @@ run with: blender --background --python script.py
 import json
 import math
 import os
+import re
 from typing import Dict, Any, Optional, List
 
 # Blender's FFmpegSettings.format defaults to Matroska, which rewrites the
 # movie extension the user asked for; pinning the container keeps the written
 # file aligned with the requested output path.
 FFMPEG_CONTAINER_FORMATS = {
-    ".mp4": "MPEG4", ".mov": "QUICKTIME",
+    ".mp4": "MPEG4", ".mpg": "MPEG4", ".mpeg": "MPEG4",
+    ".mov": "QUICKTIME",
     ".avi": "AVI", ".mkv": "MKV", ".webm": "WEBM",
 }
 FFMPEG_DEFAULT_FORMAT = "MPEG4"
+
+# Extensions Blender's FFMPEG writer accepts as "already the container's"
+# (get_file_extensions in writeffmpeg.cc): a target ending in one of these is
+# written verbatim; anything else gains the frame range plus the first entry.
+FFMPEG_CONTAINER_EXTENSIONS = {
+    "MPEG4": (".mp4", ".mpg", ".mpeg"),
+    "QUICKTIME": (".mov",),
+    "AVI": (".avi",),
+    "MKV": (".mkv",),
+    "WEBM": (".webm",),
+    "OGG": (".ogv", ".ogg"),
+}
+
+# First extension Blender writes per image format (image_path_ext_from_imformat_impl).
+IMAGE_FORMAT_EXTENSIONS = {
+    "PNG": ".png", "JPEG": ".jpg", "BMP": ".bmp",
+    "TIFF": ".tif", "OPEN_EXR": ".exr", "HDR": ".hdr",
+}
+
+# imb_ext_image: suffixes Blender treats as an existing image extension, so a
+# configured format replaces them instead of appending its own.
+KNOWN_IMAGE_EXTENSIONS = {
+    ".png", ".tga", ".bmp", ".jpg", ".jpeg", ".sgi", ".rgb", ".rgba",
+    ".tif", ".tiff", ".tx", ".avif", ".jp2", ".j2c", ".hdr", ".dds",
+    ".dpx", ".cin", ".exr", ".psd", ".pdd", ".psb", ".webp",
+}
+
+_FRAME_PLACEHOLDER = re.compile(r"#+")
+_FRAME_DIGITS = 4
+
+
+def _ensure_image_extension(path: str, ext: str) -> str:
+    """Mirror Blender's do_ensure_image_extension for a configured format."""
+    if path.lower().endswith(ext):
+        return path
+    root, current = os.path.splitext(path)
+    if current and current.lower() in KNOWN_IMAGE_EXTENSIONS:
+        return root + ext
+    return path + ext
+
+
+def _expand_frame_digits(path: str, frame: int) -> str:
+    """Mirror BLI_path_frame: replace a '#' run or append digits to the name."""
+    directory, name = os.path.split(path)
+    match = None
+    for found in _FRAME_PLACEHOLDER.finditer(name):
+        match = found  # Blender keeps scanning and uses the last run
+    if match:
+        width = match.end() - match.start()
+        name = name[:match.start()] + f"{frame:0{width}d}" + name[match.end():]
+    else:
+        name = name + f"{frame:0{_FRAME_DIGITS}d}"
+    return os.path.join(directory, name)
+
+
+def blender_still_path(output_path: str, output_format: str) -> Optional[str]:
+    """The exact file Blender writes for a write_still render."""
+    ext = IMAGE_FORMAT_EXTENSIONS.get(output_format)
+    if ext is None:
+        return None
+    return _ensure_image_extension(output_path, ext)
+
+
+def blender_frame_path(output_path: str, output_format: str, frame: int) -> Optional[str]:
+    """The exact file Blender writes for one frame of an image animation."""
+    ext = IMAGE_FORMAT_EXTENSIONS.get(output_format)
+    if ext is None:
+        return None
+    return _ensure_image_extension(_expand_frame_digits(output_path, frame), ext)
+
+
+def blender_movie_path(output_path: str, start: int, end: int) -> str:
+    """The exact file Blender's FFmpeg writer produces for an animation.
+
+    A target already ending in the pinned container's extension is written
+    verbatim; any other target keeps its name and gains the frame range plus
+    the container's extension.
+    """
+    exts = FFMPEG_CONTAINER_EXTENSIONS[_ffmpeg_container(output_path)]
+    if any(output_path.lower().endswith(ext) for ext in exts):
+        return output_path
+    return f"{output_path}{start:04d}-{end:04d}{exts[0]}"
 
 
 def _ffmpeg_container(output_path: str) -> str:
     """Blender FFmpegSettings.format value matching the requested extension."""
     ext = os.path.splitext(output_path)[1].lower()
     return FFMPEG_CONTAINER_FORMATS.get(ext, FFMPEG_DEFAULT_FORMAT)
-
-
-def ffmpeg_movie_extension(output_path: str) -> str:
-    """The filename extension an FFMPEG render actually writes.
-
-    A recognized movie extension is kept as-is; anything else falls back to
-    Blender's default MPEG4 container and gains the .mp4 extension.
-    """
-    ext = os.path.splitext(output_path)[1].lower()
-    return ext if ext in FFMPEG_CONTAINER_FORMATS else ".mp4"
 
 
 def generate_full_script(

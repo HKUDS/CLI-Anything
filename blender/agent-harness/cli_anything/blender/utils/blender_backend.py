@@ -7,10 +7,13 @@ Requires: blender (system package)
 import glob
 import os
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
 from typing import Optional
+
+_FRAME_RUN = re.compile(r"#+")
 
 
 def _fingerprint(path: str) -> Optional[tuple[int, int]]:
@@ -71,11 +74,35 @@ def get_version() -> str:
     return result.stdout.strip().split("\n")[0]
 
 
-def _is_render_output(path: str, abs_output_path: str) -> bool:
+def _is_render_output(path: str, abs_output_path: str, animation: bool = False) -> bool:
     """Whether a path is a file Blender writes for this render target."""
     stem = os.path.splitext(path)[0]
-    base = os.path.splitext(abs_output_path)[0]
-    return stem == base or (stem.startswith(base) and stem[len(base):].isdigit())
+    base, ext = os.path.splitext(abs_output_path)
+    if stem == base:
+        return True
+    if "#" in base:
+        # A '#' run in the target expands to the zero-padded frame number,
+        # so frame_####.png produces frame_0001.png.
+        pattern = _frame_stem_pattern(base)
+        return pattern.fullmatch(stem) is not None
+    suffix = stem[len(base):] if stem.startswith(base) else ""
+    if suffix.isdigit():
+        return True
+    # Frame digits land after the whole name, extension included:
+    # an animation to render.png writes render.png0001.png.
+    return animation and bool(ext) and suffix.startswith(ext) and suffix[len(ext):].isdigit()
+
+
+def _frame_stem_pattern(base: str) -> "re.Pattern[str]":
+    runs = list(_FRAME_RUN.finditer(base))
+    if not runs:
+        return re.compile(re.escape(base))
+    last = runs[-1]
+    return re.compile(
+        re.escape(base[:last.start()])
+        + rf"\d{{{last.end() - last.start()},}}"
+        + re.escape(base[last.end():])
+    )
 
 
 def find_render_outputs(
@@ -85,15 +112,14 @@ def find_render_outputs(
 ) -> list[str]:
     """Resolve Blender's actual output file(s) for a requested render path."""
     abs_output_path = os.path.abspath(output_path)
-    base, ext = os.path.splitext(abs_output_path)
+    base, _ = os.path.splitext(abs_output_path)
     stale = prior or {}
 
     matches = sorted(
         path
-        for pattern in ([f"{base}*{ext}"] if ext else [f"{abs_output_path}*"])
-        for path in glob.glob(pattern)
+        for path in glob.glob(f"{glob.escape(base)}*")
         if os.path.isfile(path) and _is_fresh(path, stale)
-        and _is_render_output(path, abs_output_path)
+        and _is_render_output(path, abs_output_path, animation)
     )
     if animation:
         return matches

@@ -37,7 +37,7 @@ from cli_anything.blender.core.animation import (
 )
 from cli_anything.blender.core.render import (
     set_render_settings, get_render_settings, list_render_presets,
-    render_scene, RENDER_PRESETS, VALID_ENGINES, _expected_animation_outputs,
+    render_scene, RENDER_PRESETS, VALID_ENGINES, _expected_render_outputs,
 )
 from cli_anything.blender.core import preview as preview_mod
 from cli_anything.blender.utils import blender_backend
@@ -937,7 +937,7 @@ class TestRender:
         set_render_settings(proj, output_format="FFMPEG")
         proj["scene"]["frame_start"] = 1
         proj["scene"]["frame_end"] = 250
-        expected = tmp_path / "render0001-0250.mp4"
+        expected = tmp_path / "render.mp4"
         seen = {}
 
         def fake_render_script(
@@ -955,14 +955,14 @@ class TestRender:
             }
 
         monkeypatch.setattr(blender_backend, "render_script", fake_render_script)
-        result = render_scene(proj, str(tmp_path / "render.mp4"), animation=True, execute=True)
+        result = render_scene(proj, str(expected), animation=True, execute=True)
         assert seen["expected_outputs"] == [str(expected)]
         assert result["output"] == str(expected)
 
     def test_render_scene_ffmpeg_animation_requires_overwrite(self, tmp_path):
         proj = self._make_scene()
         set_render_settings(proj, output_format="FFMPEG")
-        (tmp_path / "render0001-0250.mp4").write_bytes(b"old")
+        (tmp_path / "render.mp4").write_bytes(b"old")
         with pytest.raises(FileExistsError, match="--overwrite"):
             render_scene(proj, str(tmp_path / "render.mp4"), animation=True)
 
@@ -1139,22 +1139,57 @@ class TestRender:
         fresh = render_scene(proj, str(fresh_dir / "render.png"), animation=True, overwrite=False)
         assert fresh["executed"] is False
 
-    def test_expected_animation_outputs_follow_container_extension(self, tmp_path):
+    def test_expected_movie_output_keeps_exact_path(self, tmp_path):
         proj = self._make_scene()
         proj["render"]["output_format"] = "FFMPEG"
         output = tmp_path / "render.mp4"
-        assert _expected_animation_outputs(proj, str(output)) == [
-            f"{tmp_path}/render0001-0250.mp4"
-        ]
+        assert _expected_render_outputs(proj, str(output), animation=True) == [str(output)]
 
         webm = tmp_path / "render.webm"
-        assert _expected_animation_outputs(proj, str(webm)) == [
-            f"{tmp_path}/render0001-0250.webm"
+        assert _expected_render_outputs(proj, str(webm), animation=True) == [str(webm)]
+
+    def test_expected_movie_output_adds_range_for_other_extensions(self, tmp_path):
+        proj = self._make_scene()
+        proj["render"]["output_format"] = "FFMPEG"
+        proj["scene"]["frame_start"] = 1
+        proj["scene"]["frame_end"] = 250
+        output = tmp_path / "render.m4v"
+        assert _expected_render_outputs(proj, str(output), animation=True) == [
+            f"{tmp_path}/render.m4v0001-0250.mp4"
         ]
 
-    def test_expected_animation_outputs_none_for_stills(self, tmp_path):
+    def test_expected_still_output_keeps_known_extension(self, tmp_path):
         proj = self._make_scene()
-        assert _expected_animation_outputs(proj, str(tmp_path / "render.png")) is None
+        assert _expected_render_outputs(proj, str(tmp_path / "render.png"), animation=False) == [
+            f"{tmp_path}/render.png"
+        ]
+
+    def test_expected_frame_outputs_expand_placeholders(self, tmp_path):
+        proj = self._make_scene()
+        proj["scene"]["frame_start"] = 1
+        proj["scene"]["frame_end"] = 2
+        output = tmp_path / "frame_####.png"
+        assert _expected_render_outputs(proj, str(output), animation=True) == [
+            f"{tmp_path}/frame_0001.png",
+            f"{tmp_path}/frame_0002.png",
+        ]
+
+    def test_expected_frame_outputs_append_digits_after_extension(self, tmp_path):
+        proj = self._make_scene()
+        proj["scene"]["frame_start"] = 1
+        proj["scene"]["frame_end"] = 1
+        output = tmp_path / "render.png"
+        assert _expected_render_outputs(proj, str(output), animation=True) == [
+            f"{tmp_path}/render.png0001.png"
+        ]
+
+    def test_expected_still_output_follows_configured_format(self, tmp_path):
+        proj = self._make_scene()
+        proj["render"]["output_format"] = "JPEG"
+        output = tmp_path / "render.png"
+        assert _expected_render_outputs(proj, str(output), animation=False) == [
+            f"{tmp_path}/render.jpg"
+        ]
 
     def test_all_engines_valid(self):
         assert "CYCLES" in VALID_ENGINES

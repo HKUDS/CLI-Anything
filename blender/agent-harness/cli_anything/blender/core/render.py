@@ -61,21 +61,41 @@ VALID_ENGINES = ["CYCLES", "EEVEE", "WORKBENCH"]
 VALID_OUTPUT_FORMATS = ["PNG", "JPEG", "BMP", "TIFF", "OPEN_EXR", "HDR", "FFMPEG"]
 
 
-def _expected_animation_outputs(
-    project: Dict[str, Any], output_path: str
-) -> Optional[List[str]]:
-    """Return the explicit movie artifact path Blender uses for FFMPEG."""
-    if project.get("render", {}).get("output_format") != "FFMPEG":
-        return None
+def _expected_render_outputs(
+    project: Dict[str, Any], output_path: str, animation: bool
+) -> List[str]:
+    """Exact artifact paths Blender writes for this render request.
 
-    from cli_anything.blender.utils.bpy_gen import ffmpeg_movie_extension
+    Returns [] when the naming model cannot predict the artifact (unknown
+    image format); the caller then falls back to directory scanning.
+    """
+    from cli_anything.blender.utils import bpy_gen
 
+    render = project.get("render", {})
+    fmt = render.get("output_format", "PNG")
     scene = project.get("scene", {})
-    base, _ = os.path.splitext(os.path.abspath(output_path))
+    abs_path = os.path.abspath(output_path)
+
+    if fmt == "FFMPEG":
+        movie = bpy_gen.blender_movie_path(
+            abs_path,
+            scene.get("frame_start", 1),
+            scene.get("frame_end", 250),
+        )
+        return [movie] if animation else []
+
+    if not animation:
+        still = bpy_gen.blender_still_path(abs_path, fmt)
+        return [still] if still else []
+
     start = scene.get("frame_start", 1)
+    step = scene.get("frame_step", 1)
     end = scene.get("frame_end", 250)
-    ext = ffmpeg_movie_extension(output_path)
-    return [f"{base}{start:04d}-{end:04d}{ext}"]
+    frames = [
+        bpy_gen.blender_frame_path(abs_path, fmt, frame)
+        for frame in range(start, end + 1, max(step, 1))
+    ]
+    return [path for path in frames if path]
 
 
 def set_render_settings(
@@ -219,12 +239,15 @@ def render_scene(
     Returns:
         Dict with render info, script path, and optional backend output metadata
     """
-    expected_outputs = _expected_animation_outputs(project, output_path) if animation else None
+    expected_outputs = (
+        _expected_render_outputs(project, output_path, animation)
+        if execute else None
+    )
 
     if not overwrite:
         existing = (
-            [path for path in expected_outputs if os.path.isfile(path)]
-            if expected_outputs is not None
+            [path for path in (expected_outputs or []) if os.path.isfile(path)]
+            if expected_outputs is not None and expected_outputs
             else blender_backend.find_render_outputs(output_path, animation=True)
             if animation
             else ([output_path] if os.path.exists(output_path) else [])
