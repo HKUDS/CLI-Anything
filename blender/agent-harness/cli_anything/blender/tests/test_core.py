@@ -1183,13 +1183,13 @@ class TestRender:
             f"{tmp_path}/frame_0002.png",
         ]
 
-    def test_expected_frame_outputs_append_digits_after_extension(self, tmp_path):
+    def test_expected_frame_outputs_keep_explicit_extension(self, tmp_path):
         proj = self._make_scene()
         proj["scene"]["frame_start"] = 1
         proj["scene"]["frame_end"] = 1
         output = tmp_path / "render.png"
         assert _expected_render_outputs(proj, str(output), animation=True) == [
-            f"{tmp_path}/render.png0001.png"
+            f"{tmp_path}/render.png"
         ]
 
     def test_expected_still_output_follows_configured_format(self, tmp_path):
