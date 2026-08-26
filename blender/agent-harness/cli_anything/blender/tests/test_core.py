@@ -1026,6 +1026,37 @@ class TestRender:
         blender_backend.render_script(str(script), 120)
         assert seen["timeout"] == 120
 
+    def test_find_render_outputs_matches_only_blender_frame_names(self, tmp_path):
+        output_path = tmp_path / "render.png"
+        preview = tmp_path / "render-preview.png"
+        preview.write_bytes(b"preview")
+        backup = tmp_path / "render-backup.png"
+        backup.write_bytes(b"backup")
+
+        assert blender_backend.find_render_outputs(str(output_path)) == []
+        assert blender_backend.find_render_outputs(str(output_path), animation=True) == []
+
+        frame1 = tmp_path / "render0001.png"
+        frame1.write_bytes(b"frame")
+        assert blender_backend.find_render_outputs(str(output_path)) == [str(frame1)]
+        assert blender_backend.find_render_outputs(
+            str(output_path), animation=True
+        ) == [str(frame1)]
+
+    def test_render_script_rejects_directory_output(self, monkeypatch, tmp_path):
+        script = tmp_path / "_render_script.py"
+        script.write_text("print('ok')")
+        out_dir = tmp_path / "out.png"
+        out_dir.mkdir()
+
+        def fail_run(cmd, capture_output=True, text=True, timeout=None):
+            raise AssertionError("blender should not run for a directory output path")
+
+        monkeypatch.setattr(blender_backend, "find_blender", lambda: "blender")
+        monkeypatch.setattr(blender_backend.subprocess, "run", fail_run)
+        with pytest.raises(ValueError, match="not a file"):
+            blender_backend.render_script(str(script), output_path=str(out_dir))
+
     def test_render_scene_overwrite_protection(self):
         proj = self._make_scene()
         with tempfile.TemporaryDirectory() as tmp:

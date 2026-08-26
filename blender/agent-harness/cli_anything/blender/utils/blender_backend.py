@@ -13,9 +13,6 @@ import tempfile
 from typing import Optional
 
 
-_FRAME_SUFFIXES = ("0001", "0000", "1")
-
-
 def _fingerprint(path: str) -> Optional[tuple[int, int]]:
     try:
         st = os.stat(path)
@@ -74,6 +71,13 @@ def get_version() -> str:
     return result.stdout.strip().split("\n")[0]
 
 
+def _is_render_output(path: str, abs_output_path: str) -> bool:
+    """Whether a path is a file Blender writes for this render target."""
+    stem = os.path.splitext(path)[0]
+    base = os.path.splitext(abs_output_path)[0]
+    return stem == base or (stem.startswith(base) and stem[len(base):].isdigit())
+
+
 def find_render_outputs(
     output_path: str,
     animation: bool = False,
@@ -84,23 +88,12 @@ def find_render_outputs(
     base, ext = os.path.splitext(abs_output_path)
     stale = prior or {}
 
-    direct_candidates = [abs_output_path]
-    if ext:
-        direct_candidates.extend(f"{base}{suffix}{ext}" for suffix in _FRAME_SUFFIXES)
-    else:
-        direct_candidates.extend(f"{abs_output_path}{suffix}" for suffix in _FRAME_SUFFIXES)
-
-    if not animation:
-        for candidate in direct_candidates:
-            if os.path.exists(candidate) and _is_fresh(candidate, stale):
-                return [candidate]
-
-    patterns = [f"{base}*{ext}"] if ext else [f"{abs_output_path}*"]
     matches = sorted(
         path
-        for pattern in patterns
+        for pattern in ([f"{base}*{ext}"] if ext else [f"{abs_output_path}*"])
         for path in glob.glob(pattern)
         if os.path.isfile(path) and _is_fresh(path, stale)
+        and _is_render_output(path, abs_output_path)
     )
     if animation:
         return matches
@@ -127,6 +120,8 @@ def render_script(
     """
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Script not found: {script_path}")
+    if output_path and os.path.exists(output_path) and not os.path.isfile(output_path):
+        raise ValueError(f"Output path is not a file: {output_path}")
 
     blender = find_blender()
     cmd = [blender, "--background", "--python", script_path]
