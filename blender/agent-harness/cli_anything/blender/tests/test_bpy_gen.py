@@ -135,6 +135,13 @@ class TestFFMPEGContainerPin:
         script = generate_full_script(project, "/tmp/render.mkv")
         assert "scene.render.ffmpeg.format = 'MKV'" in script
 
+    def test_webm_output_pins_webm_container_and_codec(self) -> None:
+        project = _minimal_project()
+        project["render"]["output_format"] = "FFMPEG"
+        script = generate_full_script(project, "/tmp/render.webm")
+        assert "scene.render.ffmpeg.format = 'WEBM'" in script
+        assert "scene.render.ffmpeg.codec = 'WEBM'" in script
+
     def test_non_ffmpeg_output_has_no_container_line(self) -> None:
         project = _minimal_project()
         script = generate_full_script(project, "/tmp/render.png")

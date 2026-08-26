@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional, List
 # movie extension the user asked for; pinning the container keeps the written
 # file aligned with the requested output path.
 FFMPEG_CONTAINER_FORMATS = {
-    ".mp4": "MPEG4", ".m4v": "MPEG4", ".mov": "QUICKTIME",
+    ".mp4": "MPEG4", ".mov": "QUICKTIME",
     ".avi": "AVI", ".mkv": "MKV", ".webm": "WEBM",
 }
 FFMPEG_DEFAULT_FORMAT = "MPEG4"
@@ -561,7 +561,10 @@ def _gen_render_output(
         f"scene.render.filepath = {output_path!r}",
     ]
     if bpy_format == "FFMPEG":
-        lines.append(f"scene.render.ffmpeg.format = '{_ffmpeg_container(output_path)}'")
+        container = _ffmpeg_container(output_path)
+        lines.append(f"scene.render.ffmpeg.format = '{container}'")
+        if container == "WEBM":
+            lines.append("scene.render.ffmpeg.codec = 'WEBM'")
 
     if animation:
         lines.extend([
