@@ -87,8 +87,6 @@ def blender_frame_path(output_path: str, output_format: str, frame: int) -> Opti
     ext = IMAGE_FORMAT_EXTENSIONS.get(output_format)
     if ext is None:
         return None
-    if "#" not in os.path.basename(output_path) and os.path.splitext(output_path)[1]:
-        return _ensure_image_extension(output_path, ext)
     return _ensure_image_extension(_expand_frame_digits(output_path, frame), ext)
 
 
