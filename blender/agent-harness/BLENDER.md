@@ -80,7 +80,7 @@ No translation gap — bpy is the native API.
 
 ## Export: bpy Script Generation
 
-The `render execute` command generates a complete Python script:
+The `render execute` command generates a complete Python script and runs it with `blender --background --python`:
 1. Creates all objects with correct mesh types and transforms
 2. Creates and assigns materials with all Principled BSDF properties
 3. Adds and configures modifiers

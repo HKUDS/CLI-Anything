@@ -864,13 +864,17 @@ def render_presets():
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
 @handle_error
 def render_execute(output_path, frame, animation, overwrite):
-    """Render the scene (generates bpy script)."""
+    """Render the scene with Blender headless."""
     sess = get_session()
     result = render_mod.render_scene(
         sess.get_project(), output_path,
         frame=frame, animation=animation, overwrite=overwrite,
+        execute=True,
     )
-    output(result, f"Render script generated: {result['script_path']}")
+    rendered = result.get("output", result["output_path"])
+    file_size = result.get("file_size")
+    size_note = f" ({file_size:,} bytes)" if file_size is not None else ""
+    output(result, f"Rendered: {rendered}{size_note} via {result.get('method', 'blender-headless')}")
 
 
 @render_group.command("script")
@@ -1078,7 +1082,7 @@ def repl(project_path):
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("blender", version="1.0.0")
+    skin = ReplSkin("blender", version="1.0.1")
 
     if project_path:
         sess = get_session()
