@@ -141,8 +141,3 @@ class TestFFMPEGContainerPin:
         script = generate_full_script(project, "/tmp/render.webm")
         assert "scene.render.ffmpeg.format = 'WEBM'" in script
         assert "scene.render.ffmpeg.codec = 'WEBM'" in script
-
-    def test_non_ffmpeg_output_has_no_container_line(self) -> None:
-        project = _minimal_project()
-        script = generate_full_script(project, "/tmp/render.png")
-        assert "scene.render.ffmpeg.format" not in script

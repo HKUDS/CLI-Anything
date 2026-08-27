@@ -1066,6 +1066,8 @@ class TestRender:
 
     def test_find_render_outputs_matches_only_blender_frame_names(self, tmp_path):
         output_path = tmp_path / "render.png"
+        wrong_extension = tmp_path / "render.txt"
+        wrong_extension.write_bytes(b"not a render")
         preview = tmp_path / "render-preview.png"
         preview.write_bytes(b"preview")
         backup = tmp_path / "render-backup.png"
@@ -1123,6 +1125,25 @@ class TestRender:
         )
         assert result["outputs"] == [str(expected)]
 
+    def test_render_script_scans_when_expected_outputs_are_unknown(
+        self, monkeypatch, tmp_path
+    ):
+        script = tmp_path / "_render_script.py"
+        script.write_text("print('ok')")
+        output_path = tmp_path / "render.png"
+
+        def fake_run(cmd, capture_output=True, text=True, timeout=None):
+            output_path.write_bytes(b"image")
+            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(blender_backend, "find_blender", lambda: "blender")
+        monkeypatch.setattr(blender_backend, "get_version", lambda: "Blender 5.2")
+        monkeypatch.setattr(blender_backend.subprocess, "run", fake_run)
+        result = blender_backend.render_script(
+            str(script), output_path=str(output_path), expected_outputs=[]
+        )
+        assert result["outputs"] == [str(output_path)]
+
     def test_render_scene_overwrite_protection(self):
         proj = self._make_scene()
         with tempfile.TemporaryDirectory() as tmp:
@@ -1164,13 +1185,13 @@ class TestRender:
         proj["scene"]["frame_end"] = 250
         output = tmp_path / "render.m4v"
         assert _expected_render_outputs(proj, str(output), animation=True) == [
-            f"{tmp_path}/render.m4v0001-0250.mp4"
+            str(tmp_path / "render.m4v0001-0250.mp4")
         ]
 
     def test_expected_still_output_keeps_known_extension(self, tmp_path):
         proj = self._make_scene()
         assert _expected_render_outputs(proj, str(tmp_path / "render.png"), animation=False) == [
-            f"{tmp_path}/render.png"
+            str(tmp_path / "render.png")
         ]
 
     def test_expected_frame_outputs_expand_placeholders(self, tmp_path):
@@ -1179,8 +1200,8 @@ class TestRender:
         proj["scene"]["frame_end"] = 2
         output = tmp_path / "frame_####.png"
         assert _expected_render_outputs(proj, str(output), animation=True) == [
-            f"{tmp_path}/frame_0001.png",
-            f"{tmp_path}/frame_0002.png",
+            str(tmp_path / "frame_0001.png"),
+            str(tmp_path / "frame_0002.png"),
         ]
 
     def test_expected_frame_outputs_append_digits_after_explicit_extension(self, tmp_path):
@@ -1189,7 +1210,7 @@ class TestRender:
         proj["scene"]["frame_end"] = 1
         output = tmp_path / "render.png"
         assert _expected_render_outputs(proj, str(output), animation=True) == [
-            f"{tmp_path}/render.png0001.png"
+            str(tmp_path / "render.png0001.png")
         ]
 
     def test_expected_still_output_follows_configured_format(self, tmp_path):
@@ -1197,7 +1218,7 @@ class TestRender:
         proj["render"]["output_format"] = "JPEG"
         output = tmp_path / "render.png"
         assert _expected_render_outputs(proj, str(output), animation=False) == [
-            f"{tmp_path}/render.jpg"
+            str(tmp_path / "render.jpg")
         ]
 
     def test_all_engines_valid(self):

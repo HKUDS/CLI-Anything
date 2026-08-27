@@ -13,7 +13,14 @@ import subprocess
 import tempfile
 from typing import Optional
 
+from cli_anything.blender.utils import bpy_gen
+
 _FRAME_RUN = re.compile(r"#+")
+_RENDER_ARTIFACT_EXTENSIONS = bpy_gen.KNOWN_IMAGE_EXTENSIONS | {
+    extension
+    for extensions in bpy_gen.FFMPEG_CONTAINER_EXTENSIONS.values()
+    for extension in extensions
+}
 
 
 def _fingerprint(path: str) -> Optional[tuple[int, int]]:
@@ -76,9 +83,9 @@ def get_version() -> str:
 
 def _is_render_output(path: str, abs_output_path: str, animation: bool = False) -> bool:
     """Whether a path is a file Blender writes for this render target."""
-    stem = os.path.splitext(path)[0]
+    stem, path_ext = os.path.splitext(path)
     base, ext = os.path.splitext(abs_output_path)
-    if stem == base:
+    if stem == base and path_ext.lower() in _RENDER_ARTIFACT_EXTENSIONS:
         return True
     if "#" in base:
         # A '#' run in the target expands to the zero-padded frame number,
@@ -190,7 +197,7 @@ def render_script(
                 path for path in expected_outputs
                 if os.path.isfile(path) and _is_fresh(path, prior or {})
             ]
-            if expected_outputs is not None
+            if expected_outputs
             else find_render_outputs(output_path, animation=animation, prior=prior)
         )
         if not outputs:
