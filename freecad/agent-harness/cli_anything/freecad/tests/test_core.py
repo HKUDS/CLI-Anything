@@ -442,6 +442,23 @@ class TestMeasure:
         assert result["distance"] == 5.0
         assert result["delta"] == [3.0, 4.0, 0.0]
 
+    def test_distance_uses_rotated_asymmetric_cone_aabb_center(self):
+        proj = _make_project()
+        add_part(proj, "sphere", position=[0.0, 0.0, 0.0])
+        add_part(
+            proj,
+            "cone",
+            rotation=[0.0, 45.0, 0.0],
+            params={"radius1": 5.0, "radius2": 0.0, "height": 10.0},
+        )
+
+        result = measure_distance(proj, 0, 1)
+
+        assert result["distance"] == 2.5
+        assert result["delta"] == pytest.approx(
+            [1.767767, 0.0, 1.767767], abs=1e-6
+        )
+
 
 # ===========================================================================
 # TestSketch

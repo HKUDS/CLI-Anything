@@ -10,7 +10,12 @@ import math
 from typing import Any, Dict, List, Optional
 
 from cli_anything.freecad.core.document import ensure_collection
-from cli_anything.freecad.core.parts import PRIMITIVES, _transform_point, get_part
+from cli_anything.freecad.core.parts import (
+    PRIMITIVES,
+    _rotation_matrix,
+    _transform_point,
+    get_part,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,6 +60,34 @@ def _to_world(part: Dict[str, Any], local_point: List[float]) -> List[float]:
     )
 
 
+def _cone_aabb_center(part: Dict[str, Any]) -> List[float]:
+    """Return the exact world-axis-aligned bounding-box centre of a cone."""
+    params = part["params"]
+    placement = part["placement"]
+    position = list(placement["position"])
+    matrix = _rotation_matrix(list(placement["rotation"]))
+    radius1 = float(params["radius1"])
+    radius2 = float(params["radius2"])
+    height = float(params["height"])
+
+    center: List[float] = []
+    for axis in range(3):
+        radial_support = math.hypot(matrix[axis][0], matrix[axis][1])
+        upper_center = matrix[axis][2] * height
+        # Each world-axis support is linear along the frustum, so its
+        # extrema occur on one of the two end disks.
+        axis_min = min(
+            -radial_support * radius1,
+            upper_center - radial_support * radius2,
+        )
+        axis_max = max(
+            radial_support * radius1,
+            upper_center + radial_support * radius2,
+        )
+        center.append(position[axis] + (axis_min + axis_max) / 2.0)
+    return center
+
+
 def _bbox_center(part: Dict[str, Any]) -> List[float]:
     """Estimate the bounding-box centre of a part from its position and params."""
     p = part["params"]
@@ -67,7 +100,7 @@ def _bbox_center(part: Dict[str, Any]) -> List[float]:
     elif t == "sphere":
         local_center = [0.0, 0.0, 0.0]
     elif t == "cone":
-        local_center = [0.0, 0.0, p["height"] / 2.0]
+        return _cone_aabb_center(part)
     elif t == "torus":
         local_center = [0.0, 0.0, 0.0]
     elif t == "wedge":
