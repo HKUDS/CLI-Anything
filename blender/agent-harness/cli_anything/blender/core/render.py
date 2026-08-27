@@ -87,11 +87,10 @@ def _expected_render_outputs(
         return [still] if still else []
 
     start = scene.get("frame_start", 1)
-    step = scene.get("frame_step", 1)
     end = scene.get("frame_end", 250)
     frames = [
         bpy_gen.blender_frame_path(abs_path, fmt, frame)
-        for frame in range(start, end + 1, max(step, 1))
+        for frame in range(start, end + 1)
     ]
     return [path for path in frames if path]
 

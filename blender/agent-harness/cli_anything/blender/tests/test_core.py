@@ -1198,10 +1198,11 @@ class TestRender:
             str(tmp_path / "render.png")
         ]
 
-    def test_expected_frame_outputs_expand_placeholders(self, tmp_path):
+    def test_expected_frame_outputs_match_generated_scene_range(self, tmp_path):
         proj = self._make_scene()
         proj["scene"]["frame_start"] = 1
         proj["scene"]["frame_end"] = 2
+        proj["scene"]["frame_step"] = 2
         output = tmp_path / "frame_####.png"
         assert _expected_render_outputs(proj, str(output), animation=True) == [
             str(tmp_path / "frame_0001.png"),
