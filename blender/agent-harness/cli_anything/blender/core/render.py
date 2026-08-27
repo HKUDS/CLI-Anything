@@ -7,7 +7,7 @@ for actual Blender rendering.
 import os
 from typing import Dict, Any, Optional, List
 
-from cli_anything.blender.utils import blender_backend
+from cli_anything.blender.utils import blender_backend, bpy_gen
 
 
 # Render presets
@@ -69,8 +69,6 @@ def _expected_render_outputs(
     Returns [] when the naming model cannot predict the artifact (unknown
     image format); the caller then falls back to directory scanning.
     """
-    from cli_anything.blender.utils import bpy_gen
-
     render = project.get("render", {})
     fmt = render.get("output_format", "PNG")
     scene = project.get("scene", {})
