@@ -902,6 +902,7 @@ class TestRender:
         ):
             calls["count"] += 1
             calls["timeout"] = timeout
+            calls.setdefault("script_paths", []).append(script_path)
             assert os.path.exists(script_path)
             Path(output_path).write_bytes(b"\x89PNG\r\n\x1a\n")
             return {
@@ -928,9 +929,13 @@ class TestRender:
             assert result["executed"] is True
             assert result["method"] == "blender-headless"
             assert result["file_size"] == 8
+            assert "--python-exit-code 1" in result["command"]
+            assert not os.path.exists(result["script_path"])
 
             render_scene(proj, output_path, overwrite=True, execute=True, timeout=60)
             assert calls["timeout"] == 60
+            assert calls["script_paths"][0] != calls["script_paths"][1]
+            assert not os.path.exists(calls["script_paths"][1])
 
     def test_render_scene_uses_exact_ffmpeg_animation_output(self, monkeypatch, tmp_path):
         proj = self._make_scene()

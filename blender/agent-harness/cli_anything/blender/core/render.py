@@ -5,6 +5,8 @@ for actual Blender rendering.
 """
 
 import os
+import tempfile
+from contextlib import suppress
 from typing import Dict, Any, Optional, List
 
 from cli_anything.blender.utils import blender_backend, bpy_gen
@@ -259,14 +261,26 @@ def render_scene(
     script_dir = os.path.dirname(os.path.abspath(output_path))
     os.makedirs(script_dir, exist_ok=True)
 
-    script_path = os.path.join(script_dir, "_render_script.py")
     # Ensure output_path is absolute before passing it to the script generator
     # as Blender's background process may have a different CWD.
     abs_output_path = os.path.abspath(output_path)
     script_content = generate_bpy_script(project, abs_output_path, frame=frame, animation=animation)
 
-    with open(script_path, "w") as f:
-        f.write(script_content)
+    if execute:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".py",
+            prefix="_render_script_",
+            dir=script_dir,
+            delete=False,
+            encoding="utf-8",
+        ) as script_file:
+            script_file.write(script_content)
+            script_path = script_file.name
+    else:
+        script_path = os.path.join(script_dir, "_render_script.py")
+        with open(script_path, "w", encoding="utf-8") as script_file:
+            script_file.write(script_content)
 
     result = {
         "script_path": os.path.abspath(script_path),
@@ -276,7 +290,7 @@ def render_scene(
         "samples": render_settings.get("samples", 128),
         "format": render_settings.get("output_format", "PNG"),
         "animation": animation,
-        "command": f"blender --background --python {os.path.abspath(script_path)}",
+        "command": f"blender --background --python-exit-code 1 --python {os.path.abspath(script_path)}",
     }
 
     if animation:
@@ -285,13 +299,17 @@ def render_scene(
         result["frame"] = frame or scene_settings.get("frame_current", 1)
 
     if execute:
-        backend_result = blender_backend.render_script(
-            result["script_path"],
-            output_path=result["output_path"],
-            animation=animation,
-            expected_outputs=expected_outputs,
-            timeout=timeout,
-        )
+        try:
+            backend_result = blender_backend.render_script(
+                result["script_path"],
+                output_path=result["output_path"],
+                animation=animation,
+                expected_outputs=expected_outputs,
+                timeout=timeout,
+            )
+        finally:
+            with suppress(FileNotFoundError):
+                os.unlink(script_path)
         if backend_result["returncode"] != 0:
             raise RuntimeError(
                 f"Blender render failed (exit {backend_result['returncode']}):\n"
