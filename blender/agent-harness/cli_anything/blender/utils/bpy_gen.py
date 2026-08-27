@@ -21,7 +21,7 @@ FFMPEG_CONTAINER_FORMATS = {
 FFMPEG_DEFAULT_FORMAT = "MPEG4"
 
 # Extensions Blender's FFMPEG writer accepts as "already the container's"
-# (get_file_extensions in writeffmpeg.cc): a target ending in one of these is
+# (the movie writer's get_file_extensions): a target ending in one of these is
 # written verbatim; anything else gains the frame range plus the first entry.
 FFMPEG_CONTAINER_EXTENSIONS = {
     "MPEG4": (".mp4", ".mpg", ".mpeg"),
