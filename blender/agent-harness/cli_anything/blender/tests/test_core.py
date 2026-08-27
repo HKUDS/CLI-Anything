@@ -1050,6 +1050,31 @@ class TestRender:
         with pytest.raises(RuntimeError, match="timed out after 1 seconds"):
             blender_backend.render_script(str(script), timeout=1)
 
+    def test_render_script_forces_python_exception_exit_code(
+        self, monkeypatch, tmp_path
+    ):
+        script = tmp_path / "_render_script.py"
+        script.write_text("raise RuntimeError('broken render')")
+
+        def fake_run(cmd, capture_output=True, text=True, timeout=None):
+            exit_code = (
+                int(cmd[cmd.index("--python-exit-code") + 1])
+                if "--python-exit-code" in cmd
+                else 0
+            )
+            return subprocess.CompletedProcess(
+                cmd, exit_code, stdout="", stderr="broken render"
+            )
+
+        monkeypatch.setattr(blender_backend, "find_blender", lambda: "blender")
+        monkeypatch.setattr(blender_backend.subprocess, "run", fake_run)
+
+        result = blender_backend.render_script(str(script))
+        assert result["returncode"] == 1
+        assert result["command"].startswith(
+            "blender --background --python-exit-code 1 --python "
+        )
+
     def test_render_script_positional_timeout(self, monkeypatch, tmp_path):
         script = tmp_path / "_render_script.py"
         script.write_text("print('ok')")

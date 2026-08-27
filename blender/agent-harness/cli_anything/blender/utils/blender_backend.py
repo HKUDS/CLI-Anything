@@ -162,7 +162,7 @@ def render_script(
         raise ValueError(f"Output path is not a file: {output_path}")
 
     blender = find_blender()
-    cmd = [blender, "--background", "--python", script_path]
+    cmd = [blender, "--background", "--python-exit-code", "1", "--python", script_path]
     prior = None
     if output_path:
         prior = {}
