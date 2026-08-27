@@ -10,8 +10,7 @@ import math
 from typing import Any, Dict, List, Optional
 
 from cli_anything.freecad.core.document import ensure_collection
-from cli_anything.freecad.core.parts import PRIMITIVES, get_part
-
+from cli_anything.freecad.core.parts import PRIMITIVES, _transform_point, get_part
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,51 +45,69 @@ def _get_position(part: Dict[str, Any]) -> List[float]:
     return list(part["placement"]["position"])
 
 
+def _to_world(part: Dict[str, Any], local_point: List[float]) -> List[float]:
+    """Transform a primitive-local point through the part placement."""
+    placement = part["placement"]
+    return _transform_point(
+        local_point,
+        list(placement["rotation"]),
+        list(placement["position"]),
+    )
+
+
 def _bbox_center(part: Dict[str, Any]) -> List[float]:
     """Estimate the bounding-box centre of a part from its position and params."""
-    pos = _get_position(part)
     p = part["params"]
     t = part["type"]
 
     if t == "box":
-        return [
-            pos[0] + p["length"] / 2.0,
-            pos[1] + p["width"] / 2.0,
-            pos[2] + p["height"] / 2.0,
-        ]
+        local_center = [p["length"] / 2.0, p["width"] / 2.0, p["height"] / 2.0]
     elif t == "cylinder":
-        r = p["radius"]
-        return [
-            pos[0] + r,
-            pos[1] + r,
-            pos[2] + p["height"] / 2.0,
-        ]
+        local_center = [0.0, 0.0, p["height"] / 2.0]
     elif t == "sphere":
-        r = p["radius"]
-        return [pos[0] + r, pos[1] + r, pos[2] + r]
+        local_center = [0.0, 0.0, 0.0]
     elif t == "cone":
-        r = max(p["radius1"], p["radius2"])
-        return [
-            pos[0] + r,
-            pos[1] + r,
-            pos[2] + p["height"] / 2.0,
-        ]
+        local_center = [0.0, 0.0, p["height"] / 2.0]
     elif t == "torus":
-        R = p["radius1"]
-        r = p["radius2"]
-        return [
-            pos[0] + R + r,
-            pos[1] + R + r,
-            pos[2] + r,
-        ]
+        local_center = [0.0, 0.0, 0.0]
     elif t == "wedge":
-        return [
-            pos[0] + (p["xmin"] + p["xmax"]) / 2.0,
-            pos[1] + (p["ymin"] + p["ymax"]) / 2.0,
-            pos[2] + (p["zmin"] + p["zmax"]) / 2.0,
+        local_center = [
+            (p["xmin"] + p["xmax"]) / 2.0,
+            (p["ymin"] + p["ymax"]) / 2.0,
+            (p["zmin"] + p["zmax"]) / 2.0,
         ]
-    # Boolean or unknown — fall back to placement position
-    return pos
+    else:
+        # Boolean or unknown — fall back to placement position
+        return _get_position(part)
+
+    return _to_world(part, local_center)
+
+
+def _center_of_mass(part: Dict[str, Any]) -> List[float]:
+    """Return the analytical centre of mass for supported uniform primitives."""
+    p = part["params"]
+    t = part["type"]
+
+    if t == "box":
+        local_center = [p["length"] / 2.0, p["width"] / 2.0, p["height"] / 2.0]
+    elif t == "cylinder":
+        local_center = [0.0, 0.0, p["height"] / 2.0]
+    elif t in {"sphere", "torus"}:
+        local_center = [0.0, 0.0, 0.0]
+    elif t == "cone":
+        r1 = p["radius1"]
+        r2 = p["radius2"]
+        radius_sum = r1 ** 2 + r1 * r2 + r2 ** 2
+        if radius_sum == 0.0:
+            return _get_position(part)
+        # Centroid of a solid conical frustum, measured from the radius1 base.
+        z = p["height"] * (r1 ** 2 + 2.0 * r1 * r2 + 3.0 * r2 ** 2)
+        z /= 4.0 * radius_sum
+        local_center = [0.0, 0.0, z]
+    else:
+        return _bbox_center(part)
+
+    return _to_world(part, local_center)
 
 
 # ---------------------------------------------------------------------------
@@ -517,10 +534,7 @@ def measure_center_of_mass(
     project: Dict[str, Any], index: int,
     additive: bool = False,
 ) -> Dict[str, Any]:
-    """Estimate the centre of mass (geometric centre for simple shapes).
-
-    For uniform-density primitives the centre of mass coincides with the
-    bounding-box centre.
+    """Estimate the centre of mass for a uniform-density primitive.
 
     Returns
     -------
@@ -528,7 +542,7 @@ def measure_center_of_mass(
         Measurement record with ``center_of_mass`` ``[x, y, z]``.
     """
     part = get_part(project, index)
-    com = _bbox_center(part)
+    com = _center_of_mass(part)
 
     result_com: Dict[str, Any] = {
         "part_index": index,

@@ -20,6 +20,7 @@ from cli_anything.freecad.core.document import (
     open_document,
     save_document,
 )
+from cli_anything.freecad.core.measure import measure_center_of_mass, measure_distance
 from cli_anything.freecad.core.parts import (
     PRIMITIVES,
     add_part,
@@ -378,6 +379,68 @@ class TestParts:
 
         with pytest.raises(ValueError, match="must differ"):
             boolean_op(proj, "cut", 0, 0)
+
+
+# ===========================================================================
+# TestMeasure
+# ===========================================================================
+
+
+class TestMeasure:
+    """Tests for analytical measurements of simple primitives."""
+
+    @pytest.mark.parametrize(
+        ("part_type", "params", "expected"),
+        [
+            ("box", {"length": 6.0, "width": 8.0, "height": 10.0}, [5.0, 1.0, 9.0]),
+            ("cylinder", {"radius": 7.0, "height": 10.0}, [2.0, -3.0, 9.0]),
+            ("sphere", {"radius": 7.0}, [2.0, -3.0, 4.0]),
+            (
+                "cone",
+                {"radius1": 4.0, "radius2": 2.0, "height": 12.0},
+                [2.0, -3.0, 8.714286],
+            ),
+            ("torus", {"radius1": 10.0, "radius2": 3.0}, [2.0, -3.0, 4.0]),
+        ],
+    )
+    def test_center_of_mass_uses_primitive_local_origin(
+        self, part_type, params, expected
+    ):
+        proj = _make_project()
+        add_part(proj, part_type, position=[2.0, -3.0, 4.0], params=params)
+
+        result = measure_center_of_mass(proj, 0)
+
+        assert result["center_of_mass"] == expected
+
+    def test_center_of_mass_applies_part_rotation(self):
+        proj = _make_project()
+        add_part(
+            proj,
+            "cylinder",
+            position=[10.0, 20.0, 30.0],
+            rotation=[0.0, 90.0, 0.0],
+            params={"radius": 3.0, "height": 8.0},
+        )
+
+        result = measure_center_of_mass(proj, 0)
+
+        assert result["center_of_mass"] == [14.0, 20.0, 30.0]
+
+    def test_distance_uses_primitive_bounding_box_centers(self):
+        proj = _make_project()
+        add_part(proj, "sphere", position=[0.0, 0.0, 0.0], params={"radius": 10.0})
+        add_part(
+            proj,
+            "torus",
+            position=[3.0, 4.0, 0.0],
+            params={"radius1": 20.0, "radius2": 5.0},
+        )
+
+        result = measure_distance(proj, 0, 1)
+
+        assert result["distance"] == 5.0
+        assert result["delta"] == [3.0, 4.0, 0.0]
 
 
 # ===========================================================================
