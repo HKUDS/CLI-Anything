@@ -1068,6 +1068,8 @@ class TestRender:
         output_path = tmp_path / "render.png"
         wrong_extension = tmp_path / "render.txt"
         wrong_extension.write_bytes(b"not a render")
+        wrong_frame_extension = tmp_path / "render0001.txt"
+        wrong_frame_extension.write_bytes(b"not a render frame")
         preview = tmp_path / "render-preview.png"
         preview.write_bytes(b"preview")
         backup = tmp_path / "render-backup.png"
@@ -1085,6 +1087,8 @@ class TestRender:
 
     def test_find_render_outputs_expands_frame_placeholders(self, tmp_path):
         output_path = tmp_path / "frame_####.png"
+        wrong_extension = tmp_path / "frame_0001.txt"
+        wrong_extension.write_bytes(b"not a render frame")
         frame1 = tmp_path / "frame_0001.png"
         frame1.write_bytes(b"frame")
 

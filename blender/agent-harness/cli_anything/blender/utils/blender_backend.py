@@ -85,7 +85,9 @@ def _is_render_output(path: str, abs_output_path: str, animation: bool = False) 
     """Whether a path is a file Blender writes for this render target."""
     stem, path_ext = os.path.splitext(path)
     base, ext = os.path.splitext(abs_output_path)
-    if stem == base and path_ext.lower() in _RENDER_ARTIFACT_EXTENSIONS:
+    if path_ext.lower() not in _RENDER_ARTIFACT_EXTENSIONS:
+        return False
+    if stem == base:
         return True
     if "#" in base:
         # A '#' run in the target expands to the zero-padded frame number,
