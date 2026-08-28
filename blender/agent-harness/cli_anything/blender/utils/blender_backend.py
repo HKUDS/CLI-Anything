@@ -4,23 +4,70 @@ Requires: blender (system package)
     apt install blender
 """
 
+import glob
 import os
+import platform
+import re
 import shutil
 import subprocess
 import tempfile
 from typing import Optional
 
+from cli_anything.blender.utils import bpy_gen
+
+_FRAME_RUN = re.compile(r"#+")
+_RENDER_ARTIFACT_EXTENSIONS = bpy_gen.KNOWN_IMAGE_EXTENSIONS | {
+    extension
+    for extensions in bpy_gen.FFMPEG_CONTAINER_EXTENSIONS.values()
+    for extension in extensions
+}
+
+
+def _fingerprint(path: str) -> Optional[tuple[int, int]]:
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _is_fresh(path: str, prior: dict[str, tuple[int, int]]) -> bool:
+    return prior.get(os.path.abspath(path)) != _fingerprint(path)
+
+
+def _windows_install_candidates() -> list[str]:
+    """Common Blender install locations when PATH lookup misses."""
+    candidates: list[str] = []
+    for root in (
+        os.environ.get("ProgramFiles", r"C:\Program Files"),
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+    ):
+        pattern = os.path.join(root, "Blender Foundation", "Blender *", "blender.exe")
+        candidates.extend(sorted(glob.glob(pattern), reverse=True))
+    return candidates
+
 
 def find_blender() -> str:
     """Find the Blender executable. Raises RuntimeError if not found."""
-    for name in ("blender",):
+    env_path = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    if env_path and os.path.isfile(env_path):
+        return env_path
+
+    for name in ("blender", "blender.exe"):
         path = shutil.which(name)
         if path:
             return path
+
+    if platform.system().lower() == "windows":
+        for candidate in _windows_install_candidates():
+            if os.path.isfile(candidate):
+                return candidate
+
     raise RuntimeError(
         "Blender is not installed. Install it with:\n"
         "  apt install blender   # Debian/Ubuntu\n"
-        "  brew install --cask blender  # macOS"
+        "  brew install --cask blender  # macOS\n"
+        "  https://www.blender.org/download/  # Windows"
     )
 
 
@@ -34,37 +81,146 @@ def get_version() -> str:
     return result.stdout.strip().split("\n")[0]
 
 
+def _is_render_output(path: str, abs_output_path: str, animation: bool = False) -> bool:
+    """Whether a path is a file Blender writes for this render target."""
+    stem, path_ext = os.path.splitext(path)
+    base, ext = os.path.splitext(abs_output_path)
+    if path_ext.lower() not in _RENDER_ARTIFACT_EXTENSIONS:
+        return False
+    if stem == base:
+        return True
+    if "#" in base:
+        # A '#' run in the target expands to the zero-padded frame number,
+        # so frame_####.png produces frame_0001.png.
+        pattern = _frame_stem_pattern(base)
+        return pattern.fullmatch(stem) is not None
+    suffix = stem[len(base):] if stem.startswith(base) else ""
+    if suffix.isdigit():
+        return True
+    # Frame digits land after the whole name, extension included:
+    # an animation to render.png writes render.png0001.png.
+    return animation and bool(ext) and suffix.startswith(ext) and suffix[len(ext):].isdigit()
+
+
+def _frame_stem_pattern(base: str) -> "re.Pattern[str]":
+    runs = list(_FRAME_RUN.finditer(base))
+    if not runs:
+        return re.compile(re.escape(base))
+    last = runs[-1]
+    return re.compile(
+        re.escape(base[:last.start()])
+        + rf"\d{{{last.end() - last.start()},}}"
+        + re.escape(base[last.end():])
+    )
+
+
+def find_render_outputs(
+    output_path: str,
+    animation: bool = False,
+    prior: Optional[dict[str, tuple[int, int]]] = None,
+) -> list[str]:
+    """Resolve Blender's actual output file(s) for a requested render path."""
+    abs_output_path = os.path.abspath(output_path)
+    base, _ = os.path.splitext(abs_output_path)
+    stale = prior or {}
+    glob_base = base if "#" not in base else base[:base.index("#")]
+
+    matches = sorted(
+        path
+        for path in glob.glob(f"{glob.escape(glob_base)}*")
+        if os.path.isfile(path) and _is_fresh(path, stale)
+        and _is_render_output(path, abs_output_path, animation)
+    )
+    if animation:
+        return matches
+    return matches[:1]
+
+
 def render_script(
     script_path: str,
-    timeout: int = 300,
+    timeout: Optional[int] = 300,
+    *,
+    output_path: Optional[str] = None,
+    animation: bool = False,
+    expected_outputs: Optional[list[str]] = None,
 ) -> dict:
     """Run a bpy script using Blender headless.
 
     Args:
         script_path: Path to the Python script to execute
-        timeout: Maximum seconds to wait
+        timeout: Maximum seconds to wait, or None to wait until Blender exits
+        output_path: Expected render output path
+        animation: Whether Blender is expected to render an animation sequence
+        expected_outputs: Exact artifact paths derived by the render caller
 
     Returns:
-        Dict with stdout, stderr, return code
+        Dict with stdout, stderr, return code, and optional output metadata
     """
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Script not found: {script_path}")
+    if output_path and os.path.exists(output_path) and not os.path.isfile(output_path):
+        raise ValueError(f"Output path is not a file: {output_path}")
 
     blender = find_blender()
-    cmd = [blender, "--background", "--python", script_path]
+    cmd = [blender, "--background", "--python-exit-code", "1", "--python", script_path]
+    prior = None
+    if output_path:
+        prior = {}
+        candidates = expected_outputs or find_render_outputs(output_path, animation=True)
+        for path in candidates:
+            fp = _fingerprint(path)
+            if fp is not None:
+                prior[os.path.abspath(path)] = fp
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True, text=True,
-        timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True, text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Blender render timed out after {timeout} seconds"
+        ) from exc
 
-    return {
+    render_result = {
         "command": " ".join(cmd),
         "returncode": result.returncode,
         "stdout": result.stdout,
         "stderr": result.stderr,
     }
+
+    if result.returncode != 0:
+        return render_result
+
+    if output_path:
+        outputs = (
+            [
+                path for path in expected_outputs
+                if os.path.isfile(path) and _is_fresh(path, prior or {})
+            ]
+            if expected_outputs
+            else find_render_outputs(output_path, animation=animation, prior=prior)
+        )
+        if not outputs:
+            raise RuntimeError(
+                "Blender render produced no output file.\n"
+                f"  Expected: {output_path}\n"
+                f"  stdout: {result.stdout[-500:]}"
+            )
+
+        primary_output = outputs[0]
+        render_result.update({
+            "output": os.path.abspath(primary_output),
+            "outputs": [os.path.abspath(path) for path in outputs],
+            "output_count": len(outputs),
+            "format": os.path.splitext(primary_output)[1].lstrip("."),
+            "method": "blender-headless",
+            "blender_version": get_version(),
+            "file_size": os.path.getsize(primary_output),
+        })
+
+    return render_result
 
 
 def render_scene_headless(
@@ -89,7 +245,7 @@ def render_scene_headless(
         script_path = f.name
 
     try:
-        result = render_script(script_path, timeout=timeout)
+        result = render_script(script_path, output_path=output_path, timeout=timeout)
 
         if result["returncode"] != 0:
             raise RuntimeError(
@@ -97,32 +253,12 @@ def render_scene_headless(
                 f"  stderr: {result['stderr'][-500:]}"
             )
 
-        # Verify the output file was created
-        # Blender appends frame number to output path for single frames
-        # e.g., /tmp/render.png becomes /tmp/render0001.png
-        actual_output = output_path
-        if not os.path.exists(actual_output):
-            # Try with frame number suffix
-            base, ext = os.path.splitext(output_path)
-            for suffix in ["0001", "0000", "1"]:
-                candidate = f"{base}{suffix}{ext}"
-                if os.path.exists(candidate):
-                    actual_output = candidate
-                    break
-
-        if not os.path.exists(actual_output):
-            raise RuntimeError(
-                f"Blender render produced no output file.\n"
-                f"  Expected: {output_path}\n"
-                f"  stdout: {result['stdout'][-500:]}"
-            )
-
         return {
-            "output": os.path.abspath(actual_output),
-            "format": os.path.splitext(actual_output)[1].lstrip("."),
+            "output": result["output"],
+            "format": result["format"],
             "method": "blender-headless",
-            "blender_version": get_version(),
-            "file_size": os.path.getsize(actual_output),
+            "blender_version": result["blender_version"],
+            "file_size": result["file_size"],
         }
     finally:
         os.unlink(script_path)

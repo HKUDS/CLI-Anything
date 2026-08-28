@@ -154,7 +154,7 @@ Render settings and output commands.
 | `settings` | Configure render settings |
 | `info` | Show current render settings |
 | `presets` | List available render presets |
-| `execute` | Render the scene (generates bpy script) |
+| `execute` | Render the scene with Blender headless |
 | `script` | Generate bpy script without rendering |
 
 ### Preview
@@ -296,4 +296,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.0
+1.0.1

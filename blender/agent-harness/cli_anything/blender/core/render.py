@@ -5,9 +5,11 @@ for actual Blender rendering.
 """
 
 import os
-import json
+import tempfile
+from contextlib import suppress
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+
+from cli_anything.blender.utils import blender_backend, bpy_gen
 
 
 # Render presets
@@ -59,6 +61,40 @@ RENDER_PRESETS = {
 # Valid render settings
 VALID_ENGINES = ["CYCLES", "EEVEE", "WORKBENCH"]
 VALID_OUTPUT_FORMATS = ["PNG", "JPEG", "BMP", "TIFF", "OPEN_EXR", "HDR", "FFMPEG"]
+
+
+def _expected_render_outputs(
+    project: Dict[str, Any], output_path: str, animation: bool
+) -> List[str]:
+    """Exact artifact paths Blender writes for this render request.
+
+    Returns [] when the naming model cannot predict the artifact (unknown
+    image format); the caller then falls back to directory scanning.
+    """
+    render = project.get("render", {})
+    fmt = render.get("output_format", "PNG")
+    scene = project.get("scene", {})
+    abs_path = os.path.abspath(output_path)
+
+    if fmt == "FFMPEG":
+        movie = bpy_gen.blender_movie_path(
+            abs_path,
+            scene.get("frame_start", 1),
+            scene.get("frame_end", 250),
+        )
+        return [movie] if animation else []
+
+    if not animation:
+        still = bpy_gen.blender_still_path(abs_path, fmt)
+        return [still] if still else []
+
+    start = scene.get("frame_start", 1)
+    end = scene.get("frame_end", 250)
+    frames = [
+        bpy_gen.blender_frame_path(abs_path, fmt, frame)
+        for frame in range(start, end + 1)
+    ]
+    return [path for path in frames if path]
 
 
 def set_render_settings(
@@ -185,11 +221,10 @@ def render_scene(
     frame: Optional[int] = None,
     animation: bool = False,
     overwrite: bool = False,
+    execute: bool = False,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Render the scene by generating a bpy script.
-
-    Since we cannot call Blender directly in all environments, this generates
-    a Python script that can be run with `blender --background --python script.py`.
+    """Prepare a render script, and optionally execute it with Blender.
 
     Args:
         project: The scene dict
@@ -197,12 +232,27 @@ def render_scene(
         frame: Specific frame to render (None = current frame)
         animation: If True, render the full animation range
         overwrite: Allow overwriting existing files
+        execute: If True, run Blender headless after generating the script
+        timeout: Maximum seconds to wait when execute=True, or None for no limit
 
     Returns:
-        Dict with render info and script path
+        Dict with render info, script path, and optional backend output metadata
     """
-    if os.path.exists(output_path) and not overwrite and not animation:
-        raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite.")
+    expected_outputs = (
+        _expected_render_outputs(project, output_path, animation)
+        if execute else None
+    )
+
+    if not overwrite:
+        existing = (
+            [path for path in (expected_outputs or []) if os.path.isfile(path)]
+            if expected_outputs is not None and expected_outputs
+            else blender_backend.find_render_outputs(output_path, animation=True)
+            if animation
+            else ([output_path] if os.path.exists(output_path) else [])
+        )
+        if existing:
+            raise FileExistsError(f"Output file exists: {existing[0]}. Use --overwrite.")
 
     render_settings = project.get("render", {})
     scene_settings = project.get("scene", {})
@@ -211,14 +261,26 @@ def render_scene(
     script_dir = os.path.dirname(os.path.abspath(output_path))
     os.makedirs(script_dir, exist_ok=True)
 
-    script_path = os.path.join(script_dir, "_render_script.py")
     # Ensure output_path is absolute before passing it to the script generator
     # as Blender's background process may have a different CWD.
     abs_output_path = os.path.abspath(output_path)
     script_content = generate_bpy_script(project, abs_output_path, frame=frame, animation=animation)
 
-    with open(script_path, "w") as f:
-        f.write(script_content)
+    if execute:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".py",
+            prefix="_render_script_",
+            dir=script_dir,
+            delete=False,
+            encoding="utf-8",
+        ) as script_file:
+            script_file.write(script_content)
+            script_path = script_file.name
+    else:
+        script_path = os.path.join(script_dir, "_render_script.py")
+        with open(script_path, "w", encoding="utf-8") as script_file:
+            script_file.write(script_content)
 
     result = {
         "script_path": os.path.abspath(script_path),
@@ -228,13 +290,44 @@ def render_scene(
         "samples": render_settings.get("samples", 128),
         "format": render_settings.get("output_format", "PNG"),
         "animation": animation,
-        "command": f"blender --background --python {os.path.abspath(script_path)}",
+        "command": f"blender --background --python-exit-code 1 --python {os.path.abspath(script_path)}",
     }
 
     if animation:
         result["frame_range"] = f"{scene_settings.get('frame_start', 1)}-{scene_settings.get('frame_end', 250)}"
     else:
         result["frame"] = frame or scene_settings.get("frame_current", 1)
+
+    if execute:
+        try:
+            backend_result = blender_backend.render_script(
+                result["script_path"],
+                output_path=result["output_path"],
+                animation=animation,
+                expected_outputs=expected_outputs,
+                timeout=timeout,
+            )
+        finally:
+            with suppress(FileNotFoundError):
+                os.unlink(script_path)
+        if backend_result["returncode"] != 0:
+            raise RuntimeError(
+                f"Blender render failed (exit {backend_result['returncode']}):\n"
+                f"  stderr: {backend_result['stderr'][-500:]}"
+            )
+
+        result.update({
+            "executed": True,
+            "output": backend_result["output"],
+            "outputs": backend_result["outputs"],
+            "output_count": backend_result["output_count"],
+            "file_size": backend_result["file_size"],
+            "blender_version": backend_result["blender_version"],
+            "method": backend_result["method"],
+            "returncode": backend_result["returncode"],
+        })
+    else:
+        result["executed"] = False
 
     return result
 
