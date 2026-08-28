@@ -4,6 +4,7 @@ Tests verify that generated scripts are syntactically valid Python,
 especially with Windows-style paths that could trigger escape errors.
 """
 
+import ast
 from typing import Any, Dict
 
 import pytest
@@ -82,6 +83,31 @@ class TestGeneratedScriptSyntax:
         project = _minimal_project()
         script = generate_full_script(project, "C:\\Users\\o'brien\\output.png")
         compile(script, "<test>", "exec")
+
+    def test_entity_names_with_quotes_are_serialized(self) -> None:
+        """Names carrying quotes/backslashes must stay data, not become code."""
+        project = _minimal_project()
+        hostile = "Bob's Cube\nraise RuntimeError('owned')"
+        project["objects"] = [{
+            "id": 1, "name": hostile, "mesh_type": "cube",
+            "material": 9, "visible": True, "parent": 2,
+            "modifiers": [{
+                "name": "Mod'\\name", "type": "boolean", "bpy_type": "BOOLEAN",
+                "params": {"operand_object": "Other'\\object"},
+            }],
+            "keyframes": [{"frame": 1, "property": "location", "value": [0, 0, 0]}],
+        }, {
+            "id": 2, "name": "Parent'\\name", "mesh_type": "empty",
+            "visible": True, "keyframes": [],
+        }]
+        project["materials"] = [{"id": 9, "name": "Mat'\""}]
+        project["cameras"] = [{"name": "Cam <>&\"'", "is_active": True}]
+        project["lights"] = [{"name": "Lamp\\x'", "type": "POINT"}]
+        script = generate_full_script(project, "/tmp/render.png")
+        tree = ast.parse(script, "<test>", "exec")
+        name_line = next(line for line in script.splitlines() if line.startswith("obj.name"))
+        assert name_line == f"obj.name = {hostile!r}"
+        assert not any(isinstance(node, ast.Raise) for node in ast.walk(tree))
 
     def test_hdri_path_with_windows_slashes(self) -> None:
         """HDRI paths on Windows must not cause SyntaxError."""
