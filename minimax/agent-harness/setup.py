@@ -15,7 +15,7 @@ setup(
     version="1.1.0",
     author="cli-anything contributors",
     author_email="",
-    description="CLI harness for MiniMax AI — chat (MiniMax-M3) and TTS via MiniMax API. Requires: MINIMAX_API_KEY",
+    description="CLI harness for MiniMax AI — chat (MiniMax-M3, MiniMax-M2.7) and speech-2.x TTS via MiniMax API. Requires: MINIMAX_API_KEY",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/HKUDS/CLI-Anything",

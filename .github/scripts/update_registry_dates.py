@@ -19,6 +19,12 @@ USER_AGENT = "CLI-Anything registry date updater"
 GITHUB_REPO_RE = re.compile(r"https://github\.com/([^/]+/[^/#?]+?)(?:\.git)?(?:[/?#].*)?$")
 GIT_URL_RE = re.compile(r"https://github\.com/[^\s#]+")
 SUBDIRECTORY_RE = re.compile(r"#subdirectory=([^\s]+)")
+PYPI_REQUIREMENT_RE = re.compile(
+    r"^(?P<name>[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)"
+    r"(?:\[[A-Za-z0-9._,-]+\])?"
+    r"(?:[<>=!~].*)?"
+    r"(?:;.*)?$"
+)
 PIP_OPTIONS_WITH_VALUES = {
     "-c",
     "--constraint",
@@ -27,6 +33,8 @@ PIP_OPTIONS_WITH_VALUES = {
     "-i",
     "--index-url",
     "--extra-index-url",
+    "-e",
+    "--editable",
     "-f",
     "--find-links",
     "--trusted-host",
@@ -163,7 +171,8 @@ def _extract_pypi_package(install_cmd: str) -> str | None:
             continue
         if "://" in token or token.startswith("git+"):
             return None
-        return token
+        requirement = PYPI_REQUIREMENT_RE.fullmatch(token)
+        return requirement.group("name") if requirement else None
     return None
 
 

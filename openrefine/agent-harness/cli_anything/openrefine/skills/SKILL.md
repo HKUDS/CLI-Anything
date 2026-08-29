@@ -51,6 +51,22 @@ cli-anything-openrefine --json --session run/session.json session redo
 
 Run `cli-anything-openrefine` with no subcommand to enter the REPL.
 
+For automated user journeys, pipe newline-separated REPL commands through
+stdin. Redirected streams automatically use an ASCII-only input/output path
+while interactive terminals retain the Unicode banner, prompt history, and
+styling:
+
+```bash
+printf 'help\nexit\n' | cli-anything-openrefine
+```
+
+Unicode payloads are rendered as reversible ASCII backslash escapes when the
+REPL is redirected, preventing legacy Windows output encodings from turning a
+successful command into a failed journey.
+
+Piped workflows return a nonzero exit status at `exit` or EOF if any command
+failed, allowing CI to detect an unsuccessful user journey.
+
 ## Error Handling
 
 When `--json` is set, command failures write a JSON object to stderr with `ok: false`.

@@ -43,7 +43,7 @@ class InspectParams:
 # Constants
 # ---------------------------------------------------------------------------
 
-_GROUP_DISTANCE_MM = 0.5  # max center-to-center distance to merge circles
+_GROUP_DISTANCE_MM = 0.5  # max (centre, radius) distance to merge circles into one hole
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +109,7 @@ def inspect_mesh(
     num_planes = params.num_planes
     holes: list[DetectedHole] = []
     hole_id = 0
+    hole_mesh = backend.mesh_to_trimesh(mesh_data) if groups else None
 
     for group in groups:
         radii = np.array([c["radius"] for c in group])
@@ -131,14 +132,42 @@ def inspect_mesh(
         if confidence < params.min_confidence:
             continue
 
-        # Axis extent
-        group_levels = [c["level"] for c in group]
-        axis_min = float(min(group_levels))
-        axis_max = float(max(group_levels))
-
         # Centre (average across all detections)
         centres = np.array([c["center"] for c in group])
         avg_center = (float(np.mean(centres[:, 0])), float(np.mean(centres[:, 1])))
+
+        # Axis extent -- measured from the hole's actual wall vertices.  The
+        # cross-section planes are inset from the mesh bounds, so their levels
+        # under-report a through hole whose wall vertices sit exactly on the
+        # part faces; that gap made resize's axial band miss the rim vertices
+        # and move nothing.  We therefore read the extent from real wall
+        # vertices, but only within this group's detected span extended by one
+        # sampling inset (clamped to the mesh) -- so we recover the rims without
+        # letting an unrelated coaxial same-radius feature elsewhere along the
+        # axis stretch the extent.  Fall back to plane levels if none match.
+        group_levels = [c["level"] for c in group]
+        level_min, level_max = float(min(group_levels)), float(max(group_levels))
+        inset = (axis_hi - axis_lo) * backend.PLANE_INSET_FRACTION
+        search_lo = max(axis_lo, level_min - inset)
+        search_hi = min(axis_hi, level_max + inset)
+        wall_min, wall_max = _wall_axial_extent(
+            vertices, avg_center, mean_radius, axis, perp_axes, search_lo, search_hi,
+        )
+        if wall_min is None:
+            axis_min, axis_max = level_min, level_max
+        else:
+            axis_min, axis_max = wall_min, wall_max
+
+        # Keep only interior holes, not exterior contours.  A hole's cylindrical
+        # wall faces the void, so its surface normals point toward the axis; the
+        # part's outer boundary, a bare cylinder, or a solid boss all face
+        # outward.  Classifying by wall-normal orientation keeps through *and*
+        # blind holes while rejecting the exterior circles that splitting groups
+        # by radius would otherwise surface as resizable holes.
+        if not _is_interior_hole(
+            hole_mesh, avg_center, mean_radius, axis, perp_axes, axis_min, axis_max,
+        ):
+            continue
 
         # Step 6 -- count wall vertices
         vertex_count = _count_wall_vertices(
@@ -240,17 +269,25 @@ def _perpendicular_axes(axis: int) -> tuple[int, int]:
 
 
 def _group_circles(circles: list[dict]) -> list[list[dict]]:
-    """Group circles from different planes by centre proximity.
+    """Group circles from different planes into distinct holes.
 
-    Uses scipy hierarchical clustering with a distance threshold of
-    ``_GROUP_DISTANCE_MM``.
+    Circles belonging to the same hole share both a centre **and** a radius
+    across cross-section planes.  Concentric features with different radii --
+    e.g. a hole bored through a solid body, whose section also yields the
+    body's outer contour -- must therefore stay in separate groups; otherwise
+    their radii get averaged into a meaningless diameter (the inner hole and
+    outer wall collapse into one bogus circle).  We cluster on the
+    ``(centre_x, centre_y, radius)`` feature vector via scipy hierarchical
+    clustering with a distance threshold of ``_GROUP_DISTANCE_MM``.
     """
 
     if len(circles) == 1:
         return [circles]
 
-    centres = np.array([c["center"] for c in circles])
-    link = linkage(centres, method="single", metric="euclidean")
+    features = np.array(
+        [[c["center"][0], c["center"][1], c["radius"]] for c in circles]
+    )
+    link = linkage(features, method="single", metric="euclidean")
     labels = fcluster(link, t=_GROUP_DISTANCE_MM, criterion="distance")
 
     groups: dict[int, list[dict]] = {}
@@ -258,6 +295,88 @@ def _group_circles(circles: list[dict]) -> list[list[dict]]:
         groups.setdefault(int(label), []).append(circle)
 
     return list(groups.values())
+
+
+def _wall_axial_extent(
+    vertices: np.ndarray,
+    center: tuple[float, float],
+    radius: float,
+    axis: int,
+    perp_axes: tuple[int, int],
+    search_lo: float,
+    search_hi: float,
+    tolerance: float = 0.06,
+) -> tuple[float, float] | tuple[None, None]:
+    """Return the axial ``(min, max)`` of the hole's wall vertices.
+
+    A vertex counts as wall when its radial distance from the hole axis is
+    within *tolerance* of *radius* **and** its axial coordinate lies in
+    ``[search_lo, search_hi]``.  The axial window keeps a coaxial same-radius
+    feature elsewhere on the axis from stretching the extent.  Returns
+    ``(None, None)`` when no wall vertex matches, so the caller can fall back
+    to the sampled plane levels.
+    """
+
+    ax0, ax1 = perp_axes
+    dx = vertices[:, ax0] - center[0]
+    dy = vertices[:, ax1] - center[1]
+    dist = np.sqrt(dx * dx + dy * dy)
+    axial_all = vertices[:, axis]
+    on_wall = (
+        (np.abs(dist - radius) < tolerance)
+        & (axial_all >= search_lo)
+        & (axial_all <= search_hi)
+    )
+    if not np.any(on_wall):
+        return None, None
+    axial = axial_all[on_wall]
+    return float(np.min(axial)), float(np.max(axial))
+
+
+def _is_interior_hole(
+    tm,
+    center: tuple[float, float],
+    radius: float,
+    axis: int,
+    perp_axes: tuple[int, int],
+    axis_min: float,
+    axis_max: float,
+    tolerance: float = 0.06,
+) -> bool:
+    """Whether a detected circle bounds an interior hole rather than an exterior contour.
+
+    A hole's cylindrical wall faces the void, so its outward surface normals
+    point *toward* the axis; the part's outer boundary, a bare cylinder, or a
+    solid boss all face *away* from the axis.  We classify by the mean radial
+    component of the wall-face normals -- which keeps through **and** blind holes
+    (a vertex-enclosure test fails on a blind hole's floor end, where no material
+    lies beyond the radius).
+
+    Needs consistent winding, which valid 3MF provides.  If the winding is
+    inconsistent or the wall can't be sampled we keep the candidate rather than
+    risk dropping a real hole.
+    """
+
+    if tm is None or not tm.is_winding_consistent:
+        return True
+
+    ax0, ax1 = perp_axes
+    centroids = tm.triangles_center
+    du = centroids[:, ax0] - center[0]
+    dv = centroids[:, ax1] - center[1]
+    dist = np.sqrt(du * du + dv * dv)
+
+    band = (centroids[:, axis] >= axis_min - tolerance) & (
+        centroids[:, axis] <= axis_max + tolerance
+    )
+    on_wall = band & (np.abs(dist - radius) < max(0.15 * radius, 0.2))
+    if not np.any(on_wall):
+        return True
+
+    safe_dist = np.where(dist > 1e-12, dist, 1.0)
+    normals = tm.face_normals
+    radial_dot = normals[:, ax0] * (du / safe_dist) + normals[:, ax1] * (dv / safe_dist)
+    return bool(np.mean(radial_dot[on_wall]) < 0.0)
 
 
 def _count_wall_vertices(

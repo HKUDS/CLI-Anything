@@ -205,18 +205,34 @@ def inspect(file, planes, min_diameter, min_confidence, axis, mesh):
               help="Hole ID(s) to resize (from inspect output)")
 @click.option("--diameter", "-d", type=float, required=True, help="Target diameter (mm)")
 @click.option("--output", "-o", "output_path", type=str, required=True, help="Output file path")
+@click.option("--planes", "-n", type=int, default=20, help="Number of cross-section planes (hole detection)")
+@click.option("--min-diameter", type=float, default=0.5, help="Minimum hole diameter (mm)")
+@click.option("--min-confidence", type=float, default=0.7, help="Minimum detection confidence")
+@click.option("--axis", "-a", type=int, default=0, help="Hole axis: 0=X, 1=Y, 2=Z (must match inspect)")
 @click.option("--mesh", "-m", type=int, default=0, help="Mesh object index")
 @click.option("--overwrite", is_flag=True, help="Overwrite output if exists")
 @handle_error
-def resize(file, hole_ids, diameter, output_path, mesh, overwrite):
-    """Resize cylindrical holes to specified diameter."""
+def resize(file, hole_ids, diameter, output_path, planes, min_diameter, min_confidence, axis, mesh, overwrite):
+    """Resize cylindrical holes to specified diameter.
+
+    Hole IDs come from `inspect`. Pass the SAME detection options here as you
+    gave `inspect` (especially --axis), otherwise the IDs won't line up.
+    """
     if os.path.exists(output_path) and not overwrite:
         raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite to replace.")
     if diameter <= 0:
         raise ValueError("Diameter must be positive")
 
     data = parser.parse_3mf(file)
-    new_data, changes = modifier.resize_holes(data, list(hole_ids), diameter, mesh_index=mesh)
+    params = inspector.InspectParams(
+        num_planes=planes,
+        min_hole_diameter=min_diameter,
+        min_confidence=min_confidence,
+        axis=axis,
+    )
+    new_data, changes = modifier.resize_holes(
+        data, list(hole_ids), diameter, mesh_index=mesh, params=params,
+    )
 
     # Auto-repair after resize
     target_mesh = new_data.meshes[mesh]

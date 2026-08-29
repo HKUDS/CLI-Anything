@@ -256,9 +256,59 @@ def stream(ctx, prompt, model_opt=None, temperature=None, max_tokens=None):
     show_default=True,
     help="Output audio file path",
 )
+@click.option(
+    "--speed",
+    type=click.FloatRange(0.5, 2.0),
+    default=1.0,
+    show_default=True,
+    help="Speech speed (0.5-2.0).",
+)
+@click.option(
+    "--vol",
+    type=click.FloatRange(0.0, 10.0),
+    default=1.0,
+    show_default=True,
+    help="Volume (0.0-10.0).",
+)
+@click.option(
+    "--pitch",
+    type=click.IntRange(-12, 12),
+    default=0,
+    show_default=True,
+    help="Pitch shift in semitones (-12..12).",
+)
+@click.option(
+    "--sample-rate",
+    type=click.Choice(["8000", "16000", "22050", "24000", "32000", "44100"]),
+    default="32000",
+    show_default=True,
+    help="Audio sample rate.",
+)
+@click.option(
+    "--bitrate",
+    type=click.Choice(["32000", "64000", "128000", "256000"]),
+    default="128000",
+    show_default=True,
+    help="Audio bitrate.",
+)
+@click.option(
+    "--format",
+    "audio_format",
+    type=click.Choice(["mp3", "pcm", "flac"]),
+    default="mp3",
+    show_default=True,
+    help="Output audio format.",
+)
+@click.option(
+    "--channel",
+    type=click.Choice(["1", "2"]),
+    default="1",
+    show_default=True,
+    help="1=mono, 2=stereo.",
+)
 @click.pass_context
 @handle_error
-def tts(ctx, text, model_opt, voice, output_path):
+def tts(ctx, text, model_opt, voice, output_path, speed, vol, pitch, sample_rate, bitrate, audio_format, channel):
     """Synthesize text to speech using MiniMax TTS."""
     parent_key = ctx.obj.get("api_key") if ctx.obj else None
     api_key = get_api_key(parent_key)
@@ -269,6 +319,13 @@ def tts(ctx, text, model_opt, voice, output_path):
         model=model_opt,
         voice=voice,
         output_path=output_path,
+        speed=speed,
+        vol=vol,
+        pitch=pitch,
+        sample_rate=int(sample_rate),
+        bitrate=int(bitrate),
+        audio_format=audio_format,
+        channel=int(channel),
     )
 
     output_data = {

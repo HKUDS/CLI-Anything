@@ -65,6 +65,23 @@ EXIT_USAGE = 2
 EXIT_PARTIAL = 3
 
 
+def _ensure_utf8_stdio() -> None:
+    """GBK 控制台/管道兼容：stdout/stderr 重配为 UTF-8（replace 兜底）。
+
+    中文 Windows（cp936）下，管道输出默认按 locale 编码（GBK），
+    ✓/✗/emoji 等字符会触发 UnicodeEncodeError 直接崩溃；
+    reconfig 后统一 UTF-8 输出，任何 locale 都不再崩。
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        try:
+            if stream is not None and hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            # 控制台/只读流不支持 reconfigure 时静默跳过
+            pass
+
+
 def _invocation_command(ctx, version):
     """Return a compact label for the current invocation."""
     argv = sys.argv[1:]
@@ -84,6 +101,7 @@ def _invocation_command(ctx, version):
 @click.pass_context
 def main(ctx, version):
     """cli-hub — Download and manage CLI-Anything CLIs, public CLIs, and curated matrices."""
+    _ensure_utf8_stdio()
     track_first_run()
     track_visit(command=_invocation_command(ctx, version), detection=detect_invocation_context())
     if version:

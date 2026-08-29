@@ -76,13 +76,15 @@
 
     /* ambient + grain + glass (shared) */
     .ambient { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
-    .ambient i { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.7; }
+    /* no filter:blur() — pre-blurred gradients read the same and cost a fraction on mobile GPUs */
+    .ambient i { position: absolute; border-radius: 50%; opacity: 0.7; }
     .ambient .a { width: 60vw; max-width: 760px; aspect-ratio: 1; top: -18vw; right: -10vw;
-      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), transparent 64%); }
+      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.10) 40%, transparent 68%); }
     .ambient .b { width: 50vw; max-width: 620px; aspect-ratio: 1; bottom: -16vw; left: -12vw;
-      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), transparent 62%); }
+      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.09) 38%, transparent 66%); }
     .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.04; mix-blend-mode: overlay;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    @media (hover: none), (pointer: coarse) { .grain { display: none; } }
 
     /* ===================== Nav (shared with Hub) ===================== */
     .nav { position: sticky; top: 0; z-index: 40; border-bottom: 1px solid transparent; transition: border-color .3s, background .3s, backdrop-filter .3s; }

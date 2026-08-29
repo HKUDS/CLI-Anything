@@ -73,21 +73,31 @@ DOMShell 2.0.2+ exposes a single MCP tool:
 The harness builds command strings from the public CLI commands. Harness
 absolute paths (leading `/`) are anchored at the tab root via
 `cd %here%` since DOMShell's lane cwd may have drifted; relative paths
-are passed through unchanged.
+are passed through unchanged. Where correctness depends on shared lane
+state (absolute `ls`/`cat`/`click`, rooted `grep`, absolute `type`), the
+wrapper issues **separate** `domshell_execute` calls (anchor → op → restore)
+with `_is_error` gates between them — not one multi-line string.
 
-| CLI Command (path is absolute) | Command string sent to `domshell_execute` |
-|--------------------------------|--------------------------------------------|
-| `fs ls /<sub>` | `cd %here%/<sub>` then bare `ls`, then `cd <restore>` (single multi-line call) |
-| `fs cd /<sub>` | `cd %here%/<sub>` (single line — `cd` is the desired new state) |
-| `fs cat /<sub>` | `cd %here%`, `cat <sub>`, `cd <restore>` (single multi-line call) |
-| `fs grep <pat>` | `grep <pat>` (operates on lane cwd) |
-| `fs grep <pat> /<sub>` | `cd %here%/<sub>`, `grep <pat>`, `cd <restore>` (single multi-line call) |
-| `act click /<sub>` | `cd %here%`, `click <sub>`, `cd <restore>` (single multi-line call) |
-| `act type /<sub> <text>` | `cd %here%`, `focus <sub>`, `cd <restore>` — then, on success, `type <text>` (two calls, shared lane via `group_id`) |
-| `page open <url>` | `open <url>` |
-| `page reload` | `refresh` |
-| `page back` | `back` |
-| `page forward` | `forward` |
+| CLI Command (path is absolute) | Calls to `domshell_execute` (split-and-check) |
+|--------------------------------|-----------------------------------------------|
+| `fs ls /<sub>` | 3 calls: `cd %here%/<sub>` → bare `ls` → `cd <restore>` (`_is_error` after anchor) |
+| `fs cd /<sub>` | 1 call: `cd %here%/<sub>` (`cd` is the desired new state; no restore) |
+| `fs cat /<sub>` | 3 calls: `cd %here%` → `cat <sub>` (or bare `read` when `<sub>` is empty/root) → `cd <restore>` |
+| `fs grep <pat>` | 1 call: `grep -r <pat>` (unrooted; operates on lane cwd) |
+| `fs grep <pat> /<sub>` | 3 calls: `cd %here%/<sub>` → `grep -r <pat>` → `cd <restore>` |
+| `fs grep <pat> <sub>` | 3 calls: `cd <sub>` → `grep -r <pat>` → `cd <restore>` (relative to lane cwd) |
+| `act click /<sub>` | 3 calls: `cd %here%` → `click <sub>` → `cd <restore>` |
+| `act type /<sub> <text>` | Up to 4 calls: `cd %here%` → `focus <sub>` → (on focus success) `type <text>` → `cd <restore>` — all share a lane via `group_id` / session |
+| `page open <url>` | 1 call: `open <url>` |
+| `page reload` | 1 call: `refresh` |
+| `page back` | 1 call: `back` |
+| `page forward` | 1 call: `forward` |
+
+Absolute/rooted wrappers use **split-and-check** (separate `_call_execute`
+calls) rather than a single multi-line `domshell_execute` string. That lets
+the harness halt after a failed anchor `cd` before running the operation.
+Non-daemon mode therefore requires a `session` (for lane/`group_id` reuse)
+on those multi-call wrappers.
 
 `<restore>` resolves to `cd %here%/<harness-working-dir>` (or `cd %here%`
 when the harness is at the tab root) so the lane's cwd ends up where

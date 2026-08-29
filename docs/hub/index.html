@@ -125,16 +125,22 @@
 
     /* ===================== Ambient backdrop ===================== */
     .ambient { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
-    .ambient i { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.7; will-change: transform; }
+    /* No filter:blur() here — a 100px blur over three ~700px fixed layers is one of the most
+       expensive things a page can ask a mobile GPU to hold. The radial gradients below fade
+       to transparent well before their edge, which reads identically to the blurred version. */
+    .ambient i { position: absolute; border-radius: 50%; opacity: 0.7; }
     .ambient .a { width: 60vw; max-width: 760px; aspect-ratio: 1; top: -18vw; right: -10vw;
-      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), transparent 64%); }
+      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.10) 40%, transparent 68%); }
     .ambient .b { width: 54vw; max-width: 680px; aspect-ratio: 1; bottom: -16vw; left: -12vw;
-      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), transparent 62%); }
+      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.09) 38%, transparent 66%); }
     .ambient .c { width: 46vw; max-width: 560px; aspect-ratio: 1; top: 42%; left: 50%;
-      background: radial-gradient(circle, hsl(calc(var(--accent-band) - 22) var(--tint-s) 54% / 0.14), transparent 66%); }
+      background: radial-gradient(circle, hsl(calc(var(--accent-band) - 22) var(--tint-s) 54% / 0.14), hsl(calc(var(--accent-band) - 22) var(--tint-s) 54% / 0.06) 40%, transparent 70%); }
     [data-theme="light"] .ambient i { opacity: 0.55; }
     .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.04; mix-blend-mode: overlay;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    /* The full-viewport blend layer forces the whole page through an offscreen compositing
+       group; on phone GPUs that costs more than the texture is worth. */
+    @media (hover: none), (pointer: coarse) { .grain { display: none; } }
 
     /* ===================== Glass primitive ===================== */
     .glass {
@@ -144,9 +150,15 @@
       border-radius: var(--radius);
       box-shadow: var(--glass-shadow);
     }
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      .glass { background: var(--glass-bg);
-        -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); }
+    /* Real backdrop blur is desktop-only. Each blurred surface is its own composited layer
+       that re-reads the backdrop, and this page has dozens at once — enough to blow past
+       iOS Safari's per-tab GPU budget (the page reloads/white-flashes on iPhone). Touch
+       devices get the tuned --glass-bg-fallback, which was designed to stand alone. */
+    @media (hover: hover) and (pointer: fine) {
+      @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .glass { background: var(--glass-bg);
+          -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); }
+      }
     }
     .glass::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
       box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 0 0 1px rgba(255,255,255,0.02); }
@@ -280,8 +292,10 @@
     .stats { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
     .stat { padding: 13px 24px; border-radius: 15px; text-align: center; min-width: 130px;
       background: var(--glass-bg-fallback); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); position: relative; }
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      .stat { background: var(--glass-bg); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); }
+    @media (hover: hover) and (pointer: fine) {
+      @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .stat { background: var(--glass-bg); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); }
+      }
     }
     /* Stat figures use the SAME two-token accent rule as the italic "Anything" word in the
        title (accent2 in light, accent in dark), so they recolor with palette + theme, and
@@ -295,12 +309,17 @@
     /* align-items: stretch makes the two side-by-side cards equal height; each card is a
        column flexbox so its inner content distributes evenly down to the matched height. */
     .empower-row { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; margin-top: 38px; text-align: left; align-items: stretch; }
+    /* grid items default to min-width:auto, so the no-wrap install command was forcing the
+       card — and the whole page — wider than a phone screen (627px on a 390px viewport) */
+    .empower-row > .empower-card { min-width: 0; }
     @media (max-width: 820px) { .empower-row { grid-template-columns: 1fr; } }
     .empower-card { padding: 24px 24px 22px; border-radius: var(--radius); border: 1px solid var(--glass-border);
       background: var(--glass-bg-fallback); box-shadow: var(--glass-shadow); position: relative;
       display: flex; flex-direction: column; }
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      .empower-card { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); }
+    @media (hover: hover) and (pointer: fine) {
+      @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .empower-card { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); }
+      }
     }
     .empower-card::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
       box-shadow: inset 0 1px 0 var(--glass-edge); }
@@ -365,8 +384,10 @@
     .typing-shell { width: 100%; max-width: 720px; margin: 0 auto; border-radius: var(--radius-sm); overflow: hidden;
       padding: 13px 15px 14px; border: 1px solid var(--glass-border); background: var(--glass-bg-fallback);
       box-shadow: var(--glass-shadow); position: relative; }
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      .typing-shell { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); }
+    @media (hover: hover) and (pointer: fine) {
+      @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .typing-shell { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); }
+      }
     }
     .typing-shell-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
       margin-bottom: 9px; }
@@ -403,15 +424,39 @@
     @media (max-width: 560px) { .deck-arrow-btn { display: none; } .deck-separator { display: none; } }
 
     /* ===================== Deck stage ===================== */
+    /* ── Render-skip for offscreen page regions ──
+       content-visibility:auto lets the engine skip layout+paint for sections far
+       from the viewport, so a fast fling doesn't rasterize ~30k px of cards at
+       once (the iOS Safari tab-kill scenario). JS measurement inside a skipped
+       subtree (masonry offsetHeight) still works: layout APIs force layout, only
+       paint stays skipped. contain-intrinsic-size uses the `auto` keyword so the
+       placeholder snaps to the real size after first render; the px values are
+       only the pre-render estimate. Engines without support just ignore this. */
+    /* Each rule sets a plain-length fallback first: Safari 15.4–16 supports
+       content-visibility but not the `auto` keyword here, and would otherwise
+       drop the whole declaration and give skipped sections no height. */
+    .demos-teaser, .marketplace-prelude, .matrices, .deck-stage, .footer { content-visibility: auto; }
+    .demos-teaser { contain-intrinsic-size: 1000px; contain-intrinsic-size: auto 1000px; }
+    .marketplace-prelude { contain-intrinsic-size: 220px; contain-intrinsic-size: auto 220px; }
+    .matrices { contain-intrinsic-size: 900px; contain-intrinsic-size: auto 900px; }
+    .deck-stage { contain-intrinsic-size: 9500px; contain-intrinsic-size: auto 9500px; }
+    @media (max-width: 640px) { .deck-stage { contain-intrinsic-size: 7200px; contain-intrinsic-size: auto 7200px; } }
+    .footer { contain-intrinsic-size: 320px; contain-intrinsic-size: auto 320px; }
+
     .deck-stage { max-width: 1180px; margin: 0 auto; padding: 0 22px; }
     .deck-viewport { overflow: hidden; touch-action: pan-y; cursor: grab; }
     .deck-viewport.dragging { cursor: grabbing; }
-    .deck-track { display: flex; transition: transform .5s var(--spring); will-change: transform; }
+    /* will-change only while the deck actually moves (deck-sliding is armed on every drag or
+       animated switch) — a permanent will-change would pin the full-height two-panel track
+       as a composited layer, a large standing GPU allocation on phones. */
+    .deck-track { display: flex; transition: transform .5s var(--spring); }
+    html.deck-sliding .deck-track { will-change: transform; }
     .deck-track.is-dragging { transition: none; }
     /* Each panel is exactly one viewport wide; the track slides by one full panel width
        between decks. (Replaces the old over-wide "peek" carousel that mis-measured its
        width and clipped the active panel on the right while bleeding the other on the left.) */
     .deck-panel { flex: 0 0 100%; min-width: 0; position: relative; }
+    .deck-sentinel { height: 1px; }
     /* Perf — Safari especially. While the deck moves we collapse every effect that forces a
        per-frame re-rasterization of the large card subtree, so each panel caches as a flat
        layer the GPU can translate cheaply. All effects return the moment motion stops.
@@ -469,16 +514,29 @@
     /* Cap to the visible viewport (not the over-wide carousel panel) so the grid's own width
        tracks the real screen — this lets masonryColumnCount pick 3/2/1 columns responsively. */
     .grid { display: flex; align-items: flex-start; gap: 18px; max-width: min(1044px, calc(100vw - 108px)); padding-bottom: 24px; }
+    /* phones: the panel is exactly viewport-wide now, so let cards use the full column
+       instead of the desktop's defensive 100vw-108px cap (which left ~60px dead space) */
+    @media (max-width: 640px) { .grid { max-width: 100%; } }
     .grid-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
     /* the .empty / error state is a direct child of .grid (not wrapped in a column) */
     .grid > .empty { flex: 1 1 100%; }
 
-    .card { perspective: 1600px; position: relative; }
+    /* Cards are FLAT by default. Safari cannot flatten a perspective + preserve-3d +
+       backface-visibility context and re-renders each one per frame — with ~150 of them this
+       is the biggest static cost on the page (the deck-slide suspender below already proved
+       the flat state renders the correct face via backface-visibility with no glitch).
+       The real 3D context is enabled per-card only while it is hovered or mid-flip (.is-3d,
+       set by setCardFlipped for the duration of the flip transition). */
+    .card { position: relative; }
     .card-inner { position: absolute; inset: 0; width: 100%; height: 100%;
-      transform-style: preserve-3d; transition: transform .72s var(--flip-ease); }
+      transform-style: flat; transition: transform .72s var(--flip-ease); }
     .card.flipped .card-inner { transform: rotateY(180deg); }
+    .card.is-3d { perspective: 1600px; }
+    .card.is-3d .card-inner { transform-style: preserve-3d; }
     /* subtle hover tilt hint (does not auto-flip) */
     @media (hover: hover) {
+      .card:hover { perspective: 1600px; }
+      .card:hover .card-inner { transform-style: preserve-3d; }
       .card:not(.flipped):hover .card-inner { transform: rotateY(-5deg) rotateX(2.5deg); }
     }
     .card-face {
@@ -490,11 +548,15 @@
         var(--glass-bg-fallback);
       box-shadow: var(--glass-shadow); overflow: hidden;
     }
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      .card-face { background:
-        radial-gradient(120% 90% at 0% 0%, hsl(var(--ch, var(--hue-default)) var(--tint-s) var(--tint-l) / 0.18), transparent 56%),
-        var(--glass-bg);
-        -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); }
+    /* ~110 live card faces at once — the single biggest backdrop-filter population on the
+       page. Desktop pointers only (see the .glass note above). */
+    @media (hover: hover) and (pointer: fine) {
+      @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .card-face { background:
+          radial-gradient(120% 90% at 0% 0%, hsl(var(--ch, var(--hue-default)) var(--tint-s) var(--tint-l) / 0.18), transparent 56%),
+          var(--glass-bg);
+          -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); }
+      }
     }
     .card-face::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
       box-shadow: inset 0 1px 0 var(--glass-edge); z-index: 3; }
@@ -647,8 +709,10 @@
       min-width: 240px; max-width: 320px; padding: 12px; border-radius: 12px; border: 1px solid var(--glass-border);
       background: var(--glass-bg-fallback); box-shadow: var(--glass-shadow-hi); z-index: 20;
       opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; display: flex; flex-direction: column; gap: 8px; }
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      .skill-popover-panel { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5); }
+    @media (hover: hover) and (pointer: fine) {
+      @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .skill-popover-panel { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5); }
+      }
     }
     .skill-popover.is-open .skill-popover-panel { opacity: 1; pointer-events: auto; transform: translateX(-50%); }
     .skill-popover-label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
@@ -680,11 +744,18 @@
       .shelf > .mcard { flex: 0 0 84%; scroll-snap-align: center; }
     }
     /* matrix flip card — reuses .card / .card-inner / .card-face machinery, taller min-height */
-    .mcard { perspective: 1600px; min-height: 372px; position: relative; }
+    /* flat-by-default like .card above; 3D only on hover / mid-flip */
+    .mcard { min-height: 372px; position: relative; }
     .mcard .card-inner { position: absolute; inset: 0; width: 100%; height: 100%;
-      transform-style: preserve-3d; transition: transform .72s var(--flip-ease); }
+      transform-style: flat; transition: transform .72s var(--flip-ease); }
     .mcard.flipped .card-inner { transform: rotateY(180deg); }
-    @media (hover: hover) { .mcard:not(.flipped):hover .card-inner { transform: rotateY(-4deg) rotateX(2deg); } }
+    .mcard.is-3d { perspective: 1600px; }
+    .mcard.is-3d .card-inner { transform-style: preserve-3d; }
+    @media (hover: hover) {
+      .mcard:hover { perspective: 1600px; }
+      .mcard:hover .card-inner { transform-style: preserve-3d; }
+      .mcard:not(.flipped):hover .card-inner { transform: rotateY(-4deg) rotateX(2deg); }
+    }
     .mcard .card-sizer { position: relative; width: 100%; min-height: inherit; }
     .mcard .card-sizer .card-face { position: relative; box-shadow: none; border: 1px solid transparent; background: none; visibility: hidden;
       -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -853,8 +924,10 @@
     }
     .dposter { display: flex; flex-direction: column; padding: 14px; border-radius: var(--radius); text-decoration: none; color: inherit;
       background: var(--glass-bg-fallback); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); position: relative; transition: transform .3s var(--ease), box-shadow .3s var(--ease); }
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      .dposter { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); } }
+    @media (hover: hover) and (pointer: fine) {
+      @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .dposter { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); } }
+    }
     .dposter:hover { transform: translateY(-4px); box-shadow: var(--glass-shadow-hi); }
     .dt-media { position: relative; border-radius: 13px; overflow: hidden; border: 1px solid var(--line); background: #05070b; }
     [data-theme="light"] .dt-media { background: #e9edf3; }
@@ -866,7 +939,7 @@
     .dt-chrome .lv { display: inline-flex; align-items: center; gap: 4px; font-size: 0.56rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
     .dt-chrome .lv i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 7px var(--accent); animation: dtpulse 1.6s infinite; }
     @keyframes dtpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-    .dt-media img { display: block; width: 100%; height: 170px; object-fit: cover; }
+    .dt-media img, .dt-media video { display: block; width: 100%; height: 170px; object-fit: cover; }
     .dposter .dt-cat { display: inline-flex; align-items: center; gap: 6px; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 13px;
       color: hsl(var(--ch) var(--tint-s) 74%); }
     [data-theme="light"] .dposter .dt-cat { color: hsl(var(--ch) calc(var(--tint-s) + 12%) 36%); }
@@ -1062,7 +1135,7 @@
       <a class="dposter" href="demos.html#freecad" style="--ch:210">
         <div class="dt-media">
           <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-freecad · preview live</span><span class="lv"><i></i>live</span></div>
-          <img loading="lazy" src="assets/demos/freecad-curiosity-preview-trajectory.gif" alt="FreeCAD Curiosity rover demo">
+          <video class="lazy-vid" muted loop playsinline preload="none" poster="assets/demos/freecad-curiosity-preview-trajectory-poster.jpg" src="assets/demos/freecad-curiosity-preview-trajectory.mp4" aria-label="FreeCAD Curiosity rover demo"></video>
         </div>
         <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>3D / CAD</span>
         <h3><span class="ap">FreeCAD</span> — Curiosity Rover</h3>
@@ -1073,7 +1146,7 @@
       <a class="dposter" href="demos.html#blender" style="--ch:28">
         <div class="dt-media">
           <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-blender · preview live</span><span class="lv"><i></i>live</span></div>
-          <img loading="lazy" src="assets/demos/blender-orbital-relay-drone-preview-trajectory.gif" alt="Blender orbital relay drone demo">
+          <video class="lazy-vid" muted loop playsinline preload="none" poster="assets/demos/blender-orbital-relay-drone-preview-trajectory-poster.jpg" src="assets/demos/blender-orbital-relay-drone-preview-trajectory.mp4" aria-label="Blender orbital relay drone demo"></video>
         </div>
         <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>3D · Hard-surface</span>
         <h3><span class="ap">Blender</span> — Orbital Relay Drone</h3>
@@ -1084,7 +1157,7 @@
       <a class="dposter" href="demos.html#drawio" style="--ch:250">
         <div class="dt-media">
           <div class="dt-chrome"><span class="dts"><i></i><i></i><i></i></span><span class="u">cli-anything-drawio · build</span><span class="lv"><i></i>live</span></div>
-          <img loading="lazy" src="assets/demos/drawio-demo.gif" alt="Draw.io HTTPS handshake diagram demo">
+          <video class="lazy-vid" muted loop playsinline preload="none" poster="assets/demos/drawio-demo-poster.jpg" src="assets/demos/drawio-demo.mp4" aria-label="Draw.io HTTPS handshake diagram demo"></video>
         </div>
         <span class="dt-cat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v4a2 2 0 0 0 2 2h9"/></svg>Diagramming</span>
         <h3><span class="ap">Draw.io</span> — HTTPS Handshake</h3>
@@ -1182,6 +1255,7 @@
           <div class="grid" id="grid-harness">
             <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
           </div>
+          <div class="deck-sentinel" id="sentinel-harness" data-deck="harness" hidden aria-hidden="true"></div>
         </div>
 
         <!-- Public CLI deck -->
@@ -1199,6 +1273,7 @@
           </div>
           <div class="filter-row" id="filters-public"></div>
           <div class="grid" id="grid-public"></div>
+          <div class="deck-sentinel" id="sentinel-public" data-deck="public" hidden aria-hidden="true"></div>
         </div>
 
       </div>
@@ -1428,6 +1503,38 @@
       menu.addEventListener('click', (e) => { if (e.target.closest('a')) setOpen(false); });
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
       window.addEventListener('resize', () => { if (window.innerWidth > 860) setOpen(false); });
+    })();
+
+    // ── Demo videos: play near the viewport, tear down far from it ──
+    // Demos ship as H.264 <video> (hardware-decoded, a few MB) instead of animated GIF
+    // (hundreds of MB of decoded frames — the iOS Safari tab-kill culprit). preload="none"
+    // keeps them free until scrolled near. Two rings: within 200px play/pause; beyond
+    // 1200px drop the src entirely so the media pipeline is fully released (poster stays).
+    (function () {
+      const vids = document.querySelectorAll('video.lazy-vid');
+      if (!vids.length) return;
+      const start = (v) => {
+        if (!v.getAttribute('src') && v.dataset.src) { v.setAttribute('src', v.dataset.src); v.load(); }
+        v.muted = true; const p = v.play(); if (p) p.catch(() => {});
+      };
+      if (!('IntersectionObserver' in window)) { vids.forEach(start); return; }
+      const near = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          if (en.isIntersecting) start(en.target);
+          else if (!en.target.paused) en.target.pause();
+        });
+      }, { rootMargin: '200px 0px' });
+      const far = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          const v = en.target;
+          if (!en.isIntersecting && v.getAttribute('src')) {
+            v.dataset.src = v.getAttribute('src');
+            if (!v.paused) v.pause();
+            v.removeAttribute('src'); v.load();
+          }
+        });
+      }, { rootMargin: '1200px 0px' });
+      vids.forEach(v => { near.observe(v); far.observe(v); });
     })();
 
     const REPO = 'https://github.com/HKUDS/CLI-Anything';
@@ -1702,8 +1809,8 @@
 
     async function loadRegistries() {
       try {
-        const [harnessData, publicData, dates] = await Promise.all([
-          fetchJson(REGISTRY_URLS), fetchJson(PUBLIC_REGISTRY_URLS), fetchJson(DATES_URLS),
+        const [harnessData, publicData, dates, matrixData] = await Promise.all([
+          fetchJson(REGISTRY_URLS), fetchJson(PUBLIC_REGISTRY_URLS), fetchJson(DATES_URLS), fetchJson(MATRIX_URLS),
         ]);
         if (!harnessData) throw new Error('Registry load failed');
 
@@ -1716,8 +1823,6 @@
 
         const totalClis = harnessClis.length + publicClis.length;
         const allCategories = [...new Set([...harnessClis, ...publicClis].map(c => c.category))];
-        animateCount(document.getElementById('cli-count'), totalClis, 980);
-        animateCount(document.getElementById('category-count'), allCategories.length, 860);
         document.getElementById('deck-count-harness').textContent = harnessClis.length;
         document.getElementById('deck-count-public').textContent = publicClis.length;
 
@@ -1731,23 +1836,37 @@
         publicClis.forEach(c => { c._deck = 'public'; STATE.byName.set(c.name, c); });
         harnessClis.forEach(c => { c._deck = 'harness'; STATE.byName.set(c.name, c); });
 
-        renderDeck('harness');
-        renderDeck('public');
+        // Ingest matrices BEFORE the first deck render so membership chips land in the one
+        // and only render. (The old flow rendered both decks, then re-rendered BOTH again
+        // when the matrix registry arrived — doubling the heaviest work on the page, right
+        // under the hero counter animation.)
+        ingestMatrices(matrixData);
 
-        loadMatrices();
+        renderDeck('harness');
+
+        // Start the hero counters only after the visible deck has rendered AND painted
+        // (double rAF) — started before, their animation frames were starved by the big
+        // render and the count visibly stuttered.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          animateCount(document.getElementById('cli-count'), totalClis, 980);
+          animateCount(document.getElementById('category-count'), allCategories.length, 860);
+        }));
+
+        // The public deck sits on the offscreen carousel panel and the matrix shelf is far
+        // below the fold — render them after the counters finish rather than competing with
+        // the animation for the main thread. switchDeck() renders on demand if the user
+        // swipes over first.
+        setTimeout(renderDeferredSections, 1100);
       } catch (e) {
         document.getElementById('grid-harness').innerHTML =
           '<div class="empty">Failed to load registry. <a href="' + REPO + '/blob/main/registry.json" style="color:var(--accent)">View source</a></div>';
       }
     }
 
-    // ── Matrices (the unification): fetch registry, build membership, render flip cards ──
-    async function loadMatrices() {
-      const data = await fetchJson(MATRIX_URLS);
-      const shelf = document.getElementById('shelf');
+    // ── Matrices (the unification): build membership from the already-fetched registry ──
+    function ingestMatrices(data) {
       if (!data || !Array.isArray(data.matrices) || !data.matrices.length) {
-        if (shelf) shelf.innerHTML = '<div class="empty">Could not load the matrix registry right now &mdash; the catalog below is unaffected. Try refreshing, or browse on <a href="' + REPO + '" target="_blank" rel="noopener">GitHub</a>.</div>';
-        const ms = document.getElementById('mat-stat'); if (ms) ms.textContent = '';
+        STATE.matrices = [];
         return;
       }
       STATE.matrices = data.matrices;
@@ -1761,10 +1880,21 @@
       const capCount = STATE.matrices.reduce((s, m) => s + ((m.capabilities && m.capabilities.length) || 0), 0);
       const ms = document.getElementById('mat-stat');
       if (ms) ms.textContent = STATE.matrices.length + ' matrices · ' + capCount + ' capabilities';
-      renderShelf();
-      // re-render decks so membership chips appear on catalog cards
-      renderDeck('harness');
+    }
+
+    // Deferred second wave: the offscreen public deck + the below-the-fold matrix shelf.
+    let deferredSectionsDone = false;
+    function renderDeferredSections() {
+      if (deferredSectionsDone) return;
+      deferredSectionsDone = true;
       renderDeck('public');
+      const shelf = document.getElementById('shelf');
+      if (!STATE.matrices.length) {
+        if (shelf) shelf.innerHTML = '<div class="empty">Could not load the matrix registry right now &mdash; the catalog below is unaffected. Try refreshing, or browse on <a href="' + REPO + '" target="_blank" rel="noopener">GitHub</a>.</div>';
+        const ms = document.getElementById('mat-stat'); if (ms) ms.textContent = '';
+      } else {
+        renderShelf();
+      }
       syncFlipA11y();
     }
 
@@ -1804,6 +1934,8 @@
     }
 
     function switchDeck(deck) {
+      // the public deck's first render is deferred; materialize it before sliding to it
+      if (deck === 'public') renderDeferredSections();
       activeDeck = deck;
       const track = document.getElementById('deck-track');
       track.dataset.active = deck;
@@ -1926,12 +2058,55 @@
       const grid = document.getElementById('grid-' + deck);
       if (filtered.length === 0) {
         grid.innerHTML = '<div class="empty">No CLIs match your search.</div>';
+        state.fullList = []; state.shownCount = 0;
+        updateDeckSentinel(deck);
         return;
       }
-      if (deck === 'harness') grid.innerHTML = filtered.map(renderHarnessCard).join('');
-      else grid.innerHTML = filtered.map(renderNpmCard).join('');
+      // Phones (single-column) render in growing batches: a full 79-card render
+      // means ~28k px of live DOM, and laying out + rasterizing it during a fast
+      // fling is what killed the tab on iPhones. Desktop masonry keeps the full
+      // set so its shortest-column balancing stays exact.
+      state.fullList = filtered;
+      state.shownCount = Math.min(deckBatchLimit(grid), filtered.length);
+      const shown = filtered.slice(0, state.shownCount);
+      if (deck === 'harness') grid.innerHTML = shown.map(renderHarnessCard).join('');
+      else grid.innerHTML = shown.map(renderNpmCard).join('');
       layoutMasonry(grid);
+      updateDeckSentinel(deck);
     }
+
+    // ── Progressive deck batches (phones) ──
+    const DECK_BATCH_SIZE = 20;
+    function deckBatchLimit(grid) {
+      // Batch only in single-column layout and only when IO can grow the list.
+      return (deckSentinelIO && masonryColumnCount(grid) === 1) ? DECK_BATCH_SIZE : Infinity;
+    }
+    function appendDeckBatch(deck) {
+      const state = deckState[deck];
+      if (!state.fullList || state.shownCount >= state.fullList.length) return;
+      const grid = document.getElementById('grid-' + deck);
+      const next = state.fullList.slice(state.shownCount, state.shownCount + DECK_BATCH_SIZE);
+      state.shownCount += next.length;
+      grid.insertAdjacentHTML('beforeend', next.map(deck === 'harness' ? renderHarnessCard : renderNpmCard).join(''));
+      layoutMasonry(grid);
+      updateDeckSentinel(deck);
+    }
+    function updateDeckSentinel(deck) {
+      const s = document.getElementById('sentinel-' + deck);
+      if (!s || !deckSentinelIO) return;
+      const state = deckState[deck];
+      const more = !!(state.fullList && state.shownCount < state.fullList.length);
+      s.hidden = !more;
+      // Re-observe so IO re-evaluates even when the sentinel never left the
+      // margin band (otherwise a still-intersecting sentinel fires no new event).
+      deckSentinelIO.unobserve(s);
+      if (more) deckSentinelIO.observe(s);
+    }
+    const deckSentinelIO = ('IntersectionObserver' in window)
+      ? new IntersectionObserver((entries) => {
+          entries.forEach((en) => { if (en.isIntersecting) appendDeckBatch(en.target.dataset.deck); });
+        }, { rootMargin: '1600px 0px' })
+      : null;
 
     // ── Engine-independent JS masonry: shortest-column distribution ──
     // Rebuilds the grid's .grid-col wrappers from the current set of .card elements and
@@ -2239,6 +2414,13 @@
       const si = document.getElementById('search-' + deck); if (si) si.value = '';
       setFilter(deck, 'all');
       switchDeck(deck);
+      // phones render the deck in batches — materialize until the target exists
+      let guard = 0;
+      while (!document.getElementById('tool-' + cssId(name)) &&
+             deckState[deck].fullList && deckState[deck].shownCount < deckState[deck].fullList.length &&
+             guard++ < 50) {
+        appendDeckBatch(deck);
+      }
       requestAnimationFrame(() => {
         const el = document.getElementById('tool-' + cssId(name));
         if (el) {
@@ -2489,12 +2671,14 @@
       const finalValue = Number(target) || 0;
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = finalValue; return; }
       const start = performance.now();
+      let shown = null;
       function step(now) {
         const progress = Math.min((now - start) / duration, 1);
         const eased = 1 - Math.pow(1 - progress, 3);
-        el.textContent = Math.round(finalValue * eased);
+        const value = progress < 1 ? Math.round(finalValue * eased) : finalValue;
+        // write only when the displayed integer changes — most frames it doesn't
+        if (value !== shown) { shown = value; el.textContent = value; }
         if (progress < 1) window.requestAnimationFrame(step);
-        else el.textContent = finalValue;
       }
       window.requestAnimationFrame(step);
     }
@@ -2532,6 +2716,11 @@
 
     // ── Flip interaction (delegated) ──
     function setCardFlipped(card, flipped) {
+      // Cards are flat by default (see the .card CSS notes); grant this card its real 3D
+      // context just for the flip transition, then drop back to the cheap flat state.
+      card.classList.add('is-3d');
+      clearTimeout(card._flip3dTimer);
+      card._flip3dTimer = setTimeout(() => card.classList.remove('is-3d'), 780);
       card.classList.toggle('flipped', flipped);
       const inner = card.querySelector('.card-inner');
       if (!inner) return;
@@ -2638,8 +2827,15 @@
     });
 
     let masonryResizeTimer = null;
+    let masonryLastWidth = window.innerWidth;
     window.addEventListener('resize', () => {
       updateDeckPosition();
+      // iOS Safari fires resize when its toolbar collapses during scroll — a
+      // height-only change. Rebuilding both masonry grids mid-fling is a huge
+      // main-thread stall for a layout that cannot have changed (columns depend
+      // only on width), so bail unless the width actually moved.
+      if (window.innerWidth === masonryLastWidth) return;
+      masonryLastWidth = window.innerWidth;
       // debounce the (re)layout: recompute column count + redistribute cards
       clearTimeout(masonryResizeTimer);
       masonryResizeTimer = setTimeout(relayoutAllGrids, 150);

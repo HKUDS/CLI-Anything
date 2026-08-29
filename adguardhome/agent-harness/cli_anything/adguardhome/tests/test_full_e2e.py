@@ -186,10 +186,33 @@ class TestCLISubprocess:
     def test_rewrite_help(self):
         result = self._run(["rewrite", "--help"])
         assert result.returncode == 0
+        assert "list" in result.stdout
 
     def test_blocking_help(self):
         result = self._run(["blocking", "--help"])
         assert result.returncode == 0
+        assert "parental" in result.stdout
+
+    def test_connection_error_json_is_parsable(self):
+        """--json must stay machine-readable when the server is unreachable."""
+        result = self._run(
+            ["--json", "--host", "127.0.0.1", "--port", "1", "server", "status"],
+            check=False,
+        )
+        assert result.returncode != 0
+        data = json.loads(result.stdout)
+        assert "Cannot connect to AdGuardHome" in data["error"]
+        assert "Traceback" not in result.stderr
+
+    def test_connection_error_human_message(self):
+        """Without --json the message goes to stderr, without a traceback."""
+        result = self._run(
+            ["--host", "127.0.0.1", "--port", "1", "server", "status"],
+            check=False,
+        )
+        assert result.returncode != 0
+        assert "Cannot connect to AdGuardHome" in result.stderr
+        assert "Traceback" not in result.stderr
 
 
 # ---------------------------------------------------------------------------

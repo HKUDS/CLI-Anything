@@ -14,11 +14,15 @@ Run with:
 """
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 from click.testing import CliRunner
 
+from cli_anything.comfyui import comfyui_cli as cli_module
 from cli_anything.comfyui.comfyui_cli import cli
 from cli_anything.comfyui.core import workflows as workflow_mod
 from cli_anything.comfyui.core import queue as queue_mod
@@ -32,6 +36,30 @@ from cli_anything.comfyui.core import images as images_mod
 def runner():
     """Click CLI test runner."""
     return CliRunner()
+
+
+def run_cli_subprocess(args, stdin=""):
+    """Run the CLI in a real subprocess and return the completed process.
+
+    `CliRunner` emulates a terminal by echoing the answer typed at a prompt
+    onto stdout — on click < 8.2 it lands there even when the prompt itself
+    was sent to stderr. That echo would hide exactly the kind of stdout
+    contamination the JSON-purity tests are looking for, so those tests read
+    the real streams instead.
+    """
+    harness_root = Path(cli_module.__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (str(harness_root), env.get("PYTHONPATH", "")) if p
+    )
+    return subprocess.run(
+        [sys.executable, "-m", "cli_anything.comfyui.comfyui_cli", *args],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
 
 
 @pytest.fixture
@@ -564,6 +592,29 @@ class TestCLIWorkflow:
         assert "valid" in data
         assert "node_count" in data
 
+    def test_workflow_validate_json_output_invalid_workflow(self, runner, tmp_path):
+        """--json output must stay parseable when validation fails."""
+        p = tmp_path / "not_a_workflow.json"
+        p.write_text(json.dumps({"tokens": "abc", "pages": [1, 2]}))
+
+        result = runner.invoke(cli, ["--json", "workflow", "validate", str(p)])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["valid"] is False
+        assert len(data["errors"]) == 2
+
+    def test_workflow_validate_human_summary(self, runner, tmp_path, workflow_file):
+        """Without --json the human-readable summary line is still printed."""
+        result = runner.invoke(cli, ["workflow", "validate", workflow_file])
+        assert result.exit_code == 0
+        assert "Workflow is valid." in result.output
+
+        p = tmp_path / "not_a_workflow.json"
+        p.write_text(json.dumps({"tokens": "abc", "pages": [1, 2]}))
+        result = runner.invoke(cli, ["workflow", "validate", str(p)])
+        assert result.exit_code == 0
+        assert "2 error(s) found." in result.output
+
 
 class TestCLIQueue:
     """Test CLI queue commands."""
@@ -593,6 +644,19 @@ class TestCLIQueue:
 
         assert result.exit_code == 0
         assert "cleared" in result.output
+
+    def test_queue_clear_json_prompt_not_on_stdout(self):
+        """The confirmation prompt must not corrupt --json stdout.
+
+        Answering "n" aborts before any request is made, so no server is
+        needed.
+        """
+        proc = run_cli_subprocess(["--json", "queue", "clear"], stdin="n\n")
+
+        assert proc.returncode == 1
+        data = json.loads(proc.stdout)
+        assert data["type"] == "Abort"
+        assert "Clear the queue?" in proc.stderr
 
     def test_queue_history_json(self, runner):
         """queue history --json should return valid JSON."""

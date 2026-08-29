@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, List
 
 from cli_anything.inkscape.utils.svg_utils import (
     create_svg_element, serialize_svg, write_svg_file, parse_svg_file,
-    SVG_NS, INKSCAPE_NS, SODIPODI_NS, find_all_shapes, _ns,
+    SVG_NS, INKSCAPE_NS, find_all_shapes, _ns,
 )
 
 # Document profiles (common canvas presets)
@@ -414,7 +414,6 @@ def _object_to_svg_element(obj: Dict[str, Any]):
         tag = f"{{{SVG_NS}}}path"
         if "d" in obj:
             attribs["d"] = obj["d"]
-        attribs[_ns("sodipodi", "type")] = "star"
 
     else:
         return None

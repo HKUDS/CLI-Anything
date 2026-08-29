@@ -1,0 +1,43 @@
+name: Check Cursor Plugin
+
+on:
+  pull_request:
+    paths:
+      - 'cursor-plugin/**'
+      - '.cursor-plugin/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-cursor-plugin.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'cursor-plugin/**'
+      - '.cursor-plugin/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-cursor-plugin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-installer-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test Cursor plugin installer (bash)
+        run: bash cursor-plugin/tests/test_install.sh
+
+  test-installer-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test Cursor plugin installer (PowerShell)
+        shell: pwsh
+        run: ./cursor-plugin/tests/test_install.ps1

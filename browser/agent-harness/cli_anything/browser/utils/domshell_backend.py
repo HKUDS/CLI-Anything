@@ -196,13 +196,7 @@ def _extract_lane_id(result: Any) -> Optional[str]:
     empty, or the marker reports the default "shared" lane (which is
     DOMShell's no-isolation sentinel and not something we want to pin to).
     """
-    text = ""
-    content = getattr(result, "content", None)
-    if content:
-        for c in content:
-            piece = getattr(c, "text", None)
-            if piece:
-                text += piece
+    text = _extract_text(result)
     if not text:
         return None
     m = _LANE_LINE.search(text.strip())
@@ -830,40 +824,34 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
 
     Example:
         >>> cat("/main/button[0]", session=session)   # required for absolute paths
-        {"output": "button: Submit\\n..."}
+        {"output": "button: Submit\n..."}
     """
     translated, is_absolute = _translate_path(path)
-    # Note: a falsy `translated` (root path `/` or empty string) is no
-    # longer rejected here. Pre-migration `fs cat` at the root surfaced
-    # DOMShell's own `Usage: cat <name>` error string; the round-5 guard
-    # converted that into a Python ValueError, which broke the
-    # `fs.read_element(session, "")` fall-through to `session.working_dir`
-    # for callers landed at `/`. Removed per @yuh-yang R3 review of
-    # `b684732` — `cat ''` reaches DOMShell, which has the same
-    # `if (!targetName)` check and returns its standard Usage error.
+    # DOMShell's `cat` requires a child name; its no-argument `read`
+    # command is the supported way to read the current cursor.
+    command = "read" if not translated else f"cat {_q(translated)}"
     if is_absolute:
         _require_session_for_split_check("cat", session, use_daemon)
         # Split-and-check: anchor at tab root, halt if anchor fails,
-        # otherwise run relative cat, restore. Anchor success is
-        # load-bearing — without it cat resolves the relative path
-        # against the wrong cwd.
+        # otherwise read the current cursor or named child, then restore.
+        # Anchor success is
+        # load-bearing — without it cat resolves against the wrong cwd.
         anchor = asyncio.run(_call_execute(
             _anchor_path_cmd(""), use_daemon, session=session,
         ))
         if _is_error(anchor):
             return _parse_execute_result(anchor, "cat")
         op = asyncio.run(_call_execute(
-            f"cat {_q(translated)}", use_daemon, session=session,
+            command, use_daemon, session=session,
         ))
         asyncio.run(_call_execute(
             _restore_cwd_cmd(session), use_daemon, session=session,
         ))
         return _parse_execute_result(op, "cat")
     op = asyncio.run(_call_execute(
-        f"cat {_q(translated)}", use_daemon, session=session,
+        command, use_daemon, session=session,
     ))
     return _parse_execute_result(op, "cat")
-
 
 def grep(
     pattern: str,
@@ -876,15 +864,10 @@ def grep(
     """Search for pattern in the accessibility tree.
 
     When ``path`` is provided and is not ``/``, the search is rooted at that
-    path: ``cd`` into it, ``grep``, then ``cd`` back to ``prev`` — sent as one
-    multi-line ``domshell_execute`` call so all three lines share an MCP
-    session (and therefore a DOMShell lane / cwd). Each ``_call_execute`` in
-    non-daemon mode opens a fresh stdio session that lands in its own
-    DOMShell 2.x lane, so splitting cd/grep/restore across separate calls
-    would lose the cwd between them. The trailing ``cd prev`` is delivered as
-    the final line of the same command and runs even if ``grep`` errors —
-    DOMShell's multi-line splitter continues past errors (see
-    `apireno/DOMShell#46 <https://github.com/apireno/DOMShell/issues/46>`_).
+    path via a split-and-check sequence: an anchor ``cd``, then ``grep``,
+    and finally a restore ``cd``. Each step is a separate ``domshell_execute``
+    call but they all share the same MCP session (and therefore DOMShell lane/cwd).
+    This allows halting early if the anchor ``cd`` fails.
 
     ``path``, ``prev``, and ``use_daemon`` are keyword-only to prevent silent
     breakage of callers written against the pre-migration positional

@@ -325,7 +325,7 @@ def samples_to_wav_bytes(
         sample_width = 2
     elif bit_depth == 8:
         max_val = 127
-        fmt = "<b"
+        fmt = None  # 8-bit WAV samples are unsigned; handled specially below
         sample_width = 1
     elif bit_depth == 24:
         max_val = 8388607
@@ -345,6 +345,9 @@ def samples_to_wav_bytes(
         if bit_depth == 24:
             # Pack 24-bit as 3 bytes little-endian
             raw.extend(struct.pack("<i", int_val)[:3])
+        elif bit_depth == 8:
+            # 8-bit WAV samples are unsigned (0..255), centered at 128
+            raw.extend(struct.pack("<B", int_val + 128))
         else:
             raw.extend(struct.pack(fmt, int_val))
 
@@ -374,7 +377,7 @@ def write_wav(
         sample_width = 2
     elif bit_depth == 8:
         max_val = 127
-        fmt = "<b"
+        fmt = None  # 8-bit WAV samples are unsigned; handled specially below
         sample_width = 1
     elif bit_depth == 24:
         max_val = 8388607
@@ -393,6 +396,9 @@ def write_wav(
         int_val = max(-max_val - 1, min(max_val, int_val))
         if bit_depth == 24:
             raw.extend(struct.pack("<i", int_val)[:3])
+        elif bit_depth == 8:
+            # 8-bit WAV samples are unsigned (0..255), centered at 128
+            raw.extend(struct.pack("<B", int_val + 128))
         else:
             raw.extend(struct.pack(fmt, int_val))
 
