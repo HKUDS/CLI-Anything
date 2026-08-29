@@ -293,7 +293,20 @@ def fs_grep(pattern, path):
             return
         click.echo(f"Matches for '{pattern}':")
         for match in matches:
-            click.echo(f"  {match}")
+            if isinstance(match, dict):
+                type_str = match.get('type', '')
+                type_marker = "[d]" if type_str == "directory" else "[x]" if type_str == "interactive" else "[-]"
+                name = match.get('name', '')
+                role = match.get('role', '')
+                path = match.get('path', '')
+                display = f"{type_marker} {name}"
+                if role:
+                    display += f" ({role})"
+                if path and path != name:
+                    display += f" → {path}"
+                click.echo(f"  {display}")
+            else:
+                click.echo(f"  {match}")
 
 
 @fs.command("pwd")
