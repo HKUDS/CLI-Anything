@@ -12,6 +12,9 @@ from cli_anything.minimax.utils.minimax_backend import (
     chat_completion_stream,
     tts_synthesize,
     run_full_workflow,
+    REGIONAL_ENDPOINTS,
+    TEXT_MODEL_CONFIG,
+    MULTIMODAL_CONFIG,
     CHAT_MODELS,
     TTS_MODELS,
     TTS_VOICES,
@@ -63,21 +66,60 @@ def test_save_and_load_config(tmp_path):
 
 # ── Chat models ────────────────────────────────────────────────────────────────
 
-def test_chat_models_list():
-    """MiniMax-M3, MiniMax-M2.7 and MiniMax-M2.7-highspeed must be in the model list."""
+def test_text_model_catalog():
+    """The text catalog must match the refreshed MiniMax target models."""
+    assert TEXT_MODEL_CONFIG["model_id"] == "MiniMax-M3"
+    assert TEXT_MODEL_CONFIG["model_ids"] == ["MiniMax-M3", "MiniMax-M2.7"]
+
     model_ids = [m["id"] for m in CHAT_MODELS]
-    assert "MiniMax-M3" in model_ids
-    assert "MiniMax-M2.7" in model_ids
-    assert "MiniMax-M2.7-highspeed" in model_ids
-    assert len(CHAT_MODELS) == 3
-    # M3 must be the first (default) model
+    assert model_ids == ["MiniMax-M3", "MiniMax-M2.7"]
+    assert len(CHAT_MODELS) == 2
     assert CHAT_MODELS[0]["id"] == "MiniMax-M3"
+    assert CHAT_MODELS[0]["context_window"] == 1000000
+    assert CHAT_MODELS[0]["pricing_usd_per_million_tokens"] == {
+        "input": 0.6,
+        "output": 2.4,
+        "cache_read": 0.12,
+        "cache_write": None,
+    }
+    assert CHAT_MODELS[0]["input_modalities"] == ["text", "image", "video"]
+    assert CHAT_MODELS[0]["thinking"] == ["adaptive", "disabled"]
+    assert CHAT_MODELS[1]["id"] == "MiniMax-M2.7"
+    assert CHAT_MODELS[1]["context_window"] == 204800
+    assert CHAT_MODELS[1]["pricing_usd_per_million_tokens"] == {
+        "input": 0.3,
+        "output": 1.2,
+        "cache_read": 0.06,
+        "cache_write": 0.375,
+    }
+    assert CHAT_MODELS[1]["input_modalities"] == ["text"]
+    assert CHAT_MODELS[1]["thinking"] == ["always_on"]
+
+
+def test_regional_endpoints_catalog():
+    """The regional endpoint catalog must include global and CN entries."""
+    assert REGIONAL_ENDPOINTS == [
+        {
+            "region": "global_en",
+            "openai_base_url": "https://api.minimax.io/v1",
+            "anthropic_base_url": "https://api.minimax.io/anthropic",
+            "docs_root": "https://platform.minimax.io/docs",
+        },
+        {
+            "region": "cn_zh",
+            "openai_base_url": "https://api.minimaxi.com/v1",
+            "anthropic_base_url": "https://api.minimaxi.com/anthropic",
+            "docs_root": "https://platform.minimaxi.com/docs",
+        },
+    ]
 
 
 def test_tts_models_list():
-    """speech-2.8-hd must be the first (default) TTS model."""
+    """The TTS catalog must expose the full speech-2.x model set."""
+    assert [m["id"] for m in TTS_MODELS] == MULTIMODAL_CONFIG["speech"]["models"]
+    assert len(TTS_MODELS) == 8
     assert TTS_MODELS[0]["id"] == "speech-2.8-hd"
-    assert any(m["id"] == "speech-2.8-turbo" for m in TTS_MODELS)
+    assert TTS_MODELS[0]["description"] == "High-definition TTS (recommended default)"
 
 
 def test_tts_voices_list():
@@ -113,8 +155,8 @@ def test_chat_completion_success():
         assert result["usage"]["total_tokens"] == 22
 
 
-def test_chat_completion_uses_minimax_base_url():
-    """Verify chat completion calls api.minimax.io/v1."""
+def test_chat_completion_uses_global_region_base_url():
+    """Verify chat completion calls the global OpenAI-compatible endpoint."""
     with patch("requests.post") as mock_post:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -124,8 +166,22 @@ def test_chat_completion_uses_minimax_base_url():
         chat_completion(api_key="key", model="MiniMax-M3", messages=[])
 
         call_url = mock_post.call_args[0][0]
-        assert "minimax.io" in call_url
-        assert "/v1/chat/completions" in call_url
+        assert call_url == "https://api.minimax.io/v1/chat/completions"
+
+
+def test_chat_completion_uses_cn_region_base_url():
+    """Verify chat completion switches to the CN region endpoint."""
+    with patch.dict("os.environ", {"MINIMAX_REGION": "cn_zh"}, clear=True):
+        with patch("requests.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
+            mock_post.return_value = mock_resp
+
+            chat_completion(api_key="key", model="MiniMax-M3", messages=[])
+
+            call_url = mock_post.call_args[0][0]
+            assert call_url == "https://api.minimaxi.com/v1/chat/completions"
 
 
 def test_chat_completion_default_temperature():
@@ -235,7 +291,7 @@ def test_tts_synthesize_hex_decoding(tmp_path):
 
 
 def test_tts_synthesize_uses_correct_endpoint():
-    """TTS must call /v1/t2a_v2."""
+    """TTS must call the global speech endpoint."""
     with patch("requests.post") as mock_post:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -245,7 +301,22 @@ def test_tts_synthesize_uses_correct_endpoint():
         tts_synthesize(api_key="key", text="test")
 
         call_url = mock_post.call_args[0][0]
-        assert "/v1/t2a_v2" in call_url
+        assert call_url == "https://api.minimax.io/v1/t2a_v2"
+
+
+def test_tts_synthesize_uses_cn_region_endpoint():
+    """TTS must switch to the CN speech endpoint when requested."""
+    with patch.dict("os.environ", {"MINIMAX_REGION": "cn_zh"}, clear=True):
+        with patch("requests.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.iter_content.return_value = []
+            mock_post.return_value = mock_resp
+
+            tts_synthesize(api_key="key", text="test")
+
+            call_url = mock_post.call_args[0][0]
+            assert call_url == "https://api.minimaxi.com/v1/t2a_v2"
 
 
 def test_tts_synthesize_api_error():

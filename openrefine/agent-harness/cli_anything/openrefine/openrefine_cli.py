@@ -25,25 +25,55 @@ def _service(ctx: click.Context) -> OpenRefineService:
     return OpenRefineService(OpenRefineBackend(base_url, timeout=ctx.obj["timeout"]), store)
 
 
-def _emit(data: Any, as_json: bool) -> None:
+def _ascii_safe(value: Any) -> str:
+    """Render text as reversible ASCII escapes for legacy output streams."""
+    return str(value).encode("ascii", errors="backslashreplace").decode("ascii")
+
+
+def _emit(data: Any, as_json: bool, ascii_safe: bool = False) -> None:
     if as_json:
         click.echo(json.dumps(data, indent=2, sort_keys=True))
     elif isinstance(data, dict):
         for key, value in data.items():
-            click.echo(f"{key}: {value}")
+            text = f"{key}: {value}"
+            click.echo(_ascii_safe(text) if ascii_safe else text)
     else:
-        click.echo(str(data))
+        text = str(data)
+        click.echo(_ascii_safe(text) if ascii_safe else text)
 
 
 def _handle(ctx: click.Context, func, *args, **kwargs) -> None:
     try:
-        _emit(func(*args, **kwargs), ctx.obj["json"])
+        _emit(
+            func(*args, **kwargs),
+            ctx.obj["json"],
+            ascii_safe=ctx.obj.get("ascii_output", False),
+        )
     except (OpenRefineError, ValueError, OSError) as exc:
         if ctx.obj["json"]:
             click.echo(json.dumps({"error": str(exc), "ok": False}, indent=2, sort_keys=True), err=True)
         else:
-            click.echo(f"Error: {exc}", err=True)
+            message = f"Error: {exc}"
+            if ctx.obj.get("ascii_output", False):
+                message = _ascii_safe(message)
+            click.echo(message, err=True)
         raise click.exceptions.Exit(1)
+
+
+def _supports_interactive_prompt(stdin=None, stdout=None) -> bool:
+    """Return whether prompt_toolkit can safely attach to the current terminal.
+
+    Redirected streams are common in CI, Click's ``CliRunner``, and shell
+    pipelines that replay a user workflow.  On Windows prompt_toolkit raises
+    ``NoConsoleScreenBufferError`` for those streams instead of reading the
+    piped commands, so keep its rich prompt for real terminals only.
+    """
+    stdin = sys.stdin if stdin is None else stdin
+    stdout = sys.stdout if stdout is None else stdout
+    try:
+        return bool(stdin.isatty() and stdout.isatty())
+    except (AttributeError, OSError):
+        return False
 
 
 @click.group(invoke_without_command=True)
@@ -68,8 +98,16 @@ def repl(ctx: click.Context) -> None:
     """Start the interactive REPL."""
     history_file = _repl_history_file(ctx)
     skin = ReplSkin("openrefine", version=__version__, history_file=history_file)
-    skin.print_banner()
-    prompt = skin.create_prompt_session()
+    interactive = _supports_interactive_prompt()
+    if interactive:
+        skin.print_banner()
+        prompt = skin.create_prompt_session()
+    else:
+        # Keep redirected workflows ASCII-only.  Windows pipes and CI runners
+        # may expose legacy encodings such as cp1252, which cannot represent
+        # the skin's box-drawing banner, prompt arrow, or status icons.
+        prompt = None
+        ctx.obj["ascii_output"] = True
     commands = {
         "status": "Check backend and session",
         "projects": "List OpenRefine projects",
@@ -80,37 +118,76 @@ def repl(ctx: click.Context) -> None:
         "undo / redo": "Use OpenRefine undo-redo where possible",
         "exit": "Quit",
     }
+    had_error = False
     while True:
         try:
             state = SessionStore(ctx.obj["session"]).load()
-            line = skin.get_input(prompt, project_name=state.project_name)
+            if interactive:
+                line = skin.get_input(prompt, project_name=state.project_name)
+            else:
+                line = input().strip()
         except (EOFError, KeyboardInterrupt):
-            skin.print_goodbye()
+            if interactive:
+                skin.print_goodbye()
+            else:
+                click.echo("Goodbye!")
+                if had_error:
+                    raise click.exceptions.Exit(1)
             return
         try:
             parts = shlex.split(line)
         except (IndexError, ValueError) as exc:
-            skin.error(str(exc))
+            if interactive:
+                skin.error(str(exc))
+            else:
+                click.echo(f"Error: {_ascii_safe(exc)}", err=True)
+                had_error = True
             continue
         if not parts:
             continue
         try:
             args = _repl_to_args(parts)
         except (IndexError, ValueError) as exc:
-            skin.error(str(exc))
+            if interactive:
+                skin.error(str(exc))
+            else:
+                click.echo(f"Error: {_ascii_safe(exc)}", err=True)
+                had_error = True
             continue
         if parts[0] in {"exit", "quit"}:
-            skin.print_goodbye()
+            if interactive:
+                skin.print_goodbye()
+            else:
+                click.echo("Goodbye!")
+                if had_error:
+                    raise click.exceptions.Exit(1)
             return
         if parts[0] == "help":
-            skin.help(commands)
+            if interactive:
+                skin.help(commands)
+            else:
+                for command, description in commands.items():
+                    click.echo(f"{command}: {description}")
             continue
         try:
-            cli.main(args=_global_args(ctx) + args, prog_name="cli-anything-openrefine", obj=ctx.obj, standalone_mode=False)
-        except SystemExit:
-            pass
+            result = cli.main(
+                args=_global_args(ctx) + args,
+                prog_name="cli-anything-openrefine",
+                obj=ctx.obj,
+                standalone_mode=False,
+            )
+            if isinstance(result, int) and result != 0:
+                had_error = True
+        except (SystemExit, click.exceptions.Exit) as exc:
+            exit_code = getattr(exc, "exit_code", getattr(exc, "code", 0))
+            if exit_code:
+                had_error = True
         except Exception as exc:
-            skin.error(str(exc))
+            if interactive:
+                skin.error(str(exc))
+            else:
+                click.echo(f"Error: {_ascii_safe(exc)}", err=True)
+                had_error = True
 
 
 def _repl_to_args(parts: list[str]) -> list[str]:

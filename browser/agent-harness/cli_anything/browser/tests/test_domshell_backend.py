@@ -147,31 +147,54 @@ def test_cat_relative_no_wrap(mock_call):
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
-def test_cat_root_path_does_not_raise_and_returns_parseable_result(mock_call):
-    """backend.cat("/") and backend.cat("") at the absolute root should
-    NOT raise a Python ValueError. Pre-migration behavior was to send
-    ``cat ''`` to DOMShell and surface its ``Usage: cat <name>`` error
-    string; the round-5 Python-side guard converted the kernel error
-    into a ValueError, which broke ``fs.read_element(session, "")``
-    callers landed at ``/``. @yuh-yang R3 blocker 1 required restoring
-    pre-migration behavior — guard removed, both inputs now reach
-    DOMShell, which has the same ``if (!targetName)`` check and
-    returns its standard Usage error.
+def test_cat_root_path_reads_current_node_at_anchor(mock_call):
+    """backend.cat("/") anchors at tab root, then issues bare `read`.
+
+    Empty-after-translation absolute paths are the natural no-arg form
+    (``fs cat`` with ``session.working_dir == "/"``). DOMShell requires
+    a target for ``cat``; ``read`` is its supported current-node operation.
     """
-    mock_call.return_value = _make_result(
-        "\x1b[31mUsage: cat <name> (see cat --help)\x1b[0m\n[lane: shared]"
-    )
-    sess = _make_session(working_dir="/")  # satisfies absolute branch's session check
+    mock_call.return_value = _make_result("root [document]\n  button [button]\n[lane: 1]")
+    sess = _make_session(working_dir="/")
 
-    # MUST NOT raise — that was the regression.
-    result_root = backend.cat("/", session=sess)
-    result_empty = backend.cat("")
+    result = backend.cat("/", session=sess)
 
-    # Both surface DOMShell's error as a parsed dict, not a Python exception.
-    for r in (result_root, result_empty):
-        assert isinstance(r, dict)
-        # _parse_execute_result detects ANSI red → routes through error path.
-        assert "error" in r
+    assert isinstance(result, dict)
+    assert "error" not in result
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[0].args[0] == "cd %here%"
+    assert mock_call.call_args_list[1].args[0] == "read"
+    assert mock_call.call_args_list[2].args[0] == "cd %here%"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_cat_empty_relative_path_reads_current_node(mock_call):
+    """backend.cat("") uses DOMShell read on the lane's current cursor."""
+    mock_call.return_value = _make_result("button [button]\n[lane: 1]")
+
+    result = backend.cat("")
+
+    assert isinstance(result, dict)
+    assert "error" not in result
+    assert mock_call.call_count == 1
+    assert mock_call.call_args.args[0] == "read"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_read_element_empty_path_at_root_does_not_raise(mock_call):
+    """fs.read_element(session, "") at default working_dir="/" must not raise."""
+    from cli_anything.browser.core import fs as fs_mod
+
+    mock_call.return_value = _make_result("root [document]\n  content [text]\n[lane: 1]")
+    sess = _make_session(working_dir="/")
+
+    result = fs_mod.read_element(sess, "")
+
+    assert isinstance(result, dict)
+    assert "error" not in result
+    # Falls through to working_dir="/", so absolute split-and-check path.
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[1].args[0] == "read"
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)

@@ -729,6 +729,29 @@ class TestCLISubprocess:
         assert result.returncode == 0
         assert os.path.exists(out)
 
+    def test_document_new_autosaves_to_project_path(self, tmp_dir):
+        out = os.path.join(tmp_dir, "autosaved.json")
+        result = self._run([
+            "--project", out, "--save", "document", "new",
+            "--name", "autosaved", "--width", "720", "--height", "960",
+        ])
+
+        assert result.returncode == 0
+        with open(out, encoding="utf-8") as project_file:
+            project = json.load(project_file)
+        assert project["name"] == "autosaved"
+        assert project["document"]["width"] == 720
+        assert project["document"]["height"] == 960
+
+    def test_document_new_autosave_respects_dry_run(self, tmp_dir):
+        out = os.path.join(tmp_dir, "dry-run.json")
+        result = self._run([
+            "--project", out, "--save", "--dry-run", "document", "new",
+        ])
+
+        assert result.returncode == 0
+        assert not os.path.exists(out)
+
     def test_document_new_json_output(self, tmp_dir):
         out = os.path.join(tmp_dir, "test.json")
         result = self._run(["--json", "document", "new", "-o", out])

@@ -1,0 +1,17 @@
+{
+  "name": "cli-anything",
+  "version": "1.0.0",
+  "description": "Build, refine, test, validate, and list CLI-Anything harnesses in Cursor. Generator plugin with slash commands; consumer Hub/skills remain separate.",
+  "author": {
+    "name": "cli-anything contributors"
+  },
+  "homepage": "https://github.com/HKUDS/CLI-Anything",
+  "repository": "https://github.com/HKUDS/CLI-Anything",
+  "license": "Apache-2.0",
+  "keywords": [
+    "cli-anything",
+    "harness",
+    "agent-native",
+    "generator"
+  ]
+}

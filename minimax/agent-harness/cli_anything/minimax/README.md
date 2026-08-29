@@ -37,8 +37,8 @@ cli-anything-minimax tts --text "Hello world" --output hello.mp3
 # Simple chat (default model: MiniMax-M3)
 cli-anything-minimax chat --prompt "Explain quantum computing"
 
-# High-speed model
-cli-anything-minimax chat --prompt "Quick answer please" --model MiniMax-M2.7-highspeed
+# Alternate chat model
+cli-anything-minimax chat --prompt "Quick answer please" --model MiniMax-M2.7
 
 # Streaming output
 cli-anything-minimax stream --prompt "Write a haiku about AI"
@@ -56,9 +56,31 @@ cli-anything-minimax tts --text "Hello, world!" --output hello.mp3
 # Use turbo model
 cli-anything-minimax tts --text "Fast speech" --model speech-2.8-turbo --output fast.mp3
 
+# Fine-grained voice & audio control
+cli-anything-minimax tts --text "Slow and quiet" \
+    --speed 0.8 --vol 0.5 --pitch -2 \
+    --sample-rate 44100 --bitrate 256000 --format flac --channel 2 \
+    --output slow.flac
+
 # List available voices
 cli-anything-minimax voices
 ```
+
+#### TTS options
+
+| Option | Range / Choices | Default | Description |
+|--------|-----------------|---------|-------------|
+| `--text` / `-t` | (required) | — | Text to synthesize |
+| `--model` | model id | `speech-2.8-hd` | TTS model |
+| `--voice` | voice id | `English_Graceful_Lady` | Voice preset |
+| `--output` / `-o` | path | `output.mp3` | Output audio file |
+| `--speed` | 0.5 .. 2.0 | `1.0` | Speech speed multiplier |
+| `--vol` | 0.0 .. 10.0 | `1.0` | Volume |
+| `--pitch` | -12 .. 12 | `0` | Pitch shift in semitones |
+| `--sample-rate` | 8000 / 16000 / 22050 / 24000 / 32000 / 44100 | `32000` | Audio sample rate |
+| `--bitrate` | 32000 / 64000 / 128000 / 256000 | `128000` | Audio bitrate |
+| `--format` | mp3 / pcm / flac | `mp3` | Output container |
+| `--channel` | 1 / 2 | `1` | 1 = mono, 2 = stereo |
 
 ### Session & Config
 
@@ -87,7 +109,6 @@ cli-anything-minimax models --tts
 |-------|-------------|
 | `MiniMax-M3` | Next-generation flagship model (default) |
 | `MiniMax-M2.7` | Peak Performance. Ultimate Value. |
-| `MiniMax-M2.7-highspeed` | Same performance, faster and more agile |
 
 ### TTS
 
@@ -95,12 +116,19 @@ cli-anything-minimax models --tts
 |-------|-------------|
 | `speech-2.8-hd` | High-definition TTS (default) |
 | `speech-2.8-turbo` | Fast TTS |
+| `speech-2.6-hd` | High-definition TTS |
+| `speech-2.6-turbo` | Fast TTS |
+| `speech-02-hd` | High-definition TTS |
+| `speech-02-turbo` | Fast TTS |
+| `speech-01-hd` | High-definition TTS |
+| `speech-01-turbo` | Fast TTS |
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `MINIMAX_API_KEY` | MiniMax API key (required) |
+| `MINIMAX_REGION` | Select `global_en` or `cn_zh` regional endpoints |
 | `MINIMAX_BASE_URL` | Override API base URL (optional) |
 
 ## Validation

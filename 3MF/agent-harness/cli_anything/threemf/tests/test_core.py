@@ -178,6 +178,53 @@ def _make_fake_hole(
     )
 
 
+def _make_washer_mesh(
+    r_inner: float = 4.0, r_outer: float = 20.0, height: float = 10.0
+) -> MeshData:
+    """A washer (hollow cylinder) whose axis runs along Z.
+
+    Its cross-section perpendicular to Z is an annulus -- two *concentric*
+    circles (inner hole ``r_inner``, outer wall ``r_outer``).  This is the
+    minimal fixture that reproduces the concentric-circle bugs: a real hole
+    bored through a body always yields both the hole contour and the body
+    contour in the same section.
+    """
+    import trimesh
+
+    tm = trimesh.creation.annulus(r_min=r_inner, r_max=r_outer, height=height)
+    return MeshData(
+        object_id="1",
+        name="washer",
+        vertices=np.asarray(tm.vertices, dtype=np.float64),
+        triangles=np.asarray(tm.faces, dtype=np.int32),
+    )
+
+
+def _make_boss_on_plate_mesh(
+    boss_radius: float = 5.0, boss_height: float = 20.0,
+    plate_size: float = 50.0, plate_thickness: float = 4.0,
+) -> MeshData:
+    """A solid cylindrical boss standing on a wider flat plate (boss axis = Z).
+
+    Built by concatenation (no boolean backend needed).  Cross-sections through
+    the boss are circular so detection finds it, but the surrounding plate
+    material sits only at the base end -- so it must be classified as an exterior
+    contour, not an interior hole.
+    """
+    import trimesh
+
+    plate = trimesh.creation.box(extents=(plate_size, plate_size, plate_thickness))
+    boss = trimesh.creation.cylinder(radius=boss_radius, height=boss_height, sections=48)
+    boss.apply_translation([0, 0, plate_thickness / 2 + boss_height / 2])
+    tm = trimesh.util.concatenate([plate, boss])
+    return MeshData(
+        object_id="1",
+        name="boss",
+        vertices=np.asarray(tm.vertices, dtype=np.float64),
+        triangles=np.asarray(tm.faces, dtype=np.int32),
+    )
+
+
 # ===========================================================================
 # TestParser -- MeshData and ThreeMFData
 # ===========================================================================
@@ -827,6 +874,117 @@ class TestInspector:
         result = inspector.inspect_mesh(mesh, params)
         assert result == []
 
+    # --- _group_circles: concentric circles must not merge --------------------
+
+    def test_group_circles_keeps_concentric_different_radii_separate(self) -> None:
+        """Concentric circles of very different radii are distinct holes.
+
+        Regression: grouping by centre only merged a hole's inner circle with
+        the body's outer contour (both centred on the axis) and averaged their
+        radii into a meaningless diameter.
+        """
+        circles = [
+            {"center": (0.0, 0.0), "radius": 4.0, "fit_error": 0.0, "level": z}
+            for z in (-2.0, -1.0, 0.0, 1.0, 2.0)
+        ] + [
+            {"center": (0.0, 0.0), "radius": 20.0, "fit_error": 0.0, "level": z}
+            for z in (-2.0, -1.0, 0.0, 1.0, 2.0)
+        ]
+        groups = inspector._group_circles(circles)
+        mean_radii = sorted(round(float(np.mean([c["radius"] for c in g])), 1) for g in groups)
+        assert mean_radii == [4.0, 20.0]
+
+    def test_group_circles_merges_same_hole_across_planes(self) -> None:
+        """Circles from one hole (small centre/radius jitter) stay in one group."""
+        circles = [
+            {"center": (0.01 * i, -0.01 * i), "radius": 4.0 + 0.002 * i,
+             "fit_error": 0.0, "level": float(i)}
+            for i in range(6)
+        ]
+        groups = inspector._group_circles(circles)
+        assert len(groups) == 1
+
+    def test_inspect_concentric_reports_only_true_inner_hole(self) -> None:
+        """A washer yields exactly its inner Ø8 hole -- not the merged Ø24, nor the Ø40 outer wall."""
+        mesh = _make_washer_mesh(r_inner=4.0, r_outer=20.0, height=10.0)
+        holes = inspector.inspect_mesh(mesh, InspectParams(axis=2))
+        diameters = sorted(round(h.diameter, 1) for h in holes)
+        assert diameters == [8.0]                                    # only the inner hole
+        assert not any(abs(h.diameter - 40.0) < 1.0 for h in holes)  # outer wall rejected
+        assert not any(abs(h.diameter - 24.0) < 1.0 for h in holes)  # not the merged blob
+
+    def test_inspect_rejects_solid_cylinder_surface(self) -> None:
+        """A solid cylinder's outer surface is a boundary, not a hole -- it must not be reported."""
+        import trimesh
+
+        tm = trimesh.creation.cylinder(radius=3.0, height=10.0, sections=48)
+        mesh = MeshData(
+            object_id="1", name="cyl",
+            vertices=np.asarray(tm.vertices, dtype=np.float64),
+            triangles=np.asarray(tm.faces, dtype=np.int32),
+        )
+        assert inspector.inspect_mesh(mesh, InspectParams(axis=2)) == []
+
+    def test_inspect_rejects_boss_on_wider_base(self) -> None:
+        """A solid boss on a wider plate faces outward -- not a hole."""
+        mesh = _make_boss_on_plate_mesh(boss_radius=5.0, boss_height=20.0)
+        holes = inspector.inspect_mesh(mesh, InspectParams(axis=2))
+        assert not any(abs(h.diameter - 10.0) < 1.0 for h in holes)
+
+    def test_inspect_keeps_blind_hole(self) -> None:
+        """A blind cylindrical pocket faces inward and must still be detected as a hole."""
+        trimesh = pytest.importorskip("trimesh")
+        box = trimesh.creation.box(extents=(30, 30, 20))
+        drill = trimesh.creation.cylinder(radius=4.0, height=18.0, sections=48)
+        drill.apply_translation([0, 0, 1])  # pocket from the top face, leaving a ~2mm floor
+        try:
+            blind = box.difference(drill)
+        except Exception:
+            pytest.skip("no boolean backend available for blind-hole fixture")
+        if not getattr(blind, "is_watertight", False) or len(blind.faces) <= len(box.faces):
+            pytest.skip("boolean backend produced no pocket")
+        mesh = MeshData(
+            object_id="1", name="blind",
+            vertices=np.asarray(blind.vertices, dtype=np.float64),
+            triangles=np.asarray(blind.faces, dtype=np.int32),
+        )
+        holes = inspector.inspect_mesh(mesh, InspectParams(axis=2, min_confidence=0.5))
+        assert any(abs(h.diameter - 8.0) < 1.0 for h in holes)
+
+    def test_inspect_through_hole_axial_extent_spans_part(self) -> None:
+        """Axial extent comes from the wall vertices, spanning the full part thickness.
+
+        Regression: the extent was taken from the inset sampling planes, so a
+        through hole's rim vertices fell outside the band and resize moved
+        nothing (vertex_count was 0).
+        """
+        mesh = _make_washer_mesh(r_inner=4.0, r_outer=20.0, height=10.0)
+        holes = [h for h in inspector.inspect_mesh(mesh, InspectParams(axis=2))
+                 if abs(h.diameter - 8.0) < 1.0]
+        assert holes and holes[0].vertex_count > 0
+        assert holes[0].axis_max - holes[0].axis_min == pytest.approx(10.0, abs=0.2)
+
+    def test_wall_axial_extent_ignores_feature_outside_window(self) -> None:
+        """A coaxial same-radius feature outside the search window must not stretch the extent.
+
+        Regression: the extent was read from a global radius mask, so an
+        unrelated same-radius ring elsewhere on the axis inflated axis_min/max
+        and made resize move unrelated vertices.
+        """
+        r, n = 4.0, 24
+        theta = np.linspace(0, 2 * np.pi, n, endpoint=False)
+        ring = np.column_stack([r * np.cos(theta), r * np.sin(theta)])
+
+        def ring_at_z(z: float) -> np.ndarray:
+            return np.column_stack([ring[:, 0], ring[:, 1], np.full(n, z)])
+
+        # hole wall spans z in [0, 10]; an unrelated same-radius ring sits at z=50
+        verts = np.vstack([ring_at_z(0.0), ring_at_z(10.0), ring_at_z(50.0)])
+        lo, hi = inspector._wall_axial_extent(
+            verts, (0.0, 0.0), r, 2, (0, 1), search_lo=-0.5, search_hi=10.5,
+        )
+        assert (lo, hi) == pytest.approx((0.0, 10.0))
+
 
 # ===========================================================================
 # TestRepair -- repair_mesh, individual repair functions, fix_normals
@@ -1082,3 +1240,21 @@ class TestModifier:
         )
         resize_single_hole(mesh, hole, target_diameter=3.0)
         np.testing.assert_array_equal(mesh.vertices, original)
+
+    # --- resize_holes respects detection params (axis parity with inspect) -----
+
+    def test_resize_holes_default_params_miss_non_default_axis_hole(self) -> None:
+        """Without params, resize re-detects on axis 0 and can't see a Z-axis hole."""
+        data = _make_threemf_data(_make_washer_mesh(r_inner=4.0, r_outer=20.0))
+        with pytest.raises(ValueError, match="Unknown hole_ids"):
+            resize_holes(data, [0], 12.0, mesh_index=0)
+
+    def test_resize_holes_with_axis_params_resizes_non_default_axis_hole(self) -> None:
+        """With matching params (axis=2), the hole is detected and its wall vertices move."""
+        data = _make_threemf_data(_make_washer_mesh(r_inner=4.0, r_outer=20.0))
+        new_data, changes = resize_holes(
+            data, [0], 12.0, mesh_index=0, params=InspectParams(axis=2),
+        )
+        assert changes and changes[0]["vertices_moved"] > 0
+        # the modified mesh is a genuinely new object (resize actually happened)
+        assert new_data.meshes[0] is not data.meshes[0]

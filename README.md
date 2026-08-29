@@ -255,7 +255,7 @@ Use the CLI-Anything generator when you need a new harness for software, a codeb
 
 - **Python 3.10+**
 - Target software or source repo available locally or online
-- A supported AI coding agent: [Claude Code](#-claude-code) | [Pi](#-pi-coding-agent) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Hermes](#-hermes) | [Reasonix](#-reasonix) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [More Platforms](#-more-platforms-coming-soon)
+- A supported AI coding agent: [Claude Code](#-claude-code) | [Cursor](#-cursor) | [Pi](#-pi-coding-agent) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Hermes](#-hermes) | [Reasonix](#-reasonix) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [More Platforms](#-more-platforms-coming-soon)
 
 ### Pick Your Agent Platform
 
@@ -533,6 +533,63 @@ The skill follows the same 7-phase methodology as Claude Code and OpenCode.
 
 <details>
 
+<summary><h4 id="-cursor">⚡ Cursor</h4></summary>
+
+Cursor gets **both** tracks:
+
+| Track | Purpose | Install |
+|-------|---------|---------|
+| **Generator** | Build new harnesses with `/cli-anything` (and refine/test/validate/list) | Cursor plugin in `cursor-plugin/` |
+| **Consumer** | Find/install/use published CLIs from CLI-Hub | `npx skills` + `cli-hub` (unchanged) |
+
+**Generator — install the Cursor plugin**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+bash CLI-Anything/cursor-plugin/scripts/install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\CLI-Anything\cursor-plugin\scripts\install.ps1
+```
+
+Upgrade with `--force` / `-Force`. Default install path is
+`~/.cursor/plugins/local/cli-anything` (override with `CURSOR_PLUGINS_HOME` pointing at a
+directory named `plugins`). The installer vendors `cli-anything-plugin/` methodology
+resources and writes `PLUGIN_ROOT.txt` plus `~/.cursor/cli-anything-generator.root`
+so Cursor agents can resolve absolute methodology paths.
+
+Reload the Cursor window (**Developer: Reload Window**), then:
+
+```text
+/cli-anything ./gimp
+/cli-anything-refine ./shotcut "picture-in-picture workflows"
+/cli-anything-test ./libreoffice
+/cli-anything-validate ./libreoffice
+/cli-anything-list
+```
+
+**Consumer — Hub / skills (separate from the generator plugin)**
+
+```bash
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
+# or a per-app skill, e.g. cli-anything-blender
+pip install cli-anything-hub
+```
+
+Verify the plugin installer locally:
+
+```bash
+bash CLI-Anything/cursor-plugin/tests/test_install.sh
+```
+
+See [`cursor-plugin/README.md`](cursor-plugin/README.md) for troubleshooting local plugin loading.
+</details>
+
+<details>
+
 <summary><h4 id="-codex">⚡ Codex <sup><code>Experimental</code></sup> <sup><code>Community</code></sup></h4></summary>
 
 **Step 1: Install the Skill**
@@ -696,8 +753,8 @@ This installs the CLI-Anything plugin to GitHub Copilot CLI. The plugin should n
 
 CLI-Anything is designed to be platform-agnostic. Support for more AI coding agents is planned:
 
+- **Cursor** — available via the Cursor plugin in `cursor-plugin/` (generator) plus Hub/skills (consumer)
 - **Codex** — available via the bundled skill in `codex-skill/`
-- **Cursor** — coming soon
 - **Windsurf** — coming soon
 - **Your favorite tool** — contributions welcome! See the `opencode-commands/` directory for a reference implementation.
 
@@ -773,6 +830,7 @@ The meta-skill points agents to the live CLI-Hub catalog, where they can choose 
 | **🌐 Network & Infrastructure** | Manage network services, DNS, ad-blocking, and infrastructure through structured CLI commands | AdGuardHome |
 | **🧪 Testing & Mocking** | Control HTTP mock servers, manage test stubs, record and replay API traffic for integration testing | **[WireMock](https://wiremock.org)** |
 | **🔬 Graphics & GPU Debugging** | Analyze GPU frame captures, inspect pipeline state, export shaders, and diff rendering state | RenderDoc |
+| **⚙️ Fabrication & Machine Control** | Drive real hardware from design file to physical output — safety-gated detect, preflight, jog, and framing commands with machine profiles over the software's real backend | MeerK40t (laser), Ink/Stitch (embroidery) |
 | **🎬 Video & Subtitles** | Transcribe speech, translate subtitles, burn styled captions into video — full captioning pipeline | VideoCaptioner |
 | **🔍 AI-Native Search** | Neural and deep web search with structured content retrieval through embedding-based APIs | [Exa](https://exa.ai) |
 | **✨ AI Content Generation** | Generate professional deliverables (slides, docs, diagrams, websites, research reports) through AI-powered cloud APIs | [AnyGen](https://www.anygen.io), Gamma, Beautiful.ai, Tome |
@@ -1366,7 +1424,7 @@ eth2-quickstart 18 passed ✅   (18 unit + 3 e2e skipped)
 mermaid        10 passed  ✅   (5 unit + 5 e2e)
 anygen         50 passed  ✅   (40 unit + 10 e2e)
 notebooklm     21 passed  ✅   (21 unit + 0 e2e)
-comfyui        70 passed  ✅   (60 unit + 10 e2e)
+comfyui        73 passed  ✅   (63 unit + 10 e2e)
 adguardhome    36 passed  ✅   (24 unit + 12 e2e)
 ollama         98 passed  ✅   (87 unit + 11 e2e)
 sketch         19 passed  ✅   (19 jest, Node.js)
@@ -1380,7 +1438,7 @@ cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 3mf            50 passed  ✅   (50 unit)
 joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,461 passed  ✅   100% pass rate
+TOTAL        2,464 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1428,6 +1486,13 @@ cli-anything/
 │   └── scripts/
 │       └── setup-cli-anything.sh         # Setup script
 │
+├── 🖱️ cursor-plugin/                     # Cursor Desktop generator plugin
+│   ├── .cursor-plugin/plugin.json        # Cursor plugin manifest
+│   ├── commands/                         # /cli-anything slash commands
+│   ├── skills/                           # Supporting generator skill
+│   ├── rules/                            # Phase-gate guidance
+│   ├── scripts/                          # Bash/PowerShell installers + vendored helpers
+│   └── tests/                            # Installer resource-sync regression tests
 ├── 🤖 codex-skill/                      # Self-contained Codex skill installer
 │   ├── SKILL.md                         # Codex workflow entry point
 │   ├── agents/                          # Codex UI metadata
@@ -1460,7 +1525,7 @@ cli-anything/
 ├── ⛓️ eth2-quickstart/agent-harness/    # ETH2 QuickStart CLI (18 unit, 3 e2e skipped)
 ├── 🧜 mermaid/agent-harness/            # Mermaid Live Editor CLI (10 tests)
 ├── ✨ anygen/agent-harness/             # AnyGen CLI (50 tests)
-├── 🖼️ comfyui/agent-harness/            # ComfyUI CLI (70 tests)
+├── 🖼️ comfyui/agent-harness/            # ComfyUI CLI (73 tests)
 ├── 🧠 notebooklm/agent-harness/         # NotebookLM CLI (experimental, 21 tests)
 ├── 🧩 dify-workflow/agent-harness/      # Dify Workflow CLI wrapper (11 tests)
 ├── 🛡️ adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)

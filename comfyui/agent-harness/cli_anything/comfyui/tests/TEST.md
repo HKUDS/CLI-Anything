@@ -41,6 +41,8 @@ python -m pytest cli_anything/comfyui/tests/ --cov=cli_anything.comfyui --cov-re
 - **Images:** list outputs, download single image, download all for prompt
 - **Backend:** GET/POST/DELETE/raw byte wrappers, connection errors, timeouts
 - **CLI:** all command groups in both human and `--json` output modes
+- **JSON purity:** in `--json` mode stdout stays a single parseable document — no
+  human-readable summary lines, no confirmation prompts
 - **Errors:** connection refused, server rejects workflow, file not found, overwrite protection
 
 ## Mock Patterns

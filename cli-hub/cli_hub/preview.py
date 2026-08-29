@@ -716,11 +716,12 @@ def _render_trajectory_html_section(trajectory: Optional[Dict[str, Any]]) -> str
         for item in items
     )
 
+    empty_message = '<div class="artifact-file">No step timeline entries yet.</div>'
     return (
         '<section class="section">'
         "<h2>Trajectory</h2>"
         f'<div class="facts">{cards_html}</div>'
-        f'<div class="trajectory-list">{items_html or "<div class=\"artifact-file\">No step timeline entries yet.</div>"}</div>'
+        f'<div class="trajectory-list">{items_html or empty_message}</div>'
         "</section>"
     )
 

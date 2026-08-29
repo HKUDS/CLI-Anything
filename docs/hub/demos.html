@@ -76,13 +76,15 @@
 
     /* ambient + grain + glass (shared) */
     .ambient { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
-    .ambient i { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.7; }
+    /* no filter:blur() — pre-blurred gradients read the same and cost a fraction on mobile GPUs */
+    .ambient i { position: absolute; border-radius: 50%; opacity: 0.7; }
     .ambient .a { width: 60vw; max-width: 760px; aspect-ratio: 1; top: -18vw; right: -10vw;
-      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), transparent 64%); }
+      background: radial-gradient(circle at 38% 38%, hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.26), hsl(calc(var(--accent-band) + 28) var(--tint-s) 58% / 0.10) 40%, transparent 68%); }
     .ambient .b { width: 50vw; max-width: 620px; aspect-ratio: 1; bottom: -16vw; left: -12vw;
-      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), transparent 62%); }
+      background: radial-gradient(circle at 60% 42%, hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.24), hsl(var(--accent-band) calc(var(--tint-s) + 12%) 56% / 0.09) 38%, transparent 66%); }
     .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.04; mix-blend-mode: overlay;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    @media (hover: none), (pointer: coarse) { .grain { display: none; } }
     .glass { position: relative; background: var(--glass-bg-fallback); border: 1px solid var(--glass-border); border-radius: var(--radius); box-shadow: var(--glass-shadow); }
     @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
       .glass { background: var(--glass-bg); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); } }
@@ -169,7 +171,13 @@
 
     /* ===================== Editorial gallery ===================== */
     .editorial { max-width: 1100px; margin: 56px auto 0; padding: 0 22px; display: flex; flex-direction: column; gap: 64px; }
-    .ed-row { display: grid; grid-template-columns: 1.22fr 1fr; gap: 40px; align-items: center; }
+    .ed-row { display: grid; grid-template-columns: 1.22fr 1fr; gap: 40px; align-items: center;
+      /* Skip layout+paint while far offscreen — a fast fling must not rasterize
+         every demo row at once (iOS Safari memory kill). Plain-length fallback
+         first: Safari 15.4–16 lacks the `auto` keyword. */
+      content-visibility: auto; contain-intrinsic-size: 900px; contain-intrinsic-size: auto 900px; }
+    /* grid items default to min-width:auto — media was pushing the page wider than phones */
+    .ed-row > * { min-width: 0; }
     .ed-row:nth-child(even) .ed-media { order: 2; }
     @media (max-width: 840px) { .ed-row { grid-template-columns: 1fr; gap: 22px; } .ed-row:nth-child(even) .ed-media { order: 0; } }
     .ed-num { font-family: 'Newsreader', serif; font-style: italic; font-size: 1.05rem; color: var(--ink-3); }
@@ -219,7 +227,8 @@
     .media-chrome .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.6s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
     .media-stage { position: relative; cursor: zoom-in; display: block; }
-    .media-stage img { display: block; width: 100%; height: auto; }
+    .media-stage:not([data-full]) { cursor: default; }
+    .media-stage img, .media-stage video { display: block; width: 100%; height: auto; }
     .media-zoom { position: absolute; bottom: 10px; right: 10px; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
       background: rgba(0,0,0,0.5); color: #fff; opacity: 0; transition: opacity .2s; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
     .media-stage:hover .media-zoom { opacity: 1; }
@@ -475,26 +484,26 @@
         title:'Curiosity Rover via Preview, Live Preview, and Trajectory',
         blurb:'An agent incrementally assembles a Curiosity-inspired rover while publishing real FreeCAD preview bundles, refreshing a live preview session, and recording command-to-preview history for later replay.',
         meta:[['Harness','cli-anything-freecad','code'],['Preview Stack','preview · live · trajectory'],['Artifact','Curiosity-style rover']],
-        media:{type:'gif', src:'freecad-curiosity-preview-trajectory.gif', url:'cli-anything-freecad · preview live', live:true},
+        media:{type:'video', src:'freecad-curiosity-preview-trajectory.mp4', url:'cli-anything-freecad · preview live', live:true},
         contrib:{name:'Core team', sub:'CLI-Anything'} },
       { id:'blender', app:'Blender', cat:'3D · Hard-surface', hue:28, glyph:'cube',
         title:'Orbital Relay Drone via Preview, Live Preview, and Trajectory',
         blurb:'An agent grows a hard-surface orbital relay drone under a real preview loop: each stage pushes new render-backed bundles, the live session tracks the current head, and the trajectory ties every command to its visual state.',
         meta:[['Harness','cli-anything-blender','code'],['Preview Stack','preview · live · trajectory'],['Artifact','Orbital relay drone']],
-        media:{type:'gif', src:'blender-orbital-relay-drone-preview-trajectory.gif', url:'cli-anything-blender · preview live', live:true},
+        media:{type:'video', src:'blender-orbital-relay-drone-preview-trajectory.mp4', url:'cli-anything-blender · preview live', live:true},
         contrib:{name:'Core team', sub:'CLI-Anything'} },
       { id:'drawio', app:'Draw.io', cat:'Diagramming', hue:250, glyph:'diagram',
         title:'HTTPS Handshake Diagram',
         blurb:'An agent creates a full HTTPS connection lifecycle diagram from scratch — TCP three-way handshake, TLS negotiation, encrypted data exchange, and TCP four-way termination — entirely through CLI commands.',
         meta:[['Harness','cli-anything-drawio','code'],['Time','~4 min'],['Artifact','.drawio + .png']],
-        media:{type:'gif', src:'drawio-demo.gif', url:'cli-anything-drawio · build', live:true},
+        media:{type:'video', src:'drawio-demo.mp4', url:'cli-anything-drawio · build', live:true},
         artifact:{label:'Final artifact', src:'drawio-https-handshake.png', alt:'HTTPS handshake sequence diagram'},
         contrib:{name:'@zhangxilong-43', url:'https://github.com/zhangxilong-43'} },
       { id:'sts2', app:'Slay the Spire II', cat:'Games', hue:350, glyph:'game',
         title:'Game Automation',
         blurb:'An agent plays through a Slay the Spire II run using the CLI harness — reading game state, selecting cards, choosing paths, and making strategic decisions in real-time.',
         meta:[['Harness','cli-anything-slay-the-spire-ii','code'],['Artifact','Automated gameplay session']],
-        media:{type:'gif', src:'slay-the-spire-ii-gameplay.gif', url:'cli-anything-slay-the-spire-ii', live:true},
+        media:{type:'video', src:'slay-the-spire-ii-gameplay.mp4', url:'cli-anything-slay-the-spire-ii', live:true},
         contrib:{name:'@TianyuFan0504', url:'https://github.com/TianyuFan0504'} },
       { id:'videocaptioner', app:'VideoCaptioner', cat:'Video', hue:280, glyph:'video',
         title:'Auto-Generated Subtitles',
@@ -506,7 +515,7 @@
         title:'Live Agent Cartography via the MCP Bridge',
         blurb:'An agent drives a live, open ArcGIS Pro session through an MCP bridge — reading the project, zooming to feature layers, running geoprocessing, and exporting layouts — each step executing inside Pro as you watch.',
         meta:[['Harness','arcgis-pro','code'],['Mode','live-Pro MCP bridge'],['Artifact','Agent-driven map navigation']],
-        media:{type:'gif', src:'arcgis-pro-live-bridge-demo.gif', url:'arcgis-pro · MCP bridge', live:true},
+        media:{type:'video', src:'arcgis-pro-live-bridge-demo.mp4', url:'arcgis-pro · MCP bridge', live:true},
         contrib:{name:'@Jasper0122', url:'https://github.com/Jasper0122'} },
     ];
     // Install command per demo (CLI-Hub registry names) — parallel info on each card.
@@ -547,6 +556,12 @@
           <div class="media-stage" data-full="${A+m.a.src}"><span class="ba-label">${m.a.label}</span><img loading="lazy" src="${A+m.a.src}" alt="${id} before"><span class="media-zoom">${ZOOM}</span></div>
           <div class="media-stage" data-full="${A+m.b.src}"><span class="ba-label">${m.b.label}</span><img loading="lazy" src="${A+m.b.src}" alt="${id} after"><span class="media-zoom">${ZOOM}</span></div></div></div>`;
       }
+      if (m.type === 'video') {
+        // H.264 video instead of animated GIF: hardware-decoded, no frame cache —
+        // multi-hundred-MB GIF decodes were killing the page on iPhones.
+        const poster = A + m.src.replace(/\.mp4$/, '-poster.jpg');
+        return `<div class="media">${chrome}<div class="media-stage"><video class="lazy-vid" muted loop playsinline preload="none" poster="${poster}" src="${A+m.src}" aria-label="${id} demo"></video></div></div>`;
+      }
       return `<div class="media">${chrome}<div class="media-stage" data-full="${A+m.src}"><img loading="lazy" src="${A+m.src}" alt="${id} demo"><span class="media-zoom">${ZOOM}</span></div></div>`;
     }
     function artifact(d) {
@@ -578,6 +593,35 @@
     (function () {
       const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' });
       document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+    })();
+
+    // Demo videos: play near the viewport; pause offscreen; beyond 1200px drop the
+    // src entirely so the media pipeline is fully released (poster stays visible).
+    (function () {
+      const vids = document.querySelectorAll('video.lazy-vid');
+      if (!vids.length) return;
+      const start = (v) => {
+        if (!v.getAttribute('src') && v.dataset.src) { v.setAttribute('src', v.dataset.src); v.load(); }
+        v.muted = true; const p = v.play(); if (p) p.catch(() => {});
+      };
+      if (!('IntersectionObserver' in window)) { vids.forEach(start); return; }
+      const near = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          if (en.isIntersecting) start(en.target);
+          else if (!en.target.paused) en.target.pause();
+        });
+      }, { rootMargin: '200px 0px' });
+      const far = new IntersectionObserver((entries) => {
+        entries.forEach((en) => {
+          const v = en.target;
+          if (!en.isIntersecting && v.getAttribute('src')) {
+            v.dataset.src = v.getAttribute('src');
+            if (!v.paused) v.pause();
+            v.removeAttribute('src'); v.load();
+          }
+        });
+      }, { rootMargin: '1200px 0px' });
+      vids.forEach(v => { near.observe(v); far.observe(v); });
     })();
 
     // lightbox

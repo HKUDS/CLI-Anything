@@ -3,7 +3,7 @@ from setuptools import find_namespace_packages, setup
 
 setup(
     name="cli-anything-openrefine",
-    version="1.0.0",
+    version="1.0.1",
     description="CLI-Anything harness for OpenRefine data wrangling workflows",
     long_description="Agent-native Click CLI for OpenRefine's local HTTP API, operation histories, exports, and sessions.",
     author="CLI-Anything-Team",

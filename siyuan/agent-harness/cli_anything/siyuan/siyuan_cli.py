@@ -800,3 +800,7 @@ def tag_list(ctx: SiYuanContext):
         click.echo(json.dumps(tags, ensure_ascii=False))
     else:
         _print_tags(tags)
+
+
+if __name__ == "__main__":
+    cli()

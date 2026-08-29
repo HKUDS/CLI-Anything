@@ -1083,3 +1083,7 @@ def dispatch(argv: list[str] | None = None, prog_name: str | None = None) -> int
 
 def entrypoint(argv: list[str] | None = None) -> int:
     return dispatch(argv, prog_name=sys.argv[0])
+
+
+if __name__ == "__main__":
+    raise SystemExit(entrypoint())

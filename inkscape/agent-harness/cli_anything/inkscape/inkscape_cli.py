@@ -207,9 +207,12 @@ def document_new(width, height, units, background, name, profile, output):
         background=background, name=name, profile=profile,
     )
     sess = get_session()
-    sess.set_project(proj, output)
+    auto_save_path = sess.project_path if _auto_save and not _dry_run else None
+    sess.set_project(proj, output or auto_save_path)
     if output:
         doc_mod.save_document(proj, output)
+    elif auto_save_path:
+        sess.save_session()
     output_data = doc_mod.get_document_info(proj)
     globals()["output"](output_data, f"Created document: {name}")
 
@@ -1023,7 +1026,7 @@ def repl(project_path):
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("inkscape", version="1.0.0")
+    skin = ReplSkin("inkscape", version="1.0.1")
 
     if project_path:
         _load_or_seed_project(project_path)

@@ -45,8 +45,70 @@ def _safe_filename(name: str) -> str:
     return name[:60] or "workflow"
 
 
-# Fields to strip when sending workflow data to n8n API
+# Server-owned fields, stripped from workflow data kept locally (backups, diffs) so
+# instance-specific noise does not drown the actual content.
 _INTERNAL_FIELDS = frozenset({"id", "createdAt", "updatedAt", "versionId", "shared"})
+
+# Fields n8n accepts in a create/update body: the non-readOnly properties of the
+# public API workflow schema
+# (packages/cli/src/public-api/v1/handlers/workflows/spec/schemas/workflow.yml).
+# That schema sets additionalProperties:false and marks `active`, `tags`, `meta`,
+# `isArchived`, `triggerCount` and the id/timestamp fields readOnly, so sending any
+# of them rejects the entire request with 400. `active` and `tags` are changed
+# through their own endpoints (activate/deactivate, PUT /workflows/{id}/tags).
+# Checked against the schema on n8n 2.16.1 and 2.33.3; `nodeGroups` and
+# `parentFolderId` only exist on the latter, and are listed so an edit made against
+# a newer instance does not silently drop node groups or move a workflow to the root.
+_API_WRITABLE_FIELDS = frozenset({
+    "name", "description", "nodes", "connections", "settings",
+    "staticData", "pinData", "nodeGroups", "parentFolderId",
+})
+
+# Of those, the ones that are nullable in the schema. For them null is meaningful —
+# it clears the stored value, whereas omitting the key leaves it alone — so their
+# nulls have to be forwarded. `versions rollback` depends on this: a snapshot taken
+# before any pinned data was added carries `pinData: null`, and dropping it would
+# leave today's pinned data in place while reporting a successful rollback.
+# `parentFolderId` documents null as "move it to the project root".
+# The rest are non-nullable (`description` is a plain string), and echoing back the
+# null that a GET returned is rejected outright.
+_API_NULLABLE_FIELDS = frozenset({"staticData", "pinData", "parentFolderId"})
+
+# Writable, but only present from n8n 2.33.3. An older instance does not define them
+# and rejects the request outright, so a file exported from a newer one cannot be
+# imported as-is. Rather than probe the target's version, the write is retried
+# without them — losing a canvas grouping beats losing the whole import.
+_NEWER_SCHEMA_FIELDS = frozenset({"nodeGroups", "parentFolderId"})
+
+# The nested settings object sets additionalProperties:false as well (schemas/
+# workflowSettings.yml). n8n's own editor stores keys the public API does not define
+# — `binaryMode` is written into every workflow created in the UI — so settings read
+# back from the server have to be reduced too, or the whole request is rejected with
+# `request/body/settings must NOT have additional properties`.
+_API_WRITABLE_SETTINGS = frozenset({
+    "saveExecutionProgress", "saveManualExecutions", "saveDataErrorExecution",
+    "saveDataSuccessExecution", "executionTimeout", "errorWorkflow", "timezone",
+    "executionOrder", "callerPolicy", "callerIds", "timeSavedPerExecution",
+    "availableInMCP",
+    # Added by 2.33.3. Listed for the same reason as the top-level ones: on a current
+    # instance these are writable, and omitting them would silently reset the user's
+    # choice. `binaryMode` in particular is written by the editor into every workflow.
+    "binaryMode", "credentialResolverId", "customTelemetryTags",
+    "redactionPolicy", "timeSavedMode",
+})
+
+# The nested counterpart of _NEWER_SCHEMA_FIELDS: settings properties an older
+# instance does not define, which its additionalProperties:false rejects.
+# The validator's wording for an unexpected property, and the only two error paths
+# the compatibility retry knows how to reduce. Anything deeper — an unexpected member
+# inside a node or a grouping — is malformed input, not a version difference.
+_UNKNOWN_PROPERTY_SUFFIX = " must NOT have additional properties"
+_REDUCIBLE_ERROR_PATHS = frozenset({"request/body", "request/body/settings"})
+
+_NEWER_SCHEMA_SETTINGS = frozenset({
+    "binaryMode", "credentialResolverId", "customTelemetryTags",
+    "redactionPolicy", "timeSavedMode",
+})
 
 
 def _conn(ctx: click.Context) -> dict[str, str]:
@@ -59,8 +121,166 @@ def _json_flag(ctx: click.Context) -> bool:
 
 
 def _clean_for_api(data: dict[str, Any]) -> dict[str, Any]:
-    """Remove n8n internal fields before sending to API."""
+    """Keep only the fields n8n accepts in a workflow create/update body.
+
+    Nulls are dropped for the non-nullable properties: `description` is a plain
+    string in the schema, so echoing back the null a GET returned is rejected with
+    `request/body/description must be string`, and omitting the key instead leaves
+    the stored value untouched. Nulls for `_API_NULLABLE_FIELDS` are kept, because
+    for those null is the only way to clear the value.
+
+    `settings` is required and has its own additionalProperties:false, so it is
+    always present and always reduced.
+    """
+    body = {
+        k: v for k, v in data.items()
+        if k in _API_WRITABLE_FIELDS and (v is not None or k in _API_NULLABLE_FIELDS)
+    }
+    settings = body.get("settings")
+    if isinstance(settings, dict):
+        body["settings"] = {k: v for k, v in settings.items() if k in _API_WRITABLE_SETTINGS}
+    elif settings is None:
+        body["settings"] = {}  # required by the schema; absent in older exports
+    # Anything else is left untouched, so the server rejects it by name rather than
+    # this quietly replacing what the caller wrote with an empty object.
+    return body
+
+
+def _strip_server_fields(data: dict[str, Any]) -> dict[str, Any]:
+    """Drop server-owned fields from a workflow kept locally.
+
+    Unlike _clean_for_api this preserves state such as `active` and `tags`, which a
+    backup has to record and a diff has to compare even though neither can be sent
+    back through the workflow endpoint.
+    """
     return {k: v for k, v in data.items() if k not in _INTERNAL_FIELDS}
+
+
+def _diag(msg: str) -> None:
+    """Warn on stderr, so `--json` output stays parseable.
+
+    `warn()` prints to stdout (repl_skin.py), which is fine for the interactive
+    commands that use it but would corrupt the documented machine-readable output
+    exactly when one of these fallbacks fires. repl_skin.py is a verbatim copy of the
+    plugin's and is meant to stay that way, so this goes around it rather than
+    changing it.
+    """
+    click.secho(f"  ⚠ {msg}", fg="yellow", err=True)
+
+
+def _without_newer_schema_fields(payload: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
+    """Strip properties that only exist in newer n8n schemas, top level and nested.
+
+    `settings` carries its own additionalProperties:false, so an incompatible key in
+    there fails the request just as a top-level one does — dropping only the outer
+    ones would retry and fail again.
+    """
+    dropped = set(_NEWER_SCHEMA_FIELDS) & set(payload)
+    reduced = {k: v for k, v in payload.items() if k not in _NEWER_SCHEMA_FIELDS}
+    settings = reduced.get("settings")
+    if isinstance(settings, dict):
+        in_settings = _NEWER_SCHEMA_SETTINGS & set(settings)
+        if in_settings:
+            reduced["settings"] = {
+                k: v for k, v in settings.items() if k not in _NEWER_SCHEMA_SETTINGS
+            }
+            dropped |= {f"settings.{k}" for k in in_settings}
+    return reduced, dropped
+
+
+def _is_unknown_property_error(exc: requests.exceptions.HTTPError) -> bool:
+    """True when a 400 says the payload has a property the target does not define.
+
+    The suffix alone is not enough: the validator reports the same wording for an
+    unexpected member nested anywhere, and only the two levels this retry actually
+    reduces are safe to act on.
+
+        retryable      request/body must NOT have additional properties
+                       request/body/settings must NOT have additional properties
+        not retryable  request/body/nodes/0 must NOT have additional properties
+                       request/body/nodeGroups/0 must NOT have additional properties
+                       request/body/description must be string
+                       request/body/settings/executionTimeout must be number
+
+    The third line is the dangerous one: malformed input inside a grouping would
+    otherwise be read as a version mismatch, and dropping the whole grouping could
+    turn an invalid request into a success that quietly lost data.
+    """
+    try:
+        message = str(exc.response.json().get("message", ""))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    if not message.endswith(_UNKNOWN_PROPERTY_SUFFIX):
+        return False
+    return message[: -len(_UNKNOWN_PROPERTY_SUFFIX)] in _REDUCIBLE_ERROR_PATHS
+
+
+def _send_workflow(send: Any, payload: dict[str, Any]) -> Any:
+    """Send a workflow write, retrying once without newer-schema-only properties.
+
+    Importing a file exported from n8n 2.33.3+ into an older instance fails on
+    `nodeGroups` / `parentFolderId`, which that schema does not define. The target's
+    version is not exposed anywhere cheap to query, so this reacts to the rejection
+    instead and says what it dropped.
+    """
+    try:
+        return send(payload)
+    except requests.exceptions.HTTPError as exc:
+        if getattr(exc.response, "status_code", None) != 400:
+            raise
+        if not _is_unknown_property_error(exc):
+            raise
+        reduced, dropped = _without_newer_schema_fields(payload)
+        if not dropped:
+            raise
+        # Say what is known — a 400 with these keys present — rather than asserting
+        # they caused it. The retry is a guess; if it fails the real error stands.
+        _diag(f"Write rejected with 400 — retrying without {', '.join(sorted(dropped))}")
+        return send(reduced)
+
+
+def _create_workflow(payload: dict[str, Any], conn: dict[str, str]) -> Any:
+    return _send_workflow(lambda body: workflows.create_workflow(body, **conn), payload)
+
+
+def _update_workflow(workflow_id: str, payload: dict[str, Any], conn: dict[str, str]) -> Any:
+    return _send_workflow(lambda body: workflows.update_workflow(workflow_id, body, **conn), payload)
+
+
+def _reapply_tags(workflow_id: str | None, tags: Any, conn: dict[str, str]) -> None:
+    """Restore tag assignments through the endpoint that owns them.
+
+    `tags` is readOnly on the workflow body, so anything that recreates or rewinds a
+    workflow leaves them behind unless they are set separately. Passing None means
+    the source did not record any (an older export, say) and the current assignment
+    is left alone; an empty list means the source had none and clears them.
+
+    Tag ids are per-instance, so restoring into a different n8n answers
+    `404 Some tags not found`. That is reported rather than raised — the workflow
+    itself is already in place, and failing the whole restore over it would be worse.
+    """
+    if not workflow_id or tags is None:
+        return
+    if not isinstance(tags, (list, tuple)):
+        # A scalar here would raise on the comprehension below — after the workflow
+        # has already been created, so the caller would report a failure for
+        # something that exists, and a retry of restore-all would duplicate it.
+        _diag(f"Tags on {workflow_id} are not a list — left unchanged")
+        return
+    tag_ids = [{"id": t["id"]} for t in tags if isinstance(t, dict) and t.get("id")]
+    if tags and not tag_ids:
+        # The source recorded tags but none of them carry an id. Sending the empty
+        # list here would clear the assignment, which is the opposite of what an
+        # unreadable record should do.
+        _diag(f"Tags on {workflow_id} could not be read from the source — left unchanged")
+        return
+    try:
+        workflows.update_workflow_tags(workflow_id, tag_ids, **conn)
+    except requests.exceptions.RequestException:
+        # Not just HTTPError: a timeout or dropped connection here would otherwise
+        # escape and make the caller count an already-created workflow as failed,
+        # so a retry would duplicate it.
+        _diag(f"Could not restore tags on {workflow_id} — reattach them manually")
 
 
 def _auto_snapshot(workflow_id: str, conn: dict[str, str], trigger: str) -> None:
@@ -320,8 +540,12 @@ def workflow_get(ctx: click.Context, workflow_id: str) -> None:
 def workflow_create(ctx: click.Context, json_data: str) -> None:
     """Create a workflow from JSON (inline or @file.json). Workflows are created inactive."""
     payload = _load_json_arg(json_data)
-    payload.pop("active", None)  # Never auto-activate on create
-    data = workflows.create_workflow(payload, **_conn(ctx))
+    tags = payload.get("tags")
+    # A file produced by `export` carries state the endpoint refuses; reduce it here
+    # so hand-written and exported JSON both work. `active` is readOnly, so workflows
+    # are created inactive either way.
+    data = _create_workflow(_clean_for_api(payload), _conn(ctx))
+    _reapply_tags(data.get("id"), tags, _conn(ctx))
     output(data, _json_flag(ctx))
 
 
@@ -333,8 +557,10 @@ def workflow_update(ctx: click.Context, workflow_id: str, json_data: str) -> Non
     """Update a workflow. Does not change active status — use activate/deactivate."""
     _auto_snapshot(workflow_id, _conn(ctx), "update")
     payload = _load_json_arg(json_data)
-    payload.pop("active", None)  # Don't change active status via update
-    data = workflows.update_workflow(workflow_id, payload, **_conn(ctx))
+    # Same reduction as every other write: a file straight out of `export` has to be
+    # usable here. `active` is readOnly, so this cannot change it — use
+    # activate/deactivate. Tags likewise have their own command (`set-tags`).
+    data = _update_workflow(workflow_id, _clean_for_api(payload), _conn(ctx))
     output(data, _json_flag(ctx))
 
 
@@ -411,8 +637,10 @@ def workflow_export(ctx: click.Context, workflow_id: str, out_path: str | None) 
     if not out_path:
         name = _safe_filename(data.get("name", workflow_id))
         out_path = f"{name}.json"
-    # Remove server-specific fields for portability
-    export_data = _clean_for_api(data)
+    # Remove server-specific fields for portability, but keep the state an export is
+    # expected to carry (`tags`, `active`). Reducing it to the writable set here would
+    # lose the tags, which `import` puts back through their own endpoint.
+    export_data = _strip_server_fields(data)
     out = Path(out_path)
     if out.exists():
         warn(f"File {out_path} already exists — overwriting")
@@ -431,13 +659,14 @@ def workflow_import(ctx: click.Context, file_path: str, name: str | None) -> Non
     if not isinstance(data, dict):
         error("Invalid workflow format: must be a JSON object, not array or string")
         return
-    # Remove fields that would conflict on import
-    for field in ("id", "createdAt", "updatedAt", "versionId", "shared"):
-        data.pop(field, None)
-    data["active"] = False  # Never auto-activate imported workflows
+    # Keep only what n8n accepts. `active` is readOnly on the workflow endpoint, so
+    # it cannot be set here — workflows are created inactive regardless.
+    tags = data.get("tags")
+    data = _clean_for_api(data)
     if name:
         data["name"] = name
-    result = workflows.create_workflow(data, **_conn(ctx))
+    result = _create_workflow(data, _conn(ctx))
+    _reapply_tags(result.get("id"), tags, _conn(ctx))
     success(f"Imported as workflow {result.get('id', '?')} — {result.get('name', '?')}")
     output(result, _json_flag(ctx))
 
@@ -475,7 +704,7 @@ def workflow_backup_all(ctx: click.Context, out_dir: str, active_only: bool) -> 
         wf_id = w.get("id", "unknown")
         try:
             full = workflows.get_workflow(wf_id, **conn)
-            export_data = _clean_for_api(full)
+            export_data = _strip_server_fields(full)
             name_safe = _safe_filename(full.get("name", wf_id))
             filename = f"{wf_id}_{name_safe}.json"
             (out_path / filename).write_text(json.dumps(export_data, indent=2, default=str))
@@ -522,10 +751,11 @@ def workflow_restore_all(ctx: click.Context, backup_dir: str, dry_run: bool) -> 
                 click.echo(f"    Would import: {name}")
                 ok += 1
                 continue
-            for field in ("id", "createdAt", "updatedAt", "versionId", "shared"):
-                data.pop(field, None)
-            data["active"] = False  # Never auto-activate restored workflows
-            result = workflows.create_workflow(data, **conn)
+            # A backup keeps state the workflow endpoint refuses (`active`, `tags`);
+            # restore reduces it to the writable definition and puts the tags back
+            # through their own endpoint.
+            result = _create_workflow(_clean_for_api(data), conn)
+            _reapply_tags(result.get("id"), data.get("tags"), conn)
             click.secho(f"    {result.get('id', '?')}  {name}", fg="green")
             ok += 1
         except Exception as exc:
@@ -557,7 +787,7 @@ def workflow_diff(ctx: click.Context, source: str, target: str) -> None:
         return workflows.get_workflow(ref, **conn)
 
     def _clean(data: dict) -> dict:
-        return _clean_for_api(data)
+        return _strip_server_fields(data)
 
     src = _clean(_load(source))
     tgt = _clean(_load(target))
@@ -1038,16 +1268,16 @@ def template_deploy(ctx: click.Context, template_id: int, name: str | None) -> N
     wf_wrapper = data.get("workflow", {})
     wf_data = wf_wrapper.get("workflow", wf_wrapper) if isinstance(wf_wrapper, dict) else {}
 
-    # Clean for import — never auto-activate
-    for field in ("id", "createdAt", "updatedAt", "versionId", "shared"):
-        wf_data.pop(field, None)
-    wf_data["active"] = False
+    # Keep only what n8n accepts; `active` is readOnly, so a template always lands
+    # inactive. n8n.io templates often omit `settings`, which the API requires —
+    # _clean_for_api supplies it.
+    wf_data = _clean_for_api(wf_data)
     if name:
         wf_data["name"] = name
     elif not wf_data.get("name"):
         wf_data["name"] = f"Template #{template_id}"
 
-    result = workflows.create_workflow(wf_data, **conn)
+    result = _create_workflow(wf_data, conn)
     success(f"Deployed as workflow {result.get('id', '?')} — {result.get('name', '?')}")
     output(result, _json_flag(ctx))
 
@@ -1193,7 +1423,7 @@ def workflow_autofix(ctx: click.Context, source: str, apply: bool, save_path: st
     elif apply and wf_id:
         _auto_snapshot(wf_id, conn, "autofix")
         update_data = _clean_for_api(fixed_wf)
-        workflows.update_workflow(wf_id, update_data, **conn)
+        _update_workflow(wf_id, update_data, conn)
         success(f"Applied {len(fixes)} fix(es) to workflow {wf_id}")
     elif apply and not wf_id:
         error("Cannot apply fixes to a file source. Use --save instead.")
@@ -1310,7 +1540,7 @@ def workflow_patch(ctx: click.Context, workflow_id: str, rename: str | None, ena
 
     _auto_snapshot(workflow_id, conn, "patch")
     update_data = _clean_for_api(wf)
-    result = workflows.update_workflow(workflow_id, update_data, **conn)
+    result = _update_workflow(workflow_id, update_data, conn)
     output(result, _json_flag(ctx))
 
 
@@ -1455,7 +1685,8 @@ def versions_rollback(ctx: click.Context, workflow_id: str, ver_num: int | None)
         pass  # May already be inactive
     update_data = _clean_for_api(snapshot)
     update_data.pop("active", None)
-    workflows.update_workflow(workflow_id, update_data, **conn)
+    _update_workflow(workflow_id, update_data, conn)
+    _reapply_tags(workflow_id, snapshot.get("tags"), conn)
     success(f"Rolled back workflow {workflow_id} to version {ver_num} (deactivated — use activate to enable)")
 
 
@@ -1493,7 +1724,7 @@ def versions_diff(ctx: click.Context, workflow_id: str, version_a: int, version_
         return
 
     def _clean(d: dict) -> str:
-        clean = {k: v for k, v in d.items() if k not in ("id", "createdAt", "updatedAt", "versionId", "shared")}
+        clean = _strip_server_fields(d)
         return json.dumps(clean, indent=2, sort_keys=True, default=str)
 
     lines_a = _clean(snap_a).splitlines(keepends=True)
@@ -1698,7 +1929,7 @@ def workflow_scaffold(ctx: click.Context, pattern: str, name: str | None, deploy
         return
 
     if deploy:
-        result = workflows.create_workflow(wf, **_conn(ctx))
+        result = _create_workflow(_clean_for_api(wf), _conn(ctx))
         success(f"Deployed '{wf['name']}' as workflow {result.get('id', '?')}")
         output(result, _json_flag(ctx))
     elif out_path:

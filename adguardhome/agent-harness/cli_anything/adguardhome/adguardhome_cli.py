@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import click
+import requests
 
 from cli_anything.adguardhome.core import blocking as blocking_core
 from cli_anything.adguardhome.core import clients as clients_core
@@ -84,7 +85,17 @@ def cli(ctx: click.Context, host, port, username, password, config_path, use_htt
 
 
 def main():
-    cli(obj={})
+    try:
+        cli(obj={})
+    except (RuntimeError, requests.exceptions.RequestException) as exc:
+        # Backend failures reach this point as exceptions; without this handler they
+        # surface as a chained traceback and --json produces nothing parsable.
+        # sys.argv is used because the Click context is already unwound here.
+        if "--json" in sys.argv:
+            click.echo(json.dumps({"error": str(exc)}, default=str))
+        else:
+            click.echo(str(exc), err=True)
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -674,3 +685,7 @@ def tls_(ctx: click.Context):
 def tls_status(ctx: click.Context):
     client = make_client(ctx)
     output(server_core.get_tls_status(client), ctx.obj["as_json"])
+
+
+if __name__ == "__main__":
+    main()

@@ -2,7 +2,16 @@
 
 import copy
 from typing import Dict, Any, List, Optional
-from cli_anything.obs_studio.utils.obs_utils import generate_id, unique_name, get_item, validate_range
+from cli_anything.obs_studio.utils.obs_utils import (
+    generate_id,
+    unique_name,
+    get_item,
+    validate_range,
+    validate_position,
+    validate_size,
+    validate_crop,
+    _finite_number,
+)
 
 
 SOURCE_TYPES = {
@@ -122,13 +131,9 @@ def add_source(
     src["visible"] = visible
 
     if position:
-        src["position"] = {"x": float(position.get("x", 0)), "y": float(position.get("y", 0))}
+        src["position"] = validate_position(position)
     if size:
-        w = int(size.get("width", 1920))
-        h = int(size.get("height", 1080))
-        if w < 1 or h < 1:
-            raise ValueError(f"Size must be positive: {w}x{h}")
-        src["size"] = {"width": w, "height": h}
+        src["size"] = validate_size(size)
     if settings:
         src["settings"].update(settings)
 
@@ -139,7 +144,7 @@ def add_source(
 def remove_source(project: Dict[str, Any], source_index: int, scene_index: int = 0) -> Dict[str, Any]:
     """Remove a source from a scene."""
     sources = _get_scene_sources(project, scene_index)
-    source = get_item(sources, source_index, "source")
+    get_item(sources, source_index, "source")
     return sources.pop(source_index)
 
 
@@ -200,26 +205,43 @@ def transform_source(
     sources = _get_scene_sources(project, scene_index)
     source = get_item(sources, source_index, "source")
 
+    new_pos = None
     if position:
-        source["position"] = {
-            "x": float(position.get("x", source["position"]["x"])),
-            "y": float(position.get("y", source["position"]["y"])),
-        }
+        new_pos = validate_position(
+            {
+                "x": position.get("x", source["position"]["x"]),
+                "y": position.get("y", source["position"]["y"]),
+            }
+        )
+
+    new_size = None
     if size:
-        w = int(size.get("width", source["size"]["width"]))
-        h = int(size.get("height", source["size"]["height"]))
-        if w < 1 or h < 1:
-            raise ValueError(f"Size must be positive: {w}x{h}")
-        source["size"] = {"width": w, "height": h}
+        new_size = validate_size(
+            {
+                "width": size.get("width", source["size"]["width"]),
+                "height": size.get("height", source["size"]["height"]),
+            }
+        )
+
+    new_crop = None
     if crop:
-        for key in ("top", "bottom", "left", "right"):
-            if key in crop:
-                val = int(crop[key])
-                if val < 0:
-                    raise ValueError(f"Crop {key} must be non-negative, got {val}")
-                source["crop"][key] = val
+        merged_crop = dict(source.get("crop") or {})
+        merged_crop.update(crop)
+        new_crop = validate_crop(merged_crop)
+
+    new_rot = None
     if rotation is not None:
-        source["rotation"] = float(rotation)
+        rot = _finite_number(rotation, "Rotation")
+        new_rot = float(rot)
+
+    if new_pos is not None:
+        source["position"] = new_pos
+    if new_size is not None:
+        source["size"] = new_size
+    if new_crop is not None:
+        source["crop"] = new_crop
+    if new_rot is not None:
+        source["rotation"] = new_rot
 
     return source
 

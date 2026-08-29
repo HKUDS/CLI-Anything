@@ -2,8 +2,8 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 76 backend-free unit and CLI tests planned.
-- `test_full_e2e.py`: 12 real-backend E2E tests planned.
+- `test_core.py`: 81 backend-free unit and CLI tests planned.
+- `test_full_e2e.py`: 14 subprocess and real-backend E2E tests planned.
 
 ## Unit Test Plan
 
@@ -11,7 +11,7 @@
 - `core.session`: default state, atomic save/load, record, undo, redo, empty-stack errors.
 - `core.project`: service orchestration with fake backend, import/open/apply/export/rows, local and backend undo/redo behavior.
 - `utils.openrefine_backend`: small pure helpers and error types.
-- `openrefine_cli`: help output, default REPL entry, JSON operation builder commands, session show, REPL command mapping.
+- `openrefine_cli`: help output, terminal capability detection, piped multi-step REPL journeys, JSON operation builder commands, session show, REPL command mapping.
 
 ## E2E Test Plan
 
@@ -24,6 +24,7 @@ It intentionally fails loudly when the backend is unavailable.
 - **Cleaning operation history**: apply `core/text-transform` and verify exported CSV no longer contains padded names.
 - **Normalization operation history**: apply `core/mass-edit` to city values and verify exported content.
 - **Agent subprocess workflow**: run the installed or module CLI with `--json`, import data, inspect rows, export CSV, and parse exported rows with Python `csv`.
+- **Piped REPL workflow**: replay newline-separated user commands through the real CLI subprocess and verify the plain-input fallback exits cleanly on Windows and CI.
 - **Operation file workflow**: build an operation-history JSON file via CLI, apply it to a backend project, and verify operation count.
 - **State persistence**: verify session JSON persists current project and action history across subprocess calls.
 - **Undo/redo recovery**: apply a backend operation and exercise OpenRefine undo/redo endpoints.
@@ -36,9 +37,17 @@ Unit suite run:
 
 ```text
 $ python -m pytest cli_anything/openrefine/tests/test_core.py -q
-........................................................................ [ 94%]
-....                                                                     [100%]
-76 passed in 0.42s
+........................................................................ [ 88%]
+.........                                                                [100%]
+81 passed in 0.34s
+```
+
+Backend-independent subprocess checks:
+
+```text
+$ python -m pytest cli_anything/openrefine/tests/test_full_e2e.py -q -k "piped_user_commands or failed_piped_command or cli_help_subprocess"
+...                                                                      [100%]
+3 passed, 11 deselected in 1.18s
 ```
 
 Previous full suite run with OpenRefine 3.10.1 running at `http://127.0.0.1:3333`:
@@ -123,7 +132,7 @@ Collection check:
 
 ```text
 $ python -m pytest cli_anything/openrefine/tests/ --collect-only -q
-88 tests collected in 0.17s
+95 tests collected in 0.06s
 ```
 
 Setup metadata check:
@@ -132,18 +141,18 @@ Setup metadata check:
 $ python setup.py --name
 cli-anything-openrefine
 $ python setup.py --version
-1.0.0
+1.0.1
 ```
 
 ## Summary Statistics
 
-- Total collected tests: 88
-- Backend-free unit tests: 76 passing
-- E2E tests: 12 collected and previously passing against a real OpenRefine 3.10.1 local HTTP backend
+- Total collected tests: 95
+- Backend-free unit tests: 81 passing
+- E2E tests: 14 collected; the 3 backend-independent subprocess checks pass locally, and the original 12-test suite previously passed against a real OpenRefine 3.10.1 local HTTP backend
 - Minimum validator thresholds met: 50+ pytest tests and 10+ E2E pytest tests
 
 ## Coverage Notes
 
 - Unit tests cover operation JSON builders, session persistence, fake-backend service orchestration, CLI JSON output, and default REPL entry.
-- E2E tests cover real backend import, metadata, row reads, operation application, CSV export verification, subprocess CLI workflows, session persistence, undo/redo, JSON error handling, and cleanup recovery.
+- E2E tests cover piped REPL user input, real backend import, metadata, row reads, operation application, CSV export verification, subprocess CLI workflows, session persistence, undo/redo, JSON error handling, and cleanup recovery.
 - Reconciliation workflows are documented as a limitation and currently require applying exported OpenRefine reconciliation operation histories.
