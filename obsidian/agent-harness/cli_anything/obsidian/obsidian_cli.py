@@ -408,7 +408,7 @@ def repl():
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("obsidian", version="1.1.0")
+    skin = ReplSkin("obsidian", version="1.1.1")
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()

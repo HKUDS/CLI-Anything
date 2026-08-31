@@ -287,12 +287,27 @@ class TestNoteModule:
         result = get_active("https://localhost:27124", "test-key")
         assert result["content"] == "# Active Note"
 
-    @patch("cli_anything.obsidian.core.note.api_put")
-    def test_open_note(self, mock_api):
+    @patch("cli_anything.obsidian.core.note.api_post")
+    def test_open_note(self, mock_post):
         from cli_anything.obsidian.core.note import open_note
-        mock_api.return_value = {"status": "ok"}
+        mock_post.return_value = {"status": "ok"}
         result = open_note("https://localhost:27124", "test-key", "folder/note.md")
         assert result["status"] == "ok"
+        mock_post.assert_called_once_with(
+            "https://localhost:27124", "/open/folder/note.md", "test-key"
+        )
+
+    @patch("cli_anything.obsidian.core.note.api_post")
+    def test_open_note_does_not_put_active(self, mock_post):
+        """POST /open/{path} opens the note; PUT /active/ would overwrite it."""
+        from cli_anything.obsidian.core.note import open_note
+        mock_post.return_value = {"status": "ok"}
+        open_note("https://localhost:27124", "test-key", "/Daily.md")
+        mock_post.assert_called_once_with(
+            "https://localhost:27124", "/open/Daily.md", "test-key"
+        )
+        assert mock_post.call_args.args[1].startswith("/open/")
+        assert "/active/" not in mock_post.call_args.args[1]
 
 
 class TestCommandModule:
