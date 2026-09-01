@@ -618,4 +618,38 @@ class TestReplDocCreateFile:
         )
         client.create_doc_with_md.assert_called_once_with("nb1", "/test", "# 标题\n\n正文")
 
+    def test_doc_create_file_then_md_conflict(self, tmp_path):
+        """--file before --md still reports the mutual-exclusion error."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--file", str(note), "--md", "inline"],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "either" in skin.error.call_args[0][0].lower()
+
+    def test_doc_create_md_then_file_conflict(self, tmp_path):
+        """--md before --file reports the mutual-exclusion error."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--md", "inline", "--file", str(note)],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "either" in skin.error.call_args[0][0].lower()
+
 
