@@ -1,5 +1,7 @@
 """Obsidian active note operations — get and open."""
 
+from urllib.parse import quote
+
 from cli_anything.obsidian.utils.obsidian_backend import api_get, api_post
 
 
@@ -14,5 +16,6 @@ def open_note(base_url: str, api_key: str, path: str) -> dict:
     Uses POST /open/{path}. PUT /active/ overwrites the currently
     open note's content (Local REST API).
     """
-    endpoint = f"/open/{path.lstrip('/')}"
+    encoded = quote(path.lstrip("/"), safe="/")
+    endpoint = f"/open/{encoded}"
     return api_post(base_url, endpoint, api_key)

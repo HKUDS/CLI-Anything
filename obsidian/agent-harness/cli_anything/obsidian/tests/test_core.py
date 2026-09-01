@@ -309,6 +309,24 @@ class TestNoteModule:
         assert mock_post.call_args.args[1].startswith("/open/")
         assert "/active/" not in mock_post.call_args.args[1]
 
+    @patch("cli_anything.obsidian.core.note.api_post")
+    def test_open_note_encodes_reserved_url_chars(self, mock_post):
+        from cli_anything.obsidian.core.note import open_note
+        mock_post.return_value = {"status": "ok"}
+        open_note("https://localhost:27124", "test-key", "folder/a#b.md")
+        mock_post.assert_called_once_with(
+            "https://localhost:27124", "/open/folder/a%23b.md", "test-key"
+        )
+
+    @patch("cli_anything.obsidian.core.note.api_post")
+    def test_open_note_encodes_query_char_and_keeps_slashes(self, mock_post):
+        from cli_anything.obsidian.core.note import open_note
+        mock_post.return_value = {"status": "ok"}
+        open_note("https://localhost:27124", "test-key", "folder/a?b.md")
+        mock_post.assert_called_once_with(
+            "https://localhost:27124", "/open/folder/a%3Fb.md", "test-key"
+        )
+
 
 class TestCommandModule:
     @patch("cli_anything.obsidian.core.command.api_get")
