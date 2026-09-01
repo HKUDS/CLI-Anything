@@ -546,6 +546,22 @@ class TestStdinDecoding:
         monkeypatch.setattr(sys, "stdin", _FakeStdin("中文内容".encode("gb18030")))
         assert _read_stdin() == "中文内容"
 
+    def test_read_stdin_pinned_encoding(self, monkeypatch):
+        """SIYUAN_STDIN_ENCODING pins the pipe encoding for GB18030/UTF-8 ambiguity.
+
+        毛 is c3 ab in GB18030, which is also valid UTF-8 (ë), so the fallback
+        never triggers without an explicit encoding.
+        """
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("毛".encode("gb18030")))
+        monkeypatch.setenv("SIYUAN_STDIN_ENCODING", "gb18030")
+        assert _read_stdin() == "毛"
+
+    def test_read_stdin_pinned_bad_encoding_falls_back(self, monkeypatch):
+        """An invalid pinned encoding falls back to utf-8-sig."""
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("中文".encode("utf-8")))
+        monkeypatch.setenv("SIYUAN_STDIN_ENCODING", "no-such-codec")
+        assert _read_stdin() == "中文"
+
 
 # ── REPL delete confirmation and --file ────────────────────────────────
 
@@ -711,5 +727,31 @@ class TestDocCreateContentConflict:
             assert result.exit_code == 2
             assert "both" in result.output.lower()
             mock_ctx.client.create_doc_with_md.assert_not_called()
+
+
+class TestBlockContentConflict:
+    def test_block_insert_data_and_file_conflict(self, runner, mock_ctx, tmp_path):
+        """block insert positional data + --file is rejected."""
+        note = tmp_path / "note.md"
+        note.write_text("file content", encoding="utf-8")
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(
+                cli, ["block", "insert", "inline", "--parent", "p", "--file", str(note)]
+            )
+            assert result.exit_code == 2
+            assert "not both" in result.output.lower()
+            mock_ctx.client.insert_block.assert_not_called()
+
+    def test_block_update_data_and_file_conflict(self, runner, mock_ctx, tmp_path):
+        """block update positional data + --file is rejected."""
+        note = tmp_path / "note.md"
+        note.write_text("file content", encoding="utf-8")
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(
+                cli, ["block", "update", "b1", "inline", "--file", str(note)]
+            )
+            assert result.exit_code == 2
+            assert "not both" in result.output.lower()
+            mock_ctx.client.update_block.assert_not_called()
 
 

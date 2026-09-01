@@ -30,12 +30,23 @@ def _read_stdin() -> str:
     instead.  When the pipe is configured with a CJK code page (e.g. GBK on
     Chinese Windows), the bytes arrive GBK-encoded; we fall back from UTF-8 to
     GB18030 so those still decode correctly.
+
+    GB18030 bytes that also form valid UTF-8 (e.g. 毛 = ``c3 ab``) decode as
+    UTF-8 mojibake without raising, so the fallback never runs.  Set
+    ``SIYUAN_STDIN_ENCODING`` to pin the pipe encoding explicitly when the
+    sender is a CJK code page.
     """
     if sys.stdin.isatty():
         raise click.UsageError(
             "stdin pipe expected (e.g. echo 'content' | sy block insert --parent pid -)"
         )
     raw = sys.stdin.buffer.read()
+    pinned = os.environ.get("SIYUAN_STDIN_ENCODING", "").strip()
+    if pinned:
+        try:
+            return raw.decode(pinned)
+        except (UnicodeDecodeError, LookupError):
+            return raw.decode("utf-8-sig", errors="replace")
     for enc in ("utf-8-sig", "gb18030"):
         try:
             return raw.decode(enc)
@@ -686,6 +697,8 @@ def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: st
     if not parent and not previous and not next_:
         raise click.UsageError("An anchor is required: --parent, --previous, or --next")
     if file_path:
+        if data:
+            raise click.UsageError("Provide block data either as an argument or via --file, not both.")
         data = _read_file(file_path)
     elif not data or data == "-":
         data = _read_stdin()
@@ -705,6 +718,8 @@ def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: st
 def block_update(ctx: SiYuanContext, block_id: str, data: str | None, data_type: str, file_path: str):
     """Update a block's content. Data reads from stdin when '-' or omitted."""
     if file_path:
+        if data:
+            raise click.UsageError("Provide block data either as an argument or via --file, not both.")
         data = _read_file(file_path)
     elif not data or data == "-":
         data = _read_stdin()
