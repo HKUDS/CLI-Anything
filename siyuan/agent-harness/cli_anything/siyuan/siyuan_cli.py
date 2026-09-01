@@ -239,18 +239,19 @@ def _dispatch_repl(skin: Any, ctx: SiYuanContext, cmd: str) -> None:
         return
 
     json_mode = "--json" in parts
-    parts = [p for p in parts if p != "--json"]
+    dangerous = "--dangerous" in parts
+    parts = [p for p in parts if p not in ("--json", "--dangerous")]
 
     client = ctx.client
     session = ctx.session
 
     command = parts[0]
     if command == "notebook":
-        _handle_notebook_repl(skin, client, session, parts, json_mode)
+        _handle_notebook_repl(skin, client, session, parts, json_mode, dangerous)
     elif command == "doc":
-        _handle_doc_repl(skin, client, session, parts, json_mode)
+        _handle_doc_repl(skin, client, session, parts, json_mode, dangerous)
     elif command == "block":
-        _handle_block_repl(skin, client, parts, json_mode)
+        _handle_block_repl(skin, client, parts, json_mode, dangerous)
     elif command == "sql" and len(parts) >= 2:
         _handle_sql_repl(skin, client, parts, json_mode)
     elif command == "search" and len(parts) >= 2:
@@ -265,7 +266,7 @@ def _dispatch_repl(skin: Any, ctx: SiYuanContext, cmd: str) -> None:
 
 def _handle_notebook_repl(skin: Any, client: SiYuanClient,
                           session: SessionManager, parts: list[str],
-                          json_mode: bool) -> None:
+                          json_mode: bool, dangerous: bool = False) -> None:
     if len(parts) < 2:
         skin.error("Usage: notebook <list|create|rename|remove>")
         return
@@ -288,6 +289,9 @@ def _handle_notebook_repl(skin: Any, client: SiYuanClient,
         client.rename_notebook(parts[2], " ".join(parts[3:]))
         skin.success("Renamed")
     elif sub == "remove" and len(parts) >= 3:
+        if not dangerous:
+            skin.error("Refusing to remove a notebook without confirmation. Add --dangerous.")
+            return
         client.remove_notebook(parts[2])
         skin.success("Removed")
     else:
@@ -296,19 +300,30 @@ def _handle_notebook_repl(skin: Any, client: SiYuanClient,
 
 def _handle_doc_repl(skin: Any, client: SiYuanClient,
                      session: SessionManager, parts: list[str],
-                     json_mode: bool) -> None:
+                     json_mode: bool, dangerous: bool = False) -> None:
     if len(parts) < 2:
         skin.error("Usage: doc <create|list|tree|get|rename|remove|export>")
         return
     sub = parts[1]
     if sub == "create" and len(parts) >= 4:
         md = ""
+        file_path = ""
+        if "--file" in parts:
+            idx = parts.index("--file") + 1
+            if idx < len(parts):
+                file_path = parts[idx]
+            parts = parts[:parts.index("--file")]
         if "--md" in parts:
             idx = parts.index("--md") + 1
             if idx < len(parts):
                 md = parts[idx]
             parts = parts[:parts.index("--md")]
-        if md == "-":
+        if file_path:
+            if md not in ("", "-"):
+                skin.error("Use either --md or --file, not both.")
+                return
+            md = _read_file(file_path)
+        elif md == "-":
             md = _read_stdin()
         nb_id = parts[2]
         doc_path = parts[3]
@@ -349,6 +364,9 @@ def _handle_doc_repl(skin: Any, client: SiYuanClient,
         client.rename_doc_by_id(parts[2], " ".join(parts[3:]))
         skin.success("Renamed")
     elif sub == "remove" and len(parts) >= 3:
+        if not dangerous:
+            skin.error("Refusing to remove a document without confirmation. Add --dangerous.")
+            return
         client.remove_doc_by_id(parts[2])
         skin.success("Removed")
     elif sub == "export" and len(parts) >= 3:
@@ -363,7 +381,8 @@ def _handle_doc_repl(skin: Any, client: SiYuanClient,
 
 
 def _handle_block_repl(skin: Any, client: SiYuanClient,
-                       parts: list[str], json_mode: bool) -> None:
+                       parts: list[str], json_mode: bool,
+                       dangerous: bool = False) -> None:
     if len(parts) < 2:
         skin.error("Usage: block <insert|prepend|append|update|delete|get|child>")
         return
@@ -399,6 +418,9 @@ def _handle_block_repl(skin: Any, client: SiYuanClient,
         client.update_block("markdown", data, parts[2])
         skin.success("Block updated")
     elif sub == "delete" and len(parts) >= 3:
+        if not dangerous:
+            skin.error("Refusing to delete a block without confirmation. Add --dangerous.")
+            return
         client.delete_block(parts[2])
         skin.success("Block deleted")
     elif sub == "get" and len(parts) >= 3:

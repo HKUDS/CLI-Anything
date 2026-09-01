@@ -11,7 +11,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from cli_anything.siyuan.siyuan_cli import _read_stdin, cli
+from cli_anything.siyuan.siyuan_cli import (
+    _handle_block_repl,
+    _handle_doc_repl,
+    _handle_notebook_repl,
+    _read_stdin,
+    cli,
+)
 
 
 @pytest.fixture
@@ -539,4 +545,77 @@ class TestStdinDecoding:
         """_read_stdin falls back to GB18030 when bytes are not UTF-8."""
         monkeypatch.setattr(sys, "stdin", _FakeStdin("中文内容".encode("gb18030")))
         assert _read_stdin() == "中文内容"
+
+
+# ── REPL delete confirmation and --file ────────────────────────────────
+
+
+class TestReplDeleteConfirmation:
+    def test_notebook_remove_requires_dangerous(self):
+        """REPL notebook remove refuses without --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_notebook_repl(skin, client, session, ["notebook", "remove", "nb1"], False, False)
+        client.remove_notebook.assert_not_called()
+        skin.error.assert_called_once()
+
+    def test_notebook_remove_with_dangerous(self):
+        """REPL notebook remove proceeds with --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_notebook_repl(skin, client, session, ["notebook", "remove", "nb1"], False, True)
+        client.remove_notebook.assert_called_once_with("nb1")
+
+    def test_doc_remove_requires_dangerous(self):
+        """REPL doc remove refuses without --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_doc_repl(skin, client, session, ["doc", "remove", "doc1"], False, False)
+        client.remove_doc_by_id.assert_not_called()
+        skin.error.assert_called_once()
+
+    def test_doc_remove_with_dangerous(self):
+        """REPL doc remove proceeds with --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_doc_repl(skin, client, session, ["doc", "remove", "doc1"], False, True)
+        client.remove_doc_by_id.assert_called_once_with("doc1")
+
+    def test_block_delete_requires_dangerous(self):
+        """REPL block delete refuses without --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        _handle_block_repl(skin, client, ["block", "delete", "b1"], False, False)
+        client.delete_block.assert_not_called()
+        skin.error.assert_called_once()
+
+    def test_block_delete_with_dangerous(self):
+        """REPL block delete proceeds with --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        _handle_block_repl(skin, client, ["block", "delete", "b1"], False, True)
+        client.delete_block.assert_called_once_with("b1")
+
+
+class TestReplDocCreateFile:
+    def test_doc_create_with_file(self, tmp_path):
+        """REPL doc create --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        client.create_doc_with_md.return_value = "doc123"
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("# 标题\n\n正文", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--file", str(note)],
+            False, False,
+        )
+        client.create_doc_with_md.assert_called_once_with("nb1", "/test", "# 标题\n\n正文")
+
 
