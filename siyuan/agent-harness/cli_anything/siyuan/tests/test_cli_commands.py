@@ -652,4 +652,64 @@ class TestReplDocCreateFile:
         skin.error.assert_called_once()
         assert "either" in skin.error.call_args[0][0].lower()
 
+    def test_doc_create_dangling_file_flag(self):
+        """REPL doc create --file without a value is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--file"],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "value" in skin.error.call_args[0][0].lower()
+
+    def test_doc_create_dangling_md_flag(self):
+        """REPL doc create --md without a value is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--md"],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "value" in skin.error.call_args[0][0].lower()
+
+    def test_doc_create_stdin_sentinel_with_file_conflict(self, tmp_path):
+        """--md - combined with --file is rejected, not silently preferring the file."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--md", "-", "--file", str(note)],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+
+
+class TestDocCreateContentConflict:
+    def test_one_shot_stdin_sentinel_with_file_conflict(self, runner, mock_ctx, tmp_path):
+        """one-shot doc create --md - --file is rejected, not silently preferring the file."""
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(
+                cli, ["doc", "create", "nb1", "/test", "--md", "-", "--file", str(note)]
+            )
+            assert result.exit_code == 2
+            assert "both" in result.output.lower()
+            mock_ctx.client.create_doc_with_md.assert_not_called()
+
 

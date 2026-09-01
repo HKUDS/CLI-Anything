@@ -314,20 +314,20 @@ def _handle_doc_repl(skin: Any, client: SiYuanClient,
         while i < len(parts):
             p = parts[i]
             if p in ("--md", "--file"):
-                if i + 1 < len(parts):
-                    if p == "--md":
-                        md = parts[i + 1]
-                    else:
-                        file_path = parts[i + 1]
-                    i += 2  # skip flag and its value
+                if i + 1 >= len(parts):
+                    skin.error(f"Option {p} requires a value.")
+                    return
+                if p == "--md":
+                    md = parts[i + 1]
                 else:
-                    i += 1  # dangling flag
+                    file_path = parts[i + 1]
+                i += 2  # skip flag and its value
             else:
                 stripped.append(p)
                 i += 1
         parts = stripped
         if file_path:
-            if md not in ("", "-"):
+            if md:
                 skin.error("Use either --md or --file, not both.")
                 return
             md = _read_file(file_path)
@@ -584,7 +584,7 @@ def doc_create(ctx: SiYuanContext, notebook_id: str, path: str, md: str, file_pa
       sy doc create nb1 /test --file note.md
     """
     if file_path:
-        if md not in ("", "-"):
+        if md:
             raise click.UsageError("Use either --md or --file, not both.")
         md = _read_file(file_path)
     elif md == "-":
