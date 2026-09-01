@@ -48,7 +48,8 @@ Our CLI wraps the Obsidian Local REST API plugin with:
 | `/search/` | POST | Structured search — Dataview DQL (`application/vnd.olrapi.dataview.dql+txt`) or JsonLogic (`application/vnd.olrapi.jsonlogic+json`) |
 | `/search/simple/` | POST | Plain text search |
 | `/active/` | GET | Get active note |
-| `/active/` | PUT | Open a note |
+| `/active/` | PUT | Overwrite the currently open note |
+| `/open/{path}` | POST | Open a note in the Obsidian UI |
 | `/commands/` | GET | List commands |
 | `/commands/{id}/` | POST | Execute command |
 
@@ -71,7 +72,7 @@ All requests use HTTPS with a self-signed certificate (`verify=False`).
 | `search query <q> [--type dql\|jsonlogic]` | `POST /search/` (raw body, vendor Content-Type) |
 | `search simple <q>` | `POST /search/simple/` |
 | `note active` | `GET /active/` |
-| `note open <path>` | `PUT /active/` |
+| `note open <path>` | `POST /open/{path}` |
 | `command list` | `GET /commands/` |
 | `command execute <id>` | `POST /commands/{id}/` |
 | `server status` | `GET /` |

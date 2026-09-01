@@ -1132,7 +1132,7 @@
     {
       "name": "obsidian",
       "display_name": "Obsidian",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "description": "Knowledge management and note-taking — manage notes, search vault, execute commands via Obsidian Local REST API",
       "requires": "Obsidian desktop app with Local REST API plugin enabled",
       "homepage": "https://obsidian.md",
