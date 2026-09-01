@@ -5,12 +5,13 @@ No external dependencies or running SiYuan instance required.
 """
 
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
-from cli_anything.siyuan.siyuan_cli import cli
+from cli_anything.siyuan.siyuan_cli import _read_stdin, cli
 
 
 @pytest.fixture
@@ -406,3 +407,136 @@ class TestDocTreeRecursiveCommand:
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert data[0]["id"] == "doc1"
+
+
+# ── Destructive commands require --dangerous ───────────────────────────
+
+
+class TestDocRemoveCommand:
+    def test_doc_remove_without_dangerous_refuses(self, runner, mock_ctx):
+        """doc remove refuses to run without --dangerous confirmation."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["doc", "remove", "doc1"])
+            assert result.exit_code == 1
+            assert "dangerous" in result.output.lower()
+            mock_ctx.client.remove_doc_by_id.assert_not_called()
+
+    def test_doc_remove_with_dangerous_succeeds(self, runner, mock_ctx):
+        """doc remove proceeds when --dangerous is passed."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["doc", "remove", "doc1", "--dangerous"])
+            assert result.exit_code == 0
+            mock_ctx.client.remove_doc_by_id.assert_called_once_with("doc1")
+
+
+class TestNotebookRemoveCommand:
+    def test_notebook_remove_without_dangerous_refuses(self, runner, mock_ctx):
+        """notebook remove refuses to run without --dangerous confirmation."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["notebook", "remove", "nb1"])
+            assert result.exit_code == 1
+            assert "dangerous" in result.output.lower()
+            mock_ctx.client.remove_notebook.assert_not_called()
+
+    def test_notebook_remove_with_dangerous_succeeds(self, runner, mock_ctx):
+        """notebook remove proceeds when --dangerous is passed."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["notebook", "remove", "nb1", "--dangerous"])
+            assert result.exit_code == 0
+            mock_ctx.client.remove_notebook.assert_called_once_with("nb1")
+
+
+class TestBlockDeleteCommand:
+    def test_block_delete_without_dangerous_refuses(self, runner, mock_ctx):
+        """block delete refuses to run without --dangerous confirmation."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["block", "delete", "b1"])
+            assert result.exit_code == 1
+            assert "dangerous" in result.output.lower()
+            mock_ctx.client.delete_block.assert_not_called()
+
+    def test_block_delete_with_dangerous_succeeds(self, runner, mock_ctx):
+        """block delete proceeds when --dangerous is passed."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["block", "delete", "b1", "--dangerous"])
+            assert result.exit_code == 0
+            mock_ctx.client.delete_block.assert_called_once_with("b1")
+
+
+# ── --file reads content directly (avoids PowerShell pipe mangling) ────
+
+
+class TestFileContentReading:
+    def test_doc_create_with_file(self, runner, mock_ctx):
+        """doc create --file reads UTF-8 content directly from a file."""
+        mock_ctx.client.create_doc_with_md.return_value = "doc123"
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            with runner.isolated_filesystem():
+                with open("note.md", "w", encoding="utf-8") as f:
+                    f.write("# 中文标题\n\n正文内容")
+                result = runner.invoke(
+                    cli, ["doc", "create", "nb1", "/test", "--file", "note.md"]
+                )
+                assert result.exit_code == 0
+                mock_ctx.client.create_doc_with_md.assert_called_with(
+                    "nb1", "/test", "# 中文标题\n\n正文内容"
+                )
+
+    def test_doc_create_file_and_md_conflict(self, runner, mock_ctx):
+        """doc create refuses to accept both --file and --md."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            with runner.isolated_filesystem():
+                with open("note.md", "w", encoding="utf-8") as f:
+                    f.write("x")
+                result = runner.invoke(
+                    cli,
+                    ["doc", "create", "nb1", "/test", "--file", "note.md", "--md", "y"],
+                )
+                assert result.exit_code == 2
+                mock_ctx.client.create_doc_with_md.assert_not_called()
+
+    def test_block_update_with_file(self, runner, mock_ctx):
+        """block update --file reads UTF-8 content directly from a file."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            with runner.isolated_filesystem():
+                with open("block.md", "w", encoding="utf-8") as f:
+                    f.write("更新后的中文内容")
+                result = runner.invoke(
+                    cli, ["block", "update", "b1", "--file", "block.md"]
+                )
+                assert result.exit_code == 0
+                mock_ctx.client.update_block.assert_called_with(
+                    "markdown", "更新后的中文内容", "b1"
+                )
+
+
+# ── stdin decoding fallback ────────────────────────────────────────────
+
+
+class _FakeStdinBuffer:
+    def __init__(self, raw: bytes):
+        self._raw = raw
+
+    def read(self) -> bytes:
+        return self._raw
+
+
+class _FakeStdin:
+    def __init__(self, raw: bytes):
+        self.buffer = _FakeStdinBuffer(raw)
+
+    def isatty(self) -> bool:
+        return False
+
+
+class TestStdinDecoding:
+    def test_read_stdin_utf8(self, monkeypatch):
+        """_read_stdin decodes UTF-8 bytes correctly."""
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("中文内容".encode("utf-8")))
+        assert _read_stdin() == "中文内容"
+
+    def test_read_stdin_gbk_fallback(self, monkeypatch):
+        """_read_stdin falls back to GB18030 when bytes are not UTF-8."""
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("中文内容".encode("gb18030")))
+        assert _read_stdin() == "中文内容"
+

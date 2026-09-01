@@ -222,9 +222,22 @@ class SiYuanClient:
         })
 
     def update_block(self, data_type: str, data: str, block_id: str) -> list[dict[str, Any]]:
-        return self._post("/api/block/updateBlock", {
-            "dataType": data_type, "data": data, "id": block_id,
-        })
+        try:
+            return self._post("/api/block/updateBlock", {
+                "dataType": data_type, "data": data, "id": block_id,
+            })
+        except SiYuanClientError as e:
+            msg = str(e).lower()
+            if any(k in msg for k in ("not found", "notfound", "未找到", "不存在")):
+                raise SiYuanClientError(
+                    f"{e}. The target may be a document root block (doc ID), "
+                    f"which is not a block in the block tree and cannot be "
+                    f"updated via block update. To change a document's body, "
+                    f"run `doc remove <docId> --dangerous` then `doc create "
+                    f"<box> <path> --file <md>` (or update a child block ID "
+                    f"instead)."
+                ) from e
+            raise
 
     def delete_block(self, block_id: str) -> list[dict[str, Any]]:
         return self._post("/api/block/deleteBlock", {"id": block_id})

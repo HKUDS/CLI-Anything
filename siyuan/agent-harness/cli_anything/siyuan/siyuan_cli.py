@@ -22,21 +22,48 @@ from cli_anything.siyuan.core.session import SessionManager
 
 
 def _read_stdin() -> str:
-    """Read stdin as raw bytes and decode as UTF-8 (with BOM handling).
+    """Read stdin as raw bytes and decode robustly.
 
-    PowerShell pipes text using the console code page (e.g. GBK on Chinese
-    Windows), which mangles CJK characters before Python sees them.  Reading
-    raw bytes then decoding as UTF-8-sig is the most robust approach.
+    PowerShell pipes text using ``$OutputEncoding`` (ASCII on Windows
+    PowerShell 5.1 by default), which mangles CJK characters to ``?`` before
+    Python ever sees them — that case is unrecoverable, so use ``--file``
+    instead.  When the pipe is configured with a CJK code page (e.g. GBK on
+    Chinese Windows), the bytes arrive GBK-encoded; we fall back from UTF-8 to
+    GB18030 so those still decode correctly.
     """
     if sys.stdin.isatty():
         raise click.UsageError(
             "stdin pipe expected (e.g. echo 'content' | sy block insert --parent pid -)"
         )
     raw = sys.stdin.buffer.read()
+    for enc in ("utf-8-sig", "gb18030"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8-sig", errors="replace")
+
+
+def _read_file(path: str) -> str:
+    """Read content directly from a file as UTF-8.
+
+    Reading from a file bypasses the PowerShell pipe encoding problem entirely,
+    so CJK content survives intact.  Prefer this over stdin piping on Windows.
+    """
     try:
-        return raw.decode('utf-8-sig')
-    except UnicodeDecodeError:
-        return raw.decode('utf-8-sig', errors='replace')
+        with open(path, "r", encoding="utf-8-sig") as f:
+            return f.read()
+    except OSError as e:
+        raise click.UsageError(f"Cannot read file '{path}': {e}")
+
+
+def _confirm_dangerous(dangerous: bool, action: str) -> None:
+    """Refuse a destructive operation unless explicitly confirmed via --dangerous."""
+    if not dangerous:
+        raise click.ClickException(
+            f"Refusing to {action} without confirmation. "
+            "This is a destructive operation — pass --dangerous to confirm."
+        )
 
 
 # ── Click context ─────────────────────────────────────────────────────
@@ -126,14 +153,14 @@ def _build_repl_commands() -> dict[str, str]:
         "notebook list": "List all notebooks",
         "notebook create <name>": "Create a notebook",
         "notebook rename <id> <name>": "Rename a notebook",
-        "notebook remove <id>": "Remove a notebook",
-        "doc create <notebook> <path>": "Create a document with optional --md content",
+        "notebook remove <id>": "Remove a notebook (requires --dangerous)",
+        "doc create <notebook> <path>": "Create a document with optional --md/--file content",
         "doc list <notebook> <path>": "List documents at path",
         "doc tree <notebook>": "List full document tree",
         "doc get <id>": "Get document info by ID",
         "block insert <parent> <data>": "Insert a block (use '-' for stdin)",
         "block update <id> <data>": "Update a block (use '-' for stdin)",
-        "block delete <id>": "Delete a block",
+        "block delete <id>": "Delete a block (requires --dangerous)",
         "block get <id>": "Get block kramdown source",
         "sql <stmt>": "Execute SQL query",
         "search <query>": "Full-text search",
@@ -468,9 +495,11 @@ def notebook_create(ctx: SiYuanContext, name: str):
 
 @notebook.command("remove")
 @click.argument("notebook_id")
+@click.option("--dangerous", is_flag=True, help="Explicit confirmation to delete.")
 @click.pass_obj
-def notebook_remove(ctx: SiYuanContext, notebook_id: str):
-    """Remove a notebook by ID."""
+def notebook_remove(ctx: SiYuanContext, notebook_id: str, dangerous: bool):
+    """Remove a notebook by ID (requires --dangerous confirmation)."""
+    _confirm_dangerous(dangerous, "remove this notebook")
     ctx.client.remove_notebook(notebook_id)
     click.echo(f"Removed notebook: {notebook_id}")
 
@@ -512,15 +541,23 @@ def doc():
 @click.argument("notebook_id")
 @click.argument("path")
 @click.option("--md", default="", help="Markdown content. Use '-' to read from stdin.")
+@click.option("--file", "file_path", default="", help="Read markdown content from a UTF-8 file (avoids PowerShell pipe encoding issues).")
 @click.pass_obj
-def doc_create(ctx: SiYuanContext, notebook_id: str, path: str, md: str):
+def doc_create(ctx: SiYuanContext, notebook_id: str, path: str, md: str, file_path: str):
     """Create a document with optional Markdown content.
 
     To avoid shell escaping issues with special characters
     (backticks, quotes, parentheses), pipe Markdown via stdin:
       echo "## Title" | sy doc create nb1 /test --md -
+
+    On Windows, prefer --file to avoid PowerShell mangling CJK content to '?':
+      sy doc create nb1 /test --file note.md
     """
-    if md == "-":
+    if file_path:
+        if md not in ("", "-"):
+            raise click.UsageError("Use either --md or --file, not both.")
+        md = _read_file(file_path)
+    elif md == "-":
         md = _read_stdin()
     doc_id = ctx.client.create_doc_with_md(notebook_id, path, md)
     if ctx.json_output:
@@ -590,9 +627,11 @@ def doc_rename(ctx: SiYuanContext, doc_id: str, title: str):
 
 @doc.command("remove")
 @click.argument("doc_id")
+@click.option("--dangerous", is_flag=True, help="Explicit confirmation to delete.")
 @click.pass_obj
-def doc_remove(ctx: SiYuanContext, doc_id: str):
-    """Remove a document."""
+def doc_remove(ctx: SiYuanContext, doc_id: str, dangerous: bool):
+    """Remove a document (requires --dangerous confirmation)."""
+    _confirm_dangerous(dangerous, "remove this document")
     ctx.client.remove_doc_by_id(doc_id)
     click.echo(f"Removed: {doc_id}")
 
@@ -610,12 +649,15 @@ def block():
 @click.option("--parent", default="", help="Parent block ID")
 @click.option("--next", "next_", default="", help="Next block ID")
 @click.option("--data-type", default="markdown", help="Data type (markdown/dom)")
+@click.option("--file", "file_path", default="", help="Read block data from a UTF-8 file (avoids PowerShell pipe encoding issues).")
 @click.pass_obj
-def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: str, next_: str, data_type: str):
+def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: str, next_: str, data_type: str, file_path: str):
     """Insert a block. Data reads from stdin when '-' or omitted."""
     if not parent and not previous and not next_:
         raise click.UsageError("An anchor is required: --parent, --previous, or --next")
-    if not data or data == "-":
+    if file_path:
+        data = _read_file(file_path)
+    elif not data or data == "-":
         data = _read_stdin()
     result = ctx.client.insert_block(data_type, data, parent_id=parent, previous_id=previous, next_id=next_)
     if ctx.json_output:
@@ -628,10 +670,13 @@ def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: st
 @click.argument("block_id")
 @click.argument("data", required=False)
 @click.option("--data-type", default="markdown", help="Data type")
+@click.option("--file", "file_path", default="", help="Read block data from a UTF-8 file (avoids PowerShell pipe encoding issues).")
 @click.pass_obj
-def block_update(ctx: SiYuanContext, block_id: str, data: str | None, data_type: str):
+def block_update(ctx: SiYuanContext, block_id: str, data: str | None, data_type: str, file_path: str):
     """Update a block's content. Data reads from stdin when '-' or omitted."""
-    if not data or data == "-":
+    if file_path:
+        data = _read_file(file_path)
+    elif not data or data == "-":
         data = _read_stdin()
     ctx.client.update_block(data_type, data, block_id)
     click.echo(f"Updated block: {block_id}")
@@ -639,9 +684,11 @@ def block_update(ctx: SiYuanContext, block_id: str, data: str | None, data_type:
 
 @block.command("delete")
 @click.argument("block_id")
+@click.option("--dangerous", is_flag=True, help="Explicit confirmation to delete.")
 @click.pass_obj
-def block_delete(ctx: SiYuanContext, block_id: str):
-    """Delete a block."""
+def block_delete(ctx: SiYuanContext, block_id: str, dangerous: bool):
+    """Delete a block (requires --dangerous confirmation)."""
+    _confirm_dangerous(dangerous, "delete this block")
     ctx.client.delete_block(block_id)
     click.echo(f"Deleted block: {block_id}")
 
