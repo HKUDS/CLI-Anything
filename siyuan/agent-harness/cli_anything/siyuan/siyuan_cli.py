@@ -399,6 +399,29 @@ def _handle_doc_repl(skin: Any, client: SiYuanClient,
         skin.error("Invalid doc command")
 
 
+def _parse_repl_content_source(parts: list[str], start: int, skin: Any) -> tuple[list[str], str] | None:
+    """Strip a --file <path> pair from parts[start:].
+
+    Returns (remaining positional args, file_path).  Emits an error and returns
+    None when --file has no following value.
+    """
+    rest: list[str] = []
+    file_path = ""
+    i = start
+    while i < len(parts):
+        p = parts[i]
+        if p == "--file":
+            if i + 1 >= len(parts):
+                skin.error("Option --file requires a value.")
+                return None
+            file_path = parts[i + 1]
+            i += 2
+        else:
+            rest.append(p)
+            i += 1
+    return rest, file_path
+
+
 def _handle_block_repl(skin: Any, client: SiYuanClient,
                        parts: list[str], json_mode: bool,
                        dangerous: bool = False) -> None:
@@ -407,13 +430,26 @@ def _handle_block_repl(skin: Any, client: SiYuanClient,
         return
     sub = parts[1]
     if sub == "insert":
-        if len(parts) < 4:
+        if len(parts) < 3:
             skin.error("Usage: block insert <parent_id> <data>")
             return
-        data = parts[3]
-        if data == "-":
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block insert <parent_id> <data>")
+            return
+        parent_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        result = client.insert_block("markdown", data, parent_id=parts[2])
+        result = client.insert_block("markdown", data, parent_id=parent_id)
         if json_mode:
             click.echo(json.dumps(result, ensure_ascii=False))
         else:
@@ -430,11 +466,27 @@ def _handle_block_repl(skin: Any, client: SiYuanClient,
             data = _read_stdin()
         client.append_block("markdown", data, parts[2])
         skin.success("Block appended")
-    elif sub == "update" and len(parts) >= 4:
-        data = parts[3]
-        if data == "-":
+    elif sub == "update":
+        if len(parts) < 3:
+            skin.error("Usage: block update <block_id> <data>")
+            return
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block update <block_id> <data>")
+            return
+        block_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        client.update_block("markdown", data, parts[2])
+        client.update_block("markdown", data, block_id)
         skin.success("Block updated")
     elif sub == "delete" and len(parts) >= 3:
         if not dangerous:

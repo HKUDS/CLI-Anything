@@ -617,6 +617,50 @@ class TestReplDeleteConfirmation:
         client.delete_block.assert_called_once_with("b1")
 
 
+class TestReplBlockFile:
+    def test_block_update_with_file(self, tmp_path):
+        """REPL block update --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("更新后的中文内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "update", "b1", "--file", str(note)], False, False)
+        client.update_block.assert_called_once_with("markdown", "更新后的中文内容", "b1")
+
+    def test_block_insert_with_file(self, tmp_path):
+        """REPL block insert --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("文件内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "insert", "p", "--file", str(note)], False, False)
+        client.insert_block.assert_called_once_with("markdown", "文件内容", parent_id="p")
+
+    def test_block_update_data_and_file_conflict(self, tmp_path):
+        """REPL block update with positional data + --file is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("文件内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "update", "b1", "inline", "--file", str(note)], False, False)
+        client.update_block.assert_not_called()
+        skin.error.assert_called_once()
+        assert "not both" in skin.error.call_args[0][0].lower()
+
+    def test_block_update_dangling_file_flag(self):
+        """REPL block update --file without a value is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+
+        _handle_block_repl(skin, client, ["block", "update", "b1", "--file"], False, False)
+        client.update_block.assert_not_called()
+        skin.error.assert_called_once()
+        assert "value" in skin.error.call_args[0][0].lower()
+
+
 class TestReplDocCreateFile:
     def test_doc_create_with_file(self, tmp_path):
         """REPL doc create --file reads UTF-8 content from a file."""

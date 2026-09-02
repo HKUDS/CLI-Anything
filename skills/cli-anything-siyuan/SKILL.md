@@ -26,25 +26,25 @@ documents, blocks, search, and export.
 | `list` | List all notebooks |
 | `create <name>` | Create a new notebook |
 | `rename <id> <name>` | Rename a notebook |
-| `remove <id>` | Delete a notebook |
+| `remove <id> [--dangerous]` | Delete a notebook (requires `--dangerous`) |
 | `open <id>` | Open a notebook |
 
 ### doc — Document management
 | Subcommand | Description |
 |------------|-------------|
-| `create <notebook> <path> [--md "content"]` | Create a document |
+| `create <notebook> <path> [--md "content" \| --file path]` | Create a document |
 | `list <notebook> [path]` | List documents |
 | `tree <notebook> [--path / --depth]` | Show doc tree |
 | `get <id>` | Get document path by ID |
 | `rename <id> <title>` | Rename a document |
-| `remove <id>` | Delete a document |
+| `remove <id> [--dangerous]` | Delete a document (requires `--dangerous`) |
 
 ### block — Block operations
 | Subcommand | Description |
 |------------|-------------|
-| `insert <data> [--previous / --parent]` | Insert a block |
-| `update <id> <data>` | Update a block |
-| `delete <id>` | Delete a block |
+| `insert <data> [--previous / --parent / --file]` | Insert a block |
+| `update <id> <data> [--file]` | Update a block (doc root blocks are not updateable) |
+| `delete <id> [--dangerous]` | Delete a block (requires `--dangerous`) |
 | `get <id>` | Get block kramdown source |
 | `children <id>` | Get child blocks |
 
@@ -66,6 +66,8 @@ documents, blocks, search, and export.
 - Document IDs look like `20210817205410-2kvfpfn` (timestamp-based)
 - API token can be found in SiYuan Settings → About
 - Connection defaults: `http://127.0.0.1:6806`
+- Prefer `--file <path>` over stdin piping for CJK/multiline content — reading the file directly avoids shell/PowerShell pipe encoding issues
+- Destructive commands (`remove`/`delete`) refuse to run without `--dangerous`
 
 ## Examples
 
