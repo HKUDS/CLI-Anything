@@ -202,3 +202,36 @@ class TestUncappedListings:
         body = call_kwargs["json"]
         assert "maxListCount" in body
         assert body["maxListCount"] == 0
+
+
+class TestUpdateBlockDocRootError:
+    """update_block augments 'not found' errors with doc-root guidance."""
+
+    @pytest.fixture
+    def client(self):
+        return SiYuanClient(SiYuanConfig(token="test-token"))
+
+    def _mock_error(self, client, msg: str):
+        mock_session = MagicMock()
+        mock_session.post.return_value.status_code = 200
+        mock_session.post.return_value.json.return_value = {"code": -1, "msg": msg}
+        client._session = mock_session
+
+    def test_update_block_doc_root_raises_guidance(self, client):
+        """update_block on a doc root (tree not found) adds actionable hint."""
+        self._mock_error(client, "tree not found")
+        from cli_anything.siyuan.core.client import SiYuanClientError
+        with pytest.raises(SiYuanClientError) as exc:
+            client.update_block("markdown", "data", "doc-id")
+        assert "document root block" in str(exc.value)
+        assert "doc remove" in str(exc.value)
+
+    def test_update_block_other_error_unchanged(self, client):
+        """update_block leaves unrelated errors intact."""
+        self._mock_error(client, "some other error")
+        from cli_anything.siyuan.core.client import SiYuanClientError
+        with pytest.raises(SiYuanClientError) as exc:
+            client.update_block("markdown", "data", "block-id")
+        assert "document root block" not in str(exc.value)
+        assert "some other error" in str(exc.value)
+

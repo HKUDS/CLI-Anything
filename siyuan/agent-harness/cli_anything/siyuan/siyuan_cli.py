@@ -22,21 +22,59 @@ from cli_anything.siyuan.core.session import SessionManager
 
 
 def _read_stdin() -> str:
-    """Read stdin as raw bytes and decode as UTF-8 (with BOM handling).
+    """Read stdin as raw bytes and decode robustly.
 
-    PowerShell pipes text using the console code page (e.g. GBK on Chinese
-    Windows), which mangles CJK characters before Python sees them.  Reading
-    raw bytes then decoding as UTF-8-sig is the most robust approach.
+    PowerShell pipes text using ``$OutputEncoding`` (ASCII on Windows
+    PowerShell 5.1 by default), which mangles CJK characters to ``?`` before
+    Python ever sees them — that case is unrecoverable, so use ``--file``
+    instead.  When the pipe is configured with a CJK code page (e.g. GBK on
+    Chinese Windows), the bytes arrive GBK-encoded; we fall back from UTF-8 to
+    GB18030 so those still decode correctly.
+
+    GB18030 bytes that also form valid UTF-8 (e.g. 毛 = ``c3 ab``) decode as
+    UTF-8 mojibake without raising, so the fallback never runs.  Set
+    ``SIYUAN_STDIN_ENCODING`` to pin the pipe encoding explicitly when the
+    sender is a CJK code page.
     """
     if sys.stdin.isatty():
         raise click.UsageError(
             "stdin pipe expected (e.g. echo 'content' | sy block insert --parent pid -)"
         )
     raw = sys.stdin.buffer.read()
+    pinned = os.environ.get("SIYUAN_STDIN_ENCODING", "").strip()
+    if pinned:
+        try:
+            return raw.decode(pinned)
+        except (UnicodeDecodeError, LookupError):
+            return raw.decode("utf-8-sig", errors="replace")
+    for enc in ("utf-8-sig", "gb18030"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8-sig", errors="replace")
+
+
+def _read_file(path: str) -> str:
+    """Read content directly from a file as UTF-8.
+
+    Reading from a file bypasses the PowerShell pipe encoding problem entirely,
+    so CJK content survives intact.  Prefer this over stdin piping on Windows.
+    """
     try:
-        return raw.decode('utf-8-sig')
-    except UnicodeDecodeError:
-        return raw.decode('utf-8-sig', errors='replace')
+        with open(path, "r", encoding="utf-8-sig") as f:
+            return f.read()
+    except OSError as e:
+        raise click.UsageError(f"Cannot read file '{path}': {e}")
+
+
+def _confirm_dangerous(dangerous: bool, action: str) -> None:
+    """Refuse a destructive operation unless explicitly confirmed via --dangerous."""
+    if not dangerous:
+        raise click.ClickException(
+            f"Refusing to {action} without confirmation. "
+            "This is a destructive operation — pass --dangerous to confirm."
+        )
 
 
 # ── Click context ─────────────────────────────────────────────────────
@@ -126,14 +164,14 @@ def _build_repl_commands() -> dict[str, str]:
         "notebook list": "List all notebooks",
         "notebook create <name>": "Create a notebook",
         "notebook rename <id> <name>": "Rename a notebook",
-        "notebook remove <id>": "Remove a notebook",
-        "doc create <notebook> <path>": "Create a document with optional --md content",
+        "notebook remove <id>": "Remove a notebook (requires --dangerous)",
+        "doc create <notebook> <path>": "Create a document with optional --md/--file content",
         "doc list <notebook> <path>": "List documents at path",
         "doc tree <notebook>": "List full document tree",
         "doc get <id>": "Get document info by ID",
         "block insert <parent> <data>": "Insert a block (use '-' for stdin)",
         "block update <id> <data>": "Update a block (use '-' for stdin)",
-        "block delete <id>": "Delete a block",
+        "block delete <id>": "Delete a block (requires --dangerous)",
         "block get <id>": "Get block kramdown source",
         "sql <stmt>": "Execute SQL query",
         "search <query>": "Full-text search",
@@ -212,18 +250,19 @@ def _dispatch_repl(skin: Any, ctx: SiYuanContext, cmd: str) -> None:
         return
 
     json_mode = "--json" in parts
-    parts = [p for p in parts if p != "--json"]
+    dangerous = "--dangerous" in parts
+    parts = [p for p in parts if p not in ("--json", "--dangerous")]
 
     client = ctx.client
     session = ctx.session
 
     command = parts[0]
     if command == "notebook":
-        _handle_notebook_repl(skin, client, session, parts, json_mode)
+        _handle_notebook_repl(skin, client, session, parts, json_mode, dangerous)
     elif command == "doc":
-        _handle_doc_repl(skin, client, session, parts, json_mode)
+        _handle_doc_repl(skin, client, session, parts, json_mode, dangerous)
     elif command == "block":
-        _handle_block_repl(skin, client, parts, json_mode)
+        _handle_block_repl(skin, client, parts, json_mode, dangerous)
     elif command == "sql" and len(parts) >= 2:
         _handle_sql_repl(skin, client, parts, json_mode)
     elif command == "search" and len(parts) >= 2:
@@ -238,7 +277,7 @@ def _dispatch_repl(skin: Any, ctx: SiYuanContext, cmd: str) -> None:
 
 def _handle_notebook_repl(skin: Any, client: SiYuanClient,
                           session: SessionManager, parts: list[str],
-                          json_mode: bool) -> None:
+                          json_mode: bool, dangerous: bool = False) -> None:
     if len(parts) < 2:
         skin.error("Usage: notebook <list|create|rename|remove>")
         return
@@ -261,6 +300,9 @@ def _handle_notebook_repl(skin: Any, client: SiYuanClient,
         client.rename_notebook(parts[2], " ".join(parts[3:]))
         skin.success("Renamed")
     elif sub == "remove" and len(parts) >= 3:
+        if not dangerous:
+            skin.error("Refusing to remove a notebook without confirmation. Add --dangerous.")
+            return
         client.remove_notebook(parts[2])
         skin.success("Removed")
     else:
@@ -269,19 +311,38 @@ def _handle_notebook_repl(skin: Any, client: SiYuanClient,
 
 def _handle_doc_repl(skin: Any, client: SiYuanClient,
                      session: SessionManager, parts: list[str],
-                     json_mode: bool) -> None:
+                     json_mode: bool, dangerous: bool = False) -> None:
     if len(parts) < 2:
         skin.error("Usage: doc <create|list|tree|get|rename|remove|export>")
         return
     sub = parts[1]
     if sub == "create" and len(parts) >= 4:
-        md = ""
-        if "--md" in parts:
-            idx = parts.index("--md") + 1
-            if idx < len(parts):
-                md = parts[idx]
-            parts = parts[:parts.index("--md")]
-        if md == "-":
+        # Parse --md/--file and strip both flags with their values in a single
+        # pass so behavior does not depend on argument order (Codex review).
+        md, file_path = "", ""
+        stripped: list[str] = []
+        i = 0
+        while i < len(parts):
+            p = parts[i]
+            if p in ("--md", "--file"):
+                if i + 1 >= len(parts):
+                    skin.error(f"Option {p} requires a value.")
+                    return
+                if p == "--md":
+                    md = parts[i + 1]
+                else:
+                    file_path = parts[i + 1]
+                i += 2  # skip flag and its value
+            else:
+                stripped.append(p)
+                i += 1
+        parts = stripped
+        if file_path:
+            if md:
+                skin.error("Use either --md or --file, not both.")
+                return
+            md = _read_file(file_path)
+        elif md == "-":
             md = _read_stdin()
         nb_id = parts[2]
         doc_path = parts[3]
@@ -322,6 +383,9 @@ def _handle_doc_repl(skin: Any, client: SiYuanClient,
         client.rename_doc_by_id(parts[2], " ".join(parts[3:]))
         skin.success("Renamed")
     elif sub == "remove" and len(parts) >= 3:
+        if not dangerous:
+            skin.error("Refusing to remove a document without confirmation. Add --dangerous.")
+            return
         client.remove_doc_by_id(parts[2])
         skin.success("Removed")
     elif sub == "export" and len(parts) >= 3:
@@ -335,43 +399,131 @@ def _handle_doc_repl(skin: Any, client: SiYuanClient,
         skin.error("Invalid doc command")
 
 
+def _parse_repl_content_source(parts: list[str], start: int, skin: Any) -> tuple[list[str], str] | None:
+    """Strip a --file <path> pair from parts[start:].
+
+    Returns (remaining positional args, file_path).  Emits an error and returns
+    None when --file has no following value.
+    """
+    rest: list[str] = []
+    file_path = ""
+    i = start
+    while i < len(parts):
+        p = parts[i]
+        if p == "--file":
+            if i + 1 >= len(parts):
+                skin.error("Option --file requires a value.")
+                return None
+            file_path = parts[i + 1]
+            i += 2
+        else:
+            rest.append(p)
+            i += 1
+    return rest, file_path
+
+
 def _handle_block_repl(skin: Any, client: SiYuanClient,
-                       parts: list[str], json_mode: bool) -> None:
+                       parts: list[str], json_mode: bool,
+                       dangerous: bool = False) -> None:
     if len(parts) < 2:
         skin.error("Usage: block <insert|prepend|append|update|delete|get|child>")
         return
     sub = parts[1]
     if sub == "insert":
-        if len(parts) < 4:
+        if len(parts) < 3:
             skin.error("Usage: block insert <parent_id> <data>")
             return
-        data = parts[3]
-        if data == "-":
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block insert <parent_id> <data>")
+            return
+        parent_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        result = client.insert_block("markdown", data, parent_id=parts[2])
+        result = client.insert_block("markdown", data, parent_id=parent_id)
         if json_mode:
             click.echo(json.dumps(result, ensure_ascii=False))
         else:
             skin.success("Block inserted")
-    elif sub == "prepend" and len(parts) >= 4:
-        data = parts[3]
-        if data == "-":
+    elif sub == "prepend":
+        if len(parts) < 3:
+            skin.error("Usage: block prepend <parent_id> <data>")
+            return
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block prepend <parent_id> <data>")
+            return
+        parent_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        client.prepend_block("markdown", data, parts[2])
+        client.prepend_block("markdown", data, parent_id)
         skin.success("Block prepended")
-    elif sub == "append" and len(parts) >= 4:
-        data = parts[3]
-        if data == "-":
+    elif sub == "append":
+        if len(parts) < 3:
+            skin.error("Usage: block append <parent_id> <data>")
+            return
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block append <parent_id> <data>")
+            return
+        parent_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        client.append_block("markdown", data, parts[2])
+        client.append_block("markdown", data, parent_id)
         skin.success("Block appended")
-    elif sub == "update" and len(parts) >= 4:
-        data = parts[3]
-        if data == "-":
+    elif sub == "update":
+        if len(parts) < 3:
+            skin.error("Usage: block update <block_id> <data>")
+            return
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block update <block_id> <data>")
+            return
+        block_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        client.update_block("markdown", data, parts[2])
+        client.update_block("markdown", data, block_id)
         skin.success("Block updated")
     elif sub == "delete" and len(parts) >= 3:
+        if not dangerous:
+            skin.error("Refusing to delete a block without confirmation. Add --dangerous.")
+            return
         client.delete_block(parts[2])
         skin.success("Block deleted")
     elif sub == "get" and len(parts) >= 3:
@@ -468,9 +620,11 @@ def notebook_create(ctx: SiYuanContext, name: str):
 
 @notebook.command("remove")
 @click.argument("notebook_id")
+@click.option("--dangerous", is_flag=True, help="Explicit confirmation to delete.")
 @click.pass_obj
-def notebook_remove(ctx: SiYuanContext, notebook_id: str):
-    """Remove a notebook by ID."""
+def notebook_remove(ctx: SiYuanContext, notebook_id: str, dangerous: bool):
+    """Remove a notebook by ID (requires --dangerous confirmation)."""
+    _confirm_dangerous(dangerous, "remove this notebook")
     ctx.client.remove_notebook(notebook_id)
     click.echo(f"Removed notebook: {notebook_id}")
 
@@ -512,15 +666,23 @@ def doc():
 @click.argument("notebook_id")
 @click.argument("path")
 @click.option("--md", default="", help="Markdown content. Use '-' to read from stdin.")
+@click.option("--file", "file_path", default="", help="Read markdown content from a UTF-8 file (avoids PowerShell pipe encoding issues).")
 @click.pass_obj
-def doc_create(ctx: SiYuanContext, notebook_id: str, path: str, md: str):
+def doc_create(ctx: SiYuanContext, notebook_id: str, path: str, md: str, file_path: str):
     """Create a document with optional Markdown content.
 
     To avoid shell escaping issues with special characters
     (backticks, quotes, parentheses), pipe Markdown via stdin:
       echo "## Title" | sy doc create nb1 /test --md -
+
+    On Windows, prefer --file to avoid PowerShell mangling CJK content to '?':
+      sy doc create nb1 /test --file note.md
     """
-    if md == "-":
+    if file_path:
+        if md:
+            raise click.UsageError("Use either --md or --file, not both.")
+        md = _read_file(file_path)
+    elif md == "-":
         md = _read_stdin()
     doc_id = ctx.client.create_doc_with_md(notebook_id, path, md)
     if ctx.json_output:
@@ -590,9 +752,11 @@ def doc_rename(ctx: SiYuanContext, doc_id: str, title: str):
 
 @doc.command("remove")
 @click.argument("doc_id")
+@click.option("--dangerous", is_flag=True, help="Explicit confirmation to delete.")
 @click.pass_obj
-def doc_remove(ctx: SiYuanContext, doc_id: str):
-    """Remove a document."""
+def doc_remove(ctx: SiYuanContext, doc_id: str, dangerous: bool):
+    """Remove a document (requires --dangerous confirmation)."""
+    _confirm_dangerous(dangerous, "remove this document")
     ctx.client.remove_doc_by_id(doc_id)
     click.echo(f"Removed: {doc_id}")
 
@@ -610,12 +774,17 @@ def block():
 @click.option("--parent", default="", help="Parent block ID")
 @click.option("--next", "next_", default="", help="Next block ID")
 @click.option("--data-type", default="markdown", help="Data type (markdown/dom)")
+@click.option("--file", "file_path", default="", help="Read block data from a UTF-8 file (avoids PowerShell pipe encoding issues).")
 @click.pass_obj
-def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: str, next_: str, data_type: str):
+def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: str, next_: str, data_type: str, file_path: str):
     """Insert a block. Data reads from stdin when '-' or omitted."""
     if not parent and not previous and not next_:
         raise click.UsageError("An anchor is required: --parent, --previous, or --next")
-    if not data or data == "-":
+    if file_path:
+        if data:
+            raise click.UsageError("Provide block data either as an argument or via --file, not both.")
+        data = _read_file(file_path)
+    elif not data or data == "-":
         data = _read_stdin()
     result = ctx.client.insert_block(data_type, data, parent_id=parent, previous_id=previous, next_id=next_)
     if ctx.json_output:
@@ -628,10 +797,15 @@ def block_insert(ctx: SiYuanContext, data: str | None, previous: str, parent: st
 @click.argument("block_id")
 @click.argument("data", required=False)
 @click.option("--data-type", default="markdown", help="Data type")
+@click.option("--file", "file_path", default="", help="Read block data from a UTF-8 file (avoids PowerShell pipe encoding issues).")
 @click.pass_obj
-def block_update(ctx: SiYuanContext, block_id: str, data: str | None, data_type: str):
+def block_update(ctx: SiYuanContext, block_id: str, data: str | None, data_type: str, file_path: str):
     """Update a block's content. Data reads from stdin when '-' or omitted."""
-    if not data or data == "-":
+    if file_path:
+        if data:
+            raise click.UsageError("Provide block data either as an argument or via --file, not both.")
+        data = _read_file(file_path)
+    elif not data or data == "-":
         data = _read_stdin()
     ctx.client.update_block(data_type, data, block_id)
     click.echo(f"Updated block: {block_id}")
@@ -639,9 +813,11 @@ def block_update(ctx: SiYuanContext, block_id: str, data: str | None, data_type:
 
 @block.command("delete")
 @click.argument("block_id")
+@click.option("--dangerous", is_flag=True, help="Explicit confirmation to delete.")
 @click.pass_obj
-def block_delete(ctx: SiYuanContext, block_id: str):
-    """Delete a block."""
+def block_delete(ctx: SiYuanContext, block_id: str, dangerous: bool):
+    """Delete a block (requires --dangerous confirmation)."""
+    _confirm_dangerous(dangerous, "delete this block")
     ctx.client.delete_block(block_id)
     click.echo(f"Deleted block: {block_id}")
 

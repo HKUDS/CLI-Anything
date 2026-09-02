@@ -5,12 +5,19 @@ No external dependencies or running SiYuan instance required.
 """
 
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
-from cli_anything.siyuan.siyuan_cli import cli
+from cli_anything.siyuan.siyuan_cli import (
+    _handle_block_repl,
+    _handle_doc_repl,
+    _handle_notebook_repl,
+    _read_stdin,
+    cli,
+)
 
 
 @pytest.fixture
@@ -406,3 +413,409 @@ class TestDocTreeRecursiveCommand:
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert data[0]["id"] == "doc1"
+
+
+# ── Destructive commands require --dangerous ───────────────────────────
+
+
+class TestDocRemoveCommand:
+    def test_doc_remove_without_dangerous_refuses(self, runner, mock_ctx):
+        """doc remove refuses to run without --dangerous confirmation."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["doc", "remove", "doc1"])
+            assert result.exit_code == 1
+            assert "dangerous" in result.output.lower()
+            mock_ctx.client.remove_doc_by_id.assert_not_called()
+
+    def test_doc_remove_with_dangerous_succeeds(self, runner, mock_ctx):
+        """doc remove proceeds when --dangerous is passed."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["doc", "remove", "doc1", "--dangerous"])
+            assert result.exit_code == 0
+            mock_ctx.client.remove_doc_by_id.assert_called_once_with("doc1")
+
+
+class TestNotebookRemoveCommand:
+    def test_notebook_remove_without_dangerous_refuses(self, runner, mock_ctx):
+        """notebook remove refuses to run without --dangerous confirmation."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["notebook", "remove", "nb1"])
+            assert result.exit_code == 1
+            assert "dangerous" in result.output.lower()
+            mock_ctx.client.remove_notebook.assert_not_called()
+
+    def test_notebook_remove_with_dangerous_succeeds(self, runner, mock_ctx):
+        """notebook remove proceeds when --dangerous is passed."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["notebook", "remove", "nb1", "--dangerous"])
+            assert result.exit_code == 0
+            mock_ctx.client.remove_notebook.assert_called_once_with("nb1")
+
+
+class TestBlockDeleteCommand:
+    def test_block_delete_without_dangerous_refuses(self, runner, mock_ctx):
+        """block delete refuses to run without --dangerous confirmation."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["block", "delete", "b1"])
+            assert result.exit_code == 1
+            assert "dangerous" in result.output.lower()
+            mock_ctx.client.delete_block.assert_not_called()
+
+    def test_block_delete_with_dangerous_succeeds(self, runner, mock_ctx):
+        """block delete proceeds when --dangerous is passed."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["block", "delete", "b1", "--dangerous"])
+            assert result.exit_code == 0
+            mock_ctx.client.delete_block.assert_called_once_with("b1")
+
+
+# ── --file reads content directly (avoids PowerShell pipe mangling) ────
+
+
+class TestFileContentReading:
+    def test_doc_create_with_file(self, runner, mock_ctx):
+        """doc create --file reads UTF-8 content directly from a file."""
+        mock_ctx.client.create_doc_with_md.return_value = "doc123"
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            with runner.isolated_filesystem():
+                with open("note.md", "w", encoding="utf-8") as f:
+                    f.write("# 中文标题\n\n正文内容")
+                result = runner.invoke(
+                    cli, ["doc", "create", "nb1", "/test", "--file", "note.md"]
+                )
+                assert result.exit_code == 0
+                mock_ctx.client.create_doc_with_md.assert_called_with(
+                    "nb1", "/test", "# 中文标题\n\n正文内容"
+                )
+
+    def test_doc_create_file_and_md_conflict(self, runner, mock_ctx):
+        """doc create refuses to accept both --file and --md."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            with runner.isolated_filesystem():
+                with open("note.md", "w", encoding="utf-8") as f:
+                    f.write("x")
+                result = runner.invoke(
+                    cli,
+                    ["doc", "create", "nb1", "/test", "--file", "note.md", "--md", "y"],
+                )
+                assert result.exit_code == 2
+                mock_ctx.client.create_doc_with_md.assert_not_called()
+
+    def test_block_update_with_file(self, runner, mock_ctx):
+        """block update --file reads UTF-8 content directly from a file."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            with runner.isolated_filesystem():
+                with open("block.md", "w", encoding="utf-8") as f:
+                    f.write("更新后的中文内容")
+                result = runner.invoke(
+                    cli, ["block", "update", "b1", "--file", "block.md"]
+                )
+                assert result.exit_code == 0
+                mock_ctx.client.update_block.assert_called_with(
+                    "markdown", "更新后的中文内容", "b1"
+                )
+
+
+# ── stdin decoding fallback ────────────────────────────────────────────
+
+
+class _FakeStdinBuffer:
+    def __init__(self, raw: bytes):
+        self._raw = raw
+
+    def read(self) -> bytes:
+        return self._raw
+
+
+class _FakeStdin:
+    def __init__(self, raw: bytes):
+        self.buffer = _FakeStdinBuffer(raw)
+
+    def isatty(self) -> bool:
+        return False
+
+
+class TestStdinDecoding:
+    def test_read_stdin_utf8(self, monkeypatch):
+        """_read_stdin decodes UTF-8 bytes correctly."""
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("中文内容".encode("utf-8")))
+        assert _read_stdin() == "中文内容"
+
+    def test_read_stdin_gbk_fallback(self, monkeypatch):
+        """_read_stdin falls back to GB18030 when bytes are not UTF-8."""
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("中文内容".encode("gb18030")))
+        assert _read_stdin() == "中文内容"
+
+    def test_read_stdin_pinned_encoding(self, monkeypatch):
+        """SIYUAN_STDIN_ENCODING pins the pipe encoding for GB18030/UTF-8 ambiguity.
+
+        毛 is c3 ab in GB18030, which is also valid UTF-8 (ë), so the fallback
+        never triggers without an explicit encoding.
+        """
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("毛".encode("gb18030")))
+        monkeypatch.setenv("SIYUAN_STDIN_ENCODING", "gb18030")
+        assert _read_stdin() == "毛"
+
+    def test_read_stdin_pinned_bad_encoding_falls_back(self, monkeypatch):
+        """An invalid pinned encoding falls back to utf-8-sig."""
+        monkeypatch.setattr(sys, "stdin", _FakeStdin("中文".encode("utf-8")))
+        monkeypatch.setenv("SIYUAN_STDIN_ENCODING", "no-such-codec")
+        assert _read_stdin() == "中文"
+
+
+# ── REPL delete confirmation and --file ────────────────────────────────
+
+
+class TestReplDeleteConfirmation:
+    def test_notebook_remove_requires_dangerous(self):
+        """REPL notebook remove refuses without --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_notebook_repl(skin, client, session, ["notebook", "remove", "nb1"], False, False)
+        client.remove_notebook.assert_not_called()
+        skin.error.assert_called_once()
+
+    def test_notebook_remove_with_dangerous(self):
+        """REPL notebook remove proceeds with --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_notebook_repl(skin, client, session, ["notebook", "remove", "nb1"], False, True)
+        client.remove_notebook.assert_called_once_with("nb1")
+
+    def test_doc_remove_requires_dangerous(self):
+        """REPL doc remove refuses without --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_doc_repl(skin, client, session, ["doc", "remove", "doc1"], False, False)
+        client.remove_doc_by_id.assert_not_called()
+        skin.error.assert_called_once()
+
+    def test_doc_remove_with_dangerous(self):
+        """REPL doc remove proceeds with --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        _handle_doc_repl(skin, client, session, ["doc", "remove", "doc1"], False, True)
+        client.remove_doc_by_id.assert_called_once_with("doc1")
+
+    def test_block_delete_requires_dangerous(self):
+        """REPL block delete refuses without --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        _handle_block_repl(skin, client, ["block", "delete", "b1"], False, False)
+        client.delete_block.assert_not_called()
+        skin.error.assert_called_once()
+
+    def test_block_delete_with_dangerous(self):
+        """REPL block delete proceeds with --dangerous."""
+        skin = MagicMock()
+        client = MagicMock()
+        _handle_block_repl(skin, client, ["block", "delete", "b1"], False, True)
+        client.delete_block.assert_called_once_with("b1")
+
+
+class TestReplBlockFile:
+    def test_block_update_with_file(self, tmp_path):
+        """REPL block update --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("更新后的中文内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "update", "b1", "--file", str(note)], False, False)
+        client.update_block.assert_called_once_with("markdown", "更新后的中文内容", "b1")
+
+    def test_block_insert_with_file(self, tmp_path):
+        """REPL block insert --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("文件内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "insert", "p", "--file", str(note)], False, False)
+        client.insert_block.assert_called_once_with("markdown", "文件内容", parent_id="p")
+
+    def test_block_update_data_and_file_conflict(self, tmp_path):
+        """REPL block update with positional data + --file is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("文件内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "update", "b1", "inline", "--file", str(note)], False, False)
+        client.update_block.assert_not_called()
+        skin.error.assert_called_once()
+        assert "not both" in skin.error.call_args[0][0].lower()
+
+    def test_block_update_dangling_file_flag(self):
+        """REPL block update --file without a value is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+
+        _handle_block_repl(skin, client, ["block", "update", "b1", "--file"], False, False)
+        client.update_block.assert_not_called()
+        skin.error.assert_called_once()
+        assert "value" in skin.error.call_args[0][0].lower()
+
+    def test_block_prepend_with_file(self, tmp_path):
+        """REPL block prepend --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("前置内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "prepend", "p", "--file", str(note)], False, False)
+        client.prepend_block.assert_called_once_with("markdown", "前置内容", "p")
+
+    def test_block_append_with_file(self, tmp_path):
+        """REPL block append --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("追加内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "append", "p", "--file", str(note)], False, False)
+        client.append_block.assert_called_once_with("markdown", "追加内容", "p")
+
+
+class TestReplDocCreateFile:
+    def test_doc_create_with_file(self, tmp_path):
+        """REPL doc create --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        client.create_doc_with_md.return_value = "doc123"
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("# 标题\n\n正文", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--file", str(note)],
+            False, False,
+        )
+        client.create_doc_with_md.assert_called_once_with("nb1", "/test", "# 标题\n\n正文")
+
+    def test_doc_create_file_then_md_conflict(self, tmp_path):
+        """--file before --md still reports the mutual-exclusion error."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--file", str(note), "--md", "inline"],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "either" in skin.error.call_args[0][0].lower()
+
+    def test_doc_create_md_then_file_conflict(self, tmp_path):
+        """--md before --file reports the mutual-exclusion error."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--md", "inline", "--file", str(note)],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "either" in skin.error.call_args[0][0].lower()
+
+    def test_doc_create_dangling_file_flag(self):
+        """REPL doc create --file without a value is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--file"],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "value" in skin.error.call_args[0][0].lower()
+
+    def test_doc_create_dangling_md_flag(self):
+        """REPL doc create --md without a value is rejected."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--md"],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+        assert "value" in skin.error.call_args[0][0].lower()
+
+    def test_doc_create_stdin_sentinel_with_file_conflict(self, tmp_path):
+        """--md - combined with --file is rejected, not silently preferring the file."""
+        skin = MagicMock()
+        client = MagicMock()
+        session = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+
+        _handle_doc_repl(
+            skin, client, session,
+            ["doc", "create", "nb1", "/test", "--md", "-", "--file", str(note)],
+            False, False,
+        )
+        client.create_doc_with_md.assert_not_called()
+        skin.error.assert_called_once()
+
+
+class TestDocCreateContentConflict:
+    def test_one_shot_stdin_sentinel_with_file_conflict(self, runner, mock_ctx, tmp_path):
+        """one-shot doc create --md - --file is rejected, not silently preferring the file."""
+        note = tmp_path / "note.md"
+        note.write_text("from file", encoding="utf-8")
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(
+                cli, ["doc", "create", "nb1", "/test", "--md", "-", "--file", str(note)]
+            )
+            assert result.exit_code == 2
+            assert "both" in result.output.lower()
+            mock_ctx.client.create_doc_with_md.assert_not_called()
+
+
+class TestBlockContentConflict:
+    def test_block_insert_data_and_file_conflict(self, runner, mock_ctx, tmp_path):
+        """block insert positional data + --file is rejected."""
+        note = tmp_path / "note.md"
+        note.write_text("file content", encoding="utf-8")
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(
+                cli, ["block", "insert", "inline", "--parent", "p", "--file", str(note)]
+            )
+            assert result.exit_code == 2
+            assert "not both" in result.output.lower()
+            mock_ctx.client.insert_block.assert_not_called()
+
+    def test_block_update_data_and_file_conflict(self, runner, mock_ctx, tmp_path):
+        """block update positional data + --file is rejected."""
+        note = tmp_path / "note.md"
+        note.write_text("file content", encoding="utf-8")
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(
+                cli, ["block", "update", "b1", "inline", "--file", str(note)]
+            )
+            assert result.exit_code == 2
+            assert "not both" in result.output.lower()
+            mock_ctx.client.update_block.assert_not_called()
+
+
