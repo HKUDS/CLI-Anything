@@ -454,17 +454,49 @@ def _handle_block_repl(skin: Any, client: SiYuanClient,
             click.echo(json.dumps(result, ensure_ascii=False))
         else:
             skin.success("Block inserted")
-    elif sub == "prepend" and len(parts) >= 4:
-        data = parts[3]
-        if data == "-":
+    elif sub == "prepend":
+        if len(parts) < 3:
+            skin.error("Usage: block prepend <parent_id> <data>")
+            return
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block prepend <parent_id> <data>")
+            return
+        parent_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        client.prepend_block("markdown", data, parts[2])
+        client.prepend_block("markdown", data, parent_id)
         skin.success("Block prepended")
-    elif sub == "append" and len(parts) >= 4:
-        data = parts[3]
-        if data == "-":
+    elif sub == "append":
+        if len(parts) < 3:
+            skin.error("Usage: block append <parent_id> <data>")
+            return
+        parsed = _parse_repl_content_source(parts, 2, skin)
+        if parsed is None:
+            return
+        rest, file_path = parsed
+        if not rest:
+            skin.error("Usage: block append <parent_id> <data>")
+            return
+        parent_id = rest[0]
+        data = rest[1] if len(rest) > 1 else ""
+        if file_path:
+            if data:
+                skin.error("Provide block data either as an argument or via --file, not both.")
+                return
+            data = _read_file(file_path)
+        elif data == "-":
             data = _read_stdin()
-        client.append_block("markdown", data, parts[2])
+        client.append_block("markdown", data, parent_id)
         skin.success("Block appended")
     elif sub == "update":
         if len(parts) < 3:

@@ -660,6 +660,26 @@ class TestReplBlockFile:
         skin.error.assert_called_once()
         assert "value" in skin.error.call_args[0][0].lower()
 
+    def test_block_prepend_with_file(self, tmp_path):
+        """REPL block prepend --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("前置内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "prepend", "p", "--file", str(note)], False, False)
+        client.prepend_block.assert_called_once_with("markdown", "前置内容", "p")
+
+    def test_block_append_with_file(self, tmp_path):
+        """REPL block append --file reads UTF-8 content from a file."""
+        skin = MagicMock()
+        client = MagicMock()
+        note = tmp_path / "note.md"
+        note.write_text("追加内容", encoding="utf-8")
+
+        _handle_block_repl(skin, client, ["block", "append", "p", "--file", str(note)], False, False)
+        client.append_block.assert_called_once_with("markdown", "追加内容", "p")
+
 
 class TestReplDocCreateFile:
     def test_doc_create_with_file(self, tmp_path):
