@@ -604,7 +604,7 @@ class TestMeasure:
         assert bounds["min"] == pytest.approx(expected_min, abs=1e-6)
         assert bounds["max"] == pytest.approx(expected_max, abs=1e-6)
 
-    def test_rotated_wedge_distance_uses_reported_bounding_box_center(self):
+    def test_rotated_wedge_measurements_are_deferred(self):
         proj = _make_project()
         add_part(proj, "sphere", position=[0.0, 0.0, 0.0])
         add_part(
@@ -627,12 +627,30 @@ class TestMeasure:
         )
 
         bounds = measure_bounding_box(proj, 1)
+        center = measure_center_of_mass(proj, 1)
         distance = measure_distance(proj, 0, 1)
+        angle = measure_angle(proj, 0, 1)
 
-        expected_center = [
-            (low + high) / 2.0 for low, high in zip(bounds["min"], bounds["max"])
-        ]
-        assert distance["delta"] == pytest.approx(expected_center, abs=1e-6)
+        assert bounds["min"] is None
+        assert bounds["max"] is None
+        assert bounds["deferred"] is True
+        assert center["center_of_mass"] is None
+        assert center["deferred"] is True
+        assert distance["distance"] is None
+        assert distance["delta"] is None
+        assert distance["deferred"] is True
+        assert angle["angle_deg"] is None
+        assert angle["deferred"] is True
+
+    def test_unrotated_wedge_bounds_remain_available(self):
+        proj = _make_project()
+        add_part(proj, "wedge", position=[10.0, 20.0, 30.0])
+
+        bounds = measure_bounding_box(proj, 0)
+
+        assert bounds["min"] == [10.0, 20.0, 30.0]
+        assert bounds["max"] == [20.0, 30.0, 40.0]
+        assert bounds["deferred"] is False
 
     @pytest.mark.parametrize(
         ("part_type", "params"),

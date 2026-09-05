@@ -360,6 +360,15 @@ def world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
             [position[axis] + extents[axis] for axis in range(3)],
         ])
 
+    if part_type == "wedge":
+        identity = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+        if any(
+            not math.isclose(matrix[row][column], identity[row][column], abs_tol=1e-12)
+            for row in range(3)
+            for column in range(3)
+        ):
+            return None
+
     min_corner = local["min"]
     max_corner = local["max"]
     corners = []
