@@ -136,7 +136,7 @@ def _validate_vec3(value: Any, label: str) -> List[float]:
         raise ValueError(f"{label} elements must be numeric: {exc}") from exc
 
 
-def _rotation_matrix(rotation: List[float]) -> List[List[float]]:
+def rotation_matrix(rotation: List[float]) -> List[List[float]]:
     """Return a simple XYZ Euler rotation matrix for *rotation* in degrees."""
     rx, ry, rz = [math.radians(float(v)) for v in rotation]
     cx, sx = math.cos(rx), math.sin(rx)
@@ -171,9 +171,9 @@ def _rotation_matrix(rotation: List[float]) -> List[List[float]]:
     return _matmul(mz, _matmul(my, mx))
 
 
-def _transform_point(point: List[float], rotation: List[float], translation: List[float]) -> List[float]:
+def transform_point(point: List[float], rotation: List[float], translation: List[float]) -> List[float]:
     """Apply an XYZ Euler rotation and translation to a point."""
-    matrix = _rotation_matrix(rotation)
+    matrix = rotation_matrix(rotation)
     x, y, z = point
     tx, ty, tz = translation
     return [
@@ -278,11 +278,73 @@ def _local_bounds(part_type: str, params: Dict[str, Any]) -> Optional[Dict[str, 
     return None
 
 
-def _world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
+def world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
     """Return a world-space bounding box for supported primitive parts."""
     local = _local_bounds(str(part.get("type", "")).lower(), part.get("params", {}))
     if local is None:
         return None
+
+    placement = part.get("placement", {})
+    position = _validate_vec3(placement.get("position", [0.0, 0.0, 0.0]), "position")
+    rotation = _validate_vec3(placement.get("rotation", [0.0, 0.0, 0.0]), "rotation")
+    matrix = rotation_matrix(rotation)
+    part_type = str(part.get("type", "")).lower()
+    params = part.get("params", {})
+
+    if (
+        part_type == "sphere"
+        and math.isclose(float(params["angle1"]), -90.0)
+        and math.isclose(float(params["angle2"]), 90.0)
+        and math.isclose(abs(float(params["angle3"])), 360.0)
+    ):
+        radius = float(params["radius"])
+        return _bbox_from_points([
+            [position[axis] - radius for axis in range(3)],
+            [position[axis] + radius for axis in range(3)],
+        ])
+
+    if (
+        part_type in {"cylinder", "cone"}
+        and math.isclose(abs(float(params["angle"])), 360.0)
+    ):
+        if part_type == "cylinder":
+            lower_radius = upper_radius = float(params["radius"])
+        else:
+            lower_radius = float(params["radius1"])
+            upper_radius = float(params["radius2"])
+        height = float(params["height"])
+        bounds_min = []
+        bounds_max = []
+        for axis in range(3):
+            radial_support = math.hypot(matrix[axis][0], matrix[axis][1])
+            upper_center = matrix[axis][2] * height
+            bounds_min.append(position[axis] + min(
+                -radial_support * lower_radius,
+                upper_center - radial_support * upper_radius,
+            ))
+            bounds_max.append(position[axis] + max(
+                radial_support * lower_radius,
+                upper_center + radial_support * upper_radius,
+            ))
+        return _bbox_from_points([bounds_min, bounds_max])
+
+    if (
+        part_type == "torus"
+        and math.isclose(float(params["angle1"]), -180.0)
+        and math.isclose(float(params["angle2"]), 180.0)
+        and math.isclose(abs(float(params["angle3"])), 360.0)
+    ):
+        major_radius = float(params["radius1"])
+        tube_radius = float(params["radius2"])
+        extents = [
+            major_radius * math.hypot(matrix[axis][0], matrix[axis][1])
+            + tube_radius
+            for axis in range(3)
+        ]
+        return _bbox_from_points([
+            [position[axis] - extents[axis] for axis in range(3)],
+            [position[axis] + extents[axis] for axis in range(3)],
+        ])
 
     min_corner = local["min"]
     max_corner = local["max"]
@@ -292,10 +354,7 @@ def _world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]
             for z in (min_corner["z"], max_corner["z"]):
                 corners.append([x, y, z])
 
-    placement = part.get("placement", {})
-    position = _validate_vec3(placement.get("position", [0.0, 0.0, 0.0]), "position")
-    rotation = _validate_vec3(placement.get("rotation", [0.0, 0.0, 0.0]), "rotation")
-    return _bbox_from_points([_transform_point(point, rotation, position) for point in corners])
+    return _bbox_from_points([transform_point(point, rotation, position) for point in corners])
 
 
 def _anchor_value(bounds: Dict[str, Dict[str, float]], axis: str, anchor: str) -> float:
@@ -1500,7 +1559,7 @@ def part_bounds(
     """Return local and world bounding-box data for a part."""
     part = get_part(project, index)
     local = _local_bounds(str(part["type"]).lower(), part.get("params", {}))
-    world = _world_bounds(part)
+    world = world_bounds(part)
     return {
         "id": part["id"],
         "name": part["name"],
@@ -1528,8 +1587,8 @@ def align_part(
     """Move a part so selected bbox anchors match another part's anchors."""
     part = get_part(project, index)
     target = get_part(project, target_index)
-    source_bounds = _world_bounds(part)
-    target_bounds = _world_bounds(target)
+    source_bounds = world_bounds(part)
+    target_bounds = world_bounds(target)
     if source_bounds is None:
         raise ValueError(
             f"Part #{index} ({part['name']}) does not support bounding-box alignment for type '{part['type']}'"
@@ -1565,7 +1624,7 @@ def align_part(
         position[axis_to_index[axis]] += shift
 
     part["placement"]["position"] = position
-    updated_bounds = _world_bounds(part)
+    updated_bounds = world_bounds(part)
     return {
         "part_index": index,
         "target_index": target_index,
@@ -1597,7 +1656,7 @@ def part_info(
     """
     part = get_part(project, index)
     geo = _estimate_geometry(part["type"], part.get("params", {}))
-    world = _world_bounds(part)
+    world = world_bounds(part)
 
     return {
         "id": part["id"],

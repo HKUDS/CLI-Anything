@@ -494,6 +494,98 @@ class TestMeasure:
             [(low + high) / 2.0 for low, high in zip(bounds["min"], bounds["max"])]
         )
 
+    @pytest.mark.parametrize(
+        ("part_type", "params", "rotation", "expected_min", "expected_max"),
+        [
+            (
+                "sphere",
+                {"radius": 5.0},
+                [25.0, 35.0, 45.0],
+                [5.0, 15.0, 25.0],
+                [15.0, 25.0, 35.0],
+            ),
+            (
+                "cylinder",
+                {"radius": 3.0, "height": 8.0},
+                [0.0, 45.0, 0.0],
+                [7.87868, 17.0, 27.87868],
+                [17.778175, 23.0, 37.778175],
+            ),
+            (
+                "torus",
+                {"radius1": 10.0, "radius2": 2.0},
+                [0.0, 45.0, 0.0],
+                [0.928932, 8.0, 20.928932],
+                [19.071068, 32.0, 39.071068],
+            ),
+        ],
+    )
+    def test_rotated_curved_primitives_use_exact_world_bounds(
+        self, part_type, params, rotation, expected_min, expected_max
+    ):
+        proj = _make_project()
+        add_part(
+            proj,
+            part_type,
+            position=[10.0, 20.0, 30.0],
+            rotation=rotation,
+            params=params,
+        )
+
+        bounds = measure_bounding_box(proj, 0)
+
+        assert bounds["min"] == pytest.approx(expected_min, abs=1e-6)
+        assert bounds["max"] == pytest.approx(expected_max, abs=1e-6)
+
+    def test_rotated_wedge_distance_uses_reported_bounding_box_center(self):
+        proj = _make_project()
+        add_part(proj, "sphere", position=[0.0, 0.0, 0.0])
+        add_part(
+            proj,
+            "wedge",
+            position=[10.0, 20.0, 30.0],
+            rotation=[20.0, 30.0, 40.0],
+            params={
+                "xmin": 0.0,
+                "ymin": 0.0,
+                "zmin": 0.0,
+                "x2min": -8.0,
+                "z2min": -2.0,
+                "xmax": 8.0,
+                "ymax": 10.0,
+                "zmax": 6.0,
+                "x2max": 12.0,
+                "z2max": 10.0,
+            },
+        )
+
+        bounds = measure_bounding_box(proj, 1)
+        distance = measure_distance(proj, 0, 1)
+
+        expected_center = [
+            (low + high) / 2.0 for low, high in zip(bounds["min"], bounds["max"])
+        ]
+        assert distance["delta"] == pytest.approx(expected_center, abs=1e-6)
+
+    def test_partial_sweep_keeps_conservative_world_bounds(self):
+        proj = _make_project()
+        add_part(
+            proj,
+            "sphere",
+            rotation=[25.0, 35.0, 45.0],
+            params={
+                "radius": 5.0,
+                "angle1": 0.0,
+                "angle2": 90.0,
+                "angle3": 90.0,
+            },
+        )
+
+        bounds = measure_bounding_box(proj, 0)
+
+        assert bounds["deferred"] is False
+        assert all(size >= 10.0 for size in bounds["size"])
+
     def test_bounding_box_keeps_unsupported_parts_deferred(self):
         proj = _make_project()
         proj["parts"].append(
