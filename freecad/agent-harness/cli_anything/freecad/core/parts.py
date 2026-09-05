@@ -171,7 +171,11 @@ def rotation_matrix(rotation: List[float]) -> List[List[float]]:
     return _matmul(mz, _matmul(my, mx))
 
 
-def transform_point(point: List[float], rotation: List[float], translation: List[float]) -> List[float]:
+def transform_point(
+    point: List[float],
+    rotation: List[float],
+    translation: List[float],
+) -> List[float]:
     """Apply an XYZ Euler rotation and translation to a point."""
     matrix = rotation_matrix(rotation)
     x, y, z = point
@@ -278,15 +282,21 @@ def _local_bounds(part_type: str, params: Dict[str, Any]) -> Optional[Dict[str, 
     return None
 
 
-def world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
+def world_bounds(
+    part: Dict[str, Any],
+) -> Optional[Dict[str, Dict[str, float]]]:
     """Return a world-space bounding box for supported primitive parts."""
     local = _local_bounds(str(part.get("type", "")).lower(), part.get("params", {}))
     if local is None:
         return None
 
     placement = part.get("placement", {})
-    position = _validate_vec3(placement.get("position", [0.0, 0.0, 0.0]), "position")
-    rotation = _validate_vec3(placement.get("rotation", [0.0, 0.0, 0.0]), "rotation")
+    position = _validate_vec3(
+        placement.get("position", [0.0, 0.0, 0.0]), "position"
+    )
+    rotation = _validate_vec3(
+        placement.get("rotation", [0.0, 0.0, 0.0]), "rotation"
+    )
     matrix = rotation_matrix(rotation)
     part_type = str(part.get("type", "")).lower()
     params = part.get("params", {})
@@ -363,7 +373,11 @@ def world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
     if part_type == "wedge":
         identity = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
         if any(
-            not math.isclose(matrix[row][column], identity[row][column], abs_tol=1e-12)
+            not math.isclose(
+                matrix[row][column],
+                identity[row][column],
+                abs_tol=1e-12,
+            )
             for row in range(3)
             for column in range(3)
         ):
@@ -377,7 +391,10 @@ def world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
             for z in (min_corner["z"], max_corner["z"]):
                 corners.append([x, y, z])
 
-    return _bbox_from_points([transform_point(point, rotation, position) for point in corners])
+    return _bbox_from_points([
+        transform_point(point, rotation, position)
+        for point in corners
+    ])
 
 
 def _anchor_value(bounds: Dict[str, Dict[str, float]], axis: str, anchor: str) -> float:

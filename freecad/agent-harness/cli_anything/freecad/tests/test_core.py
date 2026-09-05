@@ -397,7 +397,11 @@ class TestMeasure:
     @pytest.mark.parametrize(
         ("part_type", "params", "expected"),
         [
-            ("box", {"length": 6.0, "width": 8.0, "height": 10.0}, [5.0, 1.0, 9.0]),
+            (
+                "box",
+                {"length": 6.0, "width": 8.0, "height": 10.0},
+                [5.0, 1.0, 9.0],
+            ),
             ("cylinder", {"radius": 7.0, "height": 10.0}, [2.0, -3.0, 9.0]),
             ("sphere", {"radius": 7.0}, [2.0, -3.0, 4.0]),
             (
@@ -500,7 +504,12 @@ class TestMeasure:
 
     def test_distance_uses_primitive_bounding_box_centers(self):
         proj = _make_project()
-        add_part(proj, "sphere", position=[0.0, 0.0, 0.0], params={"radius": 10.0})
+        add_part(
+            proj,
+            "sphere",
+            position=[0.0, 0.0, 0.0],
+            params={"radius": 10.0},
+        )
         add_part(
             proj,
             "torus",
@@ -537,7 +546,8 @@ class TestMeasure:
             [7.071068, 5.0, 7.071068], abs=1e-6
         )
         assert [
-            (low + high) / 2.0 for low, high in zip(bounds["min"], bounds["max"])
+            (low + high) / 2.0
+            for low, high in zip(bounds["min"], bounds["max"])
         ] == pytest.approx(result["delta"], abs=1e-6)
 
     def test_bounding_box_applies_rotation_consistently_with_distance(self):
@@ -558,7 +568,10 @@ class TestMeasure:
         assert bounds["max"] == pytest.approx([10.0, 24.0, 33.0])
         assert bounds["size"] == pytest.approx([2.0, 4.0, 3.0])
         assert distance["delta"] == pytest.approx(
-            [(low + high) / 2.0 for low, high in zip(bounds["min"], bounds["max"])]
+            [
+                (low + high) / 2.0
+                for low, high in zip(bounds["min"], bounds["max"])
+            ]
         )
 
     @pytest.mark.parametrize(
@@ -657,7 +670,12 @@ class TestMeasure:
         [
             (
                 "sphere",
-                {"radius": 5.0, "angle1": 0.0, "angle2": 90.0, "angle3": 180.0},
+                {
+                    "radius": 5.0,
+                    "angle1": 0.0,
+                    "angle2": 90.0,
+                    "angle3": 180.0,
+                },
             ),
             (
                 "cylinder",
@@ -747,7 +765,9 @@ class TestMeasure:
         assert bounds["min"] == pytest.approx(expected_min, abs=1e-6)
         assert bounds["max"] == pytest.approx(expected_max, abs=1e-6)
 
-    @pytest.mark.parametrize("angle", [float("inf"), float("-inf"), float("nan")])
+    @pytest.mark.parametrize(
+        "angle", [float("inf"), float("-inf"), float("nan")]
+    )
     def test_non_finite_sweep_is_deferred(self, angle):
         proj = _make_project()
         add_part(

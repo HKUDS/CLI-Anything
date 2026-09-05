@@ -21,6 +21,11 @@ from cli_anything.freecad.core.parts import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+_MEASURABLE_BOUNDS_TYPES = {
+    "box", "cylinder", "sphere", "cone", "torus", "wedge",
+}
+
+
 def _next_measurement_id(project: Dict[str, Any]) -> int:
     """Return the next available integer ID for measurements."""
     items = project.get("measurements", [])
@@ -62,11 +67,14 @@ def _to_world(part: Dict[str, Any], local_point: List[float]) -> List[float]:
 
 def _bbox_center(part: Dict[str, Any]) -> Optional[List[float]]:
     """Return the world-axis-aligned bounding-box centre of a part."""
-    supported_bounds = {"box", "cylinder", "sphere", "cone", "torus", "wedge"}
     part_type = str(part.get("type", "")).lower()
-    bounds = world_bounds(part) if part_type in supported_bounds else None
+    bounds = (
+        world_bounds(part)
+        if part_type in _MEASURABLE_BOUNDS_TYPES
+        else None
+    )
     if bounds is None:
-        if part_type in supported_bounds:
+        if part_type in _MEASURABLE_BOUNDS_TYPES:
             return None
         # Boolean or unknown — preserve the placement-position fallback.
         return _get_position(part)
@@ -74,11 +82,14 @@ def _bbox_center(part: Dict[str, Any]) -> Optional[List[float]]:
 
 
 def _center_of_mass(part: Dict[str, Any]) -> Optional[List[float]]:
-    """Return the analytical centre of mass for supported uniform primitives."""
+    """Return analytical centre of mass for supported uniform primitives."""
     p = part["params"]
     t = str(part.get("type", "")).lower()
 
-    if t in {"cylinder", "sphere", "cone", "torus"} and world_bounds(part) is None:
+    if (
+        t in {"cylinder", "sphere", "cone", "torus"}
+        and world_bounds(part) is None
+    ):
         return None
 
     if t == "box":
@@ -567,7 +578,11 @@ def measure_center_of_mass(
 
     result_com: Dict[str, Any] = {
         "part_index": index,
-        "center_of_mass": [round(v, 6) for v in com] if com is not None else None,
+        "center_of_mass": (
+            [round(v, 6) for v in com]
+            if com is not None
+            else None
+        ),
         "deferred": com is None,
     }
     if additive:
@@ -592,8 +607,7 @@ def measure_bounding_box(
     part = get_part(project, index)
     t = str(part.get("type", "")).lower()
 
-    supported_bounds = {"box", "cylinder", "sphere", "cone", "torus", "wedge"}
-    bounds = world_bounds(part) if t in supported_bounds else None
+    bounds = world_bounds(part) if t in _MEASURABLE_BOUNDS_TYPES else None
     if bounds is None:
         # Unknown / boolean — deferred
         result_bb_def: Dict[str, Any] = {
