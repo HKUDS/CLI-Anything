@@ -60,20 +60,25 @@ def _to_world(part: Dict[str, Any], local_point: List[float]) -> List[float]:
     )
 
 
-def _bbox_center(part: Dict[str, Any]) -> List[float]:
+def _bbox_center(part: Dict[str, Any]) -> Optional[List[float]]:
     """Return the world-axis-aligned bounding-box centre of a part."""
     supported_bounds = {"box", "cylinder", "sphere", "cone", "torus", "wedge"}
     bounds = world_bounds(part) if part["type"] in supported_bounds else None
     if bounds is None:
-        # Boolean or unknown — fall back to placement position
+        if part["type"] in supported_bounds:
+            return None
+        # Boolean or unknown — preserve the placement-position fallback.
         return _get_position(part)
     return [bounds["center"][axis] for axis in ("x", "y", "z")]
 
 
-def _center_of_mass(part: Dict[str, Any]) -> List[float]:
+def _center_of_mass(part: Dict[str, Any]) -> Optional[List[float]]:
     """Return the analytical centre of mass for supported uniform primitives."""
     p = part["params"]
     t = part["type"]
+
+    if t in {"cylinder", "sphere", "cone", "torus"} and world_bounds(part) is None:
+        return None
 
     if t == "box":
         local_center = [p["length"] / 2.0, p["width"] / 2.0, p["height"] / 2.0]
@@ -232,13 +237,26 @@ def measure_distance(
     Returns
     -------
     dict
-        Measurement record with ``distance`` value and axis deltas.
+        Measurement record with ``distance`` value and axis deltas. Partial
+        angular primitives are deferred when their exact bounds are unknown.
     """
     part1 = get_part(project, index1)
     part2 = get_part(project, index2)
 
     c1 = _bbox_center(part1)
     c2 = _bbox_center(part2)
+
+    if c1 is None or c2 is None:
+        result_deferred: Dict[str, Any] = {
+            "part1_index": index1,
+            "part2_index": index2,
+            "distance": None,
+            "delta": None,
+            "deferred": True,
+        }
+        if additive:
+            result_deferred["additive"] = True
+        return _store_measurement(project, "distance", result_deferred)
 
     dx = c2[0] - c1[0]
     dy = c2[1] - c1[1]
@@ -250,6 +268,7 @@ def measure_distance(
         "part2_index": index2,
         "distance": round(dist, 6),
         "delta": [round(dx, 6), round(dy, 6), round(dz, 6)],
+        "deferred": False,
     }
     if additive:
         result["additive"] = True
@@ -338,13 +357,25 @@ def measure_angle(
     Returns
     -------
     dict
-        Measurement record with ``angle_deg`` value.
+        Measurement record with ``angle_deg`` value. Partial angular
+        primitives are deferred when their exact bounds are unknown.
     """
     part1 = get_part(project, index1)
     part2 = get_part(project, index2)
 
     c1 = _bbox_center(part1)
     c2 = _bbox_center(part2)
+
+    if c1 is None or c2 is None:
+        result_deferred: Dict[str, Any] = {
+            "part1_index": index1,
+            "part2_index": index2,
+            "angle_deg": None,
+            "deferred": True,
+        }
+        if additive:
+            result_deferred["additive"] = True
+        return _store_measurement(project, "angle", result_deferred)
 
     mag1 = math.sqrt(sum(v ** 2 for v in c1))
     mag2 = math.sqrt(sum(v ** 2 for v in c2))
@@ -360,6 +391,7 @@ def measure_angle(
         "part1_index": index1,
         "part2_index": index2,
         "angle_deg": round(angle_deg, 6),
+        "deferred": False,
     }
     if additive:
         result_angle["additive"] = True
@@ -526,14 +558,16 @@ def measure_center_of_mass(
     Returns
     -------
     dict
-        Measurement record with ``center_of_mass`` ``[x, y, z]``.
+        Measurement record with ``center_of_mass`` ``[x, y, z]``. Partial
+        angular primitives are deferred when no analytical result is available.
     """
     part = get_part(project, index)
     com = _center_of_mass(part)
 
     result_com: Dict[str, Any] = {
         "part_index": index,
-        "center_of_mass": [round(v, 6) for v in com],
+        "center_of_mass": [round(v, 6) for v in com] if com is not None else None,
+        "deferred": com is None,
     }
     if additive:
         result_com["additive"] = True

@@ -291,28 +291,35 @@ def world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
     part_type = str(part.get("type", "")).lower()
     params = part.get("params", {})
 
-    if (
-        part_type == "sphere"
-        and math.isclose(float(params["angle1"]), -90.0)
-        and math.isclose(float(params["angle2"]), 90.0)
-        and math.isclose(abs(float(params["angle3"])), 360.0)
-    ):
+    if part_type == "sphere":
         radius = float(params["radius"])
+        latitude_start = float(params.get("angle1", -90.0))
+        latitude_end = float(params.get("angle2", 90.0))
+        sweep = float(params.get("angle3", 360.0))
+        if not (
+            math.isfinite(latitude_start)
+            and math.isfinite(latitude_end)
+            and math.isfinite(sweep)
+            and math.isclose(latitude_start, -90.0)
+            and math.isclose(latitude_end, 90.0)
+            and math.isclose(abs(sweep), 360.0)
+        ):
+            return None
         return _bbox_from_points([
             [position[axis] - radius for axis in range(3)],
             [position[axis] + radius for axis in range(3)],
         ])
 
-    if (
-        part_type in {"cylinder", "cone"}
-        and math.isclose(abs(float(params["angle"])), 360.0)
-    ):
+    if part_type in {"cylinder", "cone"}:
         if part_type == "cylinder":
             lower_radius = upper_radius = float(params["radius"])
         else:
             lower_radius = float(params["radius1"])
             upper_radius = float(params["radius2"])
         height = float(params["height"])
+        sweep = float(params.get("angle", 360.0))
+        if not math.isfinite(sweep) or not math.isclose(abs(sweep), 360.0):
+            return None
         bounds_min = []
         bounds_max = []
         for axis in range(3):
@@ -328,14 +335,21 @@ def world_bounds(part: Dict[str, Any]) -> Optional[Dict[str, Dict[str, float]]]:
             ))
         return _bbox_from_points([bounds_min, bounds_max])
 
-    if (
-        part_type == "torus"
-        and math.isclose(float(params["angle1"]), -180.0)
-        and math.isclose(float(params["angle2"]), 180.0)
-        and math.isclose(abs(float(params["angle3"])), 360.0)
-    ):
+    if part_type == "torus":
         major_radius = float(params["radius1"])
         tube_radius = float(params["radius2"])
+        tube_start = float(params.get("angle1", -180.0))
+        tube_end = float(params.get("angle2", 180.0))
+        sweep = float(params.get("angle3", 360.0))
+        if not (
+            math.isfinite(tube_start)
+            and math.isfinite(tube_end)
+            and math.isfinite(sweep)
+            and math.isclose(tube_start, -180.0)
+            and math.isclose(tube_end, 180.0)
+            and math.isclose(abs(sweep), 360.0)
+        ):
+            return None
         extents = [
             major_radius * math.hypot(matrix[axis][0], matrix[axis][1])
             + tube_radius

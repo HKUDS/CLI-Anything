@@ -21,6 +21,7 @@ from cli_anything.freecad.core.document import (
     save_document,
 )
 from cli_anything.freecad.core.measure import (
+    measure_angle,
     measure_bounding_box,
     measure_center_of_mass,
     measure_distance,
@@ -431,6 +432,54 @@ class TestMeasure:
 
         assert result["center_of_mass"] == [14.0, 20.0, 30.0]
 
+    @pytest.mark.parametrize(
+        ("part_type", "params"),
+        [
+            (
+                "sphere",
+                {"radius": 5.0, "angle1": 0.0, "angle2": 90.0},
+            ),
+            (
+                "cylinder",
+                {"radius": 3.0, "height": 8.0, "angle": 90.0},
+            ),
+            (
+                "cone",
+                {"radius1": 3.0, "radius2": 1.0, "height": 8.0, "angle": 90.0},
+            ),
+            (
+                "torus",
+                {"radius1": 10.0, "radius2": 2.0, "angle3": 180.0},
+            ),
+        ],
+    )
+    def test_center_of_mass_defers_partial_sweeps(self, part_type, params):
+        proj = _make_project()
+        add_part(proj, part_type, params=params)
+
+        result = measure_center_of_mass(proj, 0)
+
+        assert result["center_of_mass"] is None
+        assert result["deferred"] is True
+
+    def test_distance_and_angle_defer_partial_sweeps(self):
+        proj = _make_project()
+        add_part(
+            proj,
+            "cylinder",
+            params={"radius": 3.0, "height": 8.0, "angle": 90.0},
+        )
+        add_part(proj, "box", position=[10.0, 0.0, 0.0])
+
+        distance = measure_distance(proj, 0, 1)
+        angle = measure_angle(proj, 0, 1)
+
+        assert distance["distance"] is None
+        assert distance["delta"] is None
+        assert distance["deferred"] is True
+        assert angle["angle_deg"] is None
+        assert angle["deferred"] is True
+
     def test_distance_uses_primitive_bounding_box_centers(self):
         proj = _make_project()
         add_part(proj, "sphere", position=[0.0, 0.0, 0.0], params={"radius": 10.0})
@@ -567,24 +616,113 @@ class TestMeasure:
         ]
         assert distance["delta"] == pytest.approx(expected_center, abs=1e-6)
 
-    def test_partial_sweep_keeps_conservative_world_bounds(self):
+    @pytest.mark.parametrize(
+        ("part_type", "params"),
+        [
+            (
+                "sphere",
+                {"radius": 5.0, "angle1": 0.0, "angle2": 90.0, "angle3": 180.0},
+            ),
+            (
+                "cylinder",
+                {"radius": 3.0, "height": 8.0, "angle": 90.0},
+            ),
+            (
+                "cone",
+                {"radius1": 3.0, "radius2": 1.0, "height": 8.0, "angle": 90.0},
+            ),
+            (
+                "torus",
+                {"radius1": 10.0, "radius2": 2.0, "angle3": 180.0},
+            ),
+        ],
+    )
+    def test_partial_sweeps_are_deferred(self, part_type, params):
+        proj = _make_project()
+        add_part(proj, part_type, rotation=[25.0, 35.0, 45.0], params=params)
+
+        bounds = measure_bounding_box(proj, 0)
+
+        assert bounds["min"] is None
+        assert bounds["max"] is None
+        assert bounds["size"] is None
+        assert bounds["deferred"] is True
+
+    @pytest.mark.parametrize(
+        (
+            "part_type",
+            "params",
+            "rotation",
+            "removed_keys",
+            "expected_min",
+            "expected_max",
+        ),
+        [
+            (
+                "sphere",
+                {"radius": 5.0},
+                [0.0, 0.0, 0.0],
+                ("angle1", "angle2", "angle3"),
+                [-5.0, -5.0, -5.0],
+                [5.0, 5.0, 5.0],
+            ),
+            (
+                "cylinder",
+                {"radius": 3.0, "height": 8.0},
+                [0.0, 45.0, 0.0],
+                ("angle",),
+                [-2.12132, -3.0, -2.12132],
+                [7.778175, 3.0, 7.778175],
+            ),
+            (
+                "cone",
+                {"radius1": 3.0, "radius2": 1.0, "height": 8.0},
+                [0.0, 0.0, 0.0],
+                ("angle",),
+                [-3.0, -3.0, 0.0],
+                [3.0, 3.0, 8.0],
+            ),
+            (
+                "torus",
+                {"radius1": 10.0, "radius2": 2.0},
+                [0.0, 0.0, 0.0],
+                ("angle1", "angle2", "angle3"),
+                [-12.0, -12.0, -2.0],
+                [12.0, 12.0, 2.0],
+            ),
+        ],
+    )
+    def test_missing_sweep_angles_use_primitive_defaults(
+        self,
+        part_type,
+        params,
+        rotation,
+        removed_keys,
+        expected_min,
+        expected_max,
+    ):
+        proj = _make_project()
+        add_part(proj, part_type, rotation=rotation, params=params)
+        for key in removed_keys:
+            del proj["parts"][0]["params"][key]
+
+        bounds = measure_bounding_box(proj, 0)
+
+        assert bounds["min"] == pytest.approx(expected_min, abs=1e-6)
+        assert bounds["max"] == pytest.approx(expected_max, abs=1e-6)
+
+    @pytest.mark.parametrize("angle", [float("inf"), float("-inf"), float("nan")])
+    def test_non_finite_sweep_is_deferred(self, angle):
         proj = _make_project()
         add_part(
             proj,
-            "sphere",
-            rotation=[25.0, 35.0, 45.0],
-            params={
-                "radius": 5.0,
-                "angle1": 0.0,
-                "angle2": 90.0,
-                "angle3": 90.0,
-            },
+            "cylinder",
+            params={"radius": 3.0, "height": 8.0, "angle": angle},
         )
 
         bounds = measure_bounding_box(proj, 0)
 
-        assert bounds["deferred"] is False
-        assert all(size >= 10.0 for size in bounds["size"])
+        assert bounds["deferred"] is True
 
     def test_bounding_box_keeps_unsupported_parts_deferred(self):
         proj = _make_project()
