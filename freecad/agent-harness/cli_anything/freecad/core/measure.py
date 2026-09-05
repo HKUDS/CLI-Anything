@@ -10,12 +10,21 @@ import math
 from typing import Any, Dict, List, Optional
 
 from cli_anything.freecad.core.document import ensure_collection
-from cli_anything.freecad.core.parts import PRIMITIVES, get_part
-
+from cli_anything.freecad.core.parts import (
+    PRIMITIVES,
+    get_part,
+    transform_point,
+    world_bounds,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_MEASURABLE_BOUNDS_TYPES = {
+    "box", "cylinder", "sphere", "cone", "torus", "wedge",
+}
+
 
 def _next_measurement_id(project: Dict[str, Any]) -> int:
     """Return the next available integer ID for measurements."""
@@ -46,51 +55,63 @@ def _get_position(part: Dict[str, Any]) -> List[float]:
     return list(part["placement"]["position"])
 
 
-def _bbox_center(part: Dict[str, Any]) -> List[float]:
-    """Estimate the bounding-box centre of a part from its position and params."""
-    pos = _get_position(part)
+def _to_world(part: Dict[str, Any], local_point: List[float]) -> List[float]:
+    """Transform a primitive-local point through the part placement."""
+    placement = part["placement"]
+    return transform_point(
+        local_point,
+        list(placement["rotation"]),
+        list(placement["position"]),
+    )
+
+
+def _bbox_center(part: Dict[str, Any]) -> Optional[List[float]]:
+    """Return the world-axis-aligned bounding-box centre of a part."""
+    part_type = str(part.get("type", "")).lower()
+    bounds = (
+        world_bounds(part)
+        if part_type in _MEASURABLE_BOUNDS_TYPES
+        else None
+    )
+    if bounds is None:
+        if part_type in _MEASURABLE_BOUNDS_TYPES:
+            return None
+        # Boolean or unknown — preserve the placement-position fallback.
+        return _get_position(part)
+    return [bounds["center"][axis] for axis in ("x", "y", "z")]
+
+
+def _center_of_mass(part: Dict[str, Any]) -> Optional[List[float]]:
+    """Return analytical centre of mass for supported uniform primitives."""
     p = part["params"]
-    t = part["type"]
+    t = str(part.get("type", "")).lower()
+
+    if (
+        t in {"cylinder", "sphere", "cone", "torus"}
+        and world_bounds(part) is None
+    ):
+        return None
 
     if t == "box":
-        return [
-            pos[0] + p["length"] / 2.0,
-            pos[1] + p["width"] / 2.0,
-            pos[2] + p["height"] / 2.0,
-        ]
+        local_center = [p["length"] / 2.0, p["width"] / 2.0, p["height"] / 2.0]
     elif t == "cylinder":
-        r = p["radius"]
-        return [
-            pos[0] + r,
-            pos[1] + r,
-            pos[2] + p["height"] / 2.0,
-        ]
-    elif t == "sphere":
-        r = p["radius"]
-        return [pos[0] + r, pos[1] + r, pos[2] + r]
+        local_center = [0.0, 0.0, p["height"] / 2.0]
+    elif t in {"sphere", "torus"}:
+        local_center = [0.0, 0.0, 0.0]
     elif t == "cone":
-        r = max(p["radius1"], p["radius2"])
-        return [
-            pos[0] + r,
-            pos[1] + r,
-            pos[2] + p["height"] / 2.0,
-        ]
-    elif t == "torus":
-        R = p["radius1"]
-        r = p["radius2"]
-        return [
-            pos[0] + R + r,
-            pos[1] + R + r,
-            pos[2] + r,
-        ]
-    elif t == "wedge":
-        return [
-            pos[0] + (p["xmin"] + p["xmax"]) / 2.0,
-            pos[1] + (p["ymin"] + p["ymax"]) / 2.0,
-            pos[2] + (p["zmin"] + p["zmax"]) / 2.0,
-        ]
-    # Boolean or unknown — fall back to placement position
-    return pos
+        r1 = p["radius1"]
+        r2 = p["radius2"]
+        radius_sum = r1 ** 2 + r1 * r2 + r2 ** 2
+        if radius_sum == 0.0:
+            return _get_position(part)
+        # Centroid of a solid conical frustum, measured from the radius1 base.
+        z = p["height"] * (r1 ** 2 + 2.0 * r1 * r2 + 3.0 * r2 ** 2)
+        z /= 4.0 * radius_sum
+        local_center = [0.0, 0.0, z]
+    else:
+        return _bbox_center(part)
+
+    return _to_world(part, local_center)
 
 
 # ---------------------------------------------------------------------------
@@ -228,13 +249,26 @@ def measure_distance(
     Returns
     -------
     dict
-        Measurement record with ``distance`` value and axis deltas.
+        Measurement record with ``distance`` value and axis deltas. Partial
+        angular primitives are deferred when their exact bounds are unknown.
     """
     part1 = get_part(project, index1)
     part2 = get_part(project, index2)
 
     c1 = _bbox_center(part1)
     c2 = _bbox_center(part2)
+
+    if c1 is None or c2 is None:
+        result_deferred: Dict[str, Any] = {
+            "part1_index": index1,
+            "part2_index": index2,
+            "distance": None,
+            "delta": None,
+            "deferred": True,
+        }
+        if additive:
+            result_deferred["additive"] = True
+        return _store_measurement(project, "distance", result_deferred)
 
     dx = c2[0] - c1[0]
     dy = c2[1] - c1[1]
@@ -246,6 +280,7 @@ def measure_distance(
         "part2_index": index2,
         "distance": round(dist, 6),
         "delta": [round(dx, 6), round(dy, 6), round(dz, 6)],
+        "deferred": False,
     }
     if additive:
         result["additive"] = True
@@ -334,13 +369,25 @@ def measure_angle(
     Returns
     -------
     dict
-        Measurement record with ``angle_deg`` value.
+        Measurement record with ``angle_deg`` value. Partial angular
+        primitives are deferred when their exact bounds are unknown.
     """
     part1 = get_part(project, index1)
     part2 = get_part(project, index2)
 
     c1 = _bbox_center(part1)
     c2 = _bbox_center(part2)
+
+    if c1 is None or c2 is None:
+        result_deferred: Dict[str, Any] = {
+            "part1_index": index1,
+            "part2_index": index2,
+            "angle_deg": None,
+            "deferred": True,
+        }
+        if additive:
+            result_deferred["additive"] = True
+        return _store_measurement(project, "angle", result_deferred)
 
     mag1 = math.sqrt(sum(v ** 2 for v in c1))
     mag2 = math.sqrt(sum(v ** 2 for v in c2))
@@ -356,6 +403,7 @@ def measure_angle(
         "part1_index": index1,
         "part2_index": index2,
         "angle_deg": round(angle_deg, 6),
+        "deferred": False,
     }
     if additive:
         result_angle["additive"] = True
@@ -517,22 +565,25 @@ def measure_center_of_mass(
     project: Dict[str, Any], index: int,
     additive: bool = False,
 ) -> Dict[str, Any]:
-    """Estimate the centre of mass (geometric centre for simple shapes).
-
-    For uniform-density primitives the centre of mass coincides with the
-    bounding-box centre.
+    """Estimate the centre of mass for a uniform-density primitive.
 
     Returns
     -------
     dict
-        Measurement record with ``center_of_mass`` ``[x, y, z]``.
+        Measurement record with ``center_of_mass`` ``[x, y, z]``. Partial
+        angular primitives are deferred when no analytical result is available.
     """
     part = get_part(project, index)
-    com = _bbox_center(part)
+    com = _center_of_mass(part)
 
     result_com: Dict[str, Any] = {
         "part_index": index,
-        "center_of_mass": [round(v, 6) for v in com],
+        "center_of_mass": (
+            [round(v, 6) for v in com]
+            if com is not None
+            else None
+        ),
+        "deferred": com is None,
     }
     if additive:
         result_com["additive"] = True
@@ -545,8 +596,8 @@ def measure_bounding_box(
 ) -> Dict[str, Any]:
     """Compute the axis-aligned bounding box of a part.
 
-    The bounding box is derived from the part's position and primitive
-    parameters.
+    The bounding box is derived from the part's placement and primitive
+    parameters in world space.
 
     Returns
     -------
@@ -554,46 +605,10 @@ def measure_bounding_box(
         Measurement record with ``min``, ``max``, and ``size`` vectors.
     """
     part = get_part(project, index)
-    pos = _get_position(part)
-    p = part["params"]
-    t = part["type"]
+    t = str(part.get("type", "")).lower()
 
-    if t == "box":
-        bb_min = pos[:]
-        bb_max = [
-            pos[0] + p["length"],
-            pos[1] + p["width"],
-            pos[2] + p["height"],
-        ]
-    elif t == "cylinder":
-        r = p["radius"]
-        bb_min = [pos[0] - r, pos[1] - r, pos[2]]
-        bb_max = [pos[0] + r, pos[1] + r, pos[2] + p["height"]]
-    elif t == "sphere":
-        r = p["radius"]
-        bb_min = [pos[0] - r, pos[1] - r, pos[2] - r]
-        bb_max = [pos[0] + r, pos[1] + r, pos[2] + r]
-    elif t == "cone":
-        r = max(p["radius1"], p["radius2"])
-        bb_min = [pos[0] - r, pos[1] - r, pos[2]]
-        bb_max = [pos[0] + r, pos[1] + r, pos[2] + p["height"]]
-    elif t == "torus":
-        R, r = p["radius1"], p["radius2"]
-        outer = R + r
-        bb_min = [pos[0] - outer, pos[1] - outer, pos[2] - r]
-        bb_max = [pos[0] + outer, pos[1] + outer, pos[2] + r]
-    elif t == "wedge":
-        bb_min = [
-            pos[0] + p["xmin"],
-            pos[1] + p["ymin"],
-            pos[2] + p["zmin"],
-        ]
-        bb_max = [
-            pos[0] + p["xmax"],
-            pos[1] + p["ymax"],
-            pos[2] + p["zmax"],
-        ]
-    else:
+    bounds = world_bounds(part) if t in _MEASURABLE_BOUNDS_TYPES else None
+    if bounds is None:
         # Unknown / boolean — deferred
         result_bb_def: Dict[str, Any] = {
             "part_index": index,
@@ -605,6 +620,10 @@ def measure_bounding_box(
         if additive:
             result_bb_def["additive"] = True
         return _store_measurement(project, "bounding_box", result_bb_def)
+
+    axes = ("x", "y", "z")
+    bb_min = [bounds["min"][axis] for axis in axes]
+    bb_max = [bounds["max"][axis] for axis in axes]
 
     size = [bb_max[i] - bb_min[i] for i in range(3)]
 
