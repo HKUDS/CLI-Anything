@@ -63,9 +63,10 @@ def _to_world(part: Dict[str, Any], local_point: List[float]) -> List[float]:
 def _bbox_center(part: Dict[str, Any]) -> Optional[List[float]]:
     """Return the world-axis-aligned bounding-box centre of a part."""
     supported_bounds = {"box", "cylinder", "sphere", "cone", "torus", "wedge"}
-    bounds = world_bounds(part) if part["type"] in supported_bounds else None
+    part_type = str(part.get("type", "")).lower()
+    bounds = world_bounds(part) if part_type in supported_bounds else None
     if bounds is None:
-        if part["type"] in supported_bounds:
+        if part_type in supported_bounds:
             return None
         # Boolean or unknown — preserve the placement-position fallback.
         return _get_position(part)
@@ -75,7 +76,7 @@ def _bbox_center(part: Dict[str, Any]) -> Optional[List[float]]:
 def _center_of_mass(part: Dict[str, Any]) -> Optional[List[float]]:
     """Return the analytical centre of mass for supported uniform primitives."""
     p = part["params"]
-    t = part["type"]
+    t = str(part.get("type", "")).lower()
 
     if t in {"cylinder", "sphere", "cone", "torus"} and world_bounds(part) is None:
         return None
@@ -589,7 +590,7 @@ def measure_bounding_box(
         Measurement record with ``min``, ``max``, and ``size`` vectors.
     """
     part = get_part(project, index)
-    t = part["type"]
+    t = str(part.get("type", "")).lower()
 
     supported_bounds = {"box", "cylinder", "sphere", "cone", "torus", "wedge"}
     bounds = world_bounds(part) if t in supported_bounds else None

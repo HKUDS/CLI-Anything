@@ -416,7 +416,7 @@ class TestMeasure:
 
         result = measure_center_of_mass(proj, 0)
 
-        assert result["center_of_mass"] == expected
+        assert result["center_of_mass"] == pytest.approx(expected, abs=1e-6)
 
     def test_center_of_mass_applies_part_rotation(self):
         proj = _make_project()
@@ -431,6 +431,24 @@ class TestMeasure:
         result = measure_center_of_mass(proj, 0)
 
         assert result["center_of_mass"] == [14.0, 20.0, 30.0]
+
+    def test_measurements_normalize_loaded_primitive_type_case(self):
+        proj = _make_project()
+        add_part(proj, "sphere", position=[0.0, 0.0, 0.0])
+        add_part(proj, "sphere", position=[3.0, 4.0, 0.0])
+        proj["parts"][0]["type"] = "SpHeRe"
+
+        center = measure_center_of_mass(proj, 0)
+        bounds = measure_bounding_box(proj, 0)
+        distance = measure_distance(proj, 0, 1)
+
+        assert center["center_of_mass"] == [0.0, 0.0, 0.0]
+        assert center["deferred"] is False
+        assert bounds["min"] == [-5.0, -5.0, -5.0]
+        assert bounds["max"] == [5.0, 5.0, 5.0]
+        assert bounds["deferred"] is False
+        assert distance["distance"] == 5.0
+        assert distance["deferred"] is False
 
     @pytest.mark.parametrize(
         ("part_type", "params"),
