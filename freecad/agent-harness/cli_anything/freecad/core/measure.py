@@ -14,6 +14,7 @@ from cli_anything.freecad.core.parts import (
     PRIMITIVES,
     _rotation_matrix,
     _transform_point,
+    _world_bounds,
     get_part,
 )
 
@@ -60,8 +61,8 @@ def _to_world(part: Dict[str, Any], local_point: List[float]) -> List[float]:
     )
 
 
-def _cone_aabb_center(part: Dict[str, Any]) -> List[float]:
-    """Return the exact world-axis-aligned bounding-box centre of a cone."""
+def _cone_aabb_bounds(part: Dict[str, Any]) -> tuple[List[float], List[float]]:
+    """Return the exact world-axis-aligned bounds of a cone."""
     params = part["params"]
     placement = part["placement"]
     position = list(placement["position"])
@@ -70,7 +71,8 @@ def _cone_aabb_center(part: Dict[str, Any]) -> List[float]:
     radius2 = float(params["radius2"])
     height = float(params["height"])
 
-    center: List[float] = []
+    bounds_min: List[float] = []
+    bounds_max: List[float] = []
     for axis in range(3):
         radial_support = math.hypot(matrix[axis][0], matrix[axis][1])
         upper_center = matrix[axis][2] * height
@@ -84,8 +86,15 @@ def _cone_aabb_center(part: Dict[str, Any]) -> List[float]:
             radial_support * radius1,
             upper_center + radial_support * radius2,
         )
-        center.append(position[axis] + (axis_min + axis_max) / 2.0)
-    return center
+        bounds_min.append(position[axis] + axis_min)
+        bounds_max.append(position[axis] + axis_max)
+    return bounds_min, bounds_max
+
+
+def _cone_aabb_center(part: Dict[str, Any]) -> List[float]:
+    """Return the exact world-axis-aligned bounding-box centre of a cone."""
+    bounds_min, bounds_max = _cone_aabb_bounds(part)
+    return [(bounds_min[i] + bounds_max[i]) / 2.0 for i in range(3)]
 
 
 def _bbox_center(part: Dict[str, Any]) -> List[float]:
@@ -592,8 +601,8 @@ def measure_bounding_box(
 ) -> Dict[str, Any]:
     """Compute the axis-aligned bounding box of a part.
 
-    The bounding box is derived from the part's position and primitive
-    parameters.
+    The bounding box is derived from the part's placement and primitive
+    parameters in world space.
 
     Returns
     -------
@@ -601,57 +610,29 @@ def measure_bounding_box(
         Measurement record with ``min``, ``max``, and ``size`` vectors.
     """
     part = get_part(project, index)
-    pos = _get_position(part)
-    p = part["params"]
     t = part["type"]
 
-    if t == "box":
-        bb_min = pos[:]
-        bb_max = [
-            pos[0] + p["length"],
-            pos[1] + p["width"],
-            pos[2] + p["height"],
-        ]
-    elif t == "cylinder":
-        r = p["radius"]
-        bb_min = [pos[0] - r, pos[1] - r, pos[2]]
-        bb_max = [pos[0] + r, pos[1] + r, pos[2] + p["height"]]
-    elif t == "sphere":
-        r = p["radius"]
-        bb_min = [pos[0] - r, pos[1] - r, pos[2] - r]
-        bb_max = [pos[0] + r, pos[1] + r, pos[2] + r]
-    elif t == "cone":
-        r = max(p["radius1"], p["radius2"])
-        bb_min = [pos[0] - r, pos[1] - r, pos[2]]
-        bb_max = [pos[0] + r, pos[1] + r, pos[2] + p["height"]]
-    elif t == "torus":
-        R, r = p["radius1"], p["radius2"]
-        outer = R + r
-        bb_min = [pos[0] - outer, pos[1] - outer, pos[2] - r]
-        bb_max = [pos[0] + outer, pos[1] + outer, pos[2] + r]
-    elif t == "wedge":
-        bb_min = [
-            pos[0] + p["xmin"],
-            pos[1] + p["ymin"],
-            pos[2] + p["zmin"],
-        ]
-        bb_max = [
-            pos[0] + p["xmax"],
-            pos[1] + p["ymax"],
-            pos[2] + p["zmax"],
-        ]
+    if t == "cone":
+        bb_min, bb_max = _cone_aabb_bounds(part)
     else:
-        # Unknown / boolean — deferred
-        result_bb_def: Dict[str, Any] = {
-            "part_index": index,
-            "min": None,
-            "max": None,
-            "size": None,
-            "deferred": True,
-        }
-        if additive:
-            result_bb_def["additive"] = True
-        return _store_measurement(project, "bounding_box", result_bb_def)
+        supported_bounds = {"box", "cylinder", "sphere", "torus", "wedge"}
+        world_bounds = _world_bounds(part) if t in supported_bounds else None
+        if world_bounds is not None:
+            axes = ("x", "y", "z")
+            bb_min = [world_bounds["min"][axis] for axis in axes]
+            bb_max = [world_bounds["max"][axis] for axis in axes]
+        else:
+            # Unknown / boolean — deferred
+            result_bb_def: Dict[str, Any] = {
+                "part_index": index,
+                "min": None,
+                "max": None,
+                "size": None,
+                "deferred": True,
+            }
+            if additive:
+                result_bb_def["additive"] = True
+            return _store_measurement(project, "bounding_box", result_bb_def)
 
     size = [bb_max[i] - bb_min[i] for i in range(3)]
 

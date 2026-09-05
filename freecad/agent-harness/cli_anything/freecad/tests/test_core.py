@@ -20,7 +20,11 @@ from cli_anything.freecad.core.document import (
     open_document,
     save_document,
 )
-from cli_anything.freecad.core.measure import measure_center_of_mass, measure_distance
+from cli_anything.freecad.core.measure import (
+    measure_bounding_box,
+    measure_center_of_mass,
+    measure_distance,
+)
 from cli_anything.freecad.core.parts import (
     PRIMITIVES,
     add_part,
@@ -453,11 +457,64 @@ class TestMeasure:
         )
 
         result = measure_distance(proj, 0, 1)
+        bounds = measure_bounding_box(proj, 1)
 
         assert result["distance"] == 2.5
         assert result["delta"] == pytest.approx(
             [1.767767, 0.0, 1.767767], abs=1e-6
         )
+        assert bounds["min"] == pytest.approx(
+            [-3.535534, -5.0, -3.535534], abs=1e-6
+        )
+        assert bounds["max"] == pytest.approx(
+            [7.071068, 5.0, 7.071068], abs=1e-6
+        )
+        assert [
+            (low + high) / 2.0 for low, high in zip(bounds["min"], bounds["max"])
+        ] == pytest.approx(result["delta"], abs=1e-6)
+
+    def test_bounding_box_applies_rotation_consistently_with_distance(self):
+        proj = _make_project()
+        add_part(proj, "sphere", position=[0.0, 0.0, 0.0])
+        add_part(
+            proj,
+            "box",
+            position=[10.0, 20.0, 30.0],
+            rotation=[0.0, 0.0, 90.0],
+            params={"length": 4.0, "width": 2.0, "height": 3.0},
+        )
+
+        bounds = measure_bounding_box(proj, 1)
+        distance = measure_distance(proj, 0, 1)
+
+        assert bounds["min"] == pytest.approx([8.0, 20.0, 30.0])
+        assert bounds["max"] == pytest.approx([10.0, 24.0, 33.0])
+        assert bounds["size"] == pytest.approx([2.0, 4.0, 3.0])
+        assert distance["delta"] == pytest.approx(
+            [(low + high) / 2.0 for low, high in zip(bounds["min"], bounds["max"])]
+        )
+
+    def test_bounding_box_keeps_unsupported_parts_deferred(self):
+        proj = _make_project()
+        proj["parts"].append(
+            {
+                "id": 1,
+                "name": "Plane",
+                "type": "plane",
+                "params": {"length": 4.0, "width": 2.0},
+                "placement": {
+                    "position": [10.0, 20.0, 30.0],
+                    "rotation": [0.0, 0.0, 90.0],
+                },
+            }
+        )
+
+        bounds = measure_bounding_box(proj, 0)
+
+        assert bounds["min"] is None
+        assert bounds["max"] is None
+        assert bounds["size"] is None
+        assert bounds["deferred"] is True
 
 
 # ===========================================================================
