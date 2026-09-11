@@ -6,6 +6,22 @@
   },
   "clis": [
     {
+      "name": "odoo",
+      "display_name": "Odoo 18",
+      "version": "1.0.0",
+      "description": "Odoo 18 ERP over XML-RPC — query and modify any model through the ORM, inspect model metadata, manage modules and databases",
+      "requires": "A reachable Odoo 18 server (network client; Odoo need not be installed locally)",
+      "homepage": "https://www.odoo.com",
+      "source_url": "https://github.com/matteo-didone/cli-anything-odoo",
+      "install_cmd": "pip install git+https://github.com/matteo-didone/cli-anything-odoo.git",
+      "entry_point": "cli-anything-odoo",
+      "skill_md": "https://github.com/matteo-didone/cli-anything-odoo/blob/main/skills/cli-anything-odoo/SKILL.md",
+      "category": "finance",
+      "contributors": [
+        {"name": "matteo-didone", "url": "https://github.com/matteo-didone"}
+      ]
+    },
+    {
       "name": "jumpserver",
       "display_name": "JumpServer",
       "version": "0.1.0",
