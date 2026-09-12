@@ -146,6 +146,60 @@ def set_render_settings(
     return render
 
 
+def set_world_settings(
+    project: Dict[str, Any],
+    background_color: Optional[List[float]] = None,
+    use_hdri: Optional[bool] = None,
+    hdri_path: Optional[str] = None,
+    hdri_strength: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Configure world/environment lighting.
+
+    Args:
+        project: The scene dict
+        background_color: [r, g, b] flat background/ambient color (0.0-1.0 each)
+        use_hdri: Enable HDRI environment lighting
+        hdri_path: Path to an HDRI image file
+        hdri_strength: HDRI environment strength multiplier
+
+    Returns:
+        Dict with updated world settings
+    """
+    world = project.get("world", {})
+
+    if background_color is not None:
+        if len(background_color) != 3:
+            raise ValueError(f"Background color must have 3 components [r, g, b], got {len(background_color)}")
+        world["background_color"] = [float(c) for c in background_color]
+
+    if use_hdri is not None:
+        world["use_hdri"] = bool(use_hdri)
+
+    if hdri_path is not None:
+        if not os.path.isfile(hdri_path):
+            raise FileNotFoundError(f"HDRI file not found: {hdri_path}")
+        world["hdri_path"] = os.path.abspath(hdri_path)
+
+    if hdri_strength is not None:
+        if hdri_strength < 0:
+            raise ValueError(f"HDRI strength must be non-negative: {hdri_strength}")
+        world["hdri_strength"] = float(hdri_strength)
+
+    project["world"] = world
+    return world
+
+
+def get_world_settings(project: Dict[str, Any]) -> Dict[str, Any]:
+    """Get current world/environment settings."""
+    world = project.get("world", {})
+    return {
+        "background_color": world.get("background_color", [0.05, 0.05, 0.05]),
+        "use_hdri": world.get("use_hdri", False),
+        "hdri_path": world.get("hdri_path"),
+        "hdri_strength": world.get("hdri_strength", 1.0),
+    }
+
+
 def get_render_settings(project: Dict[str, Any]) -> Dict[str, Any]:
     """Get current render settings."""
     render = project.get("render", {})

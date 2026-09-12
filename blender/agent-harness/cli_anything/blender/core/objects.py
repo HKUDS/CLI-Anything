@@ -1,7 +1,10 @@
 """Blender CLI - 3D object management module."""
 
 import copy
+import os
 from typing import Dict, Any, List, Optional
+
+IMPORT_FORMATS = {".glb": "glb", ".gltf": "gltf", ".obj": "obj", ".fbx": "fbx"}
 
 
 # Valid mesh primitive types and their default parameters
@@ -123,6 +126,90 @@ def add_object(
         target["objects"].append(obj["id"])
     else:
         # Add to first collection if it exists
+        collections = project.get("collections", [])
+        if collections:
+            collections[0]["objects"].append(obj["id"])
+
+    return obj
+
+
+def import_object(
+    project: Dict[str, Any],
+    path: str,
+    name: Optional[str] = None,
+    location: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
+    scale: Optional[List[float]] = None,
+    collection: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Import an external mesh file (glb/gltf/obj/fbx) into the scene.
+
+    Args:
+        project: The scene dict
+        path: Path to the mesh file to import
+        name: Object name (auto-generated from filename if None)
+        location: [x, y, z] location (default [0, 0, 0])
+        rotation: [x, y, z] rotation in degrees (default [0, 0, 0])
+        scale: [x, y, z] scale (default [1, 1, 1])
+        collection: Target collection name (default: first collection)
+
+    Returns:
+        The new object dict
+    """
+    abspath = os.path.abspath(path)
+    if not os.path.isfile(abspath):
+        raise FileNotFoundError(f"Mesh file not found: {abspath}")
+
+    ext = os.path.splitext(abspath)[1].lower()
+    if ext not in IMPORT_FORMATS:
+        raise ValueError(
+            f"Unsupported import format: {ext}. Valid: {list(IMPORT_FORMATS.keys())}"
+        )
+
+    if location is not None and len(location) != 3:
+        raise ValueError(f"Location must have 3 components [x, y, z], got {len(location)}")
+    if rotation is not None and len(rotation) != 3:
+        raise ValueError(f"Rotation must have 3 components [x, y, z], got {len(rotation)}")
+    if scale is not None and len(scale) != 3:
+        raise ValueError(f"Scale must have 3 components [x, y, z], got {len(scale)}")
+
+    base_name = name or os.path.splitext(os.path.basename(abspath))[0]
+    obj_name = _unique_name(project, base_name, "objects")
+
+    obj = {
+        "id": _next_id(project, "objects"),
+        "name": obj_name,
+        "type": "MESH",
+        "mesh_type": "import",
+        "location": list(location) if location else [0.0, 0.0, 0.0],
+        "rotation": list(rotation) if rotation else [0.0, 0.0, 0.0],
+        "scale": list(scale) if scale else [1.0, 1.0, 1.0],
+        "visible": True,
+        "material": None,
+        "modifiers": [],
+        "keyframes": [],
+        "parent": None,
+        "mesh_params": {
+            "import_path": abspath,
+            "import_format": IMPORT_FORMATS[ext],
+        },
+    }
+
+    if "objects" not in project:
+        project["objects"] = []
+    project["objects"].append(obj)
+
+    if collection:
+        collections = project.get("collections", [])
+        target = None
+        for c in collections:
+            if c["name"] == collection:
+                target = c
+                break
+        if target is None:
+            raise ValueError(f"Collection not found: {collection}")
+        target["objects"].append(obj["id"])
+    else:
         collections = project.get("collections", [])
         if collections:
             collections[0]["objects"].append(obj["id"])

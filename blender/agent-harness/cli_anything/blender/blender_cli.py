@@ -352,6 +352,30 @@ def object_add(mesh_type, name, location, rotation, scale, param, collection):
     output(obj, f"Added {mesh_type}: {obj['name']}")
 
 
+@object_group.command("import")
+@click.argument("path", type=str)
+@click.option("--name", "-n", default=None, help="Object name")
+@click.option("--location", "-l", default=None, help="Location x,y,z")
+@click.option("--rotation", "-r", default=None, help="Rotation x,y,z (degrees)")
+@click.option("--scale", "-s", default=None, help="Scale x,y,z")
+@click.option("--collection", "-c", default=None, help="Target collection")
+@handle_error
+def object_import(path, name, location, rotation, scale, collection):
+    """Import an external mesh file (glb, gltf, obj, fbx)."""
+    loc = [float(x) for x in location.split(",")] if location else None
+    rot = [float(x) for x in rotation.split(",")] if rotation else None
+    scl = [float(x) for x in scale.split(",")] if scale else None
+
+    sess = get_session()
+    sess.snapshot(f"Import object: {path}")
+    proj = sess.get_project()
+    obj = obj_mod.import_object(
+        proj, path, name=name, location=loc, rotation=rot, scale=scl,
+        collection=collection,
+    )
+    output(obj, f"Imported: {obj['name']}")
+
+
 @object_group.command("remove")
 @click.argument("index", type=int)
 @handle_error
@@ -848,6 +872,24 @@ def render_info():
     sess = get_session()
     info = render_mod.get_render_settings(sess.get_project())
     output(info)
+
+
+@render_group.command("world")
+@click.option("--background-color", default=None, help="Flat background/ambient color r,g,b (0.0-1.0 each)")
+@click.option("--use-hdri / --no-use-hdri", "use_hdri", default=None, help="Enable HDRI environment lighting")
+@click.option("--hdri-path", default=None, help="Path to an HDRI image file")
+@click.option("--hdri-strength", type=float, default=None, help="HDRI environment strength")
+@handle_error
+def render_world(background_color, use_hdri, hdri_path, hdri_strength):
+    """Configure world/environment lighting (background color or HDRI)."""
+    bg = [float(x) for x in background_color.split(",")] if background_color else None
+    sess = get_session()
+    sess.snapshot("Set world settings")
+    result = render_mod.set_world_settings(
+        sess.get_project(), background_color=bg, use_hdri=use_hdri,
+        hdri_path=hdri_path, hdri_strength=hdri_strength,
+    )
+    output(result, "World settings updated")
 
 
 @render_group.command("presets")
