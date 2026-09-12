@@ -217,7 +217,7 @@ def render_scene(
     abs_output_path = os.path.abspath(output_path)
     script_content = generate_bpy_script(project, abs_output_path, frame=frame, animation=animation)
 
-    with open(script_path, "w") as f:
+    with open(script_path, "w", encoding="utf-8") as f:
         f.write(script_content)
 
     result = {

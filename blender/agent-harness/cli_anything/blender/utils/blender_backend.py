@@ -56,6 +56,7 @@ def render_script(
     result = subprocess.run(
         cmd,
         capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
         timeout=timeout,
     )
 
@@ -83,7 +84,8 @@ def render_scene_headless(
         Dict with output path, file size, method, blender version
     """
     with tempfile.NamedTemporaryFile(
-        suffix=".py", mode="w", delete=False, prefix="blender_render_"
+        suffix=".py", mode="w", delete=False, prefix="blender_render_",
+        encoding="utf-8",
     ) as f:
         f.write(bpy_script_content)
         script_path = f.name
