@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "update_registry_dates.py"
 SPEC = importlib.util.spec_from_file_location("update_registry_dates", SCRIPT_PATH)
@@ -54,6 +56,42 @@ def test_extract_npm_package_supports_scoped_package_names():
     }
 
     assert MODULE._extract_npm_package(cli) == "@sentry/cli"
+
+
+@pytest.mark.parametrize(
+    ("package_spec", "package_name"),
+    [
+        ("eslint", "eslint"),
+        ("eslint@9.0.0", "eslint"),
+        ("eslint@latest", "eslint"),
+        ("@sentry/cli", "@sentry/cli"),
+        ("@sentry/cli@2.42.0", "@sentry/cli"),
+        ("@sentry/cli@latest", "@sentry/cli"),
+    ],
+)
+def test_extract_npm_package_from_install_command(package_spec, package_name):
+    cli = {"install_cmd": f"npm install -g {package_spec}"}
+
+    assert MODULE._extract_npm_package(cli) == package_name
+
+
+def test_get_npm_date_queries_package_without_version(monkeypatch):
+    requested_urls = []
+
+    def fetch_json(url):
+        requested_urls.append(url)
+        if url == "https://registry.npmjs.org/%40sentry%2Fcli":
+            return {
+                "dist-tags": {"latest": "2.43.0"},
+                "time": {"2.43.0": "2026-09-01T12:00:00Z"},
+            }
+        return None
+
+    monkeypatch.setattr(MODULE, "_fetch_json", fetch_json)
+    cli = {"install_cmd": "npm install -g @sentry/cli@2.42.0"}
+
+    assert MODULE.get_npm_date(cli) == "2026-09-01"
+    assert requested_urls == ["https://registry.npmjs.org/%40sentry%2Fcli"]
 
 
 def test_extract_pypi_package_supports_python_module_invocation():

@@ -200,7 +200,14 @@ def _extract_npm_package(cli: dict) -> str | None:
 
     install_cmd = cli.get("install_cmd", "")
     match = re.search(r"npm install -g (\S+)", install_cmd)
-    return match.group(1) if match else None
+    if not match:
+        return None
+    package = match.group(1)
+    # A scoped package's leading @ belongs to the name, not the version.
+    version_separator = package.find("@", 1)
+    if version_separator != -1:
+        package = package[:version_separator]
+    return package
 
 
 def get_npm_date(cli: dict) -> str | None:
