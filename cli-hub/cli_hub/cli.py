@@ -298,7 +298,7 @@ def info(name):
     click.echo()
 
 
-@main.command()
+@main.command(context_settings={"allow_interspersed_args": False})
 @click.argument("name")
 @click.argument("args", nargs=-1)
 def launch(name, args):

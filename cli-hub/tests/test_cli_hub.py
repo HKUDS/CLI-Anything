@@ -1834,11 +1834,25 @@ class TestCLI:
     @patch("cli_hub.cli.shutil.which", return_value="/usr/bin/dreamina")
     @patch("cli_hub.cli.os.execvp")
     @patch("cli_hub.cli.get_cli", return_value=JIMENG_CLI)
-    def test_launch_execs_entry_point(self, mock_get, mock_execvp, mock_which, mock_detect, mock_visit, mock_first_run):
+    @pytest.mark.parametrize("args", [
+        [],
+        ["login"],
+        ["--json", "list"],
+        ["--help"],
+        ["generate", "--prompt", "hello world", "-n", "2"],
+        ["--", "-literal"],
+    ])
+    def test_launch_execs_entry_point(self, mock_get, mock_execvp, mock_which, mock_detect, mock_visit, mock_first_run, args):
         """launch execs the CLI entry point, passing through extra args."""
         mock_detect.return_value = self.human_detection
-        result = self.runner.invoke(main, ["launch", "jimeng", "login"])
-        mock_execvp.assert_called_once_with("dreamina", ["dreamina", "login"])
+        result = self.runner.invoke(main, ["launch", "jimeng", *args])
+        assert result.exit_code == 0, result.output
+        mock_execvp.assert_called_once_with("dreamina", ["dreamina", *args])
+
+    def test_launch_help_before_name(self):
+        result = self.runner.invoke(main.commands["launch"], ["--help"])
+        assert result.exit_code == 0
+        assert "Launch an installed CLI" in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
