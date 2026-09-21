@@ -664,7 +664,7 @@ def matrix_preflight(name, capability, recipe, offline, fix_hints, summary_only,
     """Check which matrix providers are available in the current environment.
 
     Exit codes: 0 all capabilities covered · 3 one or more capability gaps ·
-    1 matrix not found · 2 unknown capability/recipe.
+    1 matrix not found or no capability data · 2 unknown capability/recipe.
     """
     matrix_item = get_matrix(name)
     if not matrix_item:
@@ -703,6 +703,8 @@ def matrix_preflight(name, capability, recipe, offline, fix_hints, summary_only,
 
     if as_json:
         click.echo(json_mod.dumps(payload, indent=2))
+        if not payload["capabilities"]:
+            raise SystemExit(EXIT_FAIL)
         raise SystemExit(EXIT_PARTIAL if payload["summary"].get("gaps", 0) else EXIT_OK)
 
     capabilities = payload["capabilities"]

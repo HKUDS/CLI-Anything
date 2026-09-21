@@ -1637,6 +1637,33 @@ class TestCLI:
             capability_ids=None,
         )
 
+    @pytest.mark.parametrize("as_json", [False, True])
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.track_matrix_preflight")
+    @patch("cli_hub.cli.get_matrix")
+    def test_matrix_preflight_without_capabilities_fails(
+        self, mock_get_matrix, mock_preflight_event, mock_visit, mock_first_run, as_json
+    ):
+        mock_get_matrix.return_value = {
+            "name": "empty-matrix",
+            "display_name": "Empty Matrix",
+            "capabilities": [],
+        }
+        args = ["matrix", "preflight", "empty-matrix"]
+        if as_json:
+            args.append("--json")
+
+        result = self.runner.invoke(main, args)
+
+        assert result.exit_code == 1
+        if as_json:
+            payload = json.loads(result.output)
+            assert payload["capabilities"] == []
+            assert payload["summary"]["capabilities"] == 0
+        else:
+            assert "No capability data found" in result.output
+
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
     @patch("cli_hub.cli.detect_invocation_context")
