@@ -1,6 +1,8 @@
 """Tests for matrix skill distribution (P1-4): co-installed assets and the
 content lookup chain in cli_hub/matrix_skill.py."""
 
+import shutil
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -104,6 +106,30 @@ class TestAssetCoInstall:
 
 class TestLookupChain:
     """Checkout -> bundled data -> published URL -> stub."""
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+    @pytest.mark.parametrize("working_directory", ["repo", "unrelated"])
+    def test_checkout_content_found_from_git_directories(
+        self, tmp_path, monkeypatch, working_directory,
+    ):
+        repo = tmp_path / "repo"
+        content = _make_content_dir(repo)
+        module_path = repo / "cli-hub" / "cli_hub" / "matrix_skill.py"
+        module_path.parent.mkdir(parents=True)
+        module_path.touch()
+        monkeypatch.setattr(matrix_skill, "__file__", str(module_path))
+        monkeypatch.setattr(matrix_skill, "BUNDLED_MATRIX_DATA_DIR", tmp_path / "missing")
+
+        for name in ("repo", "unrelated"):
+            subprocess.run(
+                ["git", "init", "-q", str(tmp_path / name)], check=True,
+            )
+        monkeypatch.chdir(tmp_path / working_directory)
+
+        template, content_dir = matrix_skill._resolve_matrix_content_source(_demo_matrix())
+
+        assert template == content / "SKILL.md"
+        assert content_dir == content
 
     def test_bundled_data_used_when_no_checkout(self, tmp_path, monkeypatch):
         bundled_root = tmp_path / "bundled"

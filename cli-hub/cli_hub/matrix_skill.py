@@ -51,7 +51,8 @@ def _find_repo_root():
         )
         if result.returncode == 0:
             root = Path(result.stdout.strip())
-            if root.is_dir():
+            # The current working directory may belong to an unrelated project.
+            if (root / "cli-hub-matrix").is_dir():
                 return root
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
