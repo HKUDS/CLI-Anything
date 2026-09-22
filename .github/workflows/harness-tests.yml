@@ -1,0 +1,79 @@
+name: harness-unit-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.list.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: List harness unit test files
+        id: list
+        run: |
+          pip install --quiet pytest
+          python .github/scripts/run_harness_unit_tests.py --list > tests.json
+          echo "tests=$(cat tests.json)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: discover
+    name: ${{ matrix.os }} / ${{ matrix.test }}
+    runs-on: ${{ matrix.os }}
+    # 看门狗模式（#403）：harness 单测存在已知漂移（blender/gimp/comfyui 等），
+    # 先不阻塞合并；每次运行把逐 harness 结果落到 artifact 与 job 日志，
+    # 让「2,461 passed」这类快照声明有 CI 可复核。漂移清零后可移除 continue-on-error。
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        test: ${{ fromJson(needs.discover.outputs.tests) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install test deps
+        shell: bash
+        run: pip install --quiet pytest click requests
+      - name: Run unit tests
+        shell: bash
+        run: |
+          python .github/scripts/run_harness_unit_tests.py --test "${{ matrix.test }}" --out "${{ runner.temp }}/unit-result-${{ matrix.os }}-${{ strategy.job-index }}.json"
+      - name: Upload result
+        # 看门狗核心：测试失败（退出码非 0）时也要把逐 harness 结果传上去，
+        # 否则恰好看不到失败集合。continue-on-error 只保工作流不红，不会让本步执行。
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-${{ matrix.os }}-${{ strategy.job-index }}
+          path: "${{ runner.temp }}/unit-result-${{ matrix.os }}-${{ strategy.job-index }}.json"
+          if-no-files-found: ignore
+
+  report:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: unit-*
+          path: unit-results
+          merge-multiple: true
+      - name: Write step summary
+        shell: bash
+        run: |
+          python .github/scripts/summarize_harness_tests.py unit-results/*.json \
+            >> "$GITHUB_STEP_SUMMARY"
