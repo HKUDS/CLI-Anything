@@ -537,6 +537,28 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "yylo",
+      "display_name": "YYLO",
+      "version": "0.2.6",
+      "description": "YYLO task-driven AI subagent orchestration CLI — Kanban task state, typed merge orchestration, and multi-agent worktree workflows for coding agents, from the terminal, scripts, CI, or agents. MIT; ships seven agent skills (SKILL.md).",
+      "category": "devtools",
+      "requires": "Node.js >= 20.10.0, Git",
+      "homepage": "https://github.com/yylo-dev/yylo",
+      "source_url": "https://github.com/yylo-dev/yylo",
+      "package_manager": "npm",
+      "npm_package": "@yylo/cli",
+      "install_cmd": "npm install --global '@yylo/cli@latest'",
+      "npx_cmd": "npx '@yylo/cli'",
+      "skill_md": "https://github.com/yylo-dev/yylo-skills/blob/main/skills/ledger-tasks-yylo/SKILL.md",
+      "entry_point": "yylo",
+      "contributors": [
+        {
+          "name": "yylo-dev",
+          "url": "https://github.com/yylo-dev"
+        }
+      ]
     }
   ]
 }
