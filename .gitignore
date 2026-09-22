@@ -345,3 +345,7 @@ assets/gen_typing_gif.py
 !/jumpserver/
 !/jumpserver/agent-harness/
 !/cli_anything/jumpserver/
+!/opencti/
+/opencti/*
+/opencti/.*
+!/opencti/agent-harness/

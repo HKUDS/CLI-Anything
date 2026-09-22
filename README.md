@@ -1140,6 +1140,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="n8n/agent-harness/">55+ cmds</a></td>
 </tr>
 <tr>
+<td align="center"><strong>🛡️ <a href="opencti/agent-harness/">OpenCTI</a></strong></td>
+<td>Threat Intelligence</td>
+<td><code>cli-anything-opencti</code></td>
+<td>OpenCTI GraphQL API v7</td>
+<td align="center">✅ <a href="opencti/agent-harness/">20+ cmds</a></td>
+</tr>
+<tr>
 <td align="center"><strong>📧 <a href="mailchimp/agent-harness/">Mailchimp</a></strong></td>
 <td>Email Marketing &amp; Automation</td>
 <td><code>cli-anything-mailchimp</code></td>
