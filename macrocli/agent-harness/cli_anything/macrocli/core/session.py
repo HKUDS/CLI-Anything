@@ -8,12 +8,42 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Optional
 
 SESSION_DIR = Path.home() / ".macrocli" / "sessions"
 MAX_HISTORY = 200
+_SESSION_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+_WINDOWS_RESERVED_SESSION_IDS = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def validate_session_id(session_id: str) -> str:
+    """Validate a portable session identifier used as a file name."""
+    if (
+        not isinstance(session_id, str)
+        or not _SESSION_ID_RE.fullmatch(session_id)
+        or session_id.upper() in _WINDOWS_RESERVED_SESSION_IDS
+    ):
+        raise ValueError(
+            "session_id must be 1-128 ASCII letters, digits, underscores, or hyphens"
+        )
+    return session_id
+
+
+def _session_path(session_id: str) -> Path:
+    """Return the resolved path for a validated session inside SESSION_DIR."""
+    session_id = validate_session_id(session_id)
+    session_root = SESSION_DIR.resolve()
+    path = (session_root / f"{session_id}.json").resolve()
+    if path.parent != session_root:
+        raise ValueError("session_id resolves outside the session directory")
+    return path
 
 
 def _locked_save_json(path: str, data, **dump_kwargs) -> None:
@@ -99,7 +129,9 @@ class ExecutionSession:
     """Tracks macro run history for the current session."""
 
     def __init__(self, session_id: Optional[str] = None):
-        self.session_id = session_id or f"session_{int(time.time())}"
+        if session_id is None:
+            session_id = f"session_{int(time.time())}"
+        self.session_id = validate_session_id(session_id)
         self._history: list[RunRecord] = []
 
     # ── Record management ─────────────────────────────────────────────
@@ -145,24 +177,26 @@ class ExecutionSession:
     def save(self) -> str:
         """Persist session to disk. Returns the file path."""
         SESSION_DIR.mkdir(parents=True, exist_ok=True)
-        path = str(SESSION_DIR / f"{self.session_id}.json")
+        path = _session_path(self.session_id)
         data = {
             "session_id": self.session_id,
             "timestamp": time.time(),
             "history": [r.to_dict() for r in self._history],
         }
-        _locked_save_json(path, data, indent=2, sort_keys=True)
-        return path
+        _locked_save_json(str(path), data, indent=2, sort_keys=True)
+        return str(path)
 
     @classmethod
     def load(cls, session_id: str) -> Optional["ExecutionSession"]:
         """Load a session from disk."""
-        path = SESSION_DIR / f"{session_id}.json"
+        path = _session_path(session_id)
         if not path.is_file():
             return None
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        session = cls(session_id=data.get("session_id", session_id))
+        # The file name is the canonical identifier. Do not allow persisted
+        # data to redirect a later save to a different path.
+        session = cls(session_id=session_id)
         session._history = [RunRecord.from_dict(r) for r in data.get("history", [])]
         return session
 

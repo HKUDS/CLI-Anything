@@ -24,7 +24,7 @@ from typing import Optional
 
 from cli_anything.macrocli.core.registry import MacroRegistry
 from cli_anything.macrocli.core.runtime import MacroRuntime
-from cli_anything.macrocli.core.session import ExecutionSession
+from cli_anything.macrocli.core.session import ExecutionSession, validate_session_id
 
 # ── Global state ─────────────────────────────────────────────────────────────
 
@@ -131,13 +131,24 @@ def _parse_params(param_tuples: tuple) -> dict:
     return result
 
 
+def _validate_session_id_option(ctx, param, value):
+    """Convert core session ID validation errors into Click usage errors."""
+    if value is None:
+        return None
+    try:
+        return validate_session_id(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), ctx=ctx, param=param) from exc
+
+
 # ── Main CLI group ────────────────────────────────────────────────────────────
 
 @click.group(invoke_without_command=True)
 @click.option("--json", "json_flag", is_flag=True, help="Machine-readable JSON output.")
 @click.option("--dry-run", "dry_run_flag", is_flag=True,
               help="Simulate execution without side effects.")
-@click.option("--session-id", default=None, help="Resume or create a named session.")
+@click.option("--session-id", default=None, callback=_validate_session_id_option,
+              help="Resume or create a named session (letters, digits, '_' and '-').")
 @click.pass_context
 def cli(ctx, json_flag, dry_run_flag, session_id):
     """MacroCLI — run GUI workflows as CLI commands.
