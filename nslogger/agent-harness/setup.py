@@ -23,9 +23,11 @@ setup(
             "cli-anything-nslogger=cli_anything.nslogger.nslogger_cli:main",
         ],
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Operating System :: MacOS",
     ],
     include_package_data=True,

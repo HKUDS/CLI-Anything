@@ -26,9 +26,11 @@ setup(
             "cli-anything-cloudanalyzer=cli_anything.cloudanalyzer.cloudanalyzer_cli:main",
         ],
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Topic :: Scientific/Engineering :: GIS",
         "Topic :: Scientific/Engineering :: Information Analysis",
     ],

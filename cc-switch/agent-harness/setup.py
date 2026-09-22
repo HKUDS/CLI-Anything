@@ -21,4 +21,9 @@ setup(
             "cli-anything-ccswitch=cli_anything.ccswitch.ccswitch_cli:main",
         ],
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
+    classifiers=[
+        "License :: OSI Approved :: Apache Software License",
+    ],
 )

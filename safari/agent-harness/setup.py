@@ -30,7 +30,8 @@ setup(
         "Upstream": "https://github.com/achiya-automation/safari-mcp",
     },
 
-    license="MIT",
+    license="Apache-2.0",
+    license_files=["LICENSE"],
 
     packages=find_namespace_packages(include=["cli_anything.*"]),
     python_requires=">=3.10",
@@ -75,7 +76,7 @@ setup(
         "Topic :: Internet :: WWW/HTTP :: Browsers",
         "Topic :: Software Development :: Testing",
         "Topic :: Software Development :: Libraries :: Python Modules",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Operating System :: MacOS :: MacOS X",
 
         "Programming Language :: Python :: 3 :: Only",

@@ -10,6 +10,7 @@ setup(
     long_description_content_type="text/markdown",
     author="CLI-Anything Contributors",
     license="Apache-2.0",
+    license_files=["LICENSE"],
     packages=find_namespace_packages(include=["cli_anything.*"]),
     python_requires=">=3.10",
     install_requires=[

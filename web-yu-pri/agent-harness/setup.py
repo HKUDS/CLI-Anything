@@ -25,7 +25,8 @@ setup(
         "Homepage": "https://github.com/HKUDS/CLI-Anything",
         "Issues": "https://github.com/HKUDS/CLI-Anything/issues",
     },
-    license="MIT",
+    license="Apache-2.0",
+    license_files=["LICENSE"],
     packages=find_namespace_packages(include=["cli_anything.*"]),
     python_requires=">=3.10",
     install_requires=[
@@ -56,7 +57,7 @@ setup(
         "Topic :: Internet :: WWW/HTTP :: Browsers",
         "Topic :: Office/Business",
         "Topic :: Software Development :: Testing",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3 :: Only",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",

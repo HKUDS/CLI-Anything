@@ -26,4 +26,9 @@ setup(
             "cli-anything-openrefine=cli_anything.openrefine.openrefine_cli:main",
         ],
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
+    classifiers=[
+        "License :: OSI Approved :: Apache Software License",
+    ],
 )

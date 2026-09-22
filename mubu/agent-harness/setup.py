@@ -46,4 +46,9 @@ setup(
             "cli-anything-mubu=cli_anything.mubu.mubu_cli:entrypoint",
         ]
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
+    classifiers=[
+        "License :: OSI Approved :: Apache Software License",
+    ],
 )

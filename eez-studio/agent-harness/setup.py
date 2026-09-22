@@ -31,10 +31,12 @@ setup(
             "cli-anything-eez-studio=cli_anything.eez_studio.eez_studio_cli:main",
         ],
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "License :: OSI Approved :: Apache Software License",
         "Topic :: Scientific/Engineering",
         "Topic :: Software Development :: Embedded Systems",
     ],
