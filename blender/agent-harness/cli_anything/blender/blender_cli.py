@@ -35,6 +35,7 @@ from cli_anything.blender.core import lighting as light_mod
 from cli_anything.blender.core import animation as anim_mod
 from cli_anything.blender.core import render as render_mod
 from cli_anything.blender.core import preview as preview_mod
+from cli_anything.blender.utils import blender_backend
 
 # Global session state
 _session: Optional[Session] = None
@@ -349,6 +350,30 @@ def object_add(mesh_type, name, location, rotation, scale, param, collection):
         collection=collection,
     )
     output(obj, f"Added {mesh_type}: {obj['name']}")
+
+
+@object_group.command("import")
+@click.argument("path", type=str)
+@click.option("--name", "-n", default=None, help="Object name")
+@click.option("--location", "-l", default=None, help="Location x,y,z")
+@click.option("--rotation", "-r", default=None, help="Rotation x,y,z (degrees)")
+@click.option("--scale", "-s", default=None, help="Scale x,y,z")
+@click.option("--collection", "-c", default=None, help="Target collection")
+@handle_error
+def object_import(path, name, location, rotation, scale, collection):
+    """Import an external mesh file (glb, gltf, obj, fbx)."""
+    loc = [float(x) for x in location.split(",")] if location else None
+    rot = [float(x) for x in rotation.split(",")] if rotation else None
+    scl = [float(x) for x in scale.split(",")] if scale else None
+
+    sess = get_session()
+    sess.snapshot(f"Import object: {path}")
+    proj = sess.get_project()
+    obj = obj_mod.import_object(
+        proj, path, name=name, location=loc, rotation=rot, scale=scl,
+        collection=collection,
+    )
+    output(obj, f"Imported: {obj['name']}")
 
 
 @object_group.command("remove")
@@ -849,6 +874,24 @@ def render_info():
     output(info)
 
 
+@render_group.command("world")
+@click.option("--background-color", default=None, help="Flat background/ambient color r,g,b (0.0-1.0 each)")
+@click.option("--use-hdri / --no-use-hdri", "use_hdri", default=None, help="Enable HDRI environment lighting")
+@click.option("--hdri-path", default=None, help="Path to an HDRI image file")
+@click.option("--hdri-strength", type=float, default=None, help="HDRI environment strength")
+@handle_error
+def render_world(background_color, use_hdri, hdri_path, hdri_strength):
+    """Configure world/environment lighting (background color or HDRI)."""
+    bg = [float(x) for x in background_color.split(",")] if background_color else None
+    sess = get_session()
+    sess.snapshot("Set world settings")
+    result = render_mod.set_world_settings(
+        sess.get_project(), background_color=bg, use_hdri=use_hdri,
+        hdri_path=hdri_path, hdri_strength=hdri_strength,
+    )
+    output(result, "World settings updated")
+
+
 @render_group.command("presets")
 @handle_error
 def render_presets():
@@ -864,13 +907,40 @@ def render_presets():
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
 @handle_error
 def render_execute(output_path, frame, animation, overwrite):
-    """Render the scene (generates bpy script)."""
+    """Render the scene (generates bpy script and renders via real Blender)."""
     sess = get_session()
     result = render_mod.render_scene(
         sess.get_project(), output_path,
         frame=frame, animation=animation, overwrite=overwrite,
     )
-    output(result, f"Render script generated: {result['script_path']}")
+
+    run = blender_backend.render_script(result["script_path"])
+    if run["returncode"] != 0:
+        raise RuntimeError(
+            f"Blender render failed (exit {run['returncode']}):\n"
+            f"  stderr: {run['stderr'][-500:]}"
+        )
+
+    actual_output = output_path
+    if not os.path.exists(actual_output):
+        base, ext = os.path.splitext(output_path)
+        for suffix in ["0001", "0000", "1"]:
+            candidate = f"{base}{suffix}{ext}"
+            if os.path.exists(candidate):
+                actual_output = candidate
+                break
+
+    if not os.path.exists(actual_output):
+        raise RuntimeError(
+            f"Blender render produced no output file.\n"
+            f"  Expected: {output_path}\n"
+            f"  stdout: {run['stdout'][-500:]}"
+        )
+
+    result["rendered_output"] = os.path.abspath(actual_output)
+    result["file_size"] = os.path.getsize(actual_output)
+    result["blender_version"] = blender_backend.get_version()
+    output(result, f"Rendered: {result['rendered_output']} ({result['file_size']:,} bytes)")
 
 
 @render_group.command("script")

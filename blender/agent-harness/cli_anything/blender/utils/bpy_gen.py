@@ -245,14 +245,42 @@ def _gen_objects(project: Dict[str, Any]) -> List[str]:
             lines.append(f"bpy.ops.mesh.primitive_monkey_add(location=({loc[0]}, {loc[1]}, {loc[2]}))")
         elif mesh_type == "empty":
             lines.append(f"bpy.ops.object.empty_add(location=({loc[0]}, {loc[1]}, {loc[2]}))")
+        elif mesh_type == "import":
+            import_path = params.get("import_path", "")
+            import_format = params.get("import_format", "")
+            lines.append("_existing_objs = set(bpy.data.objects.keys())")
+            if import_format in ("glb", "gltf"):
+                lines.append(f"bpy.ops.import_scene.gltf(filepath={import_path!r})")
+            elif import_format == "obj":
+                lines.append(f"bpy.ops.wm.obj_import(filepath={import_path!r})")
+            elif import_format == "fbx":
+                lines.append(f"bpy.ops.import_scene.fbx(filepath={import_path!r})")
+            else:
+                lines.append(f"# Unsupported import format: {import_format}")
+                continue
+            lines.append("_new_objs = [o for n, o in bpy.data.objects.items() if n not in _existing_objs]")
+            lines.append("if len(_new_objs) == 1:")
+            lines.append("    obj = _new_objs[0]")
+            lines.append(f"    obj.name = {name!r}")
+            lines.append("else:")
+            lines.append(f"    bpy.ops.object.empty_add(location=(0, 0, 0))")
+            lines.append("    obj = bpy.context.active_object")
+            lines.append(f"    obj.name = {name!r}")
+            lines.append("    for _c in _new_objs:")
+            lines.append("        if _c.parent is None:")
+            lines.append("            _c.parent = obj")
+            lines.append(f"obj.location = ({loc[0]}, {loc[1]}, {loc[2]})")
+            lines.append(f"obj.rotation_euler = (math.radians({rot[0]}), math.radians({rot[1]}), math.radians({rot[2]}))")
+            lines.append(f"obj.scale = ({scl[0]}, {scl[1]}, {scl[2]})")
         else:
             lines.append(f"# Unknown mesh type: {mesh_type}")
             continue
 
-        lines.append("obj = bpy.context.active_object")
-        lines.append(f"obj.name = '{name}'")
-        lines.append(f"obj.rotation_euler = (math.radians({rot[0]}), math.radians({rot[1]}), math.radians({rot[2]}))")
-        lines.append(f"obj.scale = ({scl[0]}, {scl[1]}, {scl[2]})")
+        if mesh_type != "import":
+            lines.append("obj = bpy.context.active_object")
+            lines.append(f"obj.name = '{name}'")
+            lines.append(f"obj.rotation_euler = (math.radians({rot[0]}), math.radians({rot[1]}), math.radians({rot[2]}))")
+            lines.append(f"obj.scale = ({scl[0]}, {scl[1]}, {scl[2]})")
 
         if not obj.get("visible", True):
             lines.append("obj.hide_render = True")
