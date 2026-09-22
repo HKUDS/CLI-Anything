@@ -34,7 +34,11 @@ making direct manipulation complex. Our strategy:
 
 1. **JSON project format** tracks all state (tracks, clips, effects, labels)
 2. **Python stdlib** (`wave`, `struct`, `math`) handles WAV I/O and audio processing
-3. **pydub** (optional) for advanced format support (MP3, FLAC, OGG)
+3. **SoX** (required for non-WAV export: MP3, FLAC, OGG, AIFF)
+   ```
+   apt install sox            # Debian/Ubuntu
+   brew install sox           # macOS
+   ```
 
 ### Why Not .aup3 Directly?
 
@@ -121,10 +125,10 @@ Instead, we use a JSON manifest and render to standard audio formats.
 | `wav-24` | WAV | 24-bit | High quality |
 | `wav-32` | WAV | 32-bit | Studio quality |
 | `wav-8` | WAV | 8-bit | Low quality |
-| `mp3` | MP3 | — | Requires pydub/ffmpeg |
-| `flac` | FLAC | — | Requires pydub/ffmpeg |
-| `ogg` | OGG | — | Requires pydub/ffmpeg |
-| `aiff` | AIFF | — | Requires pydub/ffmpeg |
+| `mp3` | MP3 | — | Requires SoX |
+| `flac` | FLAC | — | Requires SoX |
+| `ogg` | OGG | — | Requires SoX |
+| `aiff` | AIFF | — | Requires SoX |
 
 ## Rendering Pipeline
 
@@ -142,7 +146,7 @@ Instead, we use a JSON manifest and render to standard audio formats.
 - WAV I/O works natively via Python's `wave` module
 - Basic effects (gain, fade, reverse, echo, filters) implemented in pure Python
 - Advanced effects (pitch shift, time stretch) use simplified algorithms
-- MP3/FLAC/OGG export requires external tools (pydub + ffmpeg)
+- MP3/FLAC/OGG/AIFF export requires SoX; WAV export is pure stdlib
 - No real-time preview capability
 
 ## Test Coverage

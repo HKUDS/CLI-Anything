@@ -16,7 +16,17 @@ as the GIMP and Blender CLIs in this repo.
 pip install click numpy   # numpy only needed for tests
 ```
 
-No other dependencies required. Core functionality uses only Python stdlib.
+WAV export uses only the Python stdlib and needs nothing further.
+
+Non-WAV export (MP3, FLAC, OGG, AIFF) requires **SoX** on the system:
+
+```bash
+apt install sox            # Debian/Ubuntu
+brew install sox           # macOS
+```
+
+Without it those presets fail with install instructions rather than writing a
+mislabelled file.
 
 ## Run
 
