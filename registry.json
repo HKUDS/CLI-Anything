@@ -179,7 +179,7 @@
     {
       "name": "blender",
       "display_name": "Blender",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "3D modeling, animation, and rendering via blender --background --python",
       "requires": "blender >= 4.2",
       "homepage": "https://www.blender.org",

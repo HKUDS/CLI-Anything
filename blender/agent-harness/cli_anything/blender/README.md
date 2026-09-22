@@ -38,11 +38,8 @@ python3 -m cli.blender_cli --project scene.json light add sun -r -45,0,30
 # Save
 python3 -m cli.blender_cli --project scene.json scene save
 
-# Generate render script
+# Render with Blender headless (writes _render_script.py, then invokes blender)
 python3 -m cli.blender_cli --project scene.json render execute render.png --overwrite
-
-# Execute with Blender (if installed)
-blender --background --python /path/to/_render_script.py
 ```
 
 ## JSON Output Mode
@@ -167,7 +164,7 @@ animation list-keyframes  - List keyframes for an object
 render settings - Configure render settings
 render info     - Show current render settings
 render presets  - List available render presets
-render execute  - Render the scene (generates bpy script)
+render execute  - Render the scene with Blender headless
 render script   - Generate bpy script to stdout
 ```
 
@@ -249,7 +246,7 @@ Since Blender's `.blend` format is binary, this CLI uses a JSON scene format
 and generates Blender Python (bpy) scripts for rendering. The workflow:
 
 1. Edit the scene using CLI commands (creates/modifies JSON)
-2. Generate a bpy script with `render execute` or `render script`
-3. Run the script with `blender --background --python script.py`
+2. `render execute` generates a bpy script and runs `blender --background --python` on it
+3. `render script` still prints the bpy script if you want to run Blender yourself
 
 The generated scripts reconstruct the entire scene in Blender and render it.

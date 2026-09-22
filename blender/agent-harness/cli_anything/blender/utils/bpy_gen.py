@@ -6,7 +6,107 @@ run with: blender --background --python script.py
 
 import json
 import math
+import os
+import re
 from typing import Dict, Any, Optional, List
+
+# Blender's FFmpegSettings.format defaults to Matroska, which rewrites the
+# movie extension the user asked for; pinning the container keeps the written
+# file aligned with the requested output path.
+FFMPEG_CONTAINER_FORMATS = {
+    ".mp4": "MPEG4", ".mpg": "MPEG4", ".mpeg": "MPEG4",
+    ".mov": "QUICKTIME",
+    ".avi": "AVI", ".mkv": "MKV", ".webm": "WEBM",
+}
+FFMPEG_DEFAULT_FORMAT = "MPEG4"
+
+# Extensions Blender's FFMPEG writer accepts as "already the container's"
+# (the movie writer's get_file_extensions): a target ending in one of these is
+# written verbatim; anything else gains the frame range plus the first entry.
+FFMPEG_CONTAINER_EXTENSIONS = {
+    "MPEG4": (".mp4", ".mpg", ".mpeg"),
+    "QUICKTIME": (".mov",),
+    "AVI": (".avi",),
+    "MKV": (".mkv",),
+    "WEBM": (".webm",),
+    "OGG": (".ogv", ".ogg"),
+}
+
+# First extension Blender writes per image format (image_path_ext_from_imformat_impl).
+IMAGE_FORMAT_EXTENSIONS = {
+    "PNG": ".png", "JPEG": ".jpg", "BMP": ".bmp",
+    "TIFF": ".tif", "OPEN_EXR": ".exr", "HDR": ".hdr",
+}
+
+# imb_ext_image: suffixes Blender treats as an existing image extension, so a
+# configured format replaces them instead of appending its own.
+KNOWN_IMAGE_EXTENSIONS = {
+    ".png", ".tga", ".bmp", ".jpg", ".jpeg", ".sgi", ".rgb", ".rgba",
+    ".tif", ".tiff", ".tx", ".avif", ".jp2", ".j2c", ".hdr", ".dds",
+    ".dpx", ".cin", ".exr", ".psd", ".pdd", ".psb", ".webp",
+}
+
+_FRAME_PLACEHOLDER = re.compile(r"#+")
+_FRAME_DIGITS = 4
+
+
+def _ensure_image_extension(path: str, ext: str) -> str:
+    """Mirror Blender's do_ensure_image_extension for a configured format."""
+    if path.lower().endswith(ext):
+        return path
+    root, current = os.path.splitext(path)
+    if current and current.lower() in KNOWN_IMAGE_EXTENSIONS:
+        return root + ext
+    return path + ext
+
+
+def _expand_frame_digits(path: str, frame: int) -> str:
+    """Mirror BLI_path_frame: replace a '#' run or append digits to the name."""
+    directory, name = os.path.split(path)
+    match = None
+    for found in _FRAME_PLACEHOLDER.finditer(name):
+        match = found  # Blender keeps scanning and uses the last run
+    if match:
+        width = match.end() - match.start()
+        name = name[:match.start()] + f"{frame:0{width}d}" + name[match.end():]
+    else:
+        name = name + f"{frame:0{_FRAME_DIGITS}d}"
+    return os.path.join(directory, name)
+
+
+def blender_still_path(output_path: str, output_format: str) -> Optional[str]:
+    """The exact file Blender writes for a write_still render."""
+    ext = IMAGE_FORMAT_EXTENSIONS.get(output_format)
+    if ext is None:
+        return None
+    return _ensure_image_extension(output_path, ext)
+
+
+def blender_frame_path(output_path: str, output_format: str, frame: int) -> Optional[str]:
+    """The exact file Blender writes for one frame of an image animation."""
+    ext = IMAGE_FORMAT_EXTENSIONS.get(output_format)
+    if ext is None:
+        return None
+    return _ensure_image_extension(_expand_frame_digits(output_path, frame), ext)
+
+
+def blender_movie_path(output_path: str, start: int, end: int) -> str:
+    """The exact file Blender's FFmpeg writer produces for an animation.
+
+    A target already ending in the pinned container's extension is written
+    verbatim; any other target keeps its name and gains the frame range plus
+    the container's extension.
+    """
+    exts = FFMPEG_CONTAINER_EXTENSIONS[_ffmpeg_container(output_path)]
+    if any(output_path.lower().endswith(ext) for ext in exts):
+        return output_path
+    return f"{output_path}{start:04d}-{end:04d}{exts[0]}"
+
+
+def _ffmpeg_container(output_path: str) -> str:
+    """Blender FFmpegSettings.format value matching the requested extension."""
+    ext = os.path.splitext(output_path)[1].lower()
+    return FFMPEG_CONTAINER_FORMATS.get(ext, FFMPEG_DEFAULT_FORMAT)
 
 
 def generate_full_script(
@@ -87,7 +187,7 @@ def _gen_scene_settings(project: Dict[str, Any]) -> List[str]:
     lines = [
         "# ── Scene Settings ──────────────────────────────────────────",
         "scene = bpy.context.scene",
-        f"scene.unit_settings.system = '{scene.get('unit_system', 'METRIC').upper()}'",
+        f"scene.unit_settings.system = {scene.get('unit_system', 'METRIC').upper()!r}",
         f"scene.unit_settings.scale_length = {scene.get('unit_scale', 1.0)}",
         f"scene.frame_start = {scene.get('frame_start', 1)}",
         f"scene.frame_end = {scene.get('frame_end', 250)}",
@@ -104,7 +204,7 @@ def _gen_render_settings(project: Dict[str, Any]) -> List[str]:
 
     lines = [
         "# ── Render Settings ─────────────────────────────────────────",
-        f"scene.render.engine = '{_engine_to_bpy(engine)}'",
+        f"scene.render.engine = {_engine_to_bpy(engine)!r}",
         f"scene.render.resolution_x = {render.get('resolution_x', 1920)}",
         f"scene.render.resolution_y = {render.get('resolution_y', 1080)}",
         f"scene.render.resolution_percentage = {render.get('resolution_percentage', 100)}",
@@ -172,7 +272,7 @@ def _gen_materials(project: Dict[str, Any]) -> List[str]:
 
         var_name = _safe_var_name(name)
         lines.extend([
-            f"mat_{var_name} = bpy.data.materials.new(name='{name}')",
+            f"mat_{var_name} = bpy.data.materials.new(name={name!r})",
             f"mat_{var_name}.use_nodes = True",
             f"bsdf_{var_name} = mat_{var_name}.node_tree.nodes.get('Principled BSDF')",
             f"if bsdf_{var_name}:",
@@ -210,7 +310,7 @@ def _gen_objects(project: Dict[str, Any]) -> List[str]:
         scl = obj.get("scale", [1, 1, 1])
         params = obj.get("mesh_params", {})
 
-        lines.append(f"# Object: {name}")
+        lines.append(f"# Object: {name!r}")
 
         # Create mesh primitive
         if mesh_type == "cube":
@@ -246,11 +346,11 @@ def _gen_objects(project: Dict[str, Any]) -> List[str]:
         elif mesh_type == "empty":
             lines.append(f"bpy.ops.object.empty_add(location=({loc[0]}, {loc[1]}, {loc[2]}))")
         else:
-            lines.append(f"# Unknown mesh type: {mesh_type}")
+            lines.append(f"# Unknown mesh type: {mesh_type!r}")
             continue
 
         lines.append("obj = bpy.context.active_object")
-        lines.append(f"obj.name = '{name}'")
+        lines.append(f"obj.name = {name!r}")
         lines.append(f"obj.rotation_euler = (math.radians({rot[0]}), math.radians({rot[1]}), math.radians({rot[2]}))")
         lines.append(f"obj.scale = ({scl[0]}, {scl[1]}, {scl[2]})")
 
@@ -302,8 +402,8 @@ def _gen_object_parenting(project: Dict[str, Any]) -> List[str]:
     lines = ["# ── Object Parenting ───────────────────────────────────────"]
     for child_name, parent_name in parent_pairs:
         lines.extend([
-            f"child_obj = bpy.data.objects.get('{child_name}')",
-            f"parent_obj = bpy.data.objects.get('{parent_name}')",
+            f"child_obj = bpy.data.objects.get({child_name!r})",
+            f"parent_obj = bpy.data.objects.get({parent_name!r})",
             "if child_obj and parent_obj:",
             "    child_obj.parent = parent_obj",
             "    child_obj.matrix_parent_inverse = parent_obj.matrix_world.inverted()",
@@ -320,7 +420,7 @@ def _gen_modifier(mod: Dict[str, Any]) -> List[str]:
     params = mod.get("params", {})
 
     lines = [
-        f"mod = obj.modifiers.new(name='{mod_name}', type='{bpy_type}')",
+        f"mod = obj.modifiers.new(name={mod_name!r}, type={bpy_type!r})",
     ]
 
     if mod_type == "subdivision_surface":
@@ -343,7 +443,7 @@ def _gen_modifier(mod: Dict[str, Any]) -> List[str]:
         lines.append(f"mod.width = {params.get('width', 0.1)}")
         lines.append(f"mod.segments = {params.get('segments', 1)}")
         limit = params.get("limit_method", "NONE")
-        lines.append(f"mod.limit_method = '{limit}'")
+        lines.append(f"mod.limit_method = {limit!r}")
         if limit == "ANGLE":
             lines.append(f"mod.angle_limit = {params.get('angle_limit', 0.523599)}")
     elif mod_type == "solidify":
@@ -352,15 +452,15 @@ def _gen_modifier(mod: Dict[str, Any]) -> List[str]:
         lines.append(f"mod.use_even_offset = {params.get('use_even_offset', False)}")
     elif mod_type == "decimate":
         lines.append(f"mod.ratio = {params.get('ratio', 0.5)}")
-        lines.append(f"mod.decimate_type = '{params.get('decimate_type', 'COLLAPSE')}'")
+        lines.append(f"mod.decimate_type = {params.get('decimate_type', 'COLLAPSE')!r}")
     elif mod_type == "boolean":
         op = params.get("operation", "DIFFERENCE")
-        lines.append(f"mod.operation = '{op}'")
+        lines.append(f"mod.operation = {op!r}")
         operand = params.get("operand_object", "")
         if operand:
-            lines.append(f"mod.object = bpy.data.objects.get('{operand}')")
+            lines.append(f"mod.object = bpy.data.objects.get({operand!r})")
         solver = params.get("solver", "EXACT")
-        lines.append(f"mod.solver = '{solver}'")
+        lines.append(f"mod.solver = {solver!r}")
     elif mod_type == "smooth":
         lines.append(f"mod.factor = {params.get('factor', 0.5)}")
         lines.append(f"mod.iterations = {params.get('iterations', 1)}")
@@ -390,8 +490,8 @@ def _gen_cameras(project: Dict[str, Any]) -> List[str]:
         clip_e = cam.get("clip_end", 1000.0)
 
         lines.extend([
-            f"cam_data = bpy.data.cameras.new(name='{name}')",
-            f"cam_data.type = '{cam_type}'",
+            f"cam_data = bpy.data.cameras.new(name={name!r})",
+            f"cam_data.type = {cam_type!r}",
             f"cam_data.lens = {focal}",
             f"cam_data.sensor_width = {sensor}",
             f"cam_data.clip_start = {clip_s}",
@@ -406,7 +506,7 @@ def _gen_cameras(project: Dict[str, Any]) -> List[str]:
             ])
 
         lines.extend([
-            f"cam_obj = bpy.data.objects.new('{name}', cam_data)",
+            f"cam_obj = bpy.data.objects.new({name!r}, cam_data)",
             "bpy.context.collection.objects.link(cam_obj)",
             f"cam_obj.location = ({loc[0]}, {loc[1]}, {loc[2]})",
             f"cam_obj.rotation_euler = (math.radians({rot[0]}), math.radians({rot[1]}), math.radians({rot[2]}))",
@@ -437,7 +537,7 @@ def _gen_lights(project: Dict[str, Any]) -> List[str]:
         power = light.get("power", 1000)
 
         lines.extend([
-            f"light_data = bpy.data.lights.new(name='{name}', type='{light_type}')",
+            f"light_data = bpy.data.lights.new(name={name!r}, type={light_type!r})",
             f"light_data.energy = {power}",
             f"light_data.color = ({color[0]}, {color[1]}, {color[2]})",
         ])
@@ -453,10 +553,10 @@ def _gen_lights(project: Dict[str, Any]) -> List[str]:
         elif light_type == "AREA":
             lines.append(f"light_data.size = {light.get('size', 1.0)}")
             lines.append(f"light_data.size_y = {light.get('size_y', 1.0)}")
-            lines.append(f"light_data.shape = '{light.get('shape', 'RECTANGLE')}'")
+            lines.append(f"light_data.shape = {light.get('shape', 'RECTANGLE')!r}")
 
         lines.extend([
-            f"light_obj = bpy.data.objects.new('{name}', light_data)",
+            f"light_obj = bpy.data.objects.new({name!r}, light_data)",
             "bpy.context.collection.objects.link(light_obj)",
             f"light_obj.location = ({loc[0]}, {loc[1]}, {loc[2]})",
             f"light_obj.rotation_euler = (math.radians({rot[0]}), math.radians({rot[1]}), math.radians({rot[2]}))",
@@ -482,7 +582,7 @@ def _gen_keyframes(project: Dict[str, Any]) -> List[str]:
             continue
 
         name = obj.get("name", "Object")
-        lines.append(f"obj = bpy.data.objects.get('{name}')")
+        lines.append(f"obj = bpy.data.objects.get({name!r})")
         lines.append("if obj:")
 
         for kf in keyframes:
@@ -531,9 +631,14 @@ def _gen_render_output(
 
     lines = [
         "# ── Render Output ───────────────────────────────────────────",
-        f"scene.render.image_settings.file_format = '{bpy_format}'",
+        f"scene.render.image_settings.file_format = {bpy_format!r}",
         f"scene.render.filepath = {output_path!r}",
     ]
+    if bpy_format == "FFMPEG":
+        container = _ffmpeg_container(output_path)
+        lines.append(f"scene.render.ffmpeg.format = {container!r}")
+        if container == "WEBM":
+            lines.append("scene.render.ffmpeg.codec = 'WEBM'")
 
     if animation:
         lines.extend([

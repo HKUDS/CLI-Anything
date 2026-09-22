@@ -22,7 +22,7 @@ long_description = README.read_text(encoding="utf-8") if README.exists() else ""
 
 setup(
     name="cli-anything-blender",
-    version="1.0.0",
+    version="1.0.1",
     description="CLI harness for Blender - run 3D modeling, animation, and rendering via blender --background --python",
     long_description=long_description,
     long_description_content_type="text/markdown",

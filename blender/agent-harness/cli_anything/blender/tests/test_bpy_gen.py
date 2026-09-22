@@ -4,6 +4,7 @@ Tests verify that generated scripts are syntactically valid Python,
 especially with Windows-style paths that could trigger escape errors.
 """
 
+import ast
 from typing import Any, Dict
 
 import pytest
@@ -83,6 +84,31 @@ class TestGeneratedScriptSyntax:
         script = generate_full_script(project, "C:\\Users\\o'brien\\output.png")
         compile(script, "<test>", "exec")
 
+    def test_entity_names_with_quotes_are_serialized(self) -> None:
+        """Names carrying quotes/backslashes must stay data, not become code."""
+        project = _minimal_project()
+        hostile = "Bob's Cube\nraise RuntimeError('owned')"
+        project["objects"] = [{
+            "id": 1, "name": hostile, "mesh_type": "cube",
+            "material": 9, "visible": True, "parent": 2,
+            "modifiers": [{
+                "name": "Mod'\\name", "type": "boolean", "bpy_type": "BOOLEAN",
+                "params": {"operand_object": "Other'\\object"},
+            }],
+            "keyframes": [{"frame": 1, "property": "location", "value": [0, 0, 0]}],
+        }, {
+            "id": 2, "name": "Parent'\\name", "mesh_type": "empty",
+            "visible": True, "keyframes": [],
+        }]
+        project["materials"] = [{"id": 9, "name": "Mat'\""}]
+        project["cameras"] = [{"name": "Cam <>&\"'", "is_active": True}]
+        project["lights"] = [{"name": "Lamp\\x'", "type": "POINT"}]
+        script = generate_full_script(project, "/tmp/render.png")
+        tree = ast.parse(script, "<test>", "exec")
+        name_line = next(line for line in script.splitlines() if line.startswith("obj.name"))
+        assert name_line == f"obj.name = {hostile!r}"
+        assert not any(isinstance(node, ast.Raise) for node in ast.walk(tree))
+
     def test_hdri_path_with_windows_slashes(self) -> None:
         """HDRI paths on Windows must not cause SyntaxError."""
         project = _minimal_project()
@@ -118,3 +144,26 @@ def _excerpt(err: SyntaxError, script: str) -> str:
         marker = " >>> " if i == lineno else "     "
         result += f"{marker}{i}: {line}\n"
     return result
+
+
+class TestFFMPEGContainerPin:
+    """Generated FFMPEG renders pin the container to the requested extension."""
+
+    def test_mp4_output_pins_mpeg4_container(self) -> None:
+        project = _minimal_project()
+        project["render"]["output_format"] = "FFMPEG"
+        script = generate_full_script(project, "/tmp/render.mp4")
+        assert "scene.render.ffmpeg.format = 'MPEG4'" in script
+
+    def test_mkv_output_pins_matroska_container(self) -> None:
+        project = _minimal_project()
+        project["render"]["output_format"] = "FFMPEG"
+        script = generate_full_script(project, "/tmp/render.mkv")
+        assert "scene.render.ffmpeg.format = 'MKV'" in script
+
+    def test_webm_output_pins_webm_container_and_codec(self) -> None:
+        project = _minimal_project()
+        project["render"]["output_format"] = "FFMPEG"
+        script = generate_full_script(project, "/tmp/render.webm")
+        assert "scene.render.ffmpeg.format = 'WEBM'" in script
+        assert "scene.render.ffmpeg.codec = 'WEBM'" in script
