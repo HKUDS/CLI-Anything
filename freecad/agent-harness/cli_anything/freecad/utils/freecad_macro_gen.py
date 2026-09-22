@@ -531,7 +531,7 @@ def _gen_export(
     lines: List[str] = []
 
     # Escape backslashes for Windows paths in the generated Python script
-    safe_path = output_path.replace("\\", "/")
+    safe_path = repr(output_path.replace("\\", "/"))
 
     # Recompute the document before exporting
     lines.append("doc.recompute()")
@@ -548,22 +548,22 @@ def _gen_export(
     fmt = export_format.lower()
 
     if fmt in ("step", "iges", "brep"):
-        lines.append(f"Part.export(export_objects, '{safe_path}')")
+        lines.append(f"Part.export(export_objects, {safe_path})")
 
     elif fmt in ("stl", "obj"):
         lines.append("import Mesh")
-        lines.append(f"Mesh.export(export_objects, '{safe_path}')")
+        lines.append(f"Mesh.export(export_objects, {safe_path})")
 
     elif fmt == "fcstd":
-        lines.append(f"doc.saveAs('{safe_path}')")
+        lines.append(f"doc.saveAs({safe_path})")
 
     else:
         # Fallback to Part.export for unknown formats
         lines.append(f"# Unknown format '{fmt}', attempting Part.export")
-        lines.append(f"Part.export(export_objects, '{safe_path}')")
+        lines.append(f"Part.export(export_objects, {safe_path})")
 
     lines.append("")
-    lines.append("print('Export complete:', os.path.abspath('{safe_path}'))")
+    lines.append(f"print('Export complete:', os.path.abspath({safe_path}))")
     lines.append("")
 
     return lines
