@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set
 
 from .document import ensure_collection
+from cli_anything.freecad.utils.compat import require_version, V1_1
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +502,10 @@ def add_beam_section(
             f"Unknown section_type '{section_type}'. Valid: {valid}"
         )
 
+    # box_beam and elliptical sections require FreeCAD 1.1+
+    if section_type in ("box_beam", "elliptical"):
+        require_version(V1_1, f"beam section type '{section_type}'")
+
     analysis = _get_analysis(project, analysis_index)
 
     constraint: Dict[str, Any] = {
@@ -522,7 +527,9 @@ def add_tie_constraint(
     master_refs: List[str],
     slave_refs: List[str],
 ) -> Dict[str, Any]:
-    """Add a tie constraint between shell faces (FreeCAD 1.1).
+    """Add a tie constraint between shell faces.
+
+    Requires FreeCAD >= 1.1.
 
     Parameters
     ----------
@@ -540,6 +547,7 @@ def add_tie_constraint(
     dict
         The constraint entry.
     """
+    require_version(V1_1, "tie constraints")
     analysis = _get_analysis(project, analysis_index)
 
     constraint: Dict[str, Any] = {
@@ -556,7 +564,9 @@ def purge_results(
     project: Dict[str, Any],
     analysis_index: int,
 ) -> Dict[str, Any]:
-    """Delete all result objects from an analysis (FreeCAD 1.1).
+    """Delete all result objects from an analysis.
+
+    Requires FreeCAD >= 1.1.
 
     Parameters
     ----------
@@ -570,6 +580,7 @@ def purge_results(
     dict
         The updated analysis dictionary.
     """
+    require_version(V1_1, "purge_results")
     analysis = _get_analysis(project, analysis_index)
     analysis["results"] = None
     return analysis
@@ -580,7 +591,9 @@ def suppress_object(
     analysis_index: int,
     constraint_index: int,
 ) -> Dict[str, Any]:
-    """Toggle suppressed state on a constraint (FreeCAD 1.1).
+    """Toggle suppressed state on a constraint.
+
+    Requires FreeCAD >= 1.1.
 
     Parameters
     ----------
@@ -601,6 +614,7 @@ def suppress_object(
     IndexError
         If *constraint_index* is out of range.
     """
+    require_version(V1_1, "suppress_object")
     analysis = _get_analysis(project, analysis_index)
     constraints = analysis["constraints"]
 

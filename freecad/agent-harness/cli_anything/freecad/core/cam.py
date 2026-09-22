@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set
 
 from .document import ensure_collection
+from cli_anything.freecad.utils.compat import require_version, V1_1
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +342,7 @@ def add_tapping_op(
     """Add a tapping operation (G84 right-hand / G74 left-hand).
 
     FreeCAD 1.1 introduces native tapping cycle support.
+    Requires FreeCAD >= 1.1.
 
     Parameters
     ----------
@@ -363,6 +365,7 @@ def add_tapping_op(
     dict
         The operation entry.
     """
+    require_version(V1_1, "tapping operations (G84/G74)")
     job = _get_job(project, job_index)
 
     op: Dict[str, Any] = {

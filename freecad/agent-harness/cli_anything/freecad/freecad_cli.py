@@ -36,6 +36,7 @@ from cli_anything.freecad.core import (
     techdraw as td_mod,
     fem as fem_mod,
     cam as cam_mod,
+    generate as gen_mod,
 )
 from cli_anything.freecad.core.session import Session
 
@@ -4816,6 +4817,81 @@ def cam_export_tool_library(job_index, path):
     proj = sess.get_project()
     result = cam_mod.export_tool_library(proj, job_index, path)
     output_fn(result, "Tool library exported.")
+
+
+# ── Generate ────────────────────────────────────────────────────────
+
+@cli.group("generate")
+def generate_group():
+    """Generate models from templates, parameters, or text descriptions."""
+    pass
+
+
+@generate_group.command("templates")
+@handle_error
+def gen_list_templates():
+    """List all available model templates."""
+    result = gen_mod.list_templates()
+    output_fn(result, f"Available templates ({len(result)}):")
+
+
+@generate_group.command("template-info")
+@click.argument("name")
+@handle_error
+def gen_template_info(name):
+    """Show details of a specific template."""
+    result = gen_mod.get_template(name)
+    output_fn(result, f"Template: {name}")
+
+
+@generate_group.command("from-template")
+@click.argument("template_name")
+@click.option("-P", "--param", multiple=True, help="Override param (key=value)")
+@click.option("--name", default=None, help="Project name")
+@click.option("--material", default=None, help="Material preset")
+@click.option("-o", "--output", "out_path", default=None, type=click.Path(),
+              help="Save project to file")
+@handle_error
+def gen_from_template(template_name, param, name, material, out_path):
+    """Generate a model from a named template.
+
+    Example: generate from-template plate_with_holes -P length=80 -P holes_x=3
+    """
+    params = _parse_params(param)
+    project = gen_mod.generate_from_template(
+        template_name, params=params, name=name, material_preset=material,
+    )
+    sess = get_session()
+    sess.set_project(project, path=out_path)
+    if out_path:
+        sess.save_session(out_path)
+        output_fn(project, f"Generated '{template_name}' → {out_path}")
+    else:
+        output_fn(project, f"Generated '{template_name}' (use document save to persist)")
+
+
+@generate_group.command("suggest")
+@click.argument("description")
+@handle_error
+def gen_suggest(description):
+    """Suggest a template from a text description.
+
+    Example: generate suggest "mounting plate with 6 holes"
+    """
+    result = gen_mod.suggest_template(description)
+    output_fn(result, "Template suggestion:")
+
+
+@generate_group.command("parse-dims")
+@click.argument("text")
+@handle_error
+def gen_parse_dims(text):
+    """Extract dimensions from natural language text.
+
+    Example: generate parse-dims "20mm x 15mm x 5mm with 6mm holes"
+    """
+    result = gen_mod.parse_dimensions_from_text(text)
+    output_fn(result, "Parsed dimensions:")
 
 
 # ── REPL ─────────────────────────────────────────────────────────────

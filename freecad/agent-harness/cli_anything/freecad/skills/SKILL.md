@@ -9,7 +9,9 @@ Complete CLI harness for **FreeCAD** — 258 commands across 17 groups covering 
 
 ## Prerequisites
 
-FreeCAD must be installed: `freecadcmd` must be in PATH.
+FreeCAD >= 1.0.2 must be installed: `freecadcmd` must be in PATH.
+FreeCAD 1.1+ recommended for full feature set (LocalCoordinateSystem,
+tapping, tie constraints, etc.).
 
 ## Installation
 
@@ -299,6 +301,36 @@ cli-anything-freecad --json -p p.json session undo
 cli-anything-freecad --json -p p.json session redo
 cli-anything-freecad --json -p p.json session status
 cli-anything-freecad --json -p p.json session history
+```
+
+### generate (5) — Model generation from templates, parameters, or text
+```bash
+# List available templates (box, cylinder, tube, plate_with_holes, bracket_l, gear_spur, enclosure_box, threaded_bolt, washer, standoff, knob)
+cli-anything-freecad --json generate templates
+cli-anything-freecad --json generate template-info plate_with_holes
+
+# Generate from template with parameter overrides
+cli-anything-freecad --json generate from-template plate_with_holes -P length=80 -P holes_x=3 -o plate.json
+cli-anything-freecad --json generate from-template gear_spur -P teeth=24 -P module=2.5 --material steel -o gear.json
+cli-anything-freecad --json generate from-template enclosure_box -P length=100 -P width=60 -P height=40 -o case.json
+cli-anything-freecad --json generate from-template bracket_l --material aluminum -o bracket.json
+
+# Suggest template from text description
+cli-anything-freecad --json generate suggest "mounting plate with 6 holes"
+cli-anything-freecad --json generate suggest "M8 hex bolt 30mm long"
+
+# Parse dimensions from natural language
+cli-anything-freecad --json generate parse-dims "20mm x 15mm x 5mm with 6mm holes"
+```
+
+#### Workflow: Prompt → 3D Model → Export
+```bash
+# 1. Suggest template from description
+cli-anything-freecad --json generate suggest "gear with 20 teeth"
+# 2. Generate model from template + parsed params
+cli-anything-freecad --json generate from-template gear_spur -P teeth=20 --material steel -o gear.json
+# 3. Export to STEP/STL
+cli-anything-freecad --json -p gear.json export render gear.step --preset step
 ```
 
 ## JSON Output

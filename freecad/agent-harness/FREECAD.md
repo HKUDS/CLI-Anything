@@ -5,7 +5,9 @@
 **FreeCAD** is an open-source parametric 3D CAD modeler built on OpenCASCADE (OCCT).
 It supports Part design, Sketcher, Assembly, TechDraw, Mesh, and many other workbenches.
 
-**This harness targets FreeCAD 1.1** (released March 2026) with 258 commands across 18 workbench groups.
+**This harness supports FreeCAD 1.0.2+** with 258 commands across 18 workbench groups.
+FreeCAD 1.1 features are automatically available when running against 1.1+; on
+1.0.x, those commands raise a clear error directing the user to upgrade.
 
 - **Backend engine**: OpenCASCADE Technology (OCCT)
 - **Native format**: `.FCStd` (ZIP containing `Document.xml` + BREP geometry files)
@@ -65,7 +67,7 @@ The CLI maintains project state as a JSON document:
     "metadata": {
         "created": "2026-03-22T...",
         "modified": "2026-03-22T...",
-        "software": "cli-anything-freecad 1.1.0"
+        "software": "cli-anything-freecad 1.2.0"
     }
 }
 ```
@@ -92,25 +94,30 @@ The CLI maintains project state as a JSON document:
 | `surface`  | filling, sections, extend, blend-curve, sew, cut |
 | `spread`   | new, set-cell, get-cell, set-alias, import-csv, export-csv |
 
-## FreeCAD 1.1 Changes
+## Version Compatibility
 
-### Breaking: Datum/Origin Redesign
-FreeCAD 1.1 replaces the legacy `Origin` object with `LocalCoordinateSystem`.
-Use `body local-coordinate-system` to create configurable coordinate systems
-with cross-workbench attachment support. Datum planes, lines, and points now
-support `--attachment-mode` and `--attachment-refs` for flexible positioning.
+### FreeCAD 1.0.x (1.0.2+)
+The harness automatically detects the installed FreeCAD version and disables
+1.1-only features when running against 1.0.x.  All core functionality
+(Part primitives, Sketcher, PartDesign pad/pocket/fillet/chamfer, booleans,
+materials, export, sessions, measure, mesh, draft, assembly, TechDraw,
+basic FEM, basic CAM) works on FreeCAD 1.0.2+.
+
+### FreeCAD 1.1+ (Additional Features)
+The following features require FreeCAD 1.1 and will raise a clear error
+on earlier versions:
+
+- **PartDesign**: `local-coordinate-system`, datum attachment modes/refs,
+  Whitworth threads (BSW/BSF/BSP/NPT), tapered holes, feature freeze toggle
+- **CAM**: G84/G74 tapping operations
+- **FEM**: box_beam/elliptical beam sections, tie constraints, result
+  purging, constraint suppression
+- **Sketcher**: external geometry `reference` mode, intersection external,
+  external from face
+- **Draft**: edge-selective 2D fillet
+- **TechDraw**: area mode annotations
 
 **Note:** Files created with FreeCAD 1.1 are NOT backward-compatible with 1.0.
-
-### New Features by Workbench
-- **PartDesign**: Whitworth threads (BSW/BSF/BSP/NPT), tapered holes, feature freeze toggle
-- **Assembly**: Inline part insertion, joint motion simulation
-- **CAM**: G84/G74 tapping, multi-pass profiles, new tool library system
-- **FEM**: Netgen refinement, beam sections (box/elliptical), tie constraints, result purging
-- **Sketcher**: Projection/reference modes, plane intersection, face-based external geometry
-- **Draft**: Edge-selective fillet, relative font paths
-- **TechDraw**: Area annotations with hole accounting, shape validation
-- **Measure**: Enhanced check-geometry with valid entries, additive measurements
 
 ## Rendering Pipeline
 
@@ -182,10 +189,11 @@ doc.recompute()
 
 ## Dependencies
 
-- **FreeCAD** (system package) — HARD DEPENDENCY
+- **FreeCAD >= 1.0.2** (system package) — HARD DEPENDENCY
   - Windows: Download from freecad.org
   - Linux: `apt install freecad` or `snap install freecad`
   - macOS: `brew install --cask freecad`
+  - FreeCAD 1.1+ recommended for full feature set
 - **Python 3.10+**
 - **click** >= 8.0 (CLI framework)
 - **prompt-toolkit** >= 3.0 (REPL)

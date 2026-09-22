@@ -5,8 +5,9 @@ CLI harness for **FreeCAD** parametric 3D CAD modeler. Create, modify, and expor
 
 ## Prerequisites
 
-**FreeCAD** must be installed on your system. The CLI generates FreeCAD Python
-macros and executes them headlessly via `freecadcmd`.
+**FreeCAD >= 1.0.2** must be installed on your system. The CLI generates FreeCAD
+Python macros and executes them headlessly via `freecadcmd`.  FreeCAD 1.1+ is
+recommended for the full feature set.
 
 - **Windows**: Download from [freecad.org](https://www.freecad.org/downloads.php)
 - **Linux**: `sudo apt install freecad` or `snap install freecad`
@@ -16,6 +17,12 @@ Verify installation:
 ```bash
 freecadcmd --version
 ```
+
+### Version Compatibility
+
+The harness auto-detects the installed FreeCAD version.  Commands that require
+FreeCAD 1.1 (e.g., `body local-coordinate-system`, `cam add-tapping`,
+`fem add-tie`) will produce a clear error on older versions.
 
 ## Installation
 
