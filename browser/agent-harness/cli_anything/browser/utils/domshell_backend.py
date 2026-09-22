@@ -853,25 +853,9 @@ def grep(
     """
     _assert_single_line("pattern", pattern)
 
-    # DOMShell's parseArgs treats any arg starting with "-" as a flag,
-    # with no "--" end-of-options separator and no "-e <pattern>" form
-    # (verified against src/background/index.ts:1692 in DOMShell 2.0.2).
-    # So `grep -r -- -foo` and `grep -r -e -foo` both fail at the
-    # kernel — neither survives parseArgs as a positional. Until
-    # DOMShell adds "--" support in a future release, raise a clear
-    # Python-side error so the user sees the limitation immediately
-    # instead of getting DOMShell's generic "Usage:" reply.
-    # (yuh-yang R3 blocker 3, Path B — Python-side soft validation.)
-    if pattern.startswith("-"):
-        raise ValueError(
-            f"grep: patterns starting with '-' are not supported by the "
-            f"current DOMShell parser — it would parse {pattern!r} as a "
-            f"flag rather than as the search pattern. Known limitation "
-            f"tracked upstream; will be resolved when DOMShell's "
-            f"parseArgs adds `--` end-of-options support. Workaround: "
-            f"drop the leading '-' from the pattern if possible, or "
-            f"wait for the upstream fix."
-        )
+    # `--` is not an end-of-options marker in DOMShell parseArgs
+    # (src/background/index.ts, re-checked on extension main), so the
+    # pattern is passed as `grep -r -e <pattern>`. Quoting stays in `_q`.
     translated_path, path_abs = _translate_path(path)
     if not translated_path:
         # Unrooted grep — operate on lane cwd, no cd, no restore.
@@ -880,7 +864,7 @@ def grep(
         # descendants). Plain `grep <pat>` in DOMShell shell only
         # searches the cwd's immediate children, missing nested matches.
         op = asyncio.run(_call_execute(
-            f"grep -r {_q(pattern)}", use_daemon, session=session,
+            f"grep -r -e {_q(pattern)}", use_daemon, session=session,
         ))
         return _parse_execute_result(op, "grep")
 
@@ -923,7 +907,7 @@ def grep(
     # `-r` preserves the pre-migration recursive default (see unrooted
     # branch above for the full rationale).
     op = asyncio.run(_call_execute(
-        f"grep -r {_q(pattern)}", use_daemon, session=session,
+        f"grep -r -e {_q(pattern)}", use_daemon, session=session,
     ))
     asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
     return _parse_execute_result(op, "grep")
