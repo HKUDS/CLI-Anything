@@ -2,18 +2,19 @@
 """Blender CLI — A stateful command-line interface for 3D scene editing.
 
 This CLI provides full 3D scene management capabilities using a JSON
-scene description format, with bpy script generation for actual rendering.
+scene description format, with direct Blender-backed rendering support.
 
 Usage:
     # One-shot commands
-    python3 -m cli.blender_cli scene new --name "MyScene"
-    python3 -m cli.blender_cli object add cube --name "MyCube"
-    python3 -m cli.blender_cli material create --name "Red" --color 1,0,0,1
+    cli-anything-blender scene new --name "MyScene"
+    cli-anything-blender object add cube --name "MyCube"
+    cli-anything-blender material create --name "Red" --color 1,0,0,1
 
     # Interactive REPL
-    python3 -m cli.blender_cli repl
+    cli-anything-blender
 """
 
+import copy
 import sys
 import os
 import json
@@ -40,6 +41,7 @@ from cli_anything.blender.core import preview as preview_mod
 _session: Optional[Session] = None
 _json_output = False
 _repl_mode = False
+OBJECT_MESH_TYPES = ["cube", "sphere", "cylinder", "cone", "plane", "torus", "monkey", "empty"]
 
 
 def get_session() -> Session:
@@ -155,6 +157,49 @@ def _print_list(items: list, indent: int = 0):
             _print_dict(item, indent + 1)
         else:
             click.echo(f"{prefix}- {item}")
+
+
+def _parse_vector_value(value, option_name: str):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        parts = [part.strip() for part in value.split(",") if part.strip()]
+    else:
+        parts = [str(part).strip() for part in value]
+    if len(parts) != 3:
+        raise ValueError(f"{option_name} must have exactly 3 components.")
+    return [float(part) for part in parts]
+
+
+def _parse_params(param_values):
+    params = {}
+    for param_value in param_values:
+        if "=" not in param_value:
+            raise ValueError(f"Invalid param format: '{param_value}'. Use key=value.")
+        key, value = param_value.split("=", 1)
+        try:
+            value = float(value) if "." in value else int(value)
+        except ValueError:
+            pass
+        params[key] = value
+    return params
+
+
+def _add_object_impl(mesh_type, name, location, rotation, scale, param, collection):
+    loc = _parse_vector_value(location, "Location")
+    rot = _parse_vector_value(rotation, "Rotation")
+    scl = _parse_vector_value(scale, "Scale")
+    params = _parse_params(param)
+
+    sess = get_session()
+    sess.snapshot(f"Add object: {mesh_type}")
+    proj = sess.get_project()
+    obj = obj_mod.add_object(
+        proj, mesh_type=mesh_type, name=name, location=loc,
+        rotation=rot, scale=scl, mesh_params=params if params else None,
+        collection=collection,
+    )
+    output(obj, f"Added {mesh_type}: {obj['name']}")
 
 
 def handle_error(func):
@@ -314,8 +359,7 @@ def object_group():
 
 
 @object_group.command("add")
-@click.argument("mesh_type", type=click.Choice(
-    ["cube", "sphere", "cylinder", "cone", "plane", "torus", "monkey", "empty"]))
+@click.argument("mesh_type", type=click.Choice(OBJECT_MESH_TYPES))
 @click.option("--name", "-n", default=None, help="Object name")
 @click.option("--location", "-l", default=None, help="Location x,y,z")
 @click.option("--rotation", "-r", default=None, help="Rotation x,y,z (degrees)")
@@ -325,30 +369,22 @@ def object_group():
 @handle_error
 def object_add(mesh_type, name, location, rotation, scale, param, collection):
     """Add a 3D primitive object."""
-    loc = [float(x) for x in location.split(",")] if location else None
-    rot = [float(x) for x in rotation.split(",")] if rotation else None
-    scl = [float(x) for x in scale.split(",")] if scale else None
+    _add_object_impl(mesh_type, name, location, rotation, scale, param, collection)
 
-    params = {}
-    for p in param:
-        if "=" not in p:
-            raise ValueError(f"Invalid param format: '{p}'. Use key=value.")
-        k, v = p.split("=", 1)
-        try:
-            v = float(v) if "." in v else int(v)
-        except ValueError:
-            pass
-        params[k] = v
 
-    sess = get_session()
-    sess.snapshot(f"Add object: {mesh_type}")
-    proj = sess.get_project()
-    obj = obj_mod.add_object(
-        proj, mesh_type=mesh_type, name=name, location=loc,
-        rotation=rot, scale=scl, mesh_params=params if params else None,
-        collection=collection,
-    )
-    output(obj, f"Added {mesh_type}: {obj['name']}")
+@object_group.command("add-mesh")
+@click.option("--type", "mesh_type", type=click.Choice(OBJECT_MESH_TYPES), required=True,
+              help="Primitive mesh type")
+@click.option("--name", "-n", default=None, help="Object name")
+@click.option("--location", "-l", nargs=3, type=float, default=None, help="Location x y z")
+@click.option("--rotation", "-r", nargs=3, type=float, default=None, help="Rotation x y z (degrees)")
+@click.option("--scale", "-s", nargs=3, type=float, default=None, help="Scale x y z")
+@click.option("--param", "-p", multiple=True, help="Mesh parameter: key=value")
+@click.option("--collection", "-c", default=None, help="Target collection")
+@handle_error
+def object_add_mesh(mesh_type, name, location, rotation, scale, param, collection):
+    """Compatibility alias for `object add`."""
+    _add_object_impl(mesh_type, name, location, rotation, scale, param, collection)
 
 
 @object_group.command("remove")
@@ -858,19 +894,55 @@ def render_presets():
 
 
 @render_group.command("execute")
-@click.argument("output_path")
+@click.argument("output_path", required=False)
+@click.option("--output", "output_option", type=str, default=None,
+              help="Render output path (alternative to positional OUTPUT_PATH)")
+@click.option("--engine", type=click.Choice(["CYCLES", "EEVEE", "WORKBENCH"]), default=None,
+              help="Override render engine for this render")
+@click.option("--samples", type=int, default=None, help="Override render samples for this render")
+@click.option("--format", "output_format", default=None, help="Override output format for this render")
+@click.option("--preset", default=None, help="Apply a render preset for this render")
 @click.option("--frame", "-f", type=int, default=None, help="Specific frame to render")
 @click.option("--animation", "-a", is_flag=True, help="Render full animation")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
 @handle_error
-def render_execute(output_path, frame, animation, overwrite):
-    """Render the scene (generates bpy script)."""
+def render_execute(output_path, output_option, engine, samples, output_format, preset,
+                   frame, animation, overwrite):
+    """Render the scene via Blender headless."""
+    if output_path and output_option:
+        raise ValueError("Specify the output path either positionally or with --output, not both.")
+
+    target_output = output_option or output_path
+    if not target_output:
+        raise ValueError("Output path is required. Pass OUTPUT_PATH or --output.")
+
     sess = get_session()
+    project = sess.get_project()
+    if any(value is not None for value in (engine, samples, output_format, preset)):
+        project = copy.deepcopy(project)
+        render_mod.set_render_settings(
+            project,
+            engine=engine,
+            samples=samples,
+            output_format=output_format,
+            preset=preset,
+        )
+
     result = render_mod.render_scene(
-        sess.get_project(), output_path,
-        frame=frame, animation=animation, overwrite=overwrite,
+        project,
+        target_output,
+        frame=frame,
+        animation=animation,
+        overwrite=overwrite,
+        execute=True,
     )
-    output(result, f"Render script generated: {result['script_path']}")
+    if animation:
+        message = (
+            f"Rendered animation: {result['output_count']} output(s) via {result['method']}"
+        )
+    else:
+        message = f"Rendered: {result['output']} ({result['file_size']:,} bytes) via {result['method']}"
+    output(result, message)
 
 
 @render_group.command("script")
