@@ -163,8 +163,16 @@ def _gen_parts(project: dict) -> List[str]:
     lines: List[str] = []
     parts = project.get("parts", [])
 
+    # Boolean operation types that should be handled by _gen_boolean_ops
+    boolean_types = {"cut", "subtract", "fuse", "union", "common", "intersect", "intersection"}
+
     for part in parts:
         part_type = str(part.get("type", "box")).lower()
+
+        # Skip boolean operations - they're handled separately
+        if part_type in boolean_types:
+            continue
+
         name = _safe_name(part.get("name", f"Part_{part_type}"))
         render_spec = _render_spec_for_part(project, part)
         props = render_spec["params"] if render_spec else part.get("params", part.get("properties", {}))
@@ -179,10 +187,111 @@ def _gen_parts(project: dict) -> List[str]:
     return lines
 
 
+def _gen_sketches(project: dict) -> List[str]:
+    """Generate Sketcher sketches with geometry and constraints."""
+    lines: List[str] = []
+    sketches = project.get("sketches", [])
+
+    if not sketches:
+        return lines
+
+    lines.append("import Sketcher")
+    lines.append("")
+
+    # Plane mapping
+    plane_map = {
+        "XY": ("XY_Plane", "XY"),
+        "XZ": ("XZ_Plane", "XZ"),
+        "YZ": ("YZ_Plane", "YZ"),
+    }
+
+    for sketch in sketches:
+        sketch_name = _safe_name(sketch.get("name", "Sketch"))
+        sketch_var = f"sketch_{sketch_name}"
+        plane = sketch.get("plane", "XY")
+        offset = sketch.get("offset", 0.0)
+
+        # Create sketch object
+        lines.append(f"{sketch_var} = doc.addObject('Sketcher::SketchObject', '{sketch_name}')")
+
+        # Attach to plane
+        plane_ref, plane_mode = plane_map.get(plane, ("XY_Plane", "XY"))
+        lines.append(f"{sketch_var}.MapMode = 'FlatFace'")
+
+        # Set placement based on plane and offset
+        if plane == "XY":
+            lines.append(f"{sketch_var}.Placement = FreeCAD.Placement(FreeCAD.Vector(0,0,{offset}), FreeCAD.Rotation(0,0,0))")
+        elif plane == "XZ":
+            lines.append(f"{sketch_var}.Placement = FreeCAD.Placement(FreeCAD.Vector(0,{offset},0), FreeCAD.Rotation(90,0,0))")
+        elif plane == "YZ":
+            lines.append(f"{sketch_var}.Placement = FreeCAD.Placement(FreeCAD.Vector({offset},0,0), FreeCAD.Rotation(0,90,0))")
+
+        # Add geometry elements
+        elements = sketch.get("elements", [])
+        for elem in elements:
+            elem_type = elem.get("type", "").lower()
+
+            if elem_type == "line":
+                start = elem.get("start", [0, 0])
+                end = elem.get("end", [10, 10])
+                lines.append(f"{sketch_var}.addGeometry(Part.LineSegment(")
+                lines.append(f"    FreeCAD.Vector({start[0]},{start[1]},0),")
+                lines.append(f"    FreeCAD.Vector({end[0]},{end[1]},0)")
+                lines.append(f"), False)")
+
+            elif elem_type == "circle":
+                center = elem.get("center", [0, 0])
+                radius = elem.get("radius", 10)
+                lines.append(f"{sketch_var}.addGeometry(Part.Circle(")
+                lines.append(f"    FreeCAD.Vector({center[0]},{center[1]},0),")
+                lines.append(f"    FreeCAD.Vector(0,0,1),")
+                lines.append(f"    {radius}")
+                lines.append(f"), False)")
+
+            elif elem_type == "rectangle":
+                corner = elem.get("corner", [0, 0])
+                width = elem.get("width", 10)
+                height = elem.get("height", 10)
+                x, y = corner[0], corner[1]
+                # Rectangle as 4 lines
+                lines.append(f"# Rectangle at ({x},{y}) with width={width}, height={height}")
+                lines.append(f"{sketch_var}.addGeometry(Part.LineSegment(FreeCAD.Vector({x},{y},0), FreeCAD.Vector({x+width},{y},0)), False)")
+                lines.append(f"{sketch_var}.addGeometry(Part.LineSegment(FreeCAD.Vector({x+width},{y},0), FreeCAD.Vector({x+width},{y+height},0)), False)")
+                lines.append(f"{sketch_var}.addGeometry(Part.LineSegment(FreeCAD.Vector({x+width},{y+height},0), FreeCAD.Vector({x},{y+height},0)), False)")
+                lines.append(f"{sketch_var}.addGeometry(Part.LineSegment(FreeCAD.Vector({x},{y+height},0), FreeCAD.Vector({x},{y},0)), False)")
+
+            elif elem_type == "polygon":
+                center = elem.get("center", [0, 0])
+                sides = elem.get("sides", 6)
+                radius = elem.get("radius", 10)
+                import math
+                lines.append(f"# Polygon with {sides} sides")
+                lines.append(f"import math")
+                for i in range(sides):
+                    angle1 = 2 * 3.14159265359 * i / sides
+                    angle2 = 2 * 3.14159265359 * (i + 1) / sides
+                    x1 = center[0] + radius * math.cos(angle1)
+                    y1 = center[1] + radius * math.sin(angle1)
+                    x2 = center[0] + radius * math.cos(angle2)
+                    y2 = center[1] + radius * math.sin(angle2)
+                    lines.append(f"{sketch_var}.addGeometry(Part.LineSegment(FreeCAD.Vector({x1:.6f},{y1:.6f},0), FreeCAD.Vector({x2:.6f},{y2:.6f},0)), False)")
+
+        lines.append("")
+
+    return lines
+
+
 def _gen_boolean_ops(project: dict) -> List[str]:
     """Generate boolean operations (Cut, Fuse, Common)."""
     lines: List[str] = []
-    boolean_ops = project.get("boolean_ops", [])
+
+    # Extract boolean operations from parts array
+    parts = project.get("parts", [])
+    boolean_types = {"cut", "subtract", "fuse", "union", "common", "intersect", "intersection"}
+    boolean_ops = [p for p in parts if str(p.get("type", "")).lower() in boolean_types]
+
+    if not boolean_ops:
+        return lines
 
     # Map user-friendly names to FreeCAD object types
     op_type_map = {
@@ -195,16 +304,41 @@ def _gen_boolean_ops(project: dict) -> List[str]:
         "intersection": "Part::Common",
     }
 
+    # Build a mapping from part ID to part variable name
+    id_to_var = {}
+    for part in parts:
+        part_id = part.get("id")
+        part_type = str(part.get("type", "")).lower()
+        part_name = _safe_name(part.get("name", f"Part_{part_type}"))
+
+        # For boolean ops, use the op name; for primitives, use obj_ prefix
+        if part_type in boolean_types:
+            id_to_var[part_id] = f"obj_{part_name}"
+        else:
+            id_to_var[part_id] = f"obj_{part_name}"
+
     for op in boolean_ops:
         op_type = op.get("type", "fuse").lower()
         name = _safe_name(op.get("name", f"BoolOp_{op_type}"))
-        base_name = _safe_name(op.get("base", ""))
-        tool_name = _safe_name(op.get("tool", ""))
+
+        # Get base and tool IDs from params
+        params = op.get("params", {})
+        base_id = params.get("base_id")
+        tool_id = params.get("tool_id")
+
         fc_type = op_type_map.get(op_type, "Part::Fuse")
 
+        # Reference parts by their variable names
+        base_var = id_to_var.get(base_id, "None")
+        tool_var = id_to_var.get(tool_id, "None")
+
+        if base_var == "None" or tool_var == "None":
+            lines.append(f"# WARNING: Boolean operation {name} has invalid base or tool ID")
+            continue
+
         lines.append(f"obj_{name} = doc.addObject('{fc_type}', '{name}')")
-        lines.append(f"obj_{name}.Base = doc.getObject('{base_name}')")
-        lines.append(f"obj_{name}.Tool = doc.getObject('{tool_name}')")
+        lines.append(f"obj_{name}.Base = {base_var}")
+        lines.append(f"obj_{name}.Tool = {tool_var}")
         lines.append("")
 
     return lines
@@ -388,10 +522,22 @@ def _gen_bodies(project: dict) -> List[str]:
                     )
 
             elif feat_type == "pad":
-                length = feat_props.get("length", feat_props.get("Length", 10.0))
+                sketch_index = feat.get("sketch_index")
+                length = feat.get("length", feat_props.get("length", feat_props.get("Length", 10.0)))
+
                 lines.append(
                     f"{feat_var} = {body_var}.newObject('PartDesign::Pad', '{feat_name}')"
                 )
+
+                # Link to sketch if sketch_index is provided
+                if sketch_index is not None:
+                    sketches = project.get("sketches", [])
+                    if sketch_index < len(sketches):
+                        sketch_obj = sketches[sketch_index]
+                        sketch_name = _safe_name(sketch_obj.get("name", "Sketch"))
+                        sketch_var = f"sketch_{sketch_name}"
+                        lines.append(f"{feat_var}.Profile = {sketch_var}")
+
                 lines.append(f"{feat_var}.Length = {length}")
                 previous_var = feat_var
 
@@ -537,12 +683,42 @@ def _gen_export(
     lines.append("doc.recompute()")
     lines.append("")
 
-    # Collect all visible shape objects for export
-    lines.append("# Collect all shape objects for export")
+    # Collect only visible shape objects for export
+    lines.append("# Collect visible shape objects for export")
     lines.append("export_objects = []")
-    lines.append("for obj in doc.Objects:")
-    lines.append("    if hasattr(obj, 'Shape') and obj.Shape.isValid():")
-    lines.append("        export_objects.append(obj)")
+
+    # Build a set of visible object names from the project
+    parts = project.get("parts", [])
+    bodies = project.get("bodies", [])
+
+    visible_names = set()
+
+    # Add visible parts (excluding boolean operations which are always included if visible)
+    boolean_types = {"cut", "subtract", "fuse", "union", "common", "intersect", "intersection"}
+    for part in parts:
+        if part.get("visible", True):  # Default to visible if not specified
+            part_name = _safe_name(part.get("name", f"Part_{part.get('type', 'unknown')}"))
+            visible_names.add(part_name)
+
+    # Add all bodies (they should always be exported if they exist)
+    for body in bodies:
+        body_name = _safe_name(body.get("name", "Body"))
+        visible_names.add(body_name)
+
+    # Generate code to filter by visibility
+    if visible_names:
+        lines.append("# Only export visible objects")
+        lines.append("visible_names = {" + ", ".join(f"'{name}'" for name in visible_names) + "}")
+        lines.append("for obj in doc.Objects:")
+        lines.append("    if hasattr(obj, 'Shape') and obj.Shape.isValid():")
+        lines.append("        if obj.Label in visible_names:")
+        lines.append("            export_objects.append(obj)")
+    else:
+        # If no visible names specified, export all valid shapes
+        lines.append("# Export all valid shapes")
+        lines.append("for obj in doc.Objects:")
+        lines.append("    if hasattr(obj, 'Shape') and obj.Shape.isValid():")
+        lines.append("        export_objects.append(obj)")
     lines.append("")
 
     fmt = export_format.lower()
@@ -563,7 +739,7 @@ def _gen_export(
         lines.append(f"Part.export(export_objects, '{safe_path}')")
 
     lines.append("")
-    lines.append("print('Export complete:', os.path.abspath('{safe_path}'))")
+    lines.append(f"print('Export complete:', os.path.abspath('{safe_path}'))")
     lines.append("")
 
     return lines
@@ -612,6 +788,7 @@ def generate_macro(
     """
     sections: List[List[str]] = [
         _gen_header(),
+        _gen_sketches(project),  # Added: Generate sketches BEFORE bodies
         _gen_parts(project),
         _gen_boolean_ops(project),
         _gen_bodies(project),
