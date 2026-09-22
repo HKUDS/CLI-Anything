@@ -2,7 +2,7 @@
 
 import json
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +14,6 @@ class SessionState:
     current_notebook_name: str = ""
     current_doc_id: str = ""
     current_doc_path: str = ""
-    connected: bool = False
-    history: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -27,8 +25,6 @@ class SessionState:
             current_notebook_name=data.get("current_notebook_name", ""),
             current_doc_id=data.get("current_doc_id", ""),
             current_doc_path=data.get("current_doc_path", ""),
-            connected=data.get("connected", False),
-            history=data.get("history", []),
         )
 
 
@@ -49,17 +45,24 @@ class SessionManager:
         if self.session_path.is_file():
             try:
                 data = json.loads(self.session_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                data = None
+            # Non-dict top level (e.g. a list) degrades to defaults, no crash
+            if isinstance(data, dict):
                 self.state = SessionState.from_dict(data)
-            except (json.JSONDecodeError, KeyError):
+            else:
                 self.state = SessionState()
         return self.state
 
     def save(self) -> None:
-        """Save current session state to disk."""
-        self.session_path.write_text(
-            json.dumps(self.state.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        """Save current session state to disk. Failures degrade silently."""
+        try:
+            self.session_path.write_text(
+                json.dumps(self.state.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
 
     def update(self, **kwargs: Any) -> None:
         """Update session state fields and mark dirty."""

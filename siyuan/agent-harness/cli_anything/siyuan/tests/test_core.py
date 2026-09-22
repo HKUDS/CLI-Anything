@@ -11,7 +11,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cli_anything.siyuan.core.client import SiYuanClient, SiYuanConfig, load_config
+from cli_anything.siyuan.core.client import (
+    SiYuanClient,
+    SiYuanClientError,
+    SiYuanConfig,
+    load_config,
+)
 from cli_anything.siyuan.core.session import SessionManager, SessionState
 
 
@@ -138,27 +143,24 @@ class TestSessionManager:
 
     def test_default_state(self, mgr):
         """Fresh session has correct defaults."""
-        assert mgr.state.connected is False
         assert mgr.state.current_notebook_id == ""
         assert mgr.state.current_notebook_name == ""
         assert mgr.state.current_doc_id == ""
 
     def test_save_load_roundtrip(self, mgr):
         """Save then load preserves all state."""
-        mgr.update(current_notebook_id="nb1", current_notebook_name="Test", connected=True)
+        mgr.update(current_notebook_id="nb1", current_notebook_name="Test")
         mgr.save()
 
         mgr2 = SessionManager(state_dir=str(mgr.state_dir))
         mgr2.load()
         assert mgr2.state.current_notebook_id == "nb1"
         assert mgr2.state.current_notebook_name == "Test"
-        assert mgr2.state.connected is True
 
     def test_partial_update(self, mgr):
         """Update only changes specified fields."""
         mgr.update(current_notebook_id="nb1")
         assert mgr.state.current_notebook_id == "nb1"
-        assert mgr.state.connected is False  # unchanged
 
 
 class TestFindReplace:
@@ -202,3 +204,84 @@ class TestUncappedListings:
         body = call_kwargs["json"]
         assert "maxListCount" in body
         assert body["maxListCount"] == 0
+
+
+class TestUpdateBlockDocRootError:
+    """update_block augments 'not found' errors with doc-root guidance."""
+
+    @pytest.fixture
+    def client(self):
+        return SiYuanClient(SiYuanConfig(token="test-token"))
+
+    def _mock_error(self, client, msg: str):
+        mock_session = MagicMock()
+        mock_session.post.return_value.status_code = 200
+        mock_session.post.return_value.json.return_value = {"code": -1, "msg": msg}
+        client._session = mock_session
+
+    def test_update_block_doc_root_raises_guidance(self, client):
+        """update_block on a doc root (tree not found) adds actionable hint."""
+        self._mock_error(client, "tree not found")
+        from cli_anything.siyuan.core.client import SiYuanClientError
+        with pytest.raises(SiYuanClientError) as exc:
+            client.update_block("markdown", "data", "doc-id")
+        assert "document root block" in str(exc.value)
+        assert "Update a content block" in str(exc.value)
+        assert "doc remove" not in str(exc.value)
+
+    def test_update_block_other_error_unchanged(self, client):
+        """update_block leaves unrelated errors intact."""
+        self._mock_error(client, "some other error")
+        from cli_anything.siyuan.core.client import SiYuanClientError
+        with pytest.raises(SiYuanClientError) as exc:
+            client.update_block("markdown", "data", "block-id")
+        assert "document root block" not in str(exc.value)
+        assert "some other error" in str(exc.value)
+
+
+class TestTagNameUnescaping:
+    """The kernel HTML-escapes tag names; the client decodes them back."""
+
+    @pytest.fixture
+    def client(self):
+        return SiYuanClient(SiYuanConfig(token="test-token"))
+
+    def _mock(self, client, payload):
+        mock_session = MagicMock()
+        mock_session.post.return_value.status_code = 200
+        mock_session.post.return_value.json.return_value = {"code": 0, "data": payload}
+        client._session = mock_session
+
+    def test_get_tags_decodes_name_recursively(self, client):
+        """Nested tag names are decoded; the markup-bearing `label` is left alone."""
+        self._mock(client, [
+            {"name": "-&gt;return-type", "label": "-&gt;return-type", "count": 1,
+             "children": [{"name": "a&amp;b", "count": 1}]},
+        ])
+        tags = client.get_tags()
+        assert tags[0]["name"] == "->return-type"
+        assert tags[0]["children"][0]["name"] == "a&b"
+        assert tags[0]["label"] == "-&gt;return-type"
+
+    def test_get_tags_tolerates_non_list_payload(self, client):
+        self._mock(client, None)
+        assert client.get_tags() == []
+
+    def test_search_tag_decodes_names(self, client):
+        self._mock(client, {"tags": ["-&gt;x", "plain"], "k": "x"})
+        assert client.search_tag("x") == ["->x", "plain"]
+
+    def test_get_tags_accepts_a_wrapped_payload(self, client):
+        """A `{"tags": [...]}` reply lists tags rather than silently listing none."""
+        self._mock(client, {"tags": [{"name": "a&amp;b", "count": 1}]})
+        assert client.get_tags() == [{"name": "a&b", "count": 1}]
+
+
+class TestUploadAssetFileErrors:
+    def test_unreadable_path_is_a_client_error(self, tmp_path):
+        """An OSError while opening used to escape as a raw traceback."""
+        client = SiYuanClient(SiYuanConfig())
+        with pytest.raises(SiYuanClientError) as exc:
+            client.upload_asset([str(tmp_path)])
+        assert "Cannot read" in str(exc.value)
+
