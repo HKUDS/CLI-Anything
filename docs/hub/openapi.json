@@ -177,8 +177,18 @@
           "install_cmd": {
             "type": "string"
           },
+          "install_strategy": {
+            "type": "string"
+          },
           "package_manager": {
             "type": "string"
+          },
+          "install_instructions_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "remote_script": {
+            "$ref": "#/components/schemas/RemoteScript"
           },
           "homepage": {
             "type": "string",
@@ -198,6 +208,32 @@
           "category"
         ],
         "additionalProperties": true
+      },
+      "RemoteScript": {
+        "type": "object",
+        "description": "Audited metadata for an upstream remote bootstrap script. A digest may cover only the bootstrap and not any artifacts it subsequently downloads.",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[A-Fa-f0-9]{64}$"
+          },
+          "interpreter": {
+            "type": "string"
+          },
+          "integrity_scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "sha256",
+          "interpreter"
+        ],
+        "additionalProperties": false
       }
     }
   }
