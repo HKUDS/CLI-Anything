@@ -25,9 +25,11 @@ setup(
             "cli-anything-cloudcompare=cli_anything.cloudcompare.cloudcompare_cli:main",
         ],
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "License :: OSI Approved :: Apache Software License",
         "Topic :: Scientific/Engineering :: GIS",
         "Topic :: Scientific/Engineering :: Visualization",
     ],

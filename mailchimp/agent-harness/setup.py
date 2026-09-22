@@ -14,6 +14,7 @@ setup(
     long_description_content_type="text/markdown",
     author="cli-anything contributors",
     license="Apache-2.0",
+    license_files=["LICENSE"],
     python_requires=">=3.10",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     package_data={"cli_anything.mailchimp": ["skills/SKILL.md", "README.md"]},

@@ -7,7 +7,7 @@ name = "cli-anything-n8n"
 version = "2.4.7"
 description = "CLI harness for n8n workflow automation — CLI-Anything pattern (n8n API v1.1.1)"
 readme = "cli_anything/n8n/README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     {name = "Juan Jose Sanchez Bernal", email = "info@webcomunica.solutions"},
@@ -17,6 +17,7 @@ maintainers = [
 ]
 keywords = ["n8n", "cli", "workflow", "automation", "cli-anything", "ai-agent"]
 classifiers = [
+    "License :: OSI Approved :: Apache Software License",
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
@@ -58,3 +59,6 @@ markers = [
     "e2e: end-to-end tests requiring a running n8n instance",
 ]
 testpaths = ["cli_anything/n8n/tests"]
+
+[tool.setuptools]
+license-files = ["LICENSE"]
