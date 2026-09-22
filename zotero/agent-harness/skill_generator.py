@@ -273,11 +273,12 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None, te
     content = generate_skill_md(metadata, template_path=template_path)
     harness_root = Path(harness_path)
     skill_id = f"cli-anything-{harness_root.parent.name.replace('_', '-')}"
-    output = Path(output_path) if output_path else harness_root.parent.parent / "skills" / skill_id / "SKILL.md"
+    write_mirror = output_path is None
+    output = Path(output_path) if output_path is not None else harness_root.parent.parent / "skills" / skill_id / "SKILL.md"
     mirror = harness_root / "cli_anything" / metadata.software_name / "skills" / "SKILL.md"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(content, encoding="utf-8")
-    if mirror != output:
+    if write_mirror and mirror != output:
         mirror.parent.mkdir(parents=True, exist_ok=True)
         mirror.write_text(content, encoding="utf-8")
     return str(output)

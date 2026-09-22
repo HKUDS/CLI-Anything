@@ -542,6 +542,8 @@ class TestGenerateSkillFile:
         assert Path(output).exists()
         content = Path(output).read_text()
         assert "cli-anything-testapp" in content
+        compatibility_path = harness_dir / "cli_anything" / "testapp" / "skills" / "SKILL.md"
+        assert compatibility_path.read_text() == content
 
     def test_generates_file_at_custom_path(self, harness_dir, tmp_path):
         output_file = tmp_path / "custom" / "SKILL.md"
@@ -549,6 +551,16 @@ class TestGenerateSkillFile:
         assert Path(output).exists()
         content = Path(output).read_text()
         assert "testapp" in content.lower()
+
+    def test_custom_path_does_not_modify_compatibility_copy(self, harness_dir, tmp_path):
+        compatibility_path = harness_dir / "cli_anything" / "testapp" / "skills" / "SKILL.md"
+        compatibility_path.parent.mkdir(parents=True)
+        compatibility_path.write_text("# Existing packaged skill\n")
+
+        output_file = tmp_path / "custom" / "SKILL.md"
+        generate_skill_file(str(harness_dir), str(output_file))
+
+        assert compatibility_path.read_text() == "# Existing packaged skill\n"
 
     def test_creates_parent_directories(self, harness_dir, tmp_path):
         output_file = tmp_path / "deep" / "nested" / "dir" / "SKILL.md"
