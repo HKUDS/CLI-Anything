@@ -885,7 +885,7 @@ class TestRender:
         add_object(proj, name="Cube")
         with tempfile.TemporaryDirectory() as tmp:
             output_path = os.path.join(tmp, "render.png")
-            result = render_scene(proj, output_path, overwrite=True)
+            result = render_scene(proj, output_path, overwrite=True, execute=False)
             assert os.path.exists(result["script_path"])
             assert "blender" in result["command"]
             assert result["engine"] == "CYCLES"

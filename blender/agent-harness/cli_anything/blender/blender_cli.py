@@ -168,6 +168,17 @@ def handle_error(func):
                 click.echo(f"Error: {e}", err=True)
             if not _repl_mode:
                 sys.exit(1)
+        except subprocess.TimeoutExpired as e:
+            # Blender exceeding --timeout must follow the CLI's error contract
+            # rather than escaping as a traceback with no --json payload.
+            msg = (f"Render timed out after {e.timeout}s. "
+                   f"Raise --timeout to allow longer renders.")
+            if _json_output:
+                click.echo(json.dumps({"error": msg, "type": "TimeoutExpired"}))
+            else:
+                click.echo(f"Error: {msg}", err=True)
+            if not _repl_mode:
+                sys.exit(1)
         except (ValueError, IndexError, RuntimeError) as e:
             if _json_output:
                 click.echo(json.dumps({"error": str(e), "type": type(e).__name__}))
@@ -862,15 +873,22 @@ def render_presets():
 @click.option("--frame", "-f", type=int, default=None, help="Specific frame to render")
 @click.option("--animation", "-a", is_flag=True, help="Render full animation")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
+@click.option("--timeout", type=int, default=300, help="Max seconds to wait for Blender")
+@click.option("--no-execute", is_flag=True, help="Only write the bpy script, do not render")
 @handle_error
-def render_execute(output_path, frame, animation, overwrite):
-    """Render the scene (generates bpy script)."""
+def render_execute(output_path, frame, animation, overwrite, timeout, no_execute):
+    """Render the scene with Blender headless."""
     sess = get_session()
     result = render_mod.render_scene(
         sess.get_project(), output_path,
         frame=frame, animation=animation, overwrite=overwrite,
+        execute=not no_execute, timeout=timeout,
     )
-    output(result, f"Render script generated: {result['script_path']}")
+    if result.get("executed"):
+        msg = f"Rendered: {result['output']}"
+    else:
+        msg = f"Render script generated (not executed): {result['script_path']}"
+    output(result, msg)
 
 
 @render_group.command("script")
