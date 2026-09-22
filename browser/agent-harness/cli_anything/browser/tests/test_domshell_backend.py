@@ -442,6 +442,23 @@ def test_parse_execute_result_grep_extracts_matches():
     assert parsed["matches"] == ["/main/button[0]", "/main/link[1]"]
     assert "[lane:" not in parsed["raw"]
 
+def test_parse_execute_result_ls_structured_format():
+    result = _make_result("[d] article (article) → ./main/article/\n[i] submit-btn (button) → ./main/submit-btn/\nglobal_navigation_menu/")
+    parsed = backend._parse_execute_result(result, "ls")
+    assert parsed["entries"] == [
+        {"name": "article", "role": "article", "path": "./main/article", "is_directory": True},
+        {"name": "submit-btn", "role": "button", "path": "./main/submit-btn", "is_directory": True},
+        {"name": "global_navigation_menu", "role": "", "path": "global_navigation_menu", "is_directory": True},
+    ]
+
+def test_parse_execute_result_grep_structured_format():
+    result = _make_result("[d] main_54565 (main)\n[x] button_123 (button) → ./button_123/")
+    parsed = backend._parse_execute_result(result, "grep")
+    assert parsed["matches"] == [
+        {"name": "main_54565", "role": "main", "path": "main_54565", "type": "directory"},
+        {"name": "button_123", "role": "button", "path": "./button_123", "type": "interactive"},
+    ]
+
 
 def test_parse_execute_result_error_returns_error_dict():
     """Errors get `error` AND `output` keys — the CLI checks `"error" in
