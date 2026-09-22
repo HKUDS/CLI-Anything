@@ -107,6 +107,8 @@
 !/tigris/
 !/cc-switch/
 !/siyuan/
+!/parallel/
+
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
 /gimp/.*
@@ -188,6 +190,8 @@
 /cloudanalyzer/.*
 /wiremock/*
 /wiremock/.*
+/parallel/*
+/parallel/.*
 /exa/*
 /exa/.*
 /n8n/*
@@ -272,6 +276,7 @@
 !/cloudanalyzer/agent-harness/
 !/wiremock/
 !/wiremock/agent-harness/
+!/parallel/agent-harness/
 !/exa/agent-harness/
 !/QGIS/agent-harness/
 !/n8n/agent-harness/
