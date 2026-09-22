@@ -35,6 +35,7 @@ from cli_anything.blender.core import lighting as light_mod
 from cli_anything.blender.core import animation as anim_mod
 from cli_anything.blender.core import render as render_mod
 from cli_anything.blender.core import preview as preview_mod
+from cli_anything.blender.utils import blender_backend
 
 # Global session state
 _session: Optional[Session] = None
@@ -864,13 +865,40 @@ def render_presets():
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
 @handle_error
 def render_execute(output_path, frame, animation, overwrite):
-    """Render the scene (generates bpy script)."""
+    """Render the scene (generates bpy script and renders via real Blender)."""
     sess = get_session()
     result = render_mod.render_scene(
         sess.get_project(), output_path,
         frame=frame, animation=animation, overwrite=overwrite,
     )
-    output(result, f"Render script generated: {result['script_path']}")
+
+    run = blender_backend.render_script(result["script_path"])
+    if run["returncode"] != 0:
+        raise RuntimeError(
+            f"Blender render failed (exit {run['returncode']}):\n"
+            f"  stderr: {run['stderr'][-500:]}"
+        )
+
+    actual_output = output_path
+    if not os.path.exists(actual_output):
+        base, ext = os.path.splitext(output_path)
+        for suffix in ["0001", "0000", "1"]:
+            candidate = f"{base}{suffix}{ext}"
+            if os.path.exists(candidate):
+                actual_output = candidate
+                break
+
+    if not os.path.exists(actual_output):
+        raise RuntimeError(
+            f"Blender render produced no output file.\n"
+            f"  Expected: {output_path}\n"
+            f"  stdout: {run['stdout'][-500:]}"
+        )
+
+    result["rendered_output"] = os.path.abspath(actual_output)
+    result["file_size"] = os.path.getsize(actual_output)
+    result["blender_version"] = blender_backend.get_version()
+    output(result, f"Rendered: {result['rendered_output']} ({result['file_size']:,} bytes)")
 
 
 @render_group.command("script")
