@@ -11,6 +11,44 @@ Rendering backends (tried in order):
 import os
 from typing import Dict, Any, Optional, Tuple
 
+# Remembers a GIMP batch failure for the life of the process. A hanging batch
+# run costs the full subprocess timeout, so retrying it on every render would
+# make each export pay that cost again. Only failures of the backend itself
+# belong here — see _REQUEST_SCOPED_ERRORS.
+_GIMP_BACKEND_ERROR: Optional[str] = None
+
+# Errors that describe this particular request rather than the state of the
+# GIMP installation. They must not be cached, and must not be reported as a
+# reason to fall back to Pillow.
+#
+# OSError subsumes FileExistsError and FileNotFoundError and adds the other
+# pre-batch output-path failures — PermissionError on an unwritable parent,
+# ENAMETOOLONG, ENOSPC — none of which say anything about whether GIMP works.
+# subprocess.TimeoutExpired and CalledProcessError are not OSErrors, so real
+# backend failures still reach the cache.
+_REQUEST_SCOPED_ERRORS = (ValueError, KeyError, OSError)
+
+
+def _summarise_backend_error(exc: BaseException) -> str:
+    """Bounded, non-leaky description of a GIMP backend failure.
+
+    subprocess.TimeoutExpired and CalledProcessError stringify their whole
+    argv, and the argv here embeds the generated Script-Fu program — layer
+    names, text-layer contents and file paths. That text would otherwise be
+    printed, returned in JSON, and retained in the process-wide cache, so
+    summarise those by exception type instead of interpolating the message.
+    """
+    import subprocess
+
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"TimeoutExpired: GIMP batch exceeded {exc.timeout}s"
+    if isinstance(exc, subprocess.CalledProcessError):
+        return f"CalledProcessError: GIMP batch exited {exc.returncode}"
+    detail = str(exc).splitlines()[0] if str(exc) else ""
+    if len(detail) > 200:
+        detail = detail[:200] + "…"
+    return f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+
 
 # Export presets
 EXPORT_PRESETS = {
@@ -58,30 +96,62 @@ def render(
     overwrite: bool = False,
     quality: Optional[int] = None,
     format_override: Optional[str] = None,
+    require_gimp: bool = False,
 ) -> Dict[str, Any]:
     """Render the project: flatten layers, apply filters, export.
 
     Tries the GIMP Script-Fu backend first (native image processing via
-    ``gimp -i -b``).  Falls back to Pillow when GIMP is not installed.
+    ``gimp -i -b``).  Falls back to Pillow when GIMP is unavailable or the
+    batch run fails, and reports which renderer actually produced the file.
+
+    Pass ``require_gimp=True`` to raise instead of falling back, for callers
+    that need GIMP's own rendering rather than an approximation.
     """
+    global _GIMP_BACKEND_ERROR
+
+    skip_reason = None
+
     # --- GIMP-native rendering (preferred) ---
-    try:
-        from cli_anything.gimp.utils.gimp_backend import is_available, render_project
-        if is_available() and not _project_has_draw_ops(project):
-            return render_project(
-                project, output_path,
-                preset=preset, overwrite=overwrite,
-                quality=quality, format_override=format_override,
-            )
-    except Exception:
-        pass  # fall through to Pillow
+    if _project_has_draw_ops(project):
+        skip_reason = "project uses draw ops, which the Script-Fu path does not implement"
+    elif _GIMP_BACKEND_ERROR is not None:
+        # A previous render in this process already failed; a GIMP batch run
+        # that hangs costs the full timeout, so don't pay it again.
+        skip_reason = _GIMP_BACKEND_ERROR
+    else:
+        try:
+            from cli_anything.gimp.utils.gimp_backend import is_available, render_project
+            if not is_available():
+                skip_reason = "GIMP was not found on PATH"
+            else:
+                return render_project(
+                    project, output_path,
+                    preset=preset, overwrite=overwrite,
+                    quality=quality, format_override=format_override,
+                )
+        except _REQUEST_SCOPED_ERRORS:
+            # Bad arguments for this one call — an existing output file without
+            # --overwrite, an unreadable source. GIMP is fine; the request is
+            # not. Surface it instead of disguising it as a renderer fallback,
+            # and never let it disable GIMP for subsequent renders.
+            raise
+        except Exception as exc:
+            skip_reason = _summarise_backend_error(exc)
+            _GIMP_BACKEND_ERROR = skip_reason
+
+    if require_gimp:
+        raise RuntimeError(
+            f"GIMP rendering was requested but is unavailable: {skip_reason}"
+        )
 
     # --- Pillow fallback ---
-    return _render_via_pillow(
+    result = _render_via_pillow(
         project, output_path,
         preset=preset, overwrite=overwrite,
         quality=quality, format_override=format_override,
     )
+    result["gimp_skipped"] = skip_reason
+    return result
 
 
 def _render_via_pillow(

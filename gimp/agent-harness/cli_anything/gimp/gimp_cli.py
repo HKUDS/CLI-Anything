@@ -610,16 +610,22 @@ def export_preset_info(name):
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
 @click.option("--quality", "-q", type=int, default=None, help="Quality override")
 @click.option("--format", "fmt", type=str, default=None, help="Format override")
+@click.option("--require-gimp", is_flag=True,
+              help="Fail instead of falling back to the Pillow renderer")
 @handle_error
-def export_render(output_path, preset, overwrite, quality, fmt):
+def export_render(output_path, preset, overwrite, quality, fmt, require_gimp):
     """Render the project to an image file."""
     sess = get_session()
     result = export_mod.render(
         sess.get_project(), output_path,
         preset=preset, overwrite=overwrite,
         quality=quality, format_override=fmt,
+        require_gimp=require_gimp,
     )
-    output(result, f"Rendered to: {output_path}")
+    msg = f"Rendered to: {output_path} (via {result.get('method', 'unknown')})"
+    if result.get("gimp_skipped"):
+        msg += f"\n  GIMP not used: {result['gimp_skipped']}"
+    output(result, msg)
 
 
 # ── Session Commands ─────────────────────────────────────────────
