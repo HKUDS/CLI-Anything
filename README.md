@@ -1385,8 +1385,15 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
 </tr>
 <tr>
+<td align="center"><strong>🐋 <a href="orcarouter/agent-harness/">OrcaRouter</a></strong></td>
+<td>AI Gateway — OpenAI-compatible routing with API-key or OAuth 2.0 + PKCE sign-in</td>
+<td><code>cli-anything-orcarouter</code></td>
+<td>OrcaRouter HTTP API (<code>api.orcarouter.ai/v1</code>), stdlib only</td>
+<td align="center">✅ 119</td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 2,461</strong></td>
+<td align="center"><strong>✅ 2,580</strong></td>
 </tr>
 </table>
 
@@ -1435,10 +1442,11 @@ lldb           27 passed  ✅   (23 unit + 4 e2e)
 nsight-graphics 51 passed ✅   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
+orcarouter    119 passed  ✅   (113 unit + 6 e2e; 1 live check needs ORCAROUTER_API_KEY)
 3mf            50 passed  ✅   (50 unit)
 joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,464 passed  ✅   100% pass rate
+TOTAL        2,583 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1542,6 +1550,7 @@ cli-anything/
 ├── ☁️ cloudcompare/agent-harness/       # CloudCompare CLI (88 tests)
 ├── 🔍 exa/agent-harness/               # Exa CLI (40 tests)
 └── ⛅ cloudanalyzer/agent-harness/      # CloudAnalyzer CLI (14 tests)
+├── 🐋 orcarouter/agent-harness/          # OrcaRouter CLI (119 tests: API key + OAuth 2.0 PKCE)
 └── 🔩 3MF/agent-harness/               # 3MF Mesh Editor CLI (50+ tests)
 ```
 
