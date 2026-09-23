@@ -67,4 +67,9 @@ setup(
     },
     include_package_data=True,
     zip_safe=False,
+    license="Apache-2.0",
+    license_files=["LICENSE"],
+    classifiers=[
+        "License :: OSI Approved :: Apache Software License",
+    ],
 )

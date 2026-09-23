@@ -18,4 +18,9 @@ setup(
     },
     include_package_data=True,
     python_requires=">=3.8",
+    license="Apache-2.0",
+    license_files=["LICENSE"],
+    classifiers=[
+        "License :: OSI Approved :: Apache Software License",
+    ],
 )

@@ -22,7 +22,10 @@ setup(
             "cli-anything-iterm2=cli_anything.iterm2_ctl.iterm2_ctl_cli:main",
         ],
     },
+    license="Apache-2.0",
+    license_files=["LICENSE"],
     classifiers=[
+        "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3",
         "Operating System :: MacOS",
         "Topic :: Terminals :: Terminal Emulators/X Terminals",

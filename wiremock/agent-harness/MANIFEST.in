@@ -1,1 +1,2 @@
 recursive-include cli_anything *.md
+include LICENSE

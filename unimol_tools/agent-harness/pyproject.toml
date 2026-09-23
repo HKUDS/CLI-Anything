@@ -7,6 +7,10 @@ name = "cli-anything-unimol-tools"
 version = "1.0.0"
 description = "Molecular property prediction CLI for AI agents"
 authors = [{name = "CLI-Anything Contributors"}]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
 requires-python = ">=3.9"
 dependencies = [
     "click>=8.0.0",
@@ -33,6 +37,7 @@ packages = [
     "cli_anything.unimol_tools.utils",
     "cli_anything.unimol_tools.tests",
 ]
+license-files = ["LICENSE"]
 
 [tool.setuptools.package-dir]
 "cli_anything.unimol_tools" = "cli_anything/unimol_tools"

@@ -7,7 +7,7 @@ name = "cli-anything-jumpserver"
 version = "0.1.0"
 description = "Stateful CLI harness for JumpServer bastion host management"
 readme = "cli_anything/jumpserver/README.md"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [
     { name = "cli-anything" }
 ]
@@ -16,7 +16,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -50,3 +50,6 @@ include = ["cli_anything.*"]
 [tool.pytest.ini_options]
 testpaths = ["cli_anything/jumpserver/tests"]
 addopts = "-v --tb=short"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
