@@ -19,10 +19,10 @@ def _locked_save_json(path, data, **dump_kwargs) -> None:
     """Atomically write JSON with exclusive file locking."""
     path = str(path)
     try:
-        f = open(path, "r+")
+        f = open(path, "r+", encoding="utf-8")
     except FileNotFoundError:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        f = open(path, "w")
+        f = open(path, "w", encoding="utf-8")
     with f:
         _locked = False
         try:
@@ -244,7 +244,7 @@ class Session:
         path = SESSION_DIR / f"{session_id}.json"
         if not path.is_file():
             return None
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
 
     @classmethod
@@ -254,7 +254,7 @@ class Session:
         sessions = []
         for p in SESSION_DIR.glob("*.json"):
             try:
-                with open(p) as f:
+                with open(p, encoding="utf-8") as f:
                     sessions.append(json.load(f))
             except (json.JSONDecodeError, OSError):
                 continue

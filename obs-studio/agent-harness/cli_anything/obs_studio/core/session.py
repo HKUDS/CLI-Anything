@@ -10,10 +10,10 @@ from datetime import datetime
 def _locked_save_json(path, data, **dump_kwargs) -> None:
     """Atomically write JSON with exclusive file locking."""
     try:
-        f = open(path, "r+")
+        f = open(path, "r+", encoding="utf-8")
     except FileNotFoundError:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        f = open(path, "w")
+        f = open(path, "w", encoding="utf-8")
     with f:
         _locked = False
         try:

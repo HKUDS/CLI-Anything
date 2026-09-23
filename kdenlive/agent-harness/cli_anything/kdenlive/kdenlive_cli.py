@@ -621,7 +621,7 @@ def export_xml(output):
     sess = get_session()
     xml = export_mod.generate_kdenlive_xml(sess.get_project())
     if output:
-        with open(output, "w") as f:
+        with open(output, "w", encoding="utf-8") as f:
             f.write(xml)
         globals()["output"]({"path": output, "size": len(xml)}, f"XML written to: {output}")
     else:

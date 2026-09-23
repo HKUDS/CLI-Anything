@@ -134,7 +134,7 @@ def open_project(path: str) -> Dict[str, Any]:
     """Open a .kdenlive-cli.json project file."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"Project file not found: {path}")
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         project = json.load(f)
     if "version" not in project or "profile" not in project:
         raise ValueError(f"Invalid project file: {path}")
@@ -147,7 +147,7 @@ def save_project(project: Dict[str, Any], path: str) -> str:
     parent = os.path.dirname(os.path.abspath(path))
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(project, f, indent=2, default=str)
     return path
 

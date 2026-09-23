@@ -138,14 +138,14 @@ def load_json(path: str) -> Dict[str, Any]:
     """Load a JSON file."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"File not found: {path}")
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_json(data: Dict[str, Any], path: str) -> str:
     """Save data to a JSON file."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)
     return path
 
