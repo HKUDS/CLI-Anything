@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "orcarouter",
+      "display_name": "OrcaRouter",
+      "version": "1.0.0",
+      "description": "OpenAI-compatible AI gateway with two authentication choices: an existing sk-orca- API key, or OAuth 2.0 + PKCE account sign-in",
+      "requires": "ORCAROUTER_API_KEY, or an OrcaRouter account for the browser sign-in",
+      "homepage": "https://www.orcarouter.ai",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=orcarouter/agent-harness",
+      "entry_point": "cli-anything-orcarouter",
+      "skill_md": "skills/cli-anything-orcarouter/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "kuswardhanietidims-svg",
+          "url": "https://github.com/kuswardhanietidims-svg"
+        }
+      ]
     }
   ]
 }

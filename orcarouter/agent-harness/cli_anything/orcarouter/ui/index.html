@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OrcaRouter — CLI-Anything settings</title>
+<link rel="icon" href="/static/orca-logo-classic.png">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <img class="logo" src="/static/orca-logo-classic.png" alt="OrcaRouter">
+  <div class="topbar-text">
+    <h1>OrcaRouter</h1>
+    <p class="subtitle">OpenAI-compatible AI gateway — one endpoint, many providers.</p>
+  </div>
+  <div class="topbar-meta">
+    <span id="catalog-source" class="badge" data-source="unknown">catalog: …</span>
+    <span id="auth-status" class="badge" data-status="none">not authenticated</span>
+  </div>
+</header>
+
+<main>
+  <section class="card" id="auth-section">
+    <h2>Authentication</h2>
+    <p class="hint">Two ways in. Both produce the same OrcaRouter API key, stored locally with mode 0600.</p>
+
+    <div class="methods">
+      <article class="method" id="method-api-key">
+        <header>
+          <h3>OrcaRouter - API</h3>
+          <span class="tag" id="method-api-key-state">not configured</span>
+        </header>
+        <p class="hint">Paste a key you already created in the OrcaRouter console.</p>
+        <div class="row">
+          <input id="auth-api-key-input" type="password" autocomplete="off" spellcheck="false"
+                 placeholder="sk-orca-…" aria-label="OrcaRouter API key">
+          <button id="auth-api-key-save" class="primary">Save key</button>
+          <button id="auth-api-key-clear" class="ghost">Clear</button>
+        </div>
+        <p class="secret">Stored: <code id="auth-masked">none</code></p>
+      </article>
+
+      <article class="method" id="method-pkce">
+        <header>
+          <h3>OrcaRouter - Auth</h3>
+          <span class="tag" id="method-pkce-state">not connected</span>
+        </header>
+        <p class="hint">Sign in with your OrcaRouter account (OAuth 2.0 + PKCE, no client secret).</p>
+        <div class="row">
+          <button id="auth-pkce-connect" class="primary">Connect with OrcaRouter</button>
+          <button id="auth-pkce-oob" class="ghost">Use a code instead</button>
+          <button id="auth-pkce-cancel" class="ghost" disabled>Cancel</button>
+        </div>
+        <p class="hint" id="auth-pkce-hint" hidden></p>
+        <p class="hint"><a id="auth-authorize-link" href="#" hidden target="_blank" rel="noreferrer">Open the authorization page</a></p>
+        <div class="row" id="auth-pkce-code-row" hidden>
+          <input id="auth-pkce-code" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="paste the code shown in your browser" aria-label="Authorization code">
+          <button id="auth-pkce-submit" class="primary">Submit code</button>
+        </div>
+      </article>
+    </div>
+    <p class="notice" id="auth-notice" hidden></p>
+  </section>
+
+  <section class="card" id="model-section">
+    <h2>Model</h2>
+    <p class="hint">
+      Options come from the live catalog at <code id="catalog-url">/v1/models</code>.
+      Models that do not declare the capability you need are not offered.
+    </p>
+
+    <div class="row controls">
+      <label class="switch">
+        <input type="checkbox" id="attach-image">
+        <span>Attach an image to the prompt</span>
+      </label>
+      <button id="catalog-refresh" class="ghost">Refresh catalog</button>
+    </div>
+
+    <div class="select-wrap">
+      <button id="model-trigger" class="select-trigger" aria-haspopup="listbox" aria-expanded="false" disabled>
+        <span id="model-trigger-label">Loading models…</span>
+        <span class="caret">▾</span>
+      </button>
+      <div id="model-panel" class="select-panel" hidden>
+        <input id="model-search" type="search" placeholder="Search models" aria-label="Search models">
+        <ul id="model-list" role="listbox" aria-label="Models"></ul>
+        <p class="empty" id="model-empty" hidden>No model matches the current capability.</p>
+      </div>
+    </div>
+
+    <p class="notice" id="model-notice" hidden></p>
+    <p class="hint" id="model-meta"></p>
+  </section>
+</main>
+
+<footer class="footer">
+  <span>CLI-Anything · OrcaRouter provider</span>
+  <span><a href="https://www.orcarouter.ai" target="_blank" rel="noreferrer">www.orcarouter.ai</a></span>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
