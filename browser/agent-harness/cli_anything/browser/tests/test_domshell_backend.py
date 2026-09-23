@@ -234,7 +234,7 @@ def test_grep_rooted_absolute_uses_three_separate_calls(mock_call):
     )
     assert mock_call.call_count == 3
     assert mock_call.call_args_list[0].args[0] == "cd %here%/main"
-    assert mock_call.call_args_list[1].args[0] == "grep -r Login"
+    assert mock_call.call_args_list[1].args[0] == "grep -r -e Login"
     assert mock_call.call_args_list[2].args[0] == "cd %here%"
 
 
@@ -664,7 +664,7 @@ def test_grep_unrooted_produces_single_grep_call(mock_call):
     backend.grep("Login")
 
     # session=None when no session is passed (default).
-    assert mock_call.call_args_list == [call("grep -r Login", False, session=None)]
+    assert mock_call.call_args_list == [call("grep -r -e Login", False, session=None)]
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
@@ -675,7 +675,7 @@ def test_grep_unrooted_uses_recursive_flag(mock_call):
     """
     mock_call.return_value = _make_result("[lane: 1]")
     backend.grep("Login")
-    assert mock_call.call_args.args[0] == "grep -r Login"
+    assert mock_call.call_args.args[0] == "grep -r -e Login"
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
@@ -686,7 +686,7 @@ def test_grep_rooted_uses_recursive_flag(mock_call):
     mock_call.return_value = _make_result("[lane: 1]")
     backend.grep("Login", path="main", session=_make_session())
     # grep is the middle of the 3-call sequence.
-    assert mock_call.call_args_list[1].args[0] == "grep -r Login"
+    assert mock_call.call_args_list[1].args[0] == "grep -r -e Login"
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
@@ -706,7 +706,7 @@ def test_grep_rooted_emits_three_call_sequence(mock_call):
 
     assert mock_call.call_args_list == [
         call("cd %here%/main", False, session=sess),
-        call("grep -r Login", False, session=sess),
+        call("grep -r -e Login", False, session=sess),
         call("cd %here%", False, session=sess),
     ]
 
@@ -725,7 +725,7 @@ def test_grep_rooted_quotes_path_with_spaces(mock_call):
     # Three-call sequence — quoting applies to the anchor (first call).
     assert mock_call.call_args_list == [
         call("cd '%here%/path with spaces'", False, session=sess),
-        call("grep -r Login", False, session=sess),
+        call("grep -r -e Login", False, session=sess),
         call("cd %here%", False, session=sess),
     ]
 
@@ -739,7 +739,7 @@ def test_grep_pattern_with_shell_metacharacters_quoted(mock_call):
 
     grep_cmd = mock_call.call_args_list[0].args[0]
     # shlex.quote will single-quote the dangerous payload.
-    assert grep_cmd == "grep -r '$(rm -rf /)'"
+    assert grep_cmd == "grep -r -e '$(rm -rf /)'"
 
 
 def test_grep_rejects_positional_path():
@@ -763,7 +763,39 @@ def test_grep_keyword_use_daemon_still_works():
     with patch.object(backend, "_call_execute", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = {}
         backend.grep("Login", use_daemon=True)
-        assert mock_call.call_args_list == [call("grep -r Login", True, session=None)]
+        assert mock_call.call_args_list == [call("grep -r -e Login", True, session=None)]
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_unrooted_uses_flag_terminator_before_pattern(mock_call):
+    """A leading '-' must not be a bare argv token after ``grep -r``.
+
+    DOMShell parseArgs has no ``--`` end-of-options marker, so the pattern
+    is introduced with ``-e`` and still passes through ``_q``.
+    Breaks if the unrooted builder drops ``-e`` or stops quoting.
+    """
+    mock_call.return_value = {}
+
+    backend.grep("-disabled btn")
+
+    assert mock_call.call_args_list == [
+        call("grep -r -e '-disabled btn'", False, session=None),
+    ]
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_rooted_uses_flag_terminator_before_pattern(mock_call):
+    """Rooted grep's middle call uses the same ``-e`` terminator.
+
+    Breaks if only the unrooted builder is updated, or if the terminator
+    lands on the anchor/restore call instead of the grep itself.
+    """
+    mock_call.return_value = _make_result("[lane: 1]")
+    sess = _make_session(working_dir="/")
+
+    backend.grep("-disabled btn", path="/main", prev="/", session=sess)
+
+    assert mock_call.call_args_list[1].args[0] == "grep -r -e '-disabled btn'"
 
 
 # ── type_text: focus+type pairing and newline injection guard ─────────
@@ -947,18 +979,22 @@ def test_grep_rejects_newline_in_pattern():
         backend.grep("Login\nclick /admin", path="/main", prev="/")
 
 
-def test_grep_rejects_hyphen_prefixed_pattern():
-    """DOMShell's parseArgs treats any arg starting with "-" as a flag,
-    so the grep wrapper can't pass hyphen-prefixed search strings as
-    patterns. The wrapper raises ValueError with a clear message so
-    users see the limitation immediately rather than getting DOMShell's
-    generic Usage reply. Real fix needs upstream parseArgs ``--``
-    support; tracked upstream. (@yuh-yang R3 blocker 3, Path B.)
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_hyphen_prefixed_pattern_uses_flag_terminator(mock_call):
+    """Option-like patterns are operands of ``-e``, not bare flags.
+
+    Covers a short token (``-disabled``) and a long token (``--content``).
+    Breaks if either is rejected in Python or concatenated onto ``grep -r``.
     """
-    with pytest.raises(ValueError, match="patterns starting with '-'"):
-        backend.grep("-disabled")
-    with pytest.raises(ValueError, match="patterns starting with '-'"):
-        backend.grep("--content")
+    mock_call.return_value = {}
+
+    backend.grep("-disabled")
+    backend.grep("--content")
+
+    assert mock_call.call_args_list == [
+        call("grep -r -e -disabled", False, session=None),
+        call("grep -r -e --content", False, session=None),
+    ]
 
 
 def test_grep_rejects_newline_in_prev():
