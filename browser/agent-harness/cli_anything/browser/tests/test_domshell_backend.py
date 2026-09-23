@@ -6,6 +6,7 @@ regressions (quoting, command names, multi-line layout, restore ordering)
 fail loudly.
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call, patch
 
@@ -1358,3 +1359,305 @@ def test_use_daemon_positional_on_type_text(mock_call):
         call("focus input", True, session=sess),
         call("type hello", True, session=sess),
     ]
+
+
+# ── Daemon MCP session stays alive across sync commands ──────────────
+#
+# DOMShell keeps cwd on the MCP session. If start_daemon() binds that
+# session to a loop that asyncio.run() then closes, the next command
+# hits a dead session, falls back to a fresh proxy, and `fs cd` is lost.
+
+
+@pytest.fixture(autouse=True)
+def _stop_domshell_daemon_after_test():
+    """Don't leak a background daemon loop into the next test."""
+    yield
+    backend.stop_daemon()
+    backend._daemon_lane_id = None
+
+
+class _LoopBoundCwdSession:
+    """Fake ClientSession whose cwd dies when used off its enter-loop.
+
+    Mirrors the real failure mode: a session entered on a loop that
+    ``asyncio.run`` has already closed raises, and the backend falls
+    back to a brand-new session whose cwd is ``/``.
+    """
+
+    def __init__(self):
+        self.cwd = "/"
+        self.commands: list[str] = []
+        self.enter_task = None
+        self.exit_task = None
+        self.enter_loop = None
+        self.call_tasks: list = []
+        self.call_loops: list = []
+
+    async def __aenter__(self):
+        self.enter_task = asyncio.current_task()
+        self.enter_loop = asyncio.get_running_loop()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.exit_task = asyncio.current_task()
+        return False
+
+    async def initialize(self):
+        return None
+
+    async def call_tool(self, name, arguments):
+        current = asyncio.get_running_loop()
+        if (
+            self.enter_loop is None
+            or current is not self.enter_loop
+            or self.enter_loop.is_closed()
+        ):
+            raise RuntimeError(
+                "ClosedResourceError: MCP session used off its event loop"
+            )
+        self.call_tasks.append(asyncio.current_task())
+        self.call_loops.append(current)
+        command = arguments["command"]
+        self.commands.append(command)
+        if command.startswith("cd "):
+            self._apply_cd(command[3:].strip())
+            body = f"Changed to: {self.cwd}"
+        else:
+            body = f"cwd={self.cwd}"
+        return _make_result(f"{body}\n[lane: lane-1]")
+
+    def _apply_cd(self, target: str) -> None:
+        if len(target) >= 2 and target[0] == target[-1] and target[0] in "'\"":
+            target = target[1:-1]
+        if target == "%here%":
+            self.cwd = "/"
+        elif target.startswith("%here%/"):
+            rest = target[len("%here%/"):]
+            self.cwd = "/" + rest if rest else "/"
+        elif target.startswith("/"):
+            self.cwd = target or "/"
+        elif self.cwd == "/":
+            self.cwd = "/" + target
+        else:
+            self.cwd = self.cwd.rstrip("/") + "/" + target
+
+
+class _SameTaskStdio:
+    """Fake ``stdio_client`` CM. Exiting from another task is the anyio bug."""
+
+    def __init__(self):
+        self.enter_task = None
+        self.exit_task = None
+
+    async def __aenter__(self):
+        self.enter_task = asyncio.current_task()
+        return (object(), object())
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.exit_task = asyncio.current_task()
+        if self.enter_task is not None and self.exit_task is not self.enter_task:
+            raise RuntimeError(
+                "Attempted to exit cancel scope in a different task than "
+                "it was entered in"
+            )
+        return False
+
+
+def test_daemon_reuses_mcp_session_so_cd_persists_across_commands(caplog):
+    """``fs cd`` must still be DOMShell's cwd on the next daemon command.
+
+    One ClientSession is entered for the daemon lifetime. Later sync
+    wrappers call it on that same loop, and stop exits the stdio/session
+    context from the task that entered it.
+    """
+    import logging
+
+    from cli_anything.browser.core import fs as fs_mod
+
+    sessions: list[_LoopBoundCwdSession] = []
+    stdios: list[_SameTaskStdio] = []
+
+    def session_factory(read, write):
+        sess = _LoopBoundCwdSession()
+        sessions.append(sess)
+        return sess
+
+    def stdio_factory(params):
+        cm = _SameTaskStdio()
+        stdios.append(cm)
+        return cm
+
+    harness = Session()
+    harness.enable_daemon()
+    backend._daemon_lane_id = None
+    try:
+        with patch.object(backend, "_build_server_args", return_value=["proxy"]), \
+             patch.object(backend, "stdio_client", side_effect=stdio_factory), \
+             patch.object(backend, "ClientSession", side_effect=session_factory), \
+             caplog.at_level(
+                 logging.WARNING,
+                 logger="cli_anything.browser.utils.domshell_backend",
+             ):
+            assert backend.start_daemon() is True
+            assert backend.daemon_started() is True
+
+            changed = fs_mod.change_directory(harness, "tabpanel_1234")
+            assert "error" not in changed
+            assert harness.working_dir == "/tabpanel_1234"
+
+            listed = fs_mod.list_elements(harness, "child")
+            assert listed.get("raw") == "cwd=/tabpanel_1234", (
+                [s.commands for s in sessions],
+                listed,
+            )
+            assert "respawning per-command" not in caplog.text
+            assert len(sessions) == 1
+            assert len(stdios) == 1
+            assert sessions[0].call_loops
+            assert all(
+                loop is sessions[0].enter_loop and loop.is_running()
+                for loop in sessions[0].call_loops
+            )
+            assert all(
+                task is not sessions[0].enter_task
+                for task in sessions[0].call_tasks
+            )
+
+            backend.stop_daemon()
+            assert backend.daemon_started() is False
+            assert sessions[0].exit_task is sessions[0].enter_task
+            assert stdios[0].exit_task is stdios[0].enter_task
+    finally:
+        backend.stop_daemon()
+        backend._daemon_lane_id = None
+
+
+class _BrokenTransportSession(_LoopBoundCwdSession):
+    """Session that is reachable on its own loop, then drops the transport."""
+
+    async def call_tool(self, name, arguments):
+        current = asyncio.get_running_loop()
+        if (
+            self.enter_loop is None
+            or current is not self.enter_loop
+            or self.enter_loop.is_closed()
+        ):
+            raise RuntimeError(
+                "ClosedResourceError: MCP session used off its event loop"
+            )
+        self.call_loops.append(current)
+        raise ConnectionError("simulated transport drop")
+
+
+def test_non_daemon_cd_does_not_carry_cwd_to_the_next_command():
+    """Per-command spawn is unchanged: each call gets a fresh cwd of ``/``."""
+    sessions: list[_LoopBoundCwdSession] = []
+    stdios: list[_SameTaskStdio] = []
+
+    def session_factory(read, write):
+        sess = _LoopBoundCwdSession()
+        sessions.append(sess)
+        return sess
+
+    def stdio_factory(params):
+        cm = _SameTaskStdio()
+        stdios.append(cm)
+        return cm
+
+    with patch.object(backend, "_build_server_args", return_value=["proxy"]), \
+         patch.object(backend, "stdio_client", side_effect=stdio_factory), \
+         patch.object(backend, "ClientSession", side_effect=session_factory):
+        changed = backend.cd("/tabpanel_1234", use_daemon=False)
+        listed = backend.ls("child", use_daemon=False)
+
+    assert "error" not in changed
+    assert listed.get("raw") == "cwd=/"
+    assert len(sessions) == 2
+    assert len(stdios) == 2
+    for sess, stdio in zip(sessions, stdios):
+        assert sess.exit_task is sess.enter_task
+        assert stdio.exit_task is stdio.enter_task
+
+
+def test_daemon_absolute_ls_anchor_and_ls_share_one_session():
+    """Split-and-check ``ls /tabpanel`` must ``ls`` inside the anchor cd.
+
+    Three ``asyncio.run`` calls still have to land on the one daemon
+    session. A fresh session per call would ``ls`` at ``/``.
+    """
+    sessions: list[_LoopBoundCwdSession] = []
+
+    def session_factory(read, write):
+        sess = _LoopBoundCwdSession()
+        sessions.append(sess)
+        return sess
+
+    def stdio_factory(params):
+        return _SameTaskStdio()
+
+    harness = Session()
+    harness.working_dir = "/tabpanel_1234"
+    with patch.object(backend, "_build_server_args", return_value=["proxy"]), \
+         patch.object(backend, "stdio_client", side_effect=stdio_factory), \
+         patch.object(backend, "ClientSession", side_effect=session_factory):
+        assert backend.start_daemon() is True
+        listed = backend.ls("/tabpanel_1234", use_daemon=True, session=harness)
+
+    assert listed.get("raw") == "cwd=/tabpanel_1234"
+    assert len(sessions) == 1
+    assert sessions[0].commands == [
+        "cd %here%/tabpanel_1234",
+        "ls",
+        "cd %here%/tabpanel_1234",
+    ]
+
+
+def test_daemon_transport_failure_falls_back_then_restart_is_fresh():
+    """A dead daemon session still respawns that one call, then stop sticks.
+
+    The host that entered the session must be the task that leaves it,
+    and the next ``start_daemon`` must not revive the old cwd.
+    """
+    sessions: list[_LoopBoundCwdSession] = []
+    stdios: list[_SameTaskStdio] = []
+
+    def session_factory(read, write):
+        if not sessions:
+            sess = _BrokenTransportSession()
+        else:
+            sess = _LoopBoundCwdSession()
+        sessions.append(sess)
+        return sess
+
+    def stdio_factory(params):
+        cm = _SameTaskStdio()
+        stdios.append(cm)
+        return cm
+
+    with patch.object(backend, "_build_server_args", return_value=["proxy"]), \
+         patch.object(backend, "stdio_client", side_effect=stdio_factory), \
+         patch.object(backend, "ClientSession", side_effect=session_factory):
+        assert backend.start_daemon() is True
+        changed = backend.cd("/tabpanel_1234", use_daemon=True)
+        assert "error" not in changed
+        assert "tabpanel_1234" in changed.get("output", "")
+        assert backend.daemon_started() is False
+        assert sessions[0].call_loops
+        assert sessions[0].call_loops[0] is sessions[0].enter_loop
+        assert stdios[0].exit_task is stdios[0].enter_task
+
+        assert backend.start_daemon() is True
+        listed = backend.ls("child", use_daemon=True)
+        assert listed.get("raw") == "cwd=/"
+        assert len(sessions) == 3
+        backend.stop_daemon()
+        assert stdios[0].exit_task is stdios[0].enter_task
+        assert stdios[-1].exit_task is stdios[-1].enter_task
+
+
+def test_start_daemon_failure_does_not_publish_a_session(monkeypatch):
+    """A startup error surfaces as RuntimeError and leaves daemon down."""
+    monkeypatch.delenv("DOMSHELL_TOKEN", raising=False)
+    with pytest.raises(RuntimeError, match="Failed to start DOMShell daemon"):
+        backend.start_daemon()
+    assert backend.daemon_started() is False

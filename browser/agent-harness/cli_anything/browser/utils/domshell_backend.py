@@ -89,6 +89,17 @@ _daemon_lane_id: Optional[str] = None
 # (Copilot R4 on commit 5790651.)
 _daemon_lane_lock = threading.Lock()
 
+# Process-wide loop that owns the daemon MCP session. anyio cancel
+# scopes inside stdio_client / ClientSession must be entered and exited
+# by the same task, so one host task on this loop holds both context
+# managers for the daemon lifetime. Per-call work is scheduled onto the
+# loop and must not open or close that session.
+_daemon_loop: Optional[asyncio.AbstractEventLoop] = None
+_daemon_loop_thread: Optional[threading.Thread] = None
+_daemon_host_task: Optional[asyncio.Task] = None
+_daemon_shutdown: Optional[asyncio.Event] = None
+_daemon_lifecycle_lock = threading.Lock()
+
 
 def _check_npx() -> bool:
     """Check if npx is available."""
@@ -519,6 +530,23 @@ async def _call_execute(
     """
     global _daemon_session, _daemon_read, _daemon_write, _daemon_lane_id
 
+    # The daemon session's streams live on the background loop. Sync
+    # wrappers enter here via asyncio.run() on a throwaway loop; hop
+    # before touching the session so anyio doesn't see a closed loop.
+    daemon_loop = _daemon_loop
+    if (
+        use_daemon
+        and _daemon_session is not None
+        and daemon_loop is not None
+        and daemon_loop.is_running()
+        and asyncio.get_running_loop() is not daemon_loop
+    ):
+        bridge = asyncio.run_coroutine_threadsafe(
+            _call_execute(command, use_daemon, session=session),
+            daemon_loop,
+        )
+        return await asyncio.wrap_future(bridge)
+
     arguments: dict[str, Any] = {"command": command}
     # Lane handling — three sources, in priority order:
     #   • Session with a captured lane id  → reuse that lane (REPL pattern,
@@ -605,64 +633,188 @@ async def _call_execute(
             f"Chrome Web Store: https://chromewebstore.google.com/detail/domshell"
         ) from e
 
-# NOTE: Known limitation - Daemon mode uses asyncio.run() per tool call (in sync wrappers).
-# Each asyncio.run() creates a new event loop. Async IO objects created in one loop
-# (like the daemon session) may have issues when accessed from subsequent calls that
-# create new loops. This is a documented limitation for v1; future work should use
-# a single long-lived event loop (e.g., background thread + run_coroutine_threadsafe).
-async def _start_daemon() -> bool:
-    """Start persistent daemon mode.
+def _clear_daemon_connection() -> None:
+    """Drop the published daemon session handles.
 
-    Returns:
-        True if daemon started successfully
-
-    Raises:
-        RuntimeError: If daemon fails to start
+    The host task still owns the context managers; clearing these globals
+    only stops new callers from using a session that is about to close.
     """
     global _daemon_session, _daemon_read, _daemon_write, _daemon_client_context
+    _daemon_session = None
+    _daemon_read = None
+    _daemon_write = None
+    _daemon_client_context = None
 
-    if _daemon_session is not None:
-        return True  # Already running
 
-    server_params = StdioServerParameters(
-        command=DEFAULT_SERVER_CMD,
-        args=_build_server_args()
+def _shutdown_loop_locked() -> None:
+    """Stop the daemon loop thread. Caller holds ``_daemon_lifecycle_lock``."""
+    global _daemon_loop, _daemon_loop_thread
+    loop = _daemon_loop
+    thread = _daemon_loop_thread
+    if loop is not None and not loop.is_closed() and loop.is_running():
+        loop.call_soon_threadsafe(loop.stop)
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=5)
+        if thread.is_alive():
+            log.warning("DOMShell daemon loop thread did not exit")
+    _daemon_loop = None
+    _daemon_loop_thread = None
+
+
+def _ensure_daemon_loop() -> asyncio.AbstractEventLoop:
+    """Start the process-wide daemon loop, or return the running one."""
+    global _daemon_loop, _daemon_loop_thread
+    if _daemon_loop is not None and _daemon_loop.is_running():
+        return _daemon_loop
+
+    loop = asyncio.new_event_loop()
+    started = threading.Event()
+
+    def _thread_main() -> None:
+        asyncio.set_event_loop(loop)
+        loop.call_soon(started.set)
+        try:
+            loop.run_forever()
+        finally:
+            try:
+                loop.close()
+            except Exception:
+                log.debug("closing DOMShell daemon loop failed", exc_info=True)
+
+    thread = threading.Thread(
+        target=_thread_main,
+        name="domshell-daemon-loop",
+        daemon=True,
     )
+    _daemon_loop = loop
+    _daemon_loop_thread = thread
+    thread.start()
+    if not started.wait(timeout=10):
+        _shutdown_loop_locked()
+        raise RuntimeError(
+            "Failed to start DOMShell daemon: event loop did not start"
+        )
+    return loop
+
+
+async def _daemon_host(
+    shutdown: asyncio.Event,
+    ready: asyncio.Future,
+) -> None:
+    """Enter and leave the MCP session on this task.
+
+    Per-call tasks only ``call_tool``. They must not ``__aexit__`` the
+    session: anyio raises if a cancel scope is exited from another task.
+    """
+    global _daemon_session, _daemon_read, _daemon_write
+    try:
+        server_params = StdioServerParameters(
+            command=DEFAULT_SERVER_CMD,
+            args=_build_server_args(),
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as mcp_session:
+                await mcp_session.initialize()
+                _daemon_read = read
+                _daemon_write = write
+                _daemon_session = mcp_session
+                if not ready.done():
+                    ready.set_result(True)
+                try:
+                    await shutdown.wait()
+                finally:
+                    _clear_daemon_connection()
+    except Exception as exc:
+        _clear_daemon_connection()
+        if not ready.done():
+            ready.set_exception(exc)
+            return
+        raise
+
+
+async def _launch_host() -> bool:
+    """Run on the daemon loop: start the host and wait until it is ready."""
+    global _daemon_host_task, _daemon_shutdown
+    if (
+        _daemon_session is not None
+        and _daemon_host_task is not None
+        and not _daemon_host_task.done()
+    ):
+        return True
+
+    shutdown = asyncio.Event()
+    ready: asyncio.Future = asyncio.get_running_loop().create_future()
+    _daemon_shutdown = shutdown
+    task = asyncio.create_task(
+        _daemon_host(shutdown, ready),
+        name="domshell-daemon-host",
+    )
+    _daemon_host_task = task
+
+    def _consume(done: asyncio.Task) -> None:
+        if done.cancelled():
+            return
+        try:
+            done.exception()
+        except Exception:
+            pass
+
+    task.add_done_callback(_consume)
 
     try:
-        # Store the context manager so we can properly clean it up later
-        _daemon_client_context = stdio_client(server_params)
-        _daemon_read, _daemon_write = await _daemon_client_context.__aenter__()
-        _daemon_session = ClientSession(_daemon_read, _daemon_write)
-        await _daemon_session.__aenter__()
-        await _daemon_session.initialize()
-        return True
-    except Exception as e:
-        _daemon_session = None
-        _daemon_read = None
-        _daemon_write = None
-        _daemon_client_context = None
-        raise RuntimeError(f"Failed to start DOMShell daemon: {e}") from e
+        await ready
+    except Exception as exc:
+        if not task.done():
+            shutdown.set()
+            try:
+                await task
+            except Exception:
+                pass
+        if _daemon_host_task is task:
+            _daemon_host_task = None
+            _daemon_shutdown = None
+        raise RuntimeError(f"Failed to start DOMShell daemon: {exc}") from exc
+    return True
+
+
+async def _shutdown_host() -> None:
+    """Signal the host task and wait until it has left its context."""
+    global _daemon_host_task, _daemon_shutdown
+    shutdown = _daemon_shutdown
+    host = _daemon_host_task
+    if shutdown is not None:
+        shutdown.set()
+    if host is not None:
+        try:
+            await host
+        except Exception:
+            log.debug("DOMShell daemon host exited with an error", exc_info=True)
+    if _daemon_host_task is host:
+        _daemon_host_task = None
+        _daemon_shutdown = None
+    if host is None:
+        _clear_daemon_connection()
 
 
 async def _stop_daemon() -> None:
-    """Stop persistent daemon mode."""
-    global _daemon_session, _daemon_read, _daemon_write, _daemon_client_context
+    """Stop the daemon session by asking its host task to exit.
 
-    if _daemon_session is None:
-        return
-
+    Called from the per-call fallback path, which may already be running
+    on the daemon loop. Shutting the loop down from that path would
+    deadlock, so this only signals the host. ``stop_daemon`` stops the
+    loop afterwards, from another thread.
+    """
+    loop = _daemon_loop
     try:
-        await _daemon_session.__aexit__(None, None, None)
-        if _daemon_client_context:
-            await _daemon_client_context.__aexit__(None, None, None)
-    except Exception:
-        pass  # Ignore cleanup errors
-    finally:
-        _daemon_session = None
-        _daemon_read = None
-        _daemon_write = None
-        _daemon_client_context = None
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if loop is not None and loop.is_running() and running is not loop:
+        await asyncio.wrap_future(
+            asyncio.run_coroutine_threadsafe(_shutdown_host(), loop)
+        )
+        return
+    await _shutdown_host()
 
 
 def daemon_started() -> bool:
@@ -1184,15 +1336,51 @@ def type_text(
 def start_daemon() -> bool:
     """Start persistent daemon mode (sync wrapper).
 
+    The MCP session is entered on a background event loop and stays open
+    across later sync commands so DOMShell's per-session cwd survives.
+
     Returns:
         True if daemon started successfully
 
     Raises:
         RuntimeError: If daemon fails to start
     """
-    return asyncio.run(_start_daemon())
+    with _daemon_lifecycle_lock:
+        if _daemon_session is not None:
+            return True
+        try:
+            loop = _ensure_daemon_loop()
+            return asyncio.run_coroutine_threadsafe(_launch_host(), loop).result()
+        except Exception:
+            # Startup failed or the loop never came up. Drop the thread so
+            # a fallback to per-command mode does not leave it running.
+            _shutdown_loop_locked()
+            if _daemon_host_task is None:
+                _clear_daemon_connection()
+            raise
 
 
 def stop_daemon() -> None:
-    """Stop persistent daemon mode (sync wrapper)."""
-    asyncio.run(_stop_daemon())
+    """Stop persistent daemon mode (sync wrapper).
+
+    Signals the host task to leave ``stdio_client`` / ``ClientSession``
+    itself, then stops the background loop.
+    """
+    with _daemon_lifecycle_lock:
+        loop = _daemon_loop
+        if loop is not None and not loop.is_closed() and loop.is_running():
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is loop:
+                raise RuntimeError(
+                    "stop_daemon() cannot be called from the daemon loop thread"
+                )
+            try:
+                asyncio.run_coroutine_threadsafe(_shutdown_host(), loop).result()
+            except Exception:
+                log.warning("DOMShell daemon shutdown failed", exc_info=True)
+        _shutdown_loop_locked()
+        if _daemon_host_task is None:
+            _clear_daemon_connection()
