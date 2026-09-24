@@ -537,6 +537,31 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "conduit",
+      "display_name": "Conduit",
+      "version": "0.1.0",
+      "description": "MCP debugger that connects agents to radare2, x64dbg, cdb, and Frida for disassembly, CFG, xrefs, and live debugging.",
+      "category": "devtools",
+      "requires": "Node.js >= 20 and npm. radare2 on PATH for static analysis. Graphviz (dot on PATH) to render control-flow graphs. x64dbg sessions also need portable x64dbg and Python 3.10+ with iced_x86 (64-bit on PATH or PYTHON_HOME_X64; 32-bit Python only for x86 targets). cdb is separate. Frida is installed by npm with the package. Python is not required to install Conduit itself.",
+      "homepage": "https://github.com/Alyhnte/conduit",
+      "source_url": "https://github.com/Alyhnte/conduit",
+      "package_manager": "npm",
+      "npm_package": "github:Alyhnte/conduit",
+      "install_strategy": "command",
+      "install_cmd": "npm install -g github:Alyhnte/conduit",
+      "uninstall_cmd": "npm uninstall -g conduit-debugger",
+      "update_cmd": "npm install -g github:Alyhnte/conduit",
+      "npx_cmd": "npx github:Alyhnte/conduit",
+      "skill_md": "https://github.com/Alyhnte/conduit/blob/main/SKILL.md",
+      "entry_point": "conduit",
+      "contributors": [
+        {
+          "name": "Alyhnte",
+          "url": "https://github.com/Alyhnte"
+        }
+      ]
     }
   ]
 }
