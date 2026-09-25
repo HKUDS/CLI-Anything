@@ -771,7 +771,7 @@ def layer_get(index):
 # ── Path Commands ───────────────────────────────────────────────
 @cli.group("path")
 def path_group():
-    """Path boolean operations."""
+    """Path conversion and reserved boolean operations."""
     pass
 
 
@@ -781,8 +781,9 @@ def path_group():
 @click.option("--name", "-n", default=None)
 @handle_error
 def path_union(index_a, index_b, name):
-    """Union of two objects."""
+    """Reserved union of two objects."""
     sess = get_session()
+    path_mod.require_path_boolean_support(sess.get_project(), index_a, index_b)
     sess.snapshot(f"Path union {index_a} + {index_b}")
     result = path_mod.path_union(sess.get_project(), index_a, index_b, name)
     output(result, f"Union created: {result['name']}")
@@ -794,8 +795,9 @@ def path_union(index_a, index_b, name):
 @click.option("--name", "-n", default=None)
 @handle_error
 def path_intersection(index_a, index_b, name):
-    """Intersection of two objects."""
+    """Reserved intersection of two objects."""
     sess = get_session()
+    path_mod.require_path_boolean_support(sess.get_project(), index_a, index_b)
     sess.snapshot(f"Path intersection {index_a} & {index_b}")
     result = path_mod.path_intersection(sess.get_project(), index_a, index_b, name)
     output(result, f"Intersection created: {result['name']}")
@@ -807,8 +809,9 @@ def path_intersection(index_a, index_b, name):
 @click.option("--name", "-n", default=None)
 @handle_error
 def path_difference(index_a, index_b, name):
-    """Difference of two objects (A minus B)."""
+    """Reserved difference of two objects (A minus B)."""
     sess = get_session()
+    path_mod.require_path_boolean_support(sess.get_project(), index_a, index_b)
     sess.snapshot(f"Path difference {index_a} - {index_b}")
     result = path_mod.path_difference(sess.get_project(), index_a, index_b, name)
     output(result, f"Difference created: {result['name']}")
@@ -820,8 +823,9 @@ def path_difference(index_a, index_b, name):
 @click.option("--name", "-n", default=None)
 @handle_error
 def path_exclusion(index_a, index_b, name):
-    """Exclusion (XOR) of two objects."""
+    """Reserved exclusion (XOR) of two objects."""
     sess = get_session()
+    path_mod.require_path_boolean_support(sess.get_project(), index_a, index_b)
     sess.snapshot(f"Path exclusion {index_a} ^ {index_b}")
     result = path_mod.path_exclusion(sess.get_project(), index_a, index_b, name)
     output(result, f"Exclusion created: {result['name']}")
@@ -831,8 +835,9 @@ def path_exclusion(index_a, index_b, name):
 @click.argument("index", type=int)
 @handle_error
 def path_convert(index):
-    """Convert a shape to a path."""
+    """Convert a shape with representable SVG geometry to a path."""
     sess = get_session()
+    path_mod.require_path_conversion_support(sess.get_project(), index)
     sess.snapshot(f"Convert object {index} to path")
     result = path_mod.convert_to_path(sess.get_project(), index)
     output(result, f"Converted to path: {result['name']}")
@@ -841,9 +846,9 @@ def path_convert(index):
 @path_group.command("list-operations")
 @handle_error
 def path_list_ops():
-    """List available path boolean operations."""
+    """List potential path boolean operations."""
     ops = path_mod.list_path_operations()
-    output(ops, "Path operations:")
+    output(ops, "Potential path boolean operations:")
 
 
 # ── Gradient Commands ───────────────────────────────────────────
@@ -1026,7 +1031,7 @@ def repl(project_path):
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("inkscape", version="1.0.1")
+    skin = ReplSkin("inkscape", version="1.0.2")
 
     if project_path:
         _load_or_seed_project(project_path)
@@ -1086,7 +1091,7 @@ def _repl_help(skin=None):
         "style set-fill|set-stroke|set-opacity|set|get|list-properties": "Style properties",
         "transform translate|rotate|scale|skew-x|skew-y|get|clear": "Transform operations",
         "layer add|remove|move-object|set|list|reorder|get": "Layer management",
-        "path union|intersection|difference|exclusion|convert|list-operations": "Path boolean operations",
+        "path union|intersection|difference|exclusion|convert|list-operations": "Path conversion and reserved boolean operations",
         "gradient add-linear|add-radial|apply|list": "Gradient management",
         "export png|svg|pdf|presets": "Export/render",
         "session status|undo|redo|history": "Session management",

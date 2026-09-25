@@ -142,9 +142,9 @@ We maintain a JSON project file alongside SVG for state tracking:
 | Object -> Fill/Stroke | `style set-fill INDEX COLOR` |
 | Layer -> Add | `layer add --name "Name"` |
 | Layer -> Reorder | `layer reorder FROM TO` |
-| Path -> Union | `path union A B` |
-| Path -> Difference | `path difference A B` |
-| Path -> Object to Path | `path convert INDEX` |
+| Path -> Union | `path union A B` (reserved; currently fails without modifying inputs) |
+| Path -> Difference | `path difference A B` (reserved; currently fails without modifying inputs) |
+| Path -> Object to Path | `path convert INDEX` (shapes with representable SVG geometry only) |
 | Text Tool | `text add --text "Content" --x X --y Y` |
 | Edit -> Undo | `session undo` |
 | Edit -> Redo | `session redo` |
@@ -170,7 +170,7 @@ We maintain a JSON project file alongside SVG for state tracking:
 - SVG is the native format, so SVG export is exact
 - PNG rendering via Pillow handles basic shapes (rect, circle, ellipse, line, text)
 - Complex SVG features (filters, clip paths, masks) need Inkscape for rendering
-- Path boolean operations are stored as metadata; Inkscape needed for actual computation
+- Path boolean operations and text conversion fail explicitly until the Inkscape backend can compute geometry; source objects remain unchanged
 
 ## Export Formats
 
@@ -190,7 +190,7 @@ We maintain a JSON project file alongside SVG for state tracking:
    - Style set/get for all properties
    - Transform translate/rotate/scale/skew
    - Layer add/remove/reorder/move objects
-   - Path boolean operations
+   - Unsupported path boolean operations and text conversion preserve their inputs
    - Gradient create/apply
    - Session undo/redo
    - SVG utility functions

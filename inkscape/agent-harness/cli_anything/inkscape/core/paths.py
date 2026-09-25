@@ -1,16 +1,10 @@
-"""Inkscape CLI - Path boolean operations module.
+"""Inkscape CLI - Path operations module.
 
-Handles union, intersection, difference, exclusion, and path conversion.
-These operations modify the JSON model. Actual SVG path computation for
-complex shapes would require Inkscape CLI or a path library. For simple
-cases, we represent the operation as metadata and generate the appropriate
-Inkscape actions for rendering.
+Handles representable shape-to-path conversion and potential boolean operations.
+Unsupported operations fail explicitly until Inkscape can compute their geometry.
 """
 
-from typing import Dict, Any, List, Optional
-import copy
-
-from cli_anything.inkscape.utils.svg_utils import generate_id
+from typing import Dict, Any, List, NoReturn, Optional
 
 # Path operations that Inkscape supports
 PATH_OPERATIONS = {
@@ -51,14 +45,60 @@ CONVERTIBLE_TYPES = {"rect", "circle", "ellipse", "line", "polygon",
                       "polyline", "star", "text"}
 
 
+def require_path_boolean_support(
+    project: Dict[str, Any],
+    index_a: int,
+    index_b: int,
+) -> NoReturn:
+    """Reject boolean requests until Inkscape-backed geometry is implemented."""
+    objects = project.get("objects", [])
+    if index_a < 0 or index_a >= len(objects):
+        raise IndexError(f"Object A index {index_a} out of range (0-{len(objects)-1})")
+    if index_b < 0 or index_b >= len(objects):
+        raise IndexError(f"Object B index {index_b} out of range (0-{len(objects)-1})")
+    if index_a == index_b:
+        raise ValueError("Cannot perform boolean operation on the same object")
+
+    raise RuntimeError(
+        "Path boolean operations require the Inkscape backend and are not yet "
+        "implemented; no objects were modified"
+    )
+
+
+def require_path_conversion_support(
+    project: Dict[str, Any],
+    index: int,
+) -> None:
+    """Reject conversions that have no representable SVG path data."""
+    objects = project.get("objects", [])
+    if index < 0 or index >= len(objects):
+        raise IndexError(f"Object index {index} out of range (0-{len(objects)-1})")
+
+    obj = objects[index]
+    obj_type = obj.get("type", "")
+    if obj_type == "path":
+        return
+    if obj_type not in CONVERTIBLE_TYPES:
+        raise ValueError(f"Cannot convert type '{obj_type}' to path. "
+                         f"Convertible types: {', '.join(sorted(CONVERTIBLE_TYPES))}")
+
+    if obj_type == "text" or (
+        _shape_to_path_data(obj) is None and not obj.get("d")
+    ):
+        raise RuntimeError(
+            "Converting this object to a path requires the Inkscape backend and is "
+            "not yet implemented; the object was not modified"
+        )
+
+
 def path_union(
     project: Dict[str, Any],
     index_a: int,
     index_b: int,
     name: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Create a union of two objects (stores as path operation record)."""
-    return _path_boolean(project, index_a, index_b, "union", name)
+) -> NoReturn:
+    """Reject a union until Inkscape-backed geometry is implemented."""
+    _path_boolean(project, index_a, index_b)
 
 
 def path_intersection(
@@ -66,9 +106,9 @@ def path_intersection(
     index_a: int,
     index_b: int,
     name: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Create an intersection of two objects."""
-    return _path_boolean(project, index_a, index_b, "intersection", name)
+) -> NoReturn:
+    """Reject an intersection until Inkscape-backed geometry is implemented."""
+    _path_boolean(project, index_a, index_b)
 
 
 def path_difference(
@@ -76,9 +116,9 @@ def path_difference(
     index_a: int,
     index_b: int,
     name: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Create a difference of two objects (A minus B)."""
-    return _path_boolean(project, index_a, index_b, "difference", name)
+) -> NoReturn:
+    """Reject a difference until Inkscape-backed geometry is implemented."""
+    _path_boolean(project, index_a, index_b)
 
 
 def path_exclusion(
@@ -86,54 +126,35 @@ def path_exclusion(
     index_a: int,
     index_b: int,
     name: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Create an exclusion (XOR) of two objects."""
-    return _path_boolean(project, index_a, index_b, "exclusion", name)
+) -> NoReturn:
+    """Reject an exclusion until Inkscape-backed geometry is implemented."""
+    _path_boolean(project, index_a, index_b)
 
 
 def convert_to_path(
     project: Dict[str, Any],
     index: int,
 ) -> Dict[str, Any]:
-    """Convert a shape to a path element.
+    """Convert a shape to a path element when its geometry is representable."""
+    require_path_conversion_support(project, index)
+    obj = project["objects"][index]
+    if obj["type"] == "path":
+        return obj
 
-    For basic shapes (rect, circle, ellipse), we can compute the
-    equivalent SVG path data. For complex shapes, we record the
-    conversion as a pending operation for Inkscape.
-    """
-    objects = project.get("objects", [])
-    if index < 0 or index >= len(objects):
-        raise IndexError(f"Object index {index} out of range (0-{len(objects)-1})")
-
-    obj = objects[index]
-    obj_type = obj.get("type", "")
-
-    if obj_type == "path":
-        return obj  # Already a path
-
-    if obj_type not in CONVERTIBLE_TYPES:
-        raise ValueError(f"Cannot convert type '{obj_type}' to path. "
-                         f"Convertible types: {', '.join(sorted(CONVERTIBLE_TYPES))}")
-
-    # Convert basic shapes to path data
+    obj_type = obj["type"]
     d = _shape_to_path_data(obj)
 
-    if d is not None:
-        obj["type"] = "path"
-        obj["d"] = d
-        obj["original_type"] = obj_type
-    else:
-        # For complex conversions, mark as pending
-        obj["type"] = "path"
-        obj["d"] = obj.get("d", "M 0,0")
-        obj["original_type"] = obj_type
+    obj["type"] = "path"
+    obj["d"] = d if d is not None else obj["d"]
+    obj["original_type"] = obj_type
+    if d is None:
         obj["conversion_pending"] = True
 
     return obj
 
 
 def list_path_operations() -> List[Dict[str, str]]:
-    """List available path boolean operations."""
+    """List potential path boolean operations."""
     return [
         {"name": name, "description": spec["description"],
          "inkscape_action": spec["inkscape_action"]}
@@ -147,63 +168,9 @@ def _path_boolean(
     project: Dict[str, Any],
     index_a: int,
     index_b: int,
-    operation: str,
-    name: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Perform a boolean path operation between two objects."""
-    objects = project.get("objects", [])
-    if index_a < 0 or index_a >= len(objects):
-        raise IndexError(f"Object A index {index_a} out of range (0-{len(objects)-1})")
-    if index_b < 0 or index_b >= len(objects):
-        raise IndexError(f"Object B index {index_b} out of range (0-{len(objects)-1})")
-    if index_a == index_b:
-        raise ValueError("Cannot perform boolean operation on the same object")
-
-    obj_a = objects[index_a]
-    obj_b = objects[index_b]
-
-    # Create a new path object representing the boolean result
-    obj_id = generate_id("path")
-    result_obj = {
-        "id": obj_id,
-        "name": name or f"{operation}_{obj_a.get('name', '')}_{obj_b.get('name', '')}",
-        "type": "path",
-        "d": obj_a.get("d", "M 0,0"),  # Placeholder
-        "style": obj_a.get("style", ""),
-        "transform": "",
-        "layer": obj_a.get("layer", ""),
-        "boolean_operation": {
-            "type": operation,
-            "source_a": obj_a.get("id", ""),
-            "source_b": obj_b.get("id", ""),
-            "inkscape_action": PATH_OPERATIONS[operation]["inkscape_action"],
-        },
-    }
-
-    # Remove the source objects (boolean ops consume both)
-    # Remove higher index first to avoid index shifting
-    higher = max(index_a, index_b)
-    lower = min(index_a, index_b)
-
-    removed_ids = {objects[higher].get("id", ""), objects[lower].get("id", "")}
-    objects.pop(higher)
-    objects.pop(lower)
-
-    # Remove from layers
-    for layer in project.get("layers", []):
-        layer["objects"] = [oid for oid in layer.get("objects", []) if oid not in removed_ids]
-
-    # Add result object
-    objects.append(result_obj)
-
-    # Add to layer
-    layer_id = result_obj.get("layer", "")
-    for layer in project.get("layers", []):
-        if layer.get("id") == layer_id:
-            layer.setdefault("objects", []).append(obj_id)
-            break
-
-    return result_obj
+) -> NoReturn:
+    """Reject boolean operations until Inkscape-backed geometry is implemented."""
+    require_path_boolean_support(project, index_a, index_b)
 
 
 def _shape_to_path_data(obj: Dict[str, Any]) -> Optional[str]:
