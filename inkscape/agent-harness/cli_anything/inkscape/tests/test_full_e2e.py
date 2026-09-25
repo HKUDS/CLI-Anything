@@ -5,6 +5,7 @@ SVG generation, SVG validation, export verification, and CLI subprocess
 invocation. No actual Inkscape installation is required.
 """
 
+import copy
 import json
 import os
 import sys
@@ -583,15 +584,28 @@ class TestWorkflows:
         assert style["stroke-dasharray"] == "5,3"
 
     def test_path_operations_workflow(self):
-        """Test path boolean operations."""
+        """Test unsupported path boolean operations fail safely."""
         proj = create_document()
         add_rect(proj, x=0, y=0, width=100, height=100, name="Square")
         add_circle(proj, cx=80, cy=50, r=50, name="Circle")
+        original = copy.deepcopy(proj)
 
-        result = path_union(proj, 0, 1, name="Combined")
-        assert result["type"] == "path"
-        assert result["boolean_operation"]["type"] == "union"
-        assert len(proj["objects"]) == 1
+        with pytest.raises(RuntimeError, match="not yet implemented"):
+            path_union(proj, 0, 1, name="Combined")
+
+        assert proj == original
+
+    def test_text_conversion_failure_preserves_svg(self):
+        proj = create_document()
+        add_text(proj, text="Keep me")
+        original = copy.deepcopy(proj)
+
+        with pytest.raises(RuntimeError, match="not yet implemented"):
+            convert_to_path(proj, 0)
+
+        assert proj == original
+        svg = project_to_svg(proj)
+        assert len(list(svg.iter(f"{{{SVG_NS}}}text"))) == 1
 
     def test_undo_redo_workflow(self):
         """Test undo/redo through a complex editing workflow."""

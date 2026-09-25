@@ -132,12 +132,12 @@ layer get         - Get layer details
 
 ### Path Operations
 ```
-path union         - Boolean union of two shapes
-path intersection  - Boolean intersection
-path difference    - Boolean difference (A-B)
-path exclusion     - Boolean exclusion (XOR)
-path convert       - Convert shape to path
-path list-operations - List available operations
+path union         - Reserved; currently fails without modifying inputs
+path intersection  - Reserved; currently fails without modifying inputs
+path difference    - Reserved; currently fails without modifying inputs
+path exclusion     - Reserved; currently fails without modifying inputs
+path convert       - Convert shapes with representable SVG geometry to paths
+path list-operations - List potential boolean operations
 ```
 
 ### Gradient Management

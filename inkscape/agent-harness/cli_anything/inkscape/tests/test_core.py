@@ -3,6 +3,7 @@
 Tests use synthetic data only — no real SVG files or Inkscape installation.
 """
 
+import copy
 import json
 import os
 import sys
@@ -279,6 +280,65 @@ class TestCliBootstrap:
         assert result.exit_code == 0, result.output
         loaded = open_document(str(project_path))
         assert loaded["name"] == "fresh"
+
+    def test_boolean_cli_error_preserves_project(self, tmp_path):
+        project_path = tmp_path / "boolean.json"
+        proj = create_document()
+        add_circle(proj, name="A")
+        add_circle(proj, name="B")
+        save_document(proj, str(project_path))
+        original = copy.deepcopy(proj)
+        inkscape_cli._session = None
+
+        try:
+            result = CliRunner().invoke(
+                inkscape_cli.cli,
+                [
+                    "--json", "--project", str(project_path), "--save",
+                    "path", "union", "0", "1",
+                ],
+            )
+            payload = json.loads(result.output)
+            session = inkscape_cli.get_session()
+
+            assert result.exit_code == 1
+            assert payload["type"] == "RuntimeError"
+            assert "not yet implemented" in payload["error"]
+            assert open_document(str(project_path)) == original
+            assert not session._modified
+            assert session._undo_stack == []
+            assert session._redo_stack == []
+        finally:
+            inkscape_cli._session = None
+
+    def test_text_conversion_cli_error_preserves_project(self, tmp_path):
+        project_path = tmp_path / "text.json"
+        proj = create_document()
+        add_text(proj, text="Keep me")
+        save_document(proj, str(project_path))
+        original = copy.deepcopy(proj)
+        inkscape_cli._session = None
+
+        try:
+            result = CliRunner().invoke(
+                inkscape_cli.cli,
+                [
+                    "--json", "--project", str(project_path), "--save",
+                    "path", "convert", "0",
+                ],
+            )
+            payload = json.loads(result.output)
+            session = inkscape_cli.get_session()
+
+            assert result.exit_code == 1
+            assert payload["type"] == "RuntimeError"
+            assert "not yet implemented" in payload["error"]
+            assert open_document(str(project_path)) == original
+            assert not session._modified
+            assert session._undo_stack == []
+            assert session._redo_stack == []
+        finally:
+            inkscape_cli._session = None
 
 
 # ── Shape Tests ─────────────────────────────────────────────────
@@ -821,27 +881,18 @@ class TestPaths:
         add_circle(proj, name="Circle1")
         return proj
 
-    def test_union(self):
+    @pytest.mark.parametrize(
+        "operation",
+        [path_union, path_intersection, path_difference, path_exclusion],
+    )
+    def test_boolean_operation_fails_without_mutating(self, operation):
         proj = self._make_doc_with_shapes()
-        result = path_union(proj, 0, 1)
-        assert result["type"] == "path"
-        assert result["boolean_operation"]["type"] == "union"
-        assert len(proj["objects"]) == 1
+        original = copy.deepcopy(proj)
 
-    def test_intersection(self):
-        proj = self._make_doc_with_shapes()
-        result = path_intersection(proj, 0, 1)
-        assert result["boolean_operation"]["type"] == "intersection"
+        with pytest.raises(RuntimeError, match="not yet implemented"):
+            operation(proj, 0, 1)
 
-    def test_difference(self):
-        proj = self._make_doc_with_shapes()
-        result = path_difference(proj, 0, 1)
-        assert result["boolean_operation"]["type"] == "difference"
-
-    def test_exclusion(self):
-        proj = self._make_doc_with_shapes()
-        result = path_exclusion(proj, 0, 1)
-        assert result["boolean_operation"]["type"] == "exclusion"
+        assert proj == original
 
     def test_boolean_same_object_fails(self):
         proj = self._make_doc_with_shapes()
@@ -879,6 +930,16 @@ class TestPaths:
         add_path(proj, d="M 0,0 L 100,100")
         result = convert_to_path(proj, 0)
         assert result["d"] == "M 0,0 L 100,100"
+
+    def test_convert_text_fails_without_mutating(self):
+        proj = create_document()
+        add_text(proj, text="Keep me")
+        original = copy.deepcopy(proj)
+
+        with pytest.raises(RuntimeError, match="not yet implemented"):
+            convert_to_path(proj, 0)
+
+        assert proj == original
 
     def test_list_path_operations(self):
         ops = list_path_operations()

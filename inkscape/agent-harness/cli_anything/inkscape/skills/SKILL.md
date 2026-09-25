@@ -152,7 +152,7 @@ Layer management commands.
 
 ### Path Group
 
-Path boolean operations.
+Shape-to-path conversion is supported for shapes with representable SVG geometry. Boolean operations and text conversion are reserved and currently fail without modifying their source objects.
 
 | Command | Description |
 |---------|-------------|
@@ -160,8 +160,8 @@ Path boolean operations.
 | `intersection` | Intersection of two objects |
 | `difference` | Difference of two objects (A minus B) |
 | `exclusion` | Exclusion (XOR) of two objects |
-| `convert` | Convert a shape to a path |
-| `list-operations` | List available path boolean operations |
+| `convert` | Convert a shape with representable SVG geometry to a path |
+| `list-operations` | List potential path boolean operations |
 
 
 ### Gradient
@@ -299,4 +299,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.1
+1.0.2
