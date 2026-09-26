@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "usbless-dualboot",
+      "display_name": "usbless-dualboot",
+      "version": "0.1.0",
+      "description": "Install Windows alongside Linux on UEFI without a USB stick: probe the layout, plan the split, shrink the Linux partition, stage a FAT32 installer partition, and add the boot entry",
+      "requires": "Install the usbless-dualboot Bash CLI separately and put it on PATH; Linux in UEFI/GPT mode, root for mutating phases, btrfs for online shrink, jq, sfdisk, lsblk",
+      "homepage": "https://github.com/cYoren/usbless-dualboot",
+      "source_url": "https://github.com/cYoren/usbless-dualboot",
+      "install_cmd": "pip install git+https://github.com/cYoren/usbless-dualboot.git#subdirectory=integrations/cli-anything/python",
+      "entry_point": "cli-anything-usbless-dualboot",
+      "skill_md": "https://github.com/cYoren/usbless-dualboot/blob/main/integrations/cli-anything/SKILL.md",
+      "category": "devops",
+      "contributors": [
+        {
+          "name": "cYoren",
+          "url": "https://github.com/cYoren"
+        }
+      ]
     }
   ]
 }
