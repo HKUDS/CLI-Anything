@@ -1017,6 +1017,34 @@ class TestInstaller:
         assert success
         assert "already available" in msg
 
+    def test_install_strategy_keeps_pip_for_harness_pip_entries(self):
+        cli = {
+            "name": "gimp",
+            "_source": "harness",
+            "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=gimp/agent-harness",
+        }
+
+        assert _install_strategy(cli) == "pip"
+
+    def test_install_strategy_routes_non_pip_harness_command_to_shell(self):
+        cli = {
+            "name": "clibrowser",
+            "_source": "harness",
+            "install_cmd": "cargo install --git https://github.com/allthingssecurity/clibrowser.git --tag v0.1.0 --locked",
+        }
+
+        assert _install_strategy(cli) == "command"
+
+    def test_install_strategy_explicit_field_wins_over_harness_default(self):
+        cli = {
+            "name": "onepassword-cli",
+            "_source": "harness",
+            "install_strategy": "command",
+            "install_cmd": "pip install onepassword-cli",
+        }
+
+        assert _install_strategy(cli) == "command"
+
 
 GENERATE_VEO_CLI = {
     "name": "generate-veo-video",

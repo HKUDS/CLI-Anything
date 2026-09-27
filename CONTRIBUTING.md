@@ -65,7 +65,8 @@ Include an entry in `registry.json` as part of your PR. Each field is described 
 | `requires` | Yes | Runtime dependencies the user needs (e.g. `"Docker"`) or `null`. |
 | `homepage` | Yes | Official homepage of the **target software** (not your repo). |
 | `source_url` | Yes | For standalone repos: URL to your repo (e.g. `"https://github.com/user/repo"`). For in-repo harnesses: `null` (the hub auto-links to `<name>/agent-harness/`). |
-| `install_cmd` | Yes | Full pip install command. PyPI: `"pip install cli-anything-my-software"`. In-repo: `"pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=my-software/agent-harness"`. |
+| `install_cmd` | Yes | Full pip install command. PyPI: `"pip install cli-anything-my-software"`. In-repo: `"pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=my-software/agent-harness"`. For a CLI installed with another toolchain (cargo, go, npm, brew) put that command here and see `install_strategy`. |
+| `install_strategy` | No | How cli-hub installs the CLI. Omit for pip packages. Use `"command"` to run `install_cmd` through the shell (cargo/go/npm/brew/scripted installs), or `"bundled"` when the CLI ships inside another application. Without it, a non-pip `install_cmd` in the harness registry is sent to pip and fails. |
 | `entry_point` | Yes | CLI command name (e.g. `"cli-anything-my-software"`). |
 | `skill_md` | Yes | Path to canonical SKILL.md. For standalone repos: full URL (e.g. `"https://github.com/user/repo/blob/main/.../SKILL.md"`). For in-repo: relative path under the repo-root `skills/` tree (e.g. `"skills/cli-anything-my-software/SKILL.md"`). Set to `null` if not yet available. |
 | `category` | Yes | One of the existing categories (check `registry.json` for examples). |
