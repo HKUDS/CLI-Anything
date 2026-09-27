@@ -87,6 +87,38 @@ class TestSearchE2E:
         assert result.exit_code == 0
 
 
+class TestNoteTagsDailyE2E:
+    def _j(self, runner, *args):
+        import json
+        r = runner.invoke(cli, ["--json", "--api-key", API_KEY, *args])
+        assert r.exit_code == 0, r.output
+        return json.loads(r.output)
+
+    def test_note_open_then_active(self, runner):
+        self._j(runner, "vault", "create", TEST_NOTE, "--content", TEST_CONTENT)
+        self._j(runner, "note", "open", TEST_NOTE)
+        import time; time.sleep(0.5)
+        assert "Test Note" in self._j(runner, "note", "active")["content"]
+
+    def test_tags_list(self, runner):
+        self._j(runner, "vault", "create", TEST_NOTE, "--content", "#clianythingtag")
+        import time; time.sleep(1)  # metadata cache indexes asynchronously
+        names = [t["name"] for t in self._j(runner, "tags", "list")["tags"]]
+        assert "clianythingtag" in names
+
+    def test_daily_cycle(self, runner):
+        args = ["--date", "1999-01-02", "--folder", "_cli_daily"]
+        assert self._j(runner, "daily", "create", *args)["created"] is True
+        assert self._j(runner, "daily", "create", *args)["created"] is False
+        self._j(runner, "daily", "append", *args, "--content", "- item")
+        assert self._j(runner, "daily", "read", *args)["content"].endswith("\n- item")
+        assert "_cli_daily/1999-01-02.md" in self._j(runner, "daily", "list", "--folder", "_cli_daily")["files"]
+        self._j(runner, "vault", "delete", "_cli_daily/1999-01-02.md")
+
+    def test_vaults_list(self, runner):
+        assert "vaults" in self._j(runner, "vaults", "list")
+
+
 class TestCleanup:
     def test_cleanup_test_note(self, runner):
         """Clean up test note if it still exists."""

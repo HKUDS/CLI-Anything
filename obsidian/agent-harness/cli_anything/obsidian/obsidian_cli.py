@@ -25,6 +25,7 @@ from cli_anything.obsidian.core import search as search_mod
 from cli_anything.obsidian.core import note as note_mod
 from cli_anything.obsidian.core import command as cmd_mod
 from cli_anything.obsidian.core import server as server_mod
+from cli_anything.obsidian.core import extra as extra_mod
 
 # Global state
 _json_output = False
@@ -314,14 +315,146 @@ def note_active():
 
 @note.command("open")
 @click.argument("path")
+@click.option("--new-leaf", is_flag=True, help="Open in a new tab/pane")
 @handle_error
-def note_open(path):
+def note_open(path, new_leaf):
     """Open a note in Obsidian."""
     _require_api_key()
     global _last_path
     _last_path = path
-    result = note_mod.open_note(_host, _api_key, path)
+    result = note_mod.open_note(_host, _api_key, path, new_leaf=new_leaf)
     output(result, f"Opened: {path}")
+
+
+# ── Tag Commands ────────────────────────────────────────────────
+@cli.group()
+def tags():
+    """Tag operations."""
+    pass
+
+
+@tags.command("list")
+@handle_error
+def tags_list():
+    """List all tags in the vault with usage counts."""
+    _require_api_key()
+    result = extra_mod.list_tags(_host, _api_key)
+    if _json_output:
+        output(result)
+    else:
+        for t in result.get("tags", []):
+            click.echo(f"#{t.get('name')}  ({t.get('count')})")
+
+
+# ── Vaults (local app registry) ─────────────────────────────────
+@cli.group()
+def vaults():
+    """Vaults registered in the local Obsidian app (no API key needed)."""
+    pass
+
+
+@vaults.command("list")
+@handle_error
+def vaults_list():
+    """List vaults known to Obsidian on this machine."""
+    result = extra_mod.list_vaults()
+    if _json_output:
+        output({"vaults": result})
+    else:
+        if not result:
+            click.echo("No vaults registered.")
+        for v in result:
+            click.echo(f"{v['name']:<30} {v['path']}" + ("  (open)" if v["open"] else ""))
+
+
+@vaults.command("open")
+@click.argument("name")
+@click.option("--file", "file_", default=None, help="Note to open inside the vault")
+@click.option("--print-only", is_flag=True, help="Only print the obsidian:// URI")
+@handle_error
+def vaults_open(name, file_, print_only):
+    """Open (or switch to) a vault via the obsidian:// URI scheme."""
+    import webbrowser
+    uri = extra_mod.vault_uri(name, file_)
+    if not print_only:
+        webbrowser.open(uri)
+    output({"uri": uri, "opened": not print_only}, uri)
+
+
+# ── Daily Notes ─────────────────────────────────────────────────
+_folder_opt = click.option("--folder", default=lambda: os.environ.get("OBSIDIAN_DAILY_FOLDER", ""),
+                           help="Daily notes folder (env OBSIDIAN_DAILY_FOLDER, default vault root)")
+_date_opt = click.option("--date", "date_", default=None, help="YYYY-MM-DD (default: today)")
+
+
+@cli.group()
+def daily():
+    """Daily notes (<folder>/YYYY-MM-DD.md)."""
+    pass
+
+
+@daily.command("path")
+@_date_opt
+@_folder_opt
+@handle_error
+def daily_path_cmd(date_, folder):
+    """Print the vault path of a daily note."""
+    path = extra_mod.daily_path(date_, folder)
+    output({"path": path}, path)
+
+
+@daily.command("list")
+@_folder_opt
+@handle_error
+def daily_list_cmd(folder):
+    """List existing daily notes."""
+    _require_api_key()
+    result = extra_mod.daily_list(_host, _api_key, folder)
+    if _json_output:
+        output({"files": result})
+    else:
+        for f in result:
+            click.echo(f)
+
+
+@daily.command("create")
+@_date_opt
+@_folder_opt
+@click.option("--content", "-c", default=None, help="Initial content (default: '# DATE')")
+@handle_error
+def daily_create_cmd(date_, folder, content):
+    """Create a daily note if it does not exist (never overwrites)."""
+    _require_api_key()
+    result = extra_mod.daily_create(_host, _api_key, date_, folder, content)
+    output(result, f"{'Created' if result['created'] else 'Exists'}: {result['path']}")
+
+
+@daily.command("read")
+@_date_opt
+@_folder_opt
+@handle_error
+def daily_read_cmd(date_, folder):
+    """Read a daily note."""
+    _require_api_key()
+    path = extra_mod.daily_path(date_, folder)
+    result = vault_mod.read_note(_host, _api_key, path)
+    if _json_output:
+        output({"path": path, **result})
+    else:
+        click.echo(result.get("content", ""))
+
+
+@daily.command("append")
+@_date_opt
+@_folder_opt
+@click.option("--content", "-c", required=True, help="Text to append (a newline is added before it)")
+@handle_error
+def daily_append_cmd(date_, folder, content):
+    """Append a line to a daily note, creating it first if missing."""
+    _require_api_key()
+    path = extra_mod.daily_create(_host, _api_key, date_, folder)["path"]
+    result = vault_mod.append_note(_host, _api_key, path, "\n" + content)
+    output({"path": path, **result}, f"Appended to: {path}")
 
 
 # ── Command Commands ────────────────────────────────────────────
@@ -408,7 +541,7 @@ def repl():
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("obsidian", version="1.1.0")
+    skin = ReplSkin("obsidian", version="1.2.0")
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()
@@ -417,6 +550,9 @@ def repl():
         "vault":   "list|read|create|update|delete|append",
         "search":  "query|simple",
         "note":    "active|open",
+        "tags":    "list",
+        "vaults":  "list|open",
+        "daily":   "path|list|create|read|append",
         "command": "list|execute",
         "server":  "status",
         "session": "status",

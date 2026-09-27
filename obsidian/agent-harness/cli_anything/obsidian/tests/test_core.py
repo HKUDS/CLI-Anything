@@ -287,12 +287,59 @@ class TestNoteModule:
         result = get_active("https://localhost:27124", "test-key")
         assert result["content"] == "# Active Note"
 
-    @patch("cli_anything.obsidian.core.note.api_put")
+    @patch("cli_anything.obsidian.core.note.api_post")
     def test_open_note(self, mock_api):
         from cli_anything.obsidian.core.note import open_note
         mock_api.return_value = {"status": "ok"}
-        result = open_note("https://localhost:27124", "test-key", "folder/note.md")
+        result = open_note("https://localhost:27124", "test-key", "folder/my note.md")
         assert result["status"] == "ok"
+        mock_api.assert_called_once_with("https://localhost:27124", "/open/folder/my%20note.md",
+                                         "test-key", params=None)
+
+
+class TestExtraModule:
+    def test_daily_path(self):
+        from cli_anything.obsidian.core.extra import daily_path
+        assert daily_path("2026-01-02") == "2026-01-02.md"
+        assert daily_path("2026-01-02", "/Daily/") == "Daily/2026-01-02.md"
+
+    def test_vault_uri(self):
+        from cli_anything.obsidian.core.extra import vault_uri
+        assert vault_uri("My Vault", "a b.md") == "obsidian://open?vault=My%20Vault&file=a%20b.md"
+
+    def test_list_vaults(self, tmp_path):
+        import json
+        from cli_anything.obsidian.core.extra import list_vaults
+        reg = tmp_path / "obsidian.json"
+        reg.write_text(json.dumps({"vaults": {"x": {"path": "/a/Notes", "open": True}}}))
+        assert list_vaults(str(reg)) == [{"id": "x", "name": "Notes", "path": "/a/Notes", "open": True}]
+        assert list_vaults(str(tmp_path / "missing.json")) == []
+
+    @patch("cli_anything.obsidian.core.vault.api_get")
+    def test_daily_list_filters(self, mock_get):
+        from cli_anything.obsidian.core.extra import daily_list
+        mock_get.return_value = {"files": ["2026-01-02.md", "notes.md", "sub/", "2026-01-01.md"]}
+        assert daily_list("h", "k", "Daily") == ["Daily/2026-01-01.md", "Daily/2026-01-02.md"]
+
+    @patch("cli_anything.obsidian.core.vault.api_put")
+    @patch("cli_anything.obsidian.core.vault.api_get")
+    def test_daily_create_never_overwrites(self, mock_get, mock_put):
+        from cli_anything.obsidian.core.extra import daily_create
+        mock_get.return_value = {"content": "keep"}
+        r = daily_create("h", "k", "2026-01-02")
+        assert r == {"path": "2026-01-02.md", "created": False, "content": "keep"}
+        mock_put.assert_not_called()
+        mock_get.side_effect = RuntimeError("Obsidian API error 404 on GET /vault/x: nf")
+        r = daily_create("h", "k", "2026-01-02")
+        assert r["created"] is True
+        mock_put.assert_called_once()
+
+    @patch("cli_anything.obsidian.core.extra.api_get")
+    def test_list_tags(self, mock_get):
+        from cli_anything.obsidian.core.extra import list_tags
+        mock_get.return_value = {"tags": [{"name": "a", "count": 1}]}
+        assert list_tags("h", "k")["tags"][0]["name"] == "a"
+        mock_get.assert_called_once_with("h", "/tags/", "k")
 
 
 class TestCommandModule:

@@ -2,7 +2,7 @@
 name: >-
   cli-anything-obsidian
 description: >-
-  Command-line interface for Obsidian — Knowledge management and note-taking via Obsidian Local REST API. Designed for AI agents and power users who need to manage notes, search the vault, and execute commands without the GUI.
+  Command-line interface for Obsidian — Knowledge management and note-taking via Obsidian Local REST API. Use to list/open vaults, read/write/search notes, manage daily notes, list tags, and run Obsidian commands. Requires Obsidian running with the Local REST API plugin.
 ---
 
 # cli-anything-obsidian
@@ -14,12 +14,17 @@ Knowledge management and note-taking via the Obsidian Local REST API. Designed f
 This CLI is installed as part of the cli-anything-obsidian package:
 
 ```bash
-pip install cli-anything-obsidian
+# Installed on this machine via uv tool (patched v1.2.0 from ~/work/.worktrees/cli-obsidian)
+command -v cli-anything-obsidian
+# Upstream: cli-hub install obsidian
 ```
 
 **Prerequisites:**
 - Python 3.10+
 - Obsidian must be installed and running with the [Local REST API plugin](https://github.com/coddingtonbear/obsidian-local-rest-api) enabled
+- API key: Obsidian > Settings > Local REST API (also stored in `<vault>/.obsidian/plugins/obsidian-local-rest-api/data.json` as `apiKey`). Export it as `OBSIDIAN_API_KEY`.
+- The REST API serves whichever vault is currently open in Obsidian. Use `vaults open NAME` to switch.
+- `vaults list`, `vaults open`, and `daily path` work without the API.
 
 
 ## Usage
@@ -84,7 +89,35 @@ Active note commands.
 | Command | Description |
 |---------|-------------|
 | `active` | Get the currently active note in Obsidian |
-| `open` | Open a note in the Obsidian editor |
+| `open` | Open a note in the Obsidian editor (`--new-leaf` for a new tab) |
+
+
+### Vaults (local, no API key)
+
+| Command | Description |
+|---------|-------------|
+| `list` | List vaults registered in the Obsidian app (name, path, open) |
+| `open NAME [--file NOTE] [--print-only]` | Open/switch vault via `obsidian://open` URI |
+
+
+### Daily
+
+Daily notes live at `<folder>/YYYY-MM-DD.md`. Folder from `--folder` or env `OBSIDIAN_DAILY_FOLDER` (default vault root). `--date YYYY-MM-DD` defaults to today.
+
+| Command | Description |
+|---------|-------------|
+| `path` | Print the daily note path |
+| `list` | List existing daily notes in the folder |
+| `create [-c TEXT]` | Create if missing (never overwrites); returns `created: true/false` |
+| `read` | Read the daily note |
+| `append -c TEXT` | Append a new line (creates the note first if missing) |
+
+
+### Tags
+
+| Command | Description |
+|---------|-------------|
+| `list` | All tags in the vault with counts |
 
 
 ### Command
@@ -163,6 +196,21 @@ cli-anything-obsidian search query --type jsonlogic \
 ```
 
 
+### Vaults, Daily Notes, Tags
+
+```bash
+cli-anything-obsidian --json vaults list
+cli-anything-obsidian vaults open "My Vault" --file "Inbox.md"
+cli-anything-obsidian --json daily create --folder "Daily"
+cli-anything-obsidian daily append --folder "Daily" -c "- [ ] follow up"
+cli-anything-obsidian --json tags list
+```
+
+Links/backlinks: use `search simple "[[Note Name]]"` or a DQL query (`LIST FROM [[Note Name]]`, needs Dataview).
+
+Note: `vault append` concatenates verbatim; start `--content` with `\n` for a new line (`daily append` adds it for you).
+
+
 ### Commands
 
 ```bash
@@ -237,4 +285,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.1.0
+1.2.0
