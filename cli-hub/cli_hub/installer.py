@@ -109,6 +109,13 @@ def _install_strategy(cli):
     if strategy:
         return strategy
     if cli.get("_source", "harness") == "harness":
+        # Almost every harness CLI is a pip package, but a few ship another
+        # toolchain (cargo, go, npm). Sending those to pip fails with an option
+        # error such as `no such option: --git`, so route any install command
+        # that is not a pip install through the generic shell strategy.
+        install_cmd = (cli.get("install_cmd") or "").strip()
+        if install_cmd and not install_cmd.startswith("pip install"):
+            return "command"
         return "pip"
     if cli.get("npm_package") or cli.get("package_manager") == "npm":
         return "npm"

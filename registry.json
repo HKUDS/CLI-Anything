@@ -986,6 +986,7 @@
       "homepage": "https://github.com/allthingssecurity/clibrowser",
       "source_url": null,
       "install_cmd": "cargo install --git https://github.com/allthingssecurity/clibrowser.git --tag v0.1.0 --locked",
+      "install_strategy": "command",
       "entry_point": "clibrowser",
       "skill_md": null,
       "category": "web",
