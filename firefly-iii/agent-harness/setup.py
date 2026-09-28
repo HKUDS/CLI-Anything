@@ -35,7 +35,7 @@ setup(
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: End Users/Desktop",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
@@ -43,5 +43,5 @@ setup(
         "Topic :: Office/Business :: Financial",
     ],
     keywords="firefly-iii cli finance personal-finance cli-anything",
-    license="MIT",
+    license="Apache-2.0",
 )
