@@ -10,6 +10,7 @@ setup(
     author_email="",
     maintainer="CLI-Anything-Team",
     url="https://github.com/HKUDS/CLI-Anything",
+    license="Apache-2.0",
     python_requires=">=3.10",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     install_requires=[

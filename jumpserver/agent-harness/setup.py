@@ -11,6 +11,7 @@ setup(
     long_description_content_type="text/markdown",
     author="cli-anything",
     url="https://github.com/cli-anything/cli-anything-jumpserver",
+    license="Apache-2.0",
     project_urls={
         "Source": "https://github.com/cli-anything/cli-anything-jumpserver",
         "Tracker": "https://github.com/cli-anything/cli-anything-jumpserver/issues",
@@ -37,7 +38,7 @@ setup(
         "Development Status :: 4 - Beta",
         "Environment :: Console",
         "Intended Audience :: System Administrators",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.11",

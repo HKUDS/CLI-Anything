@@ -37,7 +37,7 @@ setup(
         "PyPI": "https://pypi.org/project/cli-anything-n8n/",
     },
 
-    license="MIT",
+    license="Apache-2.0",
 
     packages=find_namespace_packages(include=("cli_anything.*",)),
 
@@ -79,7 +79,7 @@ setup(
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Topic :: Software Development :: Libraries :: Python Modules",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
 
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",

@@ -36,7 +36,7 @@ setup(
         "Tracker": "https://github.com/HKUDS/CLI-Anything/issues",
     },
 
-    license="MIT",
+    license="Apache-2.0",
 
     packages=find_namespace_packages(include=("cli_anything.*",)),
 
@@ -78,7 +78,7 @@ setup(
         "Intended Audience :: Developers",
         "Topic :: Multimedia :: Graphics :: 3D Modeling",
         "Topic :: Software Development :: Libraries :: Python Modules",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License",
 
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",

@@ -10,6 +10,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/HKUDS/CLI-Anything",
+    license="Apache-2.0",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     install_requires=[
         "click>=8.0.0",
