@@ -1385,6 +1385,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
 </tr>
 <tr>
+<td align="center"><strong>✨ <a href="iflytek-spark/agent-harness/">iFlytek Spark-X2.5</a></strong></td>
+<td>Open LLM (on-device, 1M context) — chat, streaming, reasoning split, multi-turn sessions</td>
+<td><code>cli-anything-iflytek-spark</code></td>
+<td>OpenAI-compatible server: SGLang / vLLM / Ollama / llama.cpp / iFlytek Astron MaaS</td>
+<td align="center">✅ <a href="iflytek-spark/agent-harness/">New</a></td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
 <td align="center"><strong>✅ 2,461</strong></td>
 </tr>
@@ -1530,6 +1537,7 @@ cli-anything/
 ├── 🧩 dify-workflow/agent-harness/      # Dify Workflow CLI wrapper (11 tests)
 ├── 🛡️ adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
 ├── 🦙 ollama/agent-harness/             # Ollama CLI (98 tests)
+├── ✨ iflytek-spark/agent-harness/      # iFlytek Spark-X2.5 CLI (new)
 ├── 🎮 godot/agent-harness/              # Godot Engine CLI (24 tests)
 ├── 📦 sbox/agent-harness/               # s&box CLI (244 tests: 157 unit + 17 orchestrator + 50 e2e + 20 exit-code)
 ├── 🎨 sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
