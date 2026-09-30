@@ -40,6 +40,11 @@ log = logging.getLogger(__name__)
 DEFAULT_SERVER_CMD = "npx"
 
 
+def _npx_command() -> str:
+    """Resolve the executable extension that CreateProcess needs on Windows."""
+    return shutil.which(DEFAULT_SERVER_CMD) or DEFAULT_SERVER_CMD
+
+
 def _build_server_args() -> list[str]:
     """Build server args at call time so env var changes are honored."""
     token = os.environ.get("DOMSHELL_TOKEN", "")
@@ -56,6 +61,15 @@ def _build_server_args() -> list[str]:
         "--port", port,
         "--token", token,
     ]
+
+
+def _server_params() -> StdioServerParameters:
+    """Pass npm configuration to both one-shot and daemon MCP processes."""
+    return StdioServerParameters(
+        command=_npx_command(),
+        args=_build_server_args(),
+        env=os.environ.copy(),
+    )
 
 # Daemon mode: persistent MCP connection
 _daemon_session: Optional[ClientSession] = None
@@ -99,7 +113,7 @@ def _check_npx_has_domshell() -> bool:
     """Check if DOMShell package is available to npx."""
     try:
         result = subprocess.run(
-            ["npx", "@apireno/domshell", "--version"],
+            [_npx_command(), "@apireno/domshell", "--version"],
             capture_output=True,
             timeout=10,
         )
@@ -137,7 +151,7 @@ def is_available() -> tuple[bool, str]:
     # Try to get version
     try:
         result = subprocess.run(
-            ["npx", "@apireno/domshell", "--version"],
+            [_npx_command(), "@apireno/domshell", "--version"],
             capture_output=True,
             timeout=10,
             text=True,
@@ -575,10 +589,7 @@ async def _call_execute(
             await _stop_daemon()
 
     # Spawn new MCP server process
-    server_params = StdioServerParameters(
-        command=DEFAULT_SERVER_CMD,
-        args=_build_server_args()
-    )
+    server_params = _server_params()
 
     try:
         async with stdio_client(server_params) as (read, write):
@@ -624,10 +635,7 @@ async def _start_daemon() -> bool:
     if _daemon_session is not None:
         return True  # Already running
 
-    server_params = StdioServerParameters(
-        command=DEFAULT_SERVER_CMD,
-        args=_build_server_args()
-    )
+    server_params = _server_params()
 
     try:
         # Store the context manager so we can properly clean it up later
