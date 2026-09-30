@@ -20,6 +20,7 @@ Usage:
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 # ── ANSI color codes (no external deps for core styling) ──────────────
@@ -118,7 +119,10 @@ class ReplSkin:
             software: Software name (e.g., "gimp", "shotcut", "blender").
             version: CLI version string.
             history_file: Path for persistent command history.
-                         Defaults to ~/.cli-anything-<software>/history
+                         Defaults to ~/.cli-anything-<software>/history.
+                         CLI_ANYTHING_HISTORY_DIR replaces the home directory
+                         as the history root. If storage is unavailable, use
+                         the temp directory, then in-memory history.
             skill_path: Path to the SKILL.md file for agent discovery.
                         Auto-detected from the repo-root skills/ tree when present,
                         otherwise from the package's skills/ directory.
@@ -158,14 +162,35 @@ class ReplSkin:
 
         # History file
         if history_file is None:
-            hist_dir = Path.home() / f".cli-anything-{self.software}"
-            hist_dir.mkdir(parents=True, exist_ok=True)
-            self.history_file = str(hist_dir / "history")
+            self.history_file = self._default_history_file()
         else:
             self.history_file = history_file
 
         # Detect terminal capabilities
         self._color = self._detect_color_support()
+
+    def _default_history_file(self) -> str | None:
+        """Find writable history storage without making it a startup requirement."""
+        override = os.environ.get("CLI_ANYTHING_HISTORY_DIR")
+        for use_temp in (False, True):
+            try:
+                if use_temp:
+                    root = Path(tempfile.gettempdir())
+                elif override:
+                    root = Path(override).expanduser()
+                else:
+                    root = Path.home()
+                hist_dir = root / f".cli-anything-{self.software}"
+                hist_dir.mkdir(parents=True, exist_ok=True)
+                history = hist_dir / "history"
+                # mkdir alone can succeed while an existing history file is
+                # read-only. Probe both reading and appending without truncating.
+                with history.open("a+", encoding="utf-8"):
+                    pass
+                return str(history)
+            except OSError:
+                continue
+        return None
 
     def _detect_color_support(self) -> bool:
         """Check if terminal supports color."""
@@ -491,14 +516,17 @@ class ReplSkin:
         """
         try:
             from prompt_toolkit import PromptSession
-            from prompt_toolkit.history import FileHistory
+            from prompt_toolkit.history import FileHistory, InMemoryHistory
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
             from prompt_toolkit.formatted_text import FormattedText
 
             style = self.get_prompt_style()
 
             session = PromptSession(
-                history=FileHistory(self.history_file),
+                history=(
+                    FileHistory(self.history_file) if self.history_file is not None
+                    else InMemoryHistory()
+                ),
                 auto_suggest=AutoSuggestFromHistory(),
                 style=style,
                 enable_history_search=True,
