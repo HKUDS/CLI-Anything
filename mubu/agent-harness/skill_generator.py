@@ -406,16 +406,24 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None, te
     content = generate_skill_md(metadata, template_path)
     harness_root = Path(harness_path)
     skill_id = f"cli-anything-{harness_root.parent.name.replace('_', '-')}"
-    if output_path is None:
-        output = harness_root.parent.parent / "skills" / skill_id / "SKILL.md"
-    else:
-        output = Path(output_path)
     mirror = harness_root / "cli_anything" / metadata.software_name / "skills" / "SKILL.md"
+    if output_path is None:
+        # Default mode regenerates the checked-in copies, so refresh the packaged
+        # mirror alongside the canonical file.
+        output = harness_root.parent.parent / "skills" / skill_id / "SKILL.md"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(content, encoding="utf-8")
+        if mirror != output:
+            mirror.parent.mkdir(parents=True, exist_ok=True)
+            mirror.write_text(content, encoding="utf-8")
+        return str(output)
+
+    # An explicit --output targets a throwaway path (tests, one-off renders), so
+    # write only there. Rewriting the packaged mirror in place would edit a
+    # tracked file and leave the working tree dirty.
+    output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(content, encoding="utf-8")
-    if mirror != output:
-        mirror.parent.mkdir(parents=True, exist_ok=True)
-        mirror.write_text(content, encoding="utf-8")
     return str(output)
 
 

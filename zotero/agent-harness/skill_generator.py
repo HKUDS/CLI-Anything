@@ -277,7 +277,10 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None, te
     mirror = harness_root / "cli_anything" / metadata.software_name / "skills" / "SKILL.md"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(content, encoding="utf-8")
-    if mirror != output:
+    # An explicit --output targets a throwaway path (tests, one-off renders), so
+    # the packaged mirror is only refreshed in the default mode that regenerates
+    # the checked-in copies. Rewriting it in place would leave the tree dirty.
+    if not output_path and mirror != output:
         mirror.parent.mkdir(parents=True, exist_ok=True)
         mirror.write_text(content, encoding="utf-8")
     return str(output)

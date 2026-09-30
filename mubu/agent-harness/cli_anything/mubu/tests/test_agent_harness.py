@@ -133,6 +133,33 @@ class AgentHarnessPackagingTests(unittest.TestCase):
         finally:
             output_path.unlink(missing_ok=True)
 
+    def test_skill_generator_with_explicit_output_leaves_mirror_untouched(self):
+        """An explicit --output must not rewrite the tracked packaged SKILL.md."""
+        mirror = HARNESS_ROOT / "cli_anything" / "mubu" / "skills" / "SKILL.md"
+        before = mirror.read_bytes()
+        output_path = HARNESS_ROOT / "tmp-explicit-output-SKILL.md"
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(HARNESS_ROOT / "skill_generator.py"),
+                    str(HARNESS_ROOT),
+                    "--output",
+                    str(output_path),
+                ],
+                cwd=HARNESS_ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertTrue(output_path.is_file(), msg="explicit --output was not written")
+            self.assertEqual(
+                mirror.read_bytes(),
+                before,
+                msg="packaged SKILL.md was rewritten by an explicit --output run",
+            )
+        finally:
+            output_path.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     unittest.main()
