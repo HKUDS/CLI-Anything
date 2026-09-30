@@ -130,6 +130,20 @@ Run without arguments to enter interactive mode:
 cli-anything-browser
 ```
 
+Command history defaults to `~/.cli-anything-browser/history`. On managed systems,
+set `CLI_ANYTHING_HISTORY_DIR` to a writable root directory. Each harness keeps
+its own `.cli-anything-<software>/history` below that root. For example, in
+PowerShell:
+
+```powershell
+$env:CLI_ANYTHING_HISTORY_DIR = "$env:LOCALAPPDATA\CLI-Anything"
+cli-anything-browser
+```
+
+If the selected directory or history file cannot be accessed, the REPL tries
+the system temporary directory. If that also fails, history is kept in memory
+for the current session so the REPL can still start.
+
 REPL commands:
 - `page open <url>` — Open a URL
 - `fs ls [path]` — List elements
