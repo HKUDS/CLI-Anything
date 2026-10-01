@@ -472,12 +472,19 @@ def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
         return False, {"error": f"Matrix '{name}' not found. Use 'cli-hub matrix list' to see available matrices."}
 
     state = _load_matrix_state()
+    canonical_name = matrix_item["name"]
+    state_key = canonical_name
+    if state_key not in state:
+        state_key = next(
+            (key for key in state if key.lower() == canonical_name.lower()),
+            canonical_name,
+        )
+    prior = state.get(state_key)
 
     if resume:
         if capability or recipe or only:
             return False, {"error": "Cannot combine --resume with --capability/--recipe/--only.",
                            "arg_error": True, "matrix": matrix_item}
-        prior = state.get(name)
         if not prior:
             return False, {"error": f"No previous install of '{name}' to resume. "
                                     f"Run 'cli-hub matrix install {name}' first.",
@@ -527,10 +534,19 @@ def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
         "failed": sum(1 for result in results if result["status"] == "failed"),
     }
 
-    state[name] = {
+    saved_results = results
+    if resume:
+        retried = {result["name"]: result for result in results}
+        saved_results = [
+            retried.get(result["name"], result)
+            for result in prior.get("results", [])
+        ]
+    if state_key != canonical_name:
+        state.pop(state_key, None)
+    state[canonical_name] = {
         "last_run": datetime.now().isoformat(timespec="seconds"),
         "scope": scope,
-        "results": results,
+        "results": saved_results,
     }
     _save_matrix_state(state)
 
