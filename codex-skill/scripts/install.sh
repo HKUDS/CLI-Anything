@@ -10,6 +10,7 @@ PREVIEW_PROTOCOL="${REPO_ROOT}/docs/PREVIEW_PROTOCOL.md"
 DEST_ROOT="${CODEX_HOME:-$HOME/.codex}/skills"
 DEST_DIR="${DEST_ROOT}/cli-anything"
 STAGING_DIR=""
+LOCK_DIR="${DEST_ROOT}/.cli-anything.install.lock"
 
 if [[ ! -f "${PLUGIN_DIR}/HARNESS.md" ]]; then
   echo "Cannot find canonical CLI-Anything resources at: ${PLUGIN_DIR}" >&2
@@ -25,9 +26,8 @@ fi
 
 mkdir -p "${DEST_ROOT}"
 
-if [[ -e "${DEST_DIR}" ]]; then
-  echo "Refusing to overwrite existing skill: ${DEST_DIR}" >&2
-  echo "Remove it manually if you want to reinstall." >&2
+if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+  echo "Another Codex skill install holds the lock: ${LOCK_DIR}" >&2
   exit 1
 fi
 
@@ -35,8 +35,15 @@ cleanup() {
   if [[ -n "${STAGING_DIR}" && -d "${STAGING_DIR}" ]]; then
     rm -rf "${STAGING_DIR}"
   fi
+  rmdir "${LOCK_DIR}"
 }
 trap cleanup EXIT
+
+if [[ -e "${DEST_DIR}" ]]; then
+  echo "Refusing to overwrite existing skill: ${DEST_DIR}" >&2
+  echo "Remove it manually if you want to reinstall." >&2
+  exit 1
+fi
 
 STAGING_DIR="$(mktemp -d "${DEST_ROOT}/.cli-anything.tmp.XXXXXX")"
 cp -R "${SKILL_DIR}/." "${STAGING_DIR}/"

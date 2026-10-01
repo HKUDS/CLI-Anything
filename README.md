@@ -619,6 +619,12 @@ the source of truth.
 
 Restart Codex after installation so it is discovered.
 
+The Bash installer allows only one installation into a given skill directory
+at a time. If an installer is forcibly terminated and leaves
+`<CODEX_HOME>/skills/.cli-anything.install.lock`, first confirm no install is
+running, then remove that empty lock directory with `rmdir` before retrying.
+The default `CODEX_HOME` is `~/.codex`.
+
 **Step 2: Use CLI-Anything from Codex**
 
 Describe the task in natural language, for example:
