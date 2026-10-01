@@ -25,20 +25,24 @@ def _load_cached_data(cache_file):
     try:
         cached = json.loads(cache_file.read_text())
         return cached["data"]
-    except (json.JSONDecodeError, KeyError):
+    except (json.JSONDecodeError, KeyError, OSError):
         return None
 
 
 def _fetch_json(url, cache_file, force_refresh=False):
     """Fetch a JSON URL with local file caching."""
-    _ensure_cache_dir()
+    try:
+        _ensure_cache_dir()
+    except OSError:
+        # Discovery still works when optional cache storage is unavailable.
+        pass
 
     if not force_refresh and cache_file.exists():
         try:
             cached = json.loads(cache_file.read_text())
             if time.time() - cached.get("_cached_at", 0) < CACHE_TTL:
                 return cached["data"]
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, OSError):
             pass
 
     try:
@@ -52,7 +56,10 @@ def _fetch_json(url, cache_file, force_refresh=False):
         raise
 
     cache_payload = {"_cached_at": time.time(), "data": data}
-    cache_file.write_text(json.dumps(cache_payload, indent=2))
+    try:
+        cache_file.write_text(json.dumps(cache_payload, indent=2))
+    except OSError:
+        pass
 
     return data
 
