@@ -52,73 +52,72 @@ if [ ! -f "$SCRIPT_DIR/index.ts" ]; then
     exit 1
 fi
 
-HARNESS_SRC="$REPO_ROOT/cli-anything-plugin/HARNESS.md"
-if [ ! -f "$HARNESS_SRC" ]; then
-    echo "Warning: HARNESS.md not found at $HARNESS_SRC"
-    echo "The extension will still be installed but may not function correctly."
-    echo ""
+PLUGIN_SRC="$REPO_ROOT/cli-anything-plugin"
+for required in \
+    "$SCRIPT_DIR/index.ts" \
+    "$PLUGIN_SRC/HARNESS.md" \
+    "$PLUGIN_SRC/repl_skin.py" \
+    "$PLUGIN_SRC/preview_bundle.py" \
+    "$PLUGIN_SRC/skill_generator.py" \
+    "$PLUGIN_SRC/templates/SKILL.md.template" \
+    "$REPO_ROOT/docs/PREVIEW_PROTOCOL.md"; do
+    if [ ! -f "$required" ]; then
+        echo "Error: Missing required extension resource: $required" >&2
+        exit 1
+    fi
+done
+for command in cli-anything refine test validate list; do
+    if [ ! -f "$PLUGIN_SRC/commands/$command.md" ]; then
+        echo "Error: Missing command specification: $command.md" >&2
+        exit 1
+    fi
+done
+
+# Assemble the complete extension before replacing a working installation.
+PARENT_DIR="$(dirname "$TARGET_DIR")"
+mkdir -p "$PARENT_DIR"
+STAGING_DIR="$(mktemp -d "$PARENT_DIR/.cli-anything.tmp.XXXXXX")"
+BACKUP_DIR=""
+cleanup() {
+    if [ -n "$STAGING_DIR" ] && [ -d "$STAGING_DIR" ]; then
+        rm -rf "$STAGING_DIR"
+    fi
+}
+trap cleanup EXIT
+
+mkdir -p "$STAGING_DIR/commands" "$STAGING_DIR/guides" \
+    "$STAGING_DIR/scripts" "$STAGING_DIR/templates" "$STAGING_DIR/docs"
+cp "$SCRIPT_DIR/index.ts" "$STAGING_DIR/"
+cp "$PLUGIN_SRC/commands/"*.md "$STAGING_DIR/commands/"
+cp "$PLUGIN_SRC/guides/"*.md "$STAGING_DIR/guides/"
+cp "$PLUGIN_SRC/templates/"* "$STAGING_DIR/templates/"
+cp "$PLUGIN_SRC/HARNESS.md" "$STAGING_DIR/"
+cp "$PLUGIN_SRC/repl_skin.py" "$STAGING_DIR/scripts/"
+cp "$PLUGIN_SRC/preview_bundle.py" "$STAGING_DIR/scripts/"
+cp "$PLUGIN_SRC/skill_generator.py" "$STAGING_DIR/scripts/"
+cp "$REPO_ROOT/docs/PREVIEW_PROTOCOL.md" "$STAGING_DIR/docs/"
+if [ -d "$PLUGIN_SRC/tests" ]; then
+    mkdir -p "$STAGING_DIR/tests"
+    cp "$PLUGIN_SRC/tests/"*.py "$STAGING_DIR/tests/"
 fi
 
-# ─── Install ───────────────────────────────────────────────────────────
-
-echo "Installing CLI-Anything extension for Pi Coding Agent..."
-echo ""
-
-# Create target directories
-mkdir -p "$TARGET_DIR/commands"
-mkdir -p "$TARGET_DIR/guides"
-mkdir -p "$TARGET_DIR/scripts"
-mkdir -p "$TARGET_DIR/templates"
-
-# Copy extension entry point
-cp "$SCRIPT_DIR/index.ts" "$TARGET_DIR/"
-
-# Copy command specifications from the canonical location
-COMMANDS_SRC="$REPO_ROOT/cli-anything-plugin/commands"
-if [ -d "$COMMANDS_SRC" ]; then
-    cp "$COMMANDS_SRC/"*.md "$TARGET_DIR/commands/"
-    echo "✓ commands copied from $COMMANDS_SRC"
+if [ -e "$TARGET_DIR" ]; then
+    BACKUP_DIR="$(mktemp -d "$PARENT_DIR/.cli-anything.backup.XXXXXX")"
+    mv "$TARGET_DIR" "$BACKUP_DIR/previous"
 fi
-# Copy guides from the canonical location
-GUIDES_SRC="$REPO_ROOT/cli-anything-plugin/guides"
-if [ -d "$GUIDES_SRC" ]; then
-    cp "$GUIDES_SRC/"*.md "$TARGET_DIR/guides/"
-    echo "✓ guides copied from $GUIDES_SRC"
+if ! mv "$STAGING_DIR" "$TARGET_DIR"; then
+    if [ -n "$BACKUP_DIR" ]; then
+        mv "$BACKUP_DIR/previous" "$TARGET_DIR" || {
+            echo "Previous installation retained at: $BACKUP_DIR/previous" >&2
+            exit 1
+        }
+        rmdir "$BACKUP_DIR"
+    fi
+    exit 1
 fi
-
-# Copy templates from the canonical location
-TEMPLATES_SRC="$REPO_ROOT/cli-anything-plugin/templates"
-if [ -d "$TEMPLATES_SRC" ]; then
-    cp "$TEMPLATES_SRC/"* "$TARGET_DIR/templates/"
-    echo "✓ templates copied from $TEMPLATES_SRC"
-fi
-
-# Copy HARNESS.md from the canonical location (so the extension can find it locally)
-if [ -f "$HARNESS_SRC" ]; then
-    cp "$HARNESS_SRC" "$TARGET_DIR/HARNESS.md"
-    echo "✓ HARNESS.md copied from $HARNESS_SRC"
-fi
-
-# Copy repl_skin.py from the canonical location
-REPL_SKIN_SRC="$REPO_ROOT/cli-anything-plugin/repl_skin.py"
-if [ -f "$REPL_SKIN_SRC" ]; then
-    cp "$REPL_SKIN_SRC" "$TARGET_DIR/scripts/repl_skin.py"
-    echo "✓ repl_skin.py copied from $REPL_SKIN_SRC"
-fi
-
-# Copy skill_generator.py from the canonical location
-SKILL_GEN_SRC="$REPO_ROOT/cli-anything-plugin/skill_generator.py"
-if [ -f "$SKILL_GEN_SRC" ]; then
-    cp "$SKILL_GEN_SRC" "$TARGET_DIR/scripts/skill_generator.py"
-    echo "✓ skill_generator.py copied from $SKILL_GEN_SRC"
-fi
-
-# Copy tests from the canonical location
-TESTS_SRC="$REPO_ROOT/cli-anything-plugin/tests"
-if [ -d "$TESTS_SRC" ]; then
-    mkdir -p "$TARGET_DIR/tests"
-    cp "$TESTS_SRC"/*.py "$TARGET_DIR/tests/"
-    echo "✓ tests copied from $TESTS_SRC"
+STAGING_DIR=""
+if [ -n "$BACKUP_DIR" ]; then
+    rm -rf "$BACKUP_DIR"
 fi
 
 echo ""

@@ -53,6 +53,7 @@ function buildCommandMessage(
 	const guidesDir = join(__dirname, "guides");
 	const scriptsDir = join(__dirname, "scripts");
 	const templatesDir = join(__dirname, "templates");
+	const docsDir = join(__dirname, "docs");
 
 	return `[CLI-Anything Command: ${commandName}]
 
@@ -68,7 +69,8 @@ ${commandMd}
 ## Extension Asset Paths
 The following resources are available on this system. Use the \`read\` tool to access them when needed:
 - Guides directory: \`${guidesDir}/\` — when HARNESS.md references guides (e.g. "See guides/session-locking.md"), read them from here
-- Scripts directory: \`${scriptsDir}/\` — contains \`skill_generator.py\`
+- Scripts directory: \`${scriptsDir}/\` — contains \`skill_generator.py\` and \`preview_bundle.py\`
+- Documentation directory: \`${docsDir}/\` — contains \`PREVIEW_PROTOCOL.md\`
 - Templates directory: \`${templatesDir}/\` — contains \`SKILL.md.template\`
 
 ## Path Remapping Rules
@@ -77,7 +79,9 @@ The command specs and HARNESS.md were written for a containerized environment. A
 2. \`cli-anything-plugin/repl_skin.py\` → use \`${scriptsDir}/repl_skin.py\`
 3. \`cli-anything-plugin/skill_generator.py\` → use \`${scriptsDir}/skill_generator.py\`
 4. \`~/.claude/plugins/cli-anything/\` → use \`${__dirname}/\`
-5. All relative paths in HARNESS.md (e.g. \`guides/...\`, \`templates/...\`) resolve against the asset paths above, NOT the working directory.
+5. \`cli-anything-plugin/preview_bundle.py\` → use \`${scriptsDir}/preview_bundle.py\`
+6. \`docs/PREVIEW_PROTOCOL.md\` → use \`${docsDir}/PREVIEW_PROTOCOL.md\`
+7. All relative paths in HARNESS.md (e.g. \`guides/...\`, \`templates/...\`) resolve against the asset paths above, NOT the working directory.
 
 ---
 

@@ -80,7 +80,12 @@ Tests for `skill_generator.py` live in `cli-anything-plugin/tests/` (next to the
 > templates, and HARNESS.md live in `cli-anything-plugin/` (canonical source).
 > `install.sh` copies them into `~/.pi/agent/extensions/cli-anything/` alongside
 > `index.ts` at install time. The extension reads them from its own directory
-> via `__dirname`.
+> via `__dirname`. Preview resources include `scripts/preview_bundle.py` and
+`docs/PREVIEW_PROTOCOL.md`, with their installed paths injected into every
+command. Required resources are checked before installation; files are staged
+before an existing extension is replaced. Copy failures keep the current
+extension intact, and publication failures restore it. If restoration itself
+fails, the installer reports the retained backup location.
 
 ## How It Works
 

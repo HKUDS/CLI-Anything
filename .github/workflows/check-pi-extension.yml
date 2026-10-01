@@ -1,0 +1,34 @@
+name: Check Pi Extension
+
+on:
+  pull_request:
+    paths:
+      - '.pi-extension/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-pi-extension.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.pi-extension/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-pi-extension.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test complete installation and installed command paths
+        run: python3 .pi-extension/cli-anything/tests/test_install.py
