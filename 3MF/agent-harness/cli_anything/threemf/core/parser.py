@@ -13,6 +13,7 @@ import io
 import os
 import zipfile
 from dataclasses import dataclass
+from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -116,20 +117,42 @@ class ThreeMFData:
 def _find_model_path(zf: zipfile.ZipFile) -> str:
     """Locate the primary model XML inside the ZIP archive.
 
-    Checks in order:
-    1. ``3D/3dmodel.model`` (standard location)
-    2. First ``.model`` file found anywhere in the archive
+    Uses the package StartPart relationship when present. Legacy archives
+    without it fall back to the standard path, then the first model part.
     """
     standard = "3D/3dmodel.model"
     names = zf.namelist()
+    if "_rels/.rels" in names:
+        relationships = ET.fromstring(zf.read("_rels/.rels"))
+        rel_tag = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
+        model_rel = (
+            "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
+        )
+        for relationship in relationships.iterfind(rel_tag):
+            if relationship.get("Type") != model_rel:
+                continue
+            target = relationship.get("Target", "")
+            uri = urlsplit(target)
+            if (
+                relationship.get("TargetMode", "Internal") != "Internal"
+                or uri.scheme
+                or uri.netloc
+            ):
+                raise ValueError(
+                    "3MF model StartPart must be an internal package part"
+                )
+            model_path = unquote(uri.path).lstrip("/")
+            if model_path not in names:
+                raise FileNotFoundError(
+                    f"3MF model StartPart not found: {model_path}"
+                )
+            return model_path
     if standard in names:
         return standard
     for name in names:
         if name.lower().endswith(".model"):
             return name
-    raise FileNotFoundError(
-        "No .model file found inside the 3MF archive"
-    )
+    raise FileNotFoundError("No .model file found inside the 3MF archive")
 
 
 def _parse_mesh_element(

@@ -16,6 +16,7 @@ external 3MF files are required.
 
 from __future__ import annotations
 
+import json
 import zipfile
 from xml.etree import ElementTree as ET
 
@@ -1258,3 +1259,113 @@ class TestModifier:
         assert changes and changes[0]["vertices_moved"] > 0
         # the modified mesh is a genuinely new object (resize actually happened)
         assert new_data.meshes[0] is not data.meshes[0]
+
+
+def _startpart_relationship(target, target_mode="Internal"):
+    ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    root = ET.Element(f"{{{ns}}}Relationships")
+    ET.SubElement(
+        root,
+        f"{{{ns}}}Relationship",
+        Id="start",
+        Target=target,
+        TargetMode=target_mode,
+        Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel",
+    )
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+@pytest.mark.parametrize(
+    "secondary_path", ["3D/3dmodel.model", "3D/secondary.model"]
+)
+@pytest.mark.parametrize(
+    "target",
+    ["/3D/primary.model", "3D/primary.model", "/3D/primary%20part.model"],
+)
+def test_cli_uses_package_startpart_and_preserves_secondary(
+    tmp_path, secondary_path, target
+):
+    from click.testing import CliRunner
+    from cli_anything.threemf.threemf_cli import cli
+
+    source = tmp_path / "multi-model.3mf"
+    output = tmp_path / "repaired.3mf"
+    primary_mesh = _make_cube_mesh(20)
+    primary_mesh = MeshData(
+        "1", "primary", primary_mesh.vertices, primary_mesh.triangles
+    )
+    primary_xml = ET.tostring(
+        parser_mod._build_model_from_scratch(_make_threemf_data(primary_mesh))
+    )
+    secondary_xml = ET.tostring(
+        parser_mod._build_model_from_scratch(_make_threemf_data())
+    )
+    primary_path = (
+        "3D/primary part.model" if "%20" in target else "3D/primary.model"
+    )
+    rels = _startpart_relationship(target)
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr(secondary_path, secondary_xml)
+        archive.writestr(primary_path, primary_xml)
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006'
+            '/content-types"><Default Extension="rels" ContentType="appli'
+            'cation/vnd.openxmlformats-package.relationships+xml"/><Defau'
+            'lt Extension="model" ContentType="application/vnd.ms-package'
+            '.3dmanufacturing-3dmodel+xml"/></Types>',
+        )
+    parsed = parser_mod.parse_3mf(str(source))
+    assert parsed.model_path == primary_path
+    info = CliRunner().invoke(cli, ["--json", "info", str(source)])
+    assert info.exit_code == 0, info.output
+    assert json.loads(info.output)["objects"][0]["name"] == "primary"
+    repaired = CliRunner().invoke(
+        cli, ["--json", "repair", str(source), "-o", str(output)]
+    )
+    assert repaired.exit_code == 0, repaired.output
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read(secondary_path) == secondary_xml
+    assert parser_mod.parse_3mf(str(output)).meshes[0].name == "primary"
+
+
+def test_missing_declared_startpart_does_not_edit_another_model(tmp_path):
+    source = tmp_path / "missing-primary.3mf"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr(
+            "3D/3dmodel.model",
+            ET.tostring(
+                parser_mod._build_model_from_scratch(_make_threemf_data())
+            ),
+        )
+        archive.writestr(
+            "_rels/.rels",
+            _startpart_relationship("/3D/missing.model"),
+        )
+    with pytest.raises(FileNotFoundError, match="missing.model"):
+        parser_mod.parse_3mf(str(source))
+
+
+@pytest.mark.parametrize(
+    "target_mode,target",
+    [
+        ("External", "https://example.com/model.model"),
+        ("Internal", "https://example.com/model.model"),
+    ],
+)
+def test_external_startpart_is_not_followed(tmp_path, target_mode, target):
+    source = tmp_path / "external-primary.3mf"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr(
+            "3D/3dmodel.model",
+            ET.tostring(
+                parser_mod._build_model_from_scratch(_make_threemf_data())
+            ),
+        )
+        archive.writestr(
+            "_rels/.rels",
+            _startpart_relationship(target, target_mode),
+        )
+    with pytest.raises(ValueError, match="internal package part"):
+        parser_mod.parse_3mf(str(source))

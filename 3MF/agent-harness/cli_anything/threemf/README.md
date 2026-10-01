@@ -102,3 +102,10 @@ cli_anything/threemf/
 ## License
 
 MIT — See [CLI-Anything LICENSE](https://github.com/HKUDS/CLI-Anything/blob/main/LICENSE)
+
+### Primary model selection
+
+Archives declaring a package StartPart relationship use that model part for
+inspection and edits, independent of ZIP entry order or other `.model` parts. A
+missing declared primary part raises an error rather than editing another model.
+Legacy archives without a StartPart retain the standard-path/first-model fallback.
