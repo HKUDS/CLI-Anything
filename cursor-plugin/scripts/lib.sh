@@ -2,7 +2,15 @@
 # shellcheck shell=bash
 
 normalize_path_key() {
-  printf '%s' "${1}" | tr '[:upper:]' '[:lower:]' | tr '\\' '/' | sed 's:/*$::'
+  local path="${1}"
+  # Windows host paths are case-insensitive and accept both separators.
+  # POSIX paths retain case and literal backslashes in directory names.
+  case "${path}" in
+    [A-Za-z]:/*|[A-Za-z]:\\*|\\\\*)
+      printf '%s' "${path}" | tr '[:upper:]' '[:lower:]' | tr '\\' '/' | sed 's:/*$::'
+      ;;
+    *) printf '%s' "${path}" | sed 's:/*$::' ;;
+  esac
 }
 
 # Convert Git Bash / MSYS / Cygwin / WSL-style paths to Windows host paths for Cursor tools.

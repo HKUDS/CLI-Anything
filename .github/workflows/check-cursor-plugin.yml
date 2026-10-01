@@ -32,6 +32,9 @@ jobs:
       - name: Test Cursor plugin installer (bash)
         run: bash cursor-plugin/tests/test_install.sh
 
+      - name: Test discovery pointer ownership
+        run: python3 cursor-plugin/tests/test_pointer_paths.py
+
   test-installer-windows:
     runs-on: windows-latest
     steps:
