@@ -29,3 +29,6 @@ jobs:
 
       - name: Test Codex skill installer
         run: bash codex-skill/tests/test_install.sh
+
+      - name: Test concurrent installs
+        run: python3 codex-skill/tests/test_install_race.py
