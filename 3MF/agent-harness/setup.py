@@ -13,7 +13,7 @@ with open("cli_anything/threemf/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-3mf",
-    version="1.0.0",
+    version="1.0.1",
     author="cli-anything contributors",
     author_email="",
     description="CLI harness for 3MF — Detect and resize cylindrical holes, repair meshes, compare 3D printing files",

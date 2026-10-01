@@ -1258,3 +1258,128 @@ class TestModifier:
         assert changes and changes[0]["vertices_moved"] > 0
         # the modified mesh is a genuinely new object (resize actually happened)
         assert new_data.meshes[0] is not data.meshes[0]
+
+
+def _write_assembly_3mf(path):
+    model = parser_mod._build_model_from_scratch(_make_threemf_data())
+    resources = model.find(parser_mod._tag("resources"))
+    materials = ET.SubElement(
+        resources, parser_mod._tag("basematerials"), id="7"
+    )
+    ET.SubElement(
+        materials,
+        parser_mod._tag("base"),
+        name="fixture",
+        displaycolor="#FF0000FF",
+    )
+    for triangle in model.iter(parser_mod._tag("triangle")):
+        triangle.set("pid", "7")
+        triangle.set("p1", "0")
+        triangle.set("p2", "0")
+        triangle.set("p3", "0")
+    assembly = ET.SubElement(
+        resources, parser_mod._tag("object"), id="2", type="model"
+    )
+    components = ET.SubElement(assembly, parser_mod._tag("components"))
+    ET.SubElement(
+        components,
+        parser_mod._tag("component"),
+        objectid="1",
+        transform="1 0 0 0 1 0 0 0 1 10 20 30",
+    )
+    build_item = model.find(parser_mod._tag("build")).find(
+        parser_mod._tag("item")
+    )
+    build_item.set("objectid", "2")
+    build_item.set("transform", "1 0 0 0 1 0 0 0 1 5 0 0")
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "3D/3dmodel.model",
+            ET.tostring(model, encoding="utf-8", xml_declaration=True),
+        )
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006'
+            '/content-types"><Default Extension="rels" ContentType="appli'
+            'cation/vnd.openxmlformats-package.relationships+xml"/><Defau'
+            'lt Extension="model" ContentType="application/vnd.ms-package'
+            '.3dmanufacturing-3dmodel+xml"/></Types>',
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/pack'
+            'age/2006/relationships"><Relationship Target="/3D/3dmodel.mo'
+            'del" Id="rel0" Type="http://schemas.microsoft.com/3dmanufact'
+            'uring/2013/01/3dmodel"/></Relationships>',
+        )
+
+
+@pytest.mark.parametrize("source_action", ["delete", "replace"])
+def test_parsed_model_preserves_assembly_after_source_changes(
+    tmp_path, source_action
+):
+    source = tmp_path / "source.3mf"
+    _write_assembly_3mf(source)
+    data = parser_mod.parse_3mf(str(source))
+    expected = _model_root(source)
+    if source_action == "delete":
+        source.unlink()
+    else:
+        parser_mod.write_3mf(_make_threemf_data(), str(source))
+    output = tmp_path / "saved.3mf"
+    parser_mod.write_3mf(data, str(output))
+    actual = _model_root(output)
+    ns = {"c": parser_mod.NS_CORE}
+    assert ET.tostring(actual.find("c:build", ns)) == ET.tostring(
+        expected.find("c:build", ns)
+    )
+    component = actual.find("c:resources/c:object[@id='2']", ns)
+    assert component is not None
+    assert (
+        component.find("c:components/c:component", ns).get("transform")
+        == "1 0 0 0 1 0 0 0 1 10 20 30"
+    )
+    assert _triangle_attrs(output) == _triangle_attrs_bytes(expected)
+    assert (
+        actual.find("c:resources/c:basematerials[@id='7']/c:base", ns).get(
+            "displaycolor"
+        )
+        == "#FF0000FF"
+    )
+
+
+def _triangle_attrs_bytes(root):
+    return [
+        dict(element.attrib)
+        for element in root.iter(parser_mod._tag("triangle"))
+    ]
+
+
+def test_repair_cli_preserves_assembly_when_source_removed(
+    tmp_path, monkeypatch
+):
+    from click.testing import CliRunner
+    from cli_anything.threemf.threemf_cli import cli
+
+    source = tmp_path / "assembly.3mf"
+    output = tmp_path / "repaired.3mf"
+    _write_assembly_3mf(source)
+    expected = _model_root(source)
+    real_repair = repair.repair_mesh
+
+    def repair_then_remove_source(mesh):
+        result = real_repair(mesh)
+        source.unlink()
+        return result
+
+    monkeypatch.setattr(repair, "repair_mesh", repair_then_remove_source)
+    result = CliRunner().invoke(
+        cli, ["--json", "repair", str(source), "-o", str(output)]
+    )
+    assert result.exit_code == 0, result.output
+    actual = _model_root(output)
+    ns = {"c": parser_mod.NS_CORE}
+    assert ET.tostring(actual.find("c:build", ns)) == ET.tostring(
+        expected.find("c:build", ns)
+    )
+    assert actual.find("c:resources/c:object[@id='2']", ns) is not None

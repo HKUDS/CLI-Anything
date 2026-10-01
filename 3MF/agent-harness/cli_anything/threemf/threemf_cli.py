@@ -248,6 +248,7 @@ def resize(file, hole_ids, diameter, output_path, planes, min_diameter, min_conf
             metadata=new_data.metadata,
             raw_entries=new_data.raw_entries,
             source_path=new_data.source_path,
+            model_xml=new_data.model_xml,
         )
 
     parser.write_3mf(new_data, output_path)
@@ -301,6 +302,7 @@ def repair(file, output_path, mesh, overwrite):
         metadata=data.metadata,
         raw_entries=data.raw_entries,
         source_path=data.source_path,
+        model_xml=data.model_xml,
     )
     parser.write_3mf(new_data, output_path)
 
