@@ -25,6 +25,11 @@ def _sync_matrix_data():
     the repo content is unavailable (runtime falls back to the published URL
     or a stub).
     """
+    # Keep discovery metadata beside the vendored skills. In an sdist the
+    # original repository file is absent, so preserve the already bundled copy.
+    registry_source = HERE.parent / "matrix_registry.json"
+    if registry_source.is_file():
+        shutil.copy2(registry_source, HERE / "cli_hub" / "matrix_registry.json")
     if not MATRIX_CONTENT_SOURCE.is_dir():
         return
     if MATRIX_DATA_DIR.exists():
@@ -69,6 +74,7 @@ setup(
     include_package_data=True,
     package_data={
         "cli_hub": [
+            "matrix_registry.json",
             "_matrix_data/*/SKILL.md",
             "_matrix_data/*/references/*",
             "_matrix_data/*/scripts/*",

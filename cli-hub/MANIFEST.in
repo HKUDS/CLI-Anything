@@ -2,3 +2,6 @@
 # at sdist/wheel build time; see cli_hub/matrix_skill.py lookup chain).
 recursive-include cli_hub/_matrix_data *
 global-exclude __pycache__ *.pyc *.pyo
+
+# Offline matrix discovery metadata (generated from the repository registry).
+include cli_hub/matrix_registry.json
