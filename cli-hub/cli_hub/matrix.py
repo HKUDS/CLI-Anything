@@ -45,7 +45,7 @@ def _load_cached_data():
     try:
         cached = json.loads(MATRIX_CACHE_FILE.read_text())
         return cached["data"]
-    except (json.JSONDecodeError, KeyError):
+    except (json.JSONDecodeError, KeyError, OSError):
         return None
 
 
@@ -64,14 +64,18 @@ def _load_local_registry():
 
 def fetch_matrix_registry(force_refresh=False):
     """Fetch the matrix registry with local file caching."""
-    _ensure_cache_dir()
+    try:
+        _ensure_cache_dir()
+    except OSError:
+        # Discovery still works when optional cache storage is unavailable.
+        pass
 
     if not force_refresh and MATRIX_CACHE_FILE.exists():
         try:
             cached = json.loads(MATRIX_CACHE_FILE.read_text())
             if time.time() - cached.get("_cached_at", 0) < CACHE_TTL:
                 return cached["data"]
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, OSError):
             pass
 
     try:
@@ -87,7 +91,10 @@ def fetch_matrix_registry(force_refresh=False):
             return local_data
         raise
 
-    MATRIX_CACHE_FILE.write_text(json.dumps({"_cached_at": time.time(), "data": data}, indent=2))
+    try:
+        MATRIX_CACHE_FILE.write_text(json.dumps({"_cached_at": time.time(), "data": data}, indent=2))
+    except OSError:
+        pass
     return data
 
 
