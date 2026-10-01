@@ -1258,3 +1258,92 @@ class TestModifier:
         assert changes and changes[0]["vertices_moved"] > 0
         # the modified mesh is a genuinely new object (resize actually happened)
         assert new_data.meshes[0] is not data.meshes[0]
+
+
+def test_write_preserves_thin_mesh_geometry_at_large_offset(tmp_path):
+    vertices = np.array(
+        [
+            [1000.001, 0, 0],
+            [1000.003, 0, 0],
+            [1000.001, 1, 0],
+            [1000.001, 0, 1],
+        ],
+        dtype=np.float64,
+    )
+    triangles = np.array(
+        [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]], dtype=np.int32
+    )
+    mesh = MeshData("1", "thin-offset-tetrahedron", vertices, triangles)
+    output = tmp_path / "thin.3mf"
+    parser_mod.write_3mf(_make_threemf_data(mesh), str(output))
+    reloaded = parser_mod.parse_3mf(str(output)).meshes[0]
+    np.testing.assert_array_equal(reloaded.vertices, mesh.vertices)
+    original_stats = backend.compute_mesh_stats(mesh)
+    saved_stats = backend.compute_mesh_stats(reloaded)
+    assert original_stats["volume_mm3"] > 0
+    assert saved_stats["volume_mm3"] == pytest.approx(
+        original_stats["volume_mm3"], rel=1e-12
+    )
+
+
+@pytest.mark.parametrize(
+    "coordinate",
+    [1.2345678901234567, -9876.54321098765, 0.00001234567890123456],
+)
+def test_vertex_coordinates_roundtrip_float64_exactly(tmp_path, coordinate):
+    mesh = _make_cube_mesh()
+    vertices = mesh.vertices.copy()
+    vertices[0, 0] = coordinate
+    precise = MeshData(mesh.object_id, mesh.name, vertices, mesh.triangles)
+    output = tmp_path / "precise.3mf"
+    parser_mod.write_3mf(_make_threemf_data(precise), str(output))
+    reloaded = parser_mod.parse_3mf(str(output)).meshes[0]
+    np.testing.assert_array_equal(reloaded.vertices, precise.vertices)
+
+
+def test_repair_cli_does_not_collapse_translated_thin_mesh(tmp_path):
+    from click.testing import CliRunner
+    from cli_anything.threemf.threemf_cli import cli
+
+    source = tmp_path / "thin-source.3mf"
+    output = tmp_path / "thin-repaired.3mf"
+    model = f"""<model xmlns="{parser_mod.NS_CORE}" unit="millimeter"><resources>
+    <object id="1" type="model"><mesh><vertices>
+    <vertex x="1000.001" y="0" z="0"/><vertex x="1000.003" y="0" z="0"/>
+    <vertex x="1000.001" y="1" z="0"/><vertex x="1000.001" y="0" z="1"/>
+    </vertices><triangles><triangle v1="0" v2="2" v3="1"/>
+    <triangle v1="0" v2="1" v3="3"/><triangle v1="0" v2="3" v3="2"/>
+    <triangle v1="1" v2="2" v3="3"/></triangles></mesh></object>
+    </resources><build><item objectid="1"/></build></model>"""
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("3D/3dmodel.model", model)
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+            "</Types>",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Target="/3D/3dmodel.model" Id="rel0" '
+            'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
+            "</Relationships>",
+        )
+    before = backend.compute_mesh_stats(
+        parser_mod.parse_3mf(str(source)).meshes[0]
+    )
+    result = CliRunner().invoke(
+        cli, ["--json", "repair", str(source), "-o", str(output)]
+    )
+    assert result.exit_code == 0, result.output
+    after = backend.compute_mesh_stats(
+        parser_mod.parse_3mf(str(output)).meshes[0]
+    )
+    assert (
+        after["bounding_box"]["size"][0] == before["bounding_box"]["size"][0]
+    )
+    assert after["volume_mm3"] == pytest.approx(
+        before["volume_mm3"], rel=1e-12
+    )

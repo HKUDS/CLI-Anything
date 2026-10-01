@@ -366,13 +366,15 @@ def _build_mesh_element(md: MeshData, ns: str) -> ET.Element:
 
     # Vertices
     verts_el = ET.SubElement(mesh_el, _tag("vertices", ns))
+    # 17 significant digits round-trip IEEE-754 float64 coordinates. Six
+    # digits can collapse nearby vertices on translated meshes.
     for row in md.vertices:
         ET.SubElement(
             verts_el,
             _tag("vertex", ns),
-            x=f"{row[0]:.6g}",
-            y=f"{row[1]:.6g}",
-            z=f"{row[2]:.6g}",
+            x=f"{row[0]:.17g}",
+            y=f"{row[1]:.17g}",
+            z=f"{row[2]:.17g}",
         )
 
     # Triangles
