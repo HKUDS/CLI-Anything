@@ -2,12 +2,12 @@
 name: >-
   cli-anything-minimax
 description: >-
-  Command-line interface for MiniMax AI — chat (MiniMax-M3, MiniMax-M2.7) and speech-2.x TTS via the MiniMax API.
+  Command-line interface for MiniMax AI — chat (MiniMax-M3, MiniMax-M2.7), speech-2.x TTS, and image generation via the MiniMax API.
 ---
 
 # cli-anything-minimax
 
-A CLI harness for **MiniMax AI** — providing chat completions and text-to-speech synthesis through the MiniMax API.
+A CLI harness for **MiniMax AI** — providing chat completions, text-to-speech synthesis, and image generation through the MiniMax API.
 
 ## Installation
 
@@ -68,6 +68,25 @@ controls: `--speed` (0.5..2.0), `--vol` (0..10), `--pitch` (-12..12),
 |---------|-------------|
 | `tts` | Synthesize text to speech (hex-decoded MP3 via SSE) |
 | `voices` | List available voice IDs |
+
+### Image generation
+
+```bash
+cli-anything-minimax --json image --prompt "A lighthouse at sunset" --aspect-ratio 16:9
+cli-anything-minimax --json image --prompt "A lighthouse at sunset" --response-format base64
+```
+
+The `image` command defaults to `image-01`; `--model image-01-live` selects the
+alternate image model. It returns `data.image_urls` or `data.image_base64`, plus
+`metadata.success_count` and `metadata.failed_count`. Image URLs expire after
+24 hours. Partial successes retain both counts; API errors or empty image results
+exit with an error.
+
+Use `--n` (1..9), `--seed`, and `--prompt-optimizer` to control generation.
+Prompts must contain 1..1500 characters. Choose `--aspect-ratio` or a paired
+`--width`/`--height` (512..2048, multiples of 8). `MINIMAX_REGION=cn_zh` selects
+the CN image endpoint; the default is the global endpoint. `MINIMAX_BASE_URL`
+can override the image service with either a host URL or a base ending in `/v1`.
 
 ### Session
 
@@ -147,4 +166,4 @@ cli-anything-minimax tts --text "Fast" --model speech-2.8-turbo --voice English_
 
 ## Version
 
-1.0.0
+1.2.0

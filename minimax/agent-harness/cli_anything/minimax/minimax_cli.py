@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MiniMax CLI — Chat and TTS client for MiniMax AI API.
+"""MiniMax CLI — Chat, TTS and image generation client for MiniMax AI API.
 
 Usage:
     # One-shot commands
@@ -28,6 +28,9 @@ from cli_anything.minimax.utils.minimax_backend import (
     chat_completion,
     chat_completion_stream,
     tts_synthesize,
+    image_generate,
+    IMAGE_CONFIG,
+    IMAGE_ASPECT_RATIOS,
     run_full_workflow,
     CHAT_MODELS,
     TTS_MODELS,
@@ -112,7 +115,7 @@ def handle_error(func):
 )
 @click.pass_context
 def cli(ctx, use_json, api_key_opt, model_opt):
-    """MiniMax CLI — Chat and TTS via MiniMax AI API."""
+    """MiniMax CLI — Chat, TTS and image generation via MiniMax AI API."""
     global _json_output
     _json_output = use_json
     ctx.ensure_object(dict)
@@ -337,6 +340,39 @@ def tts(ctx, text, model_opt, voice, output_path, speed, vol, pitch, sample_rate
     output(output_data, f"✓ Audio saved to {output_path} ({len(audio_data)} bytes)")
 
 
+@cli.command()
+@click.option("--prompt", "-p", required=True, help="Image description (up to 1500 characters)")
+@click.option(
+    "--model", type=click.Choice(IMAGE_CONFIG["models"]),
+    default=IMAGE_CONFIG["default_model"], show_default=True,
+)
+@click.option("--aspect-ratio", type=click.Choice(IMAGE_ASPECT_RATIOS))
+@click.option("--width", type=click.IntRange(512, 2048), help="Width in pixels; requires height")
+@click.option("--height", type=click.IntRange(512, 2048), help="Height in pixels; requires width")
+@click.option(
+    "--response-format", type=click.Choice(IMAGE_CONFIG["response_formats"]),
+    default="url", show_default=True, help="Image URLs expire after 24 hours",
+)
+@click.option("--seed", type=int, help="Seed for reproducible generation")
+@click.option("--n", type=click.IntRange(1, 9), default=1, show_default=True)
+@click.option("--prompt-optimizer/--no-prompt-optimizer", default=False, show_default=True)
+@click.pass_context
+@handle_error
+def image(
+    ctx, prompt, model, aspect_ratio, width, height, response_format,
+    seed, n, prompt_optimizer,
+):
+    """Generate images from text using MiniMax."""
+    parent_key = ctx.obj.get("api_key") if ctx.obj else None
+    result = image_generate(
+        api_key=get_api_key(parent_key), prompt=prompt, model=model,
+        aspect_ratio=aspect_ratio, width=width, height=height,
+        response_format=response_format, seed=seed, n=n,
+        prompt_optimizer=prompt_optimizer,
+    )
+    output(result)
+
+
 @cli.group()
 def session():
     """Session management commands."""
@@ -509,6 +545,7 @@ def repl():
         "chat --prompt <text>": "Chat with MiniMax (MiniMax-M3)",
         "stream --prompt <text>": "Stream chat completion",
         "tts --text <text> --output out.mp3": "Text-to-speech synthesis",
+        "image --prompt <text>": "Generate images from text",
         "models": "List chat models",
         "models --tts": "List TTS models",
         "voices": "List TTS voice IDs",

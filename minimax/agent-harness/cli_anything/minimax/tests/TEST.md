@@ -70,6 +70,14 @@ $ CLI_ANYTHING_FORCE_INSTALLED=1 python3 -m pytest cli_anything/minimax/tests/te
 5 passed in 3.90s
 ```
 
+## Image generation coverage
+
+- Regional image endpoints, base URL overrides, authenticated request fields,
+  URL/base64 image data, partial success metadata, and request validation.
+- HTTP/API failures, invalid JSON, malformed payloads, and missing images.
+- Installed CLI subprocesses against the local HTTP fake for both response
+  formats, plain text output, missing keys, and machine-readable errors.
+
 ## Coverage Gaps
 
 - Real MiniMax backend validation still requires a live `MINIMAX_API_KEY`.

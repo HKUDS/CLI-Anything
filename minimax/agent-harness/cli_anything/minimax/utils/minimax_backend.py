@@ -164,6 +164,31 @@ MULTIMODAL_CONFIG = {
     }
 }
 
+IMAGE_CONFIG = {
+    "default_model": "image-01",
+    "models": [
+        "image-01",
+        "image-01-live"
+    ],
+    "endpoints": [
+        {
+            "region": "global_en",
+            "url": "https://api.minimax.io/v1/image_generation"
+        },
+        {
+            "region": "cn_zh",
+            "url": "https://api.minimaxi.com/v1/image_generation"
+        }
+    ],
+    "response_formats": [
+        "url",
+        "base64"
+    ]
+}
+
+IMAGE_ASPECT_RATIOS = ("1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9")
+
+
 CHAT_MODELS = [
     {
         "id": model["model_id"],
@@ -437,6 +462,93 @@ def tts_synthesize(
         with open(output_path, "wb") as f:
             f.write(audio_data)
     return audio_data
+
+
+def image_generate(
+    api_key: Optional[str] = None,
+    prompt: str = "",
+    model: str = IMAGE_CONFIG["default_model"],
+    aspect_ratio: Optional[str] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    response_format: str = "url",
+    seed: Optional[int] = None,
+    n: int = 1,
+    prompt_optimizer: bool = False,
+) -> dict:
+    """Generate images from text and return image data and generation metadata."""
+    api_key = _require_api_key(api_key)
+    if not prompt.strip() or len(prompt) > 1500:
+        raise ValueError("Image prompt must contain 1 to 1500 characters.")
+    if model not in IMAGE_CONFIG["models"]:
+        raise ValueError("Unsupported MiniMax image model.")
+    if response_format not in IMAGE_CONFIG["response_formats"]:
+        raise ValueError("Image response format must be url or base64.")
+    if not 1 <= n <= 9:
+        raise ValueError("Image count must be between 1 and 9.")
+    if aspect_ratio is not None and aspect_ratio not in IMAGE_ASPECT_RATIOS:
+        raise ValueError("Unsupported image aspect ratio.")
+    if (width is None) != (height is None):
+        raise ValueError("Image width and height must be provided together.")
+    if width is not None and any(
+        size < 512 or size > 2048 or size % 8 for size in (width, height)
+    ):
+        raise ValueError("Image dimensions must be multiples of 8 from 512 to 2048.")
+    if aspect_ratio is not None and width is not None:
+        raise ValueError("Choose either aspect ratio or width and height.")
+
+    body = {
+        "model": model,
+        "prompt": prompt,
+        "response_format": response_format,
+        "n": n,
+        "prompt_optimizer": prompt_optimizer,
+    }
+    for name, value in (
+        ("aspect_ratio", aspect_ratio), ("width", width),
+        ("height", height), ("seed", seed),
+    ):
+        if value is not None:
+            body[name] = value
+
+    endpoints = {item["region"]: item["url"] for item in IMAGE_CONFIG["endpoints"]}
+    region = os.environ.get(MINIMAX_REGION_ENV, "global_en")
+    url = endpoints.get(region, endpoints["global_en"])
+    override = os.environ.get("MINIMAX_BASE_URL")
+    if override:
+        base = override.rstrip("/")
+        if not base.endswith("/v1"):
+            base += "/v1"
+        url = f"{base}/image_generation"
+    try:
+        resp = requests.post(
+            url, json=body, headers=_make_auth_headers(api_key), timeout=120,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise RuntimeError("MiniMax image request failed.") from exc
+    try:
+        result = resp.json()
+    except ValueError as exc:
+        raise RuntimeError("MiniMax image response is not valid JSON.") from exc
+
+    if not isinstance(result, dict):
+        raise RuntimeError("MiniMax image response must be an object.")
+    base_resp = result.get("base_resp")
+    if not isinstance(base_resp, dict) or "status_code" not in base_resp:
+        raise RuntimeError("MiniMax image response is missing its status code.")
+    if base_resp["status_code"] != 0:
+        raise RuntimeError(
+            f"MiniMax image API error: {base_resp.get('status_msg', 'unknown')}"
+        )
+    data = result.get("data")
+    field = "image_urls" if response_format == "url" else "image_base64"
+    images = data.get(field) if isinstance(data, dict) else None
+    if not isinstance(images, list) or not images or not all(
+        isinstance(item, str) and item for item in images
+    ):
+        raise RuntimeError("MiniMax image response contains no generated images.")
+    return result
 
 
 def run_full_workflow(
