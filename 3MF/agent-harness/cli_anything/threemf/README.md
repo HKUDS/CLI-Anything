@@ -102,3 +102,9 @@ cli_anything/threemf/
 ## License
 
 MIT — See [CLI-Anything LICENSE](https://github.com/HKUDS/CLI-Anything/blob/main/LICENSE)
+
+### Coordinate fidelity
+
+Export preserves the full precision of parsed float64 vertex coordinates. Saving
+a mesh does not round coordinates to six significant digits or collapse nearby
+vertices on models translated away from the origin.
