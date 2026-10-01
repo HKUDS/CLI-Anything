@@ -99,6 +99,7 @@ class ThreeMFData:
         raw_entries: ``{zip_path: bytes}`` of every non-model ZIP member,
                      kept for lossless round-trip.
         source_path: Filesystem path the data was loaded from.
+        model_xml:   Original model snapshot, independent of the source file.
     """
 
     meshes: tuple[MeshData, ...]
@@ -107,6 +108,7 @@ class ThreeMFData:
     metadata: dict[str, str]
     raw_entries: dict[str, bytes]
     source_path: str
+    model_xml: bytes | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +290,7 @@ def parse_3mf(path: str) -> ThreeMFData:
         metadata=dict(metadata),
         raw_entries=dict(raw_entries),
         source_path=path,
+        model_xml=model_bytes,
     )
 
 
@@ -299,8 +302,7 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
     """Rebuild the model XML from *data*, preserving non-mesh elements.
 
     The strategy is:
-    1. Re-parse the original XML from ``raw_entries`` or regenerate from
-       scratch.
+    1. Re-parse the captured original model XML or regenerate from scratch.
     2. For each ``<object>`` whose id matches one of our :class:`MeshData`
        objects, replace its ``<mesh>`` sub-tree with the (possibly modified)
        vertex/triangle arrays.
@@ -312,11 +314,11 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
     """
 
     # -- attempt to load the original XML for preservation -----------------
-    original_bytes: bytes | None = None
+    original_bytes: bytes | None = data.model_xml
 
-    # If the caller kept raw bytes for the model path (unlikely but
-    # possible), use them; otherwise we need the original file.
-    if data.source_path and os.path.isfile(data.source_path):
+    # Parsed models retain their original XML even if the source is moved or
+    # replaced. Retain the file fallback for manually constructed legacy data.
+    if original_bytes is None and data.source_path and os.path.isfile(data.source_path):
         try:
             with zipfile.ZipFile(data.source_path, "r") as zf:
                 original_bytes = zf.read(data.model_path)

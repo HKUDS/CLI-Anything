@@ -102,3 +102,9 @@ cli_anything/threemf/
 ## License
 
 MIT — See [CLI-Anything LICENSE](https://github.com/HKUDS/CLI-Anything/blob/main/LICENSE)
+
+### Source-independent exports
+
+Parsed archives retain their original model XML in memory. Moving, deleting, or
+replacing the input after parsing does not discard assemblies, build transforms,
+material resources, or extension metadata when the edited mesh is saved.
