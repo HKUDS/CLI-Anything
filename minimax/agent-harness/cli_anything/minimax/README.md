@@ -82,6 +82,25 @@ cli-anything-minimax voices
 | `--format` | mp3 / pcm / flac | `mp3` | Output container |
 | `--channel` | 1 / 2 | `1` | 1 = mono, 2 = stereo |
 
+### Image generation
+
+```bash
+cli-anything-minimax --json image --prompt "A lighthouse at sunset" --aspect-ratio 16:9
+cli-anything-minimax --json image --prompt "A lighthouse at sunset" --response-format base64
+```
+
+The `image` command defaults to `image-01`; `--model image-01-live` selects the
+alternate image model. It returns `data.image_urls` or `data.image_base64`, plus
+`metadata.success_count` and `metadata.failed_count`. Image URLs expire after
+24 hours. Partial successes retain both counts; API errors or empty image results
+exit with an error.
+
+Use `--n` (1..9), `--seed`, and `--prompt-optimizer` to control generation.
+Prompts must contain 1..1500 characters. Choose `--aspect-ratio` or a paired
+`--width`/`--height` (512..2048, multiples of 8). `MINIMAX_REGION=cn_zh` selects
+the CN image endpoint; the default is the global endpoint. `MINIMAX_BASE_URL`
+can override the image service with either a host URL or a base ending in `/v1`.
+
 ### Session & Config
 
 ```bash

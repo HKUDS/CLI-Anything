@@ -97,6 +97,24 @@ def _fake_minimax_server(status_code=200):
                 self.wfile.write(response)
                 return
 
+            if self.path == "/v1/image_generation":
+                data = (
+                    {"image_base64": ["aW1hZ2U="]}
+                    if payload["response_format"] == "base64"
+                    else {"image_urls": ["https://example.test/image.png"]}
+                )
+                response = json.dumps({
+                    "data": data,
+                    "metadata": {"success_count": 1, "failed_count": 0},
+                    "base_resp": {"status_code": 0},
+                }).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+                return
+
             if self.path.endswith("/v1/t2a_v2"):
                 hex_audio = bytes([0xFF, 0xFB, 0x11, 0x22]).hex()
                 event = json.dumps(
@@ -215,6 +233,58 @@ class TestCLISubprocessSmoke:
         assert payload["type"] == "RuntimeError"
         assert "MiniMax API error" in payload["error"]
         assert requests_seen[0]["authorization"] == "Bearer invalid-key"
+
+    def test_api_mocked_image_command(self, tmp_path):
+        with _fake_minimax_server() as (base_url, requests_seen):
+            env = {"MINIMAX_BASE_URL": base_url}
+            result = self._run(
+                ["--json", "--api-key", "test-key", "image", "--prompt", "A lighthouse",
+                 "--aspect-ratio", "16:9", "--seed", "0", "--prompt-optimizer"],
+                tmp_path, extra_env=env,
+            )
+            payload = json.loads(result.stdout)
+            assert payload["data"]["image_urls"] == ["https://example.test/image.png"]
+            assert payload["metadata"] == {"success_count": 1, "failed_count": 0}
+            result = self._run(
+                ["--json", "--api-key", "test-key", "image", "--prompt", "A lighthouse",
+                 "--response-format", "base64", "--width", "1024", "--height", "768"],
+                tmp_path, extra_env=env,
+            )
+            assert json.loads(result.stdout)["data"]["image_base64"] == ["aW1hZ2U="]
+            result = self._run(
+                ["--api-key", "test-key", "image", "--prompt", "A lighthouse"],
+                tmp_path, extra_env=env,
+            )
+            assert "https://example.test/image.png" in result.stdout
+        assert len(requests_seen) == 3
+        assert requests_seen[0]["path"] == "/v1/image_generation"
+        assert requests_seen[0]["authorization"] == "Bearer test-key"
+        assert requests_seen[0]["payload"]["seed"] == 0
+        assert requests_seen[0]["payload"]["prompt_optimizer"] is True
+        assert requests_seen[1]["payload"]["width"] == 1024
+
+    def test_image_errors_are_machine_readable(self, tmp_path):
+        result = self._run(
+            ["--json", "image", "--prompt", "A lighthouse"], tmp_path, check=False,
+        )
+        assert result.returncode == 1
+        assert "API key" in json.loads(result.stdout)["error"]
+        with _fake_minimax_server(status_code=401) as (base_url, requests_seen):
+            env = {"MINIMAX_BASE_URL": base_url, "MINIMAX_API_KEY": "invalid-key"}
+            result = self._run(
+                ["--json", "image", "--prompt", "A lighthouse", "--width", "1024"],
+                tmp_path, extra_env=env, check=False,
+            )
+            assert result.returncode == 1
+            assert "provided together" in json.loads(result.stdout)["error"]
+            assert not requests_seen
+            result = self._run(
+                ["--json", "image", "--prompt", "A lighthouse"],
+                tmp_path, extra_env=env, check=False,
+            )
+            assert result.returncode == 1
+            assert "image request failed" in json.loads(result.stdout)["error"]
+            assert len(requests_seen) == 1
 
     def test_api_mocked_chat_and_tts_workflow(self, tmp_path):
         with _fake_minimax_server() as (base_url, requests_seen):

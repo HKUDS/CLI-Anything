@@ -2,6 +2,7 @@
 
 import json
 import requests
+import pytest
 from unittest.mock import patch, MagicMock
 
 from cli_anything.minimax.utils.minimax_backend import (
@@ -11,6 +12,7 @@ from cli_anything.minimax.utils.minimax_backend import (
     chat_completion,
     chat_completion_stream,
     tts_synthesize,
+    image_generate,
     run_full_workflow,
     REGIONAL_ENDPOINTS,
     TEXT_MODEL_CONFIG,
@@ -362,3 +364,101 @@ def test_run_full_workflow():
         assert result["content"] == "Here is the response"
         assert result["prompt_tokens"] == 10
         assert result["total_tokens"] == 25
+
+
+@pytest.mark.parametrize("region, endpoint", [
+    ("global_en", "https://api.minimax.io/v1/image_generation"),
+    ("cn_zh", "https://api.minimaxi.com/v1/image_generation"),
+])
+def test_image_generation_regional_requests(region, endpoint):
+    response = {
+        "data": {"image_urls": ["https://example.test/image.png"]},
+        "metadata": {"success_count": 1, "failed_count": 1},
+        "base_resp": {"status_code": 0},
+    }
+    with patch.dict("os.environ", {"MINIMAX_REGION": region}, clear=True):
+        with patch("requests.post") as post:
+            post.return_value.json.return_value = response
+            result = image_generate(
+                api_key="test-key", prompt="A lighthouse", aspect_ratio="16:9",
+                n=2, seed=0, prompt_optimizer=True,
+            )
+    assert result == response  # Preserve partial success metadata.
+    assert post.call_args.args == (endpoint,)
+    assert post.call_args.kwargs["json"] == {
+        "model": "image-01", "prompt": "A lighthouse", "aspect_ratio": "16:9",
+        "response_format": "url", "n": 2, "seed": 0, "prompt_optimizer": True,
+    }
+    assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer test-key"
+    assert post.call_args.kwargs["timeout"] == 120
+
+
+@pytest.mark.parametrize("base", ["http://localhost:1234", "http://localhost:1234/v1/"])
+def test_image_generation_base64_and_base_override(base):
+    response = {
+        "data": {"image_base64": ["aW1hZ2U="]},
+        "base_resp": {"status_code": 0},
+    }
+    with patch.dict("os.environ", {"MINIMAX_BASE_URL": base}, clear=True):
+        with patch("requests.post") as post:
+            post.return_value.json.return_value = response
+            assert image_generate(
+                api_key="test-key", prompt="A lighthouse", model="image-01-live",
+                width=1024, height=768, response_format="base64",
+            ) == response
+    assert post.call_args.args == ("http://localhost:1234/v1/image_generation",)
+    body = post.call_args.kwargs["json"]
+    assert body["model"] == "image-01-live"
+    assert (body["width"], body["height"]) == (1024, 768)
+    assert "aspect_ratio" not in body and "seed" not in body
+
+
+@pytest.mark.parametrize("options", [
+    {"prompt": " "}, {"prompt": "x" * 1501}, {"model": "unknown"},
+    {"n": 0}, {"n": 10}, {"response_format": "invalid"},
+    {"aspect_ratio": "invalid"}, {"width": 1024}, {"height": 1024},
+    {"width": 513, "height": 1024}, {"width": 512, "height": 2056},
+    {"width": 1024, "height": 1024, "aspect_ratio": "1:1"},
+])
+def test_image_generation_rejects_invalid_inputs_before_request(options):
+    args = {"api_key": "test-key", "prompt": "A lighthouse", **options}
+    with patch("requests.post") as post, pytest.raises(ValueError):
+        image_generate(**args)
+    post.assert_not_called()
+
+
+def test_image_generation_requires_api_key():
+    with patch("requests.post") as post, pytest.raises(RuntimeError, match="API key"):
+        image_generate(prompt="A lighthouse")
+    post.assert_not_called()
+
+
+@pytest.mark.parametrize("response, message", [
+    ({"base_resp": {"status_code": 1008, "status_msg": "Insufficient balance"}},
+     "Insufficient balance"),
+    ([], "must be an object"),
+    ({}, "missing its status code"),
+    ({"base_resp": {"status_code": 0}, "data": {"image_urls": []}},
+     "no generated images"),
+    ({"base_resp": {"status_code": 0}, "data": {"image_urls": "not a list"}},
+     "no generated images"),
+])
+def test_image_generation_rejects_error_and_malformed_responses(response, message):
+    with patch("requests.post") as post:
+        post.return_value.json.return_value = response
+        with pytest.raises(RuntimeError, match=message):
+            image_generate(api_key="test-key", prompt="A lighthouse")
+
+
+@pytest.mark.parametrize("error", [requests.HTTPError("HTTP 401"), requests.Timeout()])
+def test_image_generation_wraps_request_failures(error):
+    with patch("requests.post", side_effect=error):
+        with pytest.raises(RuntimeError, match="MiniMax image request failed"):
+            image_generate(api_key="test-key", prompt="A lighthouse")
+
+
+def test_image_generation_rejects_invalid_json():
+    with patch("requests.post") as post:
+        post.return_value.json.side_effect = requests.exceptions.JSONDecodeError("invalid", "{", 1)
+        with pytest.raises(RuntimeError, match="not valid JSON"):
+            image_generate(api_key="test-key", prompt="A lighthouse")
