@@ -564,17 +564,22 @@ def doctor_matrix(name):
     checks = []
     for cli_name in matrix_item.get("clis", []):
         cli = get_cli(cli_name)
-        entry_point = cli.get("entry_point") if cli else None
         record = installed.get(cli_name)
+        entry_point = (
+            cli.get("entry_point") if cli else (record or {}).get("entry_point")
+        )
 
         if record is None:
             status = "not_installed"
             detail = "Not installed"
             fix = f"cli-hub install {cli_name}"
-        elif entry_point and not _command_exists(entry_point):
+        elif not entry_point or not _command_exists(entry_point):
             status = "broken"
-            detail = f"Recorded as installed but '{entry_point}' is not on PATH"
-            fix = f"cli-hub install {cli_name}"
+            detail = (
+                f"Recorded as installed but '{entry_point}' is not on PATH"
+                if entry_point else "Recorded as installed without an entry point"
+            )
+            fix = f"cli-hub install {cli_name}" if cli else None
         else:
             status = "ok"
             detail = "Installed"
