@@ -2,9 +2,33 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-08-20"
+    "updated": "2026-10-02"
   },
   "clis": [
+    {
+      "name": "ibm-bob-shell",
+      "display_name": "IBM Bob Shell",
+      "version": "2.0.5",
+      "description": "Official IBM command-line AI assistant for interactive coding, non-interactive automation, shell execution, MCP integrations, and ACP-connected editor workflows",
+      "category": "ai",
+      "requires": "Node.js 24+, 4 GB RAM (8 GB recommended), internet access, and an IBMid/SSO account or BOB_API_KEY",
+      "homepage": "https://bob.ibm.com/",
+      "docs_url": "https://bob.ibm.com/docs/shell",
+      "source_url": null,
+      "package_manager": "script",
+      "install_strategy": "command",
+      "install_cmd": "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash -s -- --pm npm",
+      "uninstall_cmd": "npm uninstall -g bobshell",
+      "update_cmd": "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash -s -- --pm npm",
+      "skill_md": "https://bob.ibm.com/docs/shell",
+      "entry_point": "bob",
+      "contributors": [
+        {
+          "name": "IBM",
+          "url": "https://www.ibm.com/"
+        }
+      ]
+    },
     {
       "name": "feishu",
       "display_name": "Feishu/Lark CLI",
