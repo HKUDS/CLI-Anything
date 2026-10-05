@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "fxmacrodata",
+      "display_name": "FXMacroData",
+      "version": "1.0.0",
+      "description": "Official macroeconomic releases with publication timestamps, release calendars and FX rates for 22 currencies via the FXMacroData API (CPI, GDP, payrolls, policy rates, bond yields)",
+      "requires": "Python 3.10+; FXMACRODATA_API_KEY optional (USD data and the catalogue work without one)",
+      "homepage": "https://fxmacrodata.com/?utm_source=github&utm_medium=referral&utm_campaign=CLI-Anything&utm_content=registry",
+      "source_url": "https://github.com/fxmacrodata/cli-anything-fxmacrodata",
+      "install_cmd": "pip install git+https://github.com/fxmacrodata/cli-anything-fxmacrodata.git",
+      "entry_point": "cli-anything-fxmacrodata",
+      "skill_md": "https://github.com/fxmacrodata/cli-anything-fxmacrodata/blob/main/skills/cli-anything-fxmacrodata/SKILL.md",
+      "category": "finance",
+      "contributors": [
+        {
+          "name": "fxmacrodata",
+          "url": "https://github.com/fxmacrodata"
+        }
+      ]
     }
   ]
 }
