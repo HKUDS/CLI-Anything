@@ -721,7 +721,7 @@ def repl(project_path):
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("libreoffice", version="1.0.0")
+    skin = ReplSkin("libreoffice", version="1.0.2")
 
     if project_path:
         sess = get_session()
