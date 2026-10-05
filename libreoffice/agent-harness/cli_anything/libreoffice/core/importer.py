@@ -303,8 +303,11 @@ def _cell_data(cell_elem: ET.Element) -> Optional[Dict[str, Any]]:
     formula = _normalize_formula(_attr(cell_elem, "table", "formula"))
     text = _text_content(cell_elem)
     numeric_value = _attr(cell_elem, "office", "value")
+    boolean_value = (
+        _attr(cell_elem, "office", "boolean-value") if value_type == "boolean" else None
+    )
 
-    if not formula and not numeric_value and not text:
+    if not formula and not numeric_value and not text and boolean_value is None:
         return None
 
     if value_type in ("float", "currency", "percentage") and numeric_value is not None:
@@ -315,7 +318,7 @@ def _cell_data(cell_elem: ET.Element) -> Optional[Dict[str, Any]]:
             value = numeric_value
             cell_type = "string"
     elif value_type == "boolean":
-        value = (_attr(cell_elem, "office", "boolean-value") or text).lower() == "true"
+        value = (boolean_value or text).lower() == "true"
         cell_type = "boolean"
     else:
         value = text if text != "" else (numeric_value or "")

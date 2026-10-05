@@ -176,3 +176,12 @@ E2E tests produce real ODF files (ODT/ODS/ODP) and validate ZIP structure, XML c
 test_core.py: 99 passed in 0.15s
 test_full_e2e.py: 73 passed in 58.33s
 ```
+
+## ODS boolean import regression plan
+
+Use generated ODS archives and the public `import_document` API to verify that
+boolean values stored in `office:boolean-value` survive without display text.
+Cover both ODF boolean literals (`true`, `false`) with no `text:p` and an empty
+`text:p`. In the same fixtures, preserve displayed boolean cells, boolean formula
+results, numeric zero, and omission of genuinely empty cells. Run the existing
+core and native/backend E2E suites without changing their expectations.

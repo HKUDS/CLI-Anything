@@ -189,6 +189,60 @@ class TestImport:
         assert imported["sheets"][0]["cells"]["B1"]["value"] == 42.0
         assert imported["sheets"][0]["cells"]["B1"]["type"] == "float"
 
+    @pytest.mark.parametrize(
+        "boolean_value, expected", [("true", True), ("false", False)],
+    )
+    @pytest.mark.parametrize("display_xml", ["", "<text:p/>"])
+    def test_import_calc_boolean_cells_without_display_text(
+        self, tmp_path, boolean_value, expected, display_xml,
+    ):
+        content_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content office:version="1.2"
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+    xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2">
+  <office:body><office:spreadsheet><table:table table:name="Booleans">
+    <table:table-column table:number-columns-repeated="5"/>
+    <table:table-row>
+      <table:table-cell office:value-type="boolean"
+          office:boolean-value="{boolean_value}">{display_xml}</table:table-cell>
+      <table:table-cell office:value-type="boolean"
+          office:boolean-value="{boolean_value}">
+        <text:p>Display label</text:p>
+      </table:table-cell>
+      <table:table-cell office:value-type="boolean"
+          office:boolean-value="{boolean_value}"
+          table:formula="of:={boolean_value.upper()}()"/>
+      <table:table-cell office:value-type="float" office:value="0"/>
+      <table:table-cell/>
+    </table:table-row>
+  </table:table></office:spreadsheet></office:body>
+</office:document-content>'''
+        source = tmp_path / "source.ods"
+        fixture = tmp_path / "booleans.ods"
+        to_ods(create_document(doc_type="calc"), str(source))
+        with zipfile.ZipFile(source) as zin, zipfile.ZipFile(fixture, "w") as zout:
+            for info in zin.infolist():
+                data = (
+                    content_xml if info.filename == "content.xml"
+                    else zin.read(info.filename)
+                )
+                zout.writestr(info, data)
+
+        imported = importer_mod.import_document(str(fixture))
+        cells = imported["sheets"][0]["cells"]
+        assert cells == {
+            "A1": {"value": expected, "type": "boolean"},
+            "B1": {"value": expected, "type": "boolean"},
+            "C1": {
+                "value": expected, "type": "boolean",
+                "formula": f"={boolean_value.upper()}()",
+            },
+            "D1": {"value": 0.0, "type": "float"},
+        }
+        assert cells["A1"]["value"] is expected
+
     def test_import_calc_formula_normalizes_odf_prefix(self):
         proj = create_document(doc_type="calc", name="formula_calc")
         set_cell(proj, "A1", "1", cell_type="float")
