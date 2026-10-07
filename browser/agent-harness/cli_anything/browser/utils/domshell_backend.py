@@ -710,17 +710,21 @@ def ls(path: str = "/", use_daemon: bool = False, *, session: Any = None) -> dic
         # wrong-target results. Three separate _call_execute calls so
         # we can _is_error-gate after the anchor and skip the operation
         # cleanly. All share the persisted lane via session.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(translated), use_daemon, session=session,
-        ))
-        if _is_error(anchor):
-            return _parse_execute_result(anchor, "ls")
-        op = asyncio.run(_call_execute("ls", use_daemon, session=session))
-        # Best-effort restore — ls already ran; restore failure is
-        # cosmetic (next harness cd corrects any drift).
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
+        async def _impl() -> Any:
+            anchor = await _call_execute(
+                _anchor_path_cmd(translated), use_daemon, session=session,
+            )
+            if _is_error(anchor):
+                return anchor
+            op = await _call_execute("ls", use_daemon, session=session)
+            # Best-effort restore — ls already ran; restore failure is
+            # cosmetic (next harness cd corrects any drift).
+            await _call_execute(
+                _restore_cwd_cmd(session), use_daemon, session=session,
+            )
+            return op
+
+        op = asyncio.run(_impl())
         return _parse_execute_result(op, "ls")
     if translated:
         op = asyncio.run(_call_execute(
@@ -797,17 +801,19 @@ def cat(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         # otherwise read the current cursor or named child, then restore.
         # Anchor success is
         # load-bearing — without it cat resolves against the wrong cwd.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
-        if _is_error(anchor):
-            return _parse_execute_result(anchor, "cat")
-        op = asyncio.run(_call_execute(
-            command, use_daemon, session=session,
-        ))
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
+        async def _impl() -> Any:
+            anchor = await _call_execute(
+                _anchor_path_cmd(""), use_daemon, session=session,
+            )
+            if _is_error(anchor):
+                return anchor
+            op = await _call_execute(command, use_daemon, session=session)
+            await _call_execute(
+                _restore_cwd_cmd(session), use_daemon, session=session,
+            )
+            return op
+
+        op = asyncio.run(_impl())
         return _parse_execute_result(op, "cat")
     op = asyncio.run(_call_execute(
         command, use_daemon, session=session,
@@ -917,15 +923,19 @@ def grep(
                 else _anchor_path_cmd("")
             )
 
-    anchor = asyncio.run(_call_execute(anchor_cmd, use_daemon, session=session))
-    if _is_error(anchor):
-        return _parse_execute_result(anchor, "grep")
-    # `-r` preserves the pre-migration recursive default (see unrooted
-    # branch above for the full rationale).
-    op = asyncio.run(_call_execute(
-        f"grep -r {_q(pattern)}", use_daemon, session=session,
-    ))
-    asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+    async def _impl() -> Any:
+        anchor = await _call_execute(anchor_cmd, use_daemon, session=session)
+        if _is_error(anchor):
+            return anchor
+        # `-r` preserves the pre-migration recursive default (see unrooted
+        # branch above for the full rationale).
+        op = await _call_execute(
+            f"grep -r {_q(pattern)}", use_daemon, session=session,
+        )
+        await _call_execute(restore_cmd, use_daemon, session=session)
+        return op
+
+    op = asyncio.run(_impl())
     return _parse_execute_result(op, "grep")
 
 
@@ -955,17 +965,21 @@ def click(path: str, use_daemon: bool = False, *, session: Any = None) -> dict:
         # otherwise click the relative path, restore. Anchor success is
         # load-bearing — clicking the wrong element if cwd has drifted
         # could trigger an unintended action.
-        anchor = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
-        if _is_error(anchor):
-            return _parse_execute_result(anchor, "click")
-        op = asyncio.run(_call_execute(
-            f"click {_q(translated)}", use_daemon, session=session,
-        ))
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
+        async def _impl() -> Any:
+            anchor = await _call_execute(
+                _anchor_path_cmd(""), use_daemon, session=session,
+            )
+            if _is_error(anchor):
+                return anchor
+            op = await _call_execute(
+                f"click {_q(translated)}", use_daemon, session=session,
+            )
+            await _call_execute(
+                _restore_cwd_cmd(session), use_daemon, session=session,
+            )
+            return op
+
+        op = asyncio.run(_impl())
         return _parse_execute_result(op, "click")
     op = asyncio.run(_call_execute(
         f"click {_q(translated)}", use_daemon, session=session,
@@ -1143,40 +1157,44 @@ def type_text(
     # (one-line `cd %here%`), check for error, focus as a separate call
     # we can _is_error-check, then type, then restore as a separate
     # best-effort call. All four share the persisted lane via session.
-    if is_absolute:
-        anchor_result = asyncio.run(_call_execute(
-            _anchor_path_cmd(""), use_daemon, session=session,
-        ))
-        if _is_error(anchor_result):
-            # Anchor failed — we never moved, so no restore is needed.
-            return _parse_execute_result(anchor_result, "focus")
-
-    focus_result = asyncio.run(_call_execute(
-        f"focus {_q(translated_path)}", use_daemon, session=session,
-    ))
-    if _is_error(focus_result):
-        # Focus failed — restore cwd before returning so the lane
-        # doesn't stay parked at the anchor (only relevant when we
-        # actually moved, i.e. the absolute path branch).
+    async def _impl() -> tuple[Any, str]:
         if is_absolute:
-            asyncio.run(_call_execute(
+            anchor_result = await _call_execute(
+                _anchor_path_cmd(""), use_daemon, session=session,
+            )
+            if _is_error(anchor_result):
+                # Anchor failed — we never moved, so no restore is needed.
+                return anchor_result, "focus"
+
+        focus_result = await _call_execute(
+            f"focus {_q(translated_path)}", use_daemon, session=session,
+        )
+        if _is_error(focus_result):
+            # Focus failed — restore cwd before returning so the lane
+            # doesn't stay parked at the anchor (only relevant when we
+            # actually moved, i.e. the absolute path branch).
+            if is_absolute:
+                await _call_execute(
+                    _restore_cwd_cmd(session), use_daemon, session=session,
+                )
+            return focus_result, "focus"
+
+        type_result = await _call_execute(
+            f"type {_q(text)}", use_daemon, session=session,
+        )
+
+        if is_absolute:
+            # Best-effort restore — type already succeeded, so a restore
+            # failure is cosmetic. The next harness cd will correct any
+            # drift.
+            await _call_execute(
                 _restore_cwd_cmd(session), use_daemon, session=session,
-            ))
-        return _parse_execute_result(focus_result, "focus")
+            )
 
-    type_result = asyncio.run(_call_execute(
-        f"type {_q(text)}", use_daemon, session=session,
-    ))
+        return type_result, "type"
 
-    if is_absolute:
-        # Best-effort restore — type already succeeded, so a restore
-        # failure is cosmetic. The next harness cd will correct any
-        # drift.
-        asyncio.run(_call_execute(
-            _restore_cwd_cmd(session), use_daemon, session=session,
-        ))
-
-    return _parse_execute_result(type_result, "type")
+    result, command = asyncio.run(_impl())
+    return _parse_execute_result(result, command)
 
 
 # ── Daemon control functions ───────────────────────────────────────────
