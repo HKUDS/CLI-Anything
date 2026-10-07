@@ -6,6 +6,7 @@ regressions (quoting, command names, multi-line layout, restore ordering)
 fail loudly.
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call, patch
 
@@ -13,6 +14,43 @@ import pytest
 
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.utils import domshell_backend as backend
+
+
+@pytest.mark.parametrize(
+    ("wrapper", "invoke"),
+    [
+        ("ls", lambda session: backend.ls("/main", session=session)),
+        ("cat", lambda session: backend.cat("/main/button", session=session)),
+        (
+            "grep",
+            lambda session: backend.grep("Login", path="/main", session=session),
+        ),
+        ("click", lambda session: backend.click("/main/button", session=session)),
+        (
+            "type_text",
+            lambda session: backend.type_text("/main/input", "hello", session=session),
+        ),
+    ],
+)
+def test_multi_step_wrapper_uses_one_event_loop(wrapper, invoke):
+    """Each synchronous wrapper creates one loop for its whole async chain."""
+    running_loops = []
+
+    async def record_call(*args, **kwargs):
+        running_loops.append(asyncio.get_running_loop())
+        return _make_result("[lane: 1]")
+
+    mock_call = AsyncMock(side_effect=record_call)
+    real_run = asyncio.run
+
+    with (
+        patch.object(backend, "_call_execute", mock_call),
+        patch.object(backend.asyncio, "run", side_effect=real_run) as mock_run,
+    ):
+        invoke(_make_session(working_dir="/"))
+
+    assert mock_run.call_count == 1, wrapper
+    assert len({id(loop) for loop in running_loops}) == 1, wrapper
 
 
 # ── Path translation: harness `/` vs DOMShell `~/` ───────────────────
