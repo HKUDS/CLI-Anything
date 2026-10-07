@@ -12,6 +12,7 @@ Key ODF structure:
 """
 
 import os
+import re
 import zipfile
 import xml.etree.ElementTree as ET
 from defusedxml.ElementTree import fromstring as _defused_fromstring
@@ -114,6 +115,39 @@ def _build_writer_content(root: ET.Element, auto_styles: ET.Element,
             _add_image_ref_element(text_elem, auto_styles, item, style_counter)
 
 
+def _append_text(parent: ET.Element, text: str, previous_char: str = "") -> None:
+    """Append mixed ODF text without collapsing spaces, tabs or line breaks."""
+    def append_literal(value: str) -> None:
+        if len(parent):
+            last = parent[-1]
+            last.tail = (last.tail or "") + value
+        else:
+            parent.text = (parent.text or "") + value
+
+    # Styled text slices can split CRLF; the preceding slice emitted its break.
+    if previous_char == "\r" and text.startswith("\n"):
+        text = text[1:]
+    end = 0
+    for match in re.finditer(r" +|\t|\r\n|\r|\n", text):
+        append_literal(text[end:match.start()])
+        value = match.group()
+        if value.startswith(" "):
+            if (value == " " and match.start() > 0 and match.end() < len(text)
+                    and text[match.start() - 1] not in "\t\r\n"
+                    and text[match.end()] not in "\t\r\n"):
+                append_literal(value)
+            else:
+                space = ET.SubElement(parent, _ns("text", "s"))
+                if len(value) > 1:
+                    space.set(_nsattr("text", "c"), str(len(value)))
+        elif value == "\t":
+            ET.SubElement(parent, _ns("text", "tab"))
+        else:
+            ET.SubElement(parent, _ns("text", "line-break"))
+        end = match.end()
+    append_literal(text[end:])
+
+
 def _add_heading_element(parent: ET.Element, auto_styles: ET.Element,
                          item: Dict, style_counter: list) -> None:
     """Add a heading element to the content."""
@@ -126,7 +160,7 @@ def _add_heading_element(parent: ET.Element, auto_styles: ET.Element,
         style_counter[0] += 1
         heading.set(_nsattr("text", "style-name"), style_name)
         _create_text_auto_style(auto_styles, style_name, style, parent_style="Heading")
-    heading.text = item.get("text", "")
+    _append_text(heading, item.get("text", ""))
 
 
 def _add_paragraph_element(parent: ET.Element, auto_styles: ET.Element,
@@ -154,41 +188,23 @@ def _add_paragraph_element(parent: ET.Element, auto_styles: ET.Element,
 
             # Text before span
             if start > last_end:
-                if para.text is None:
-                    para.text = text[last_end:start]
-                else:
-                    # Add as tail of last sub-element
-                    children = list(para)
-                    if children:
-                        if children[-1].tail is None:
-                            children[-1].tail = text[last_end:start]
-                        else:
-                            children[-1].tail += text[last_end:start]
-                    else:
-                        para.text = (para.text or "") + text[last_end:start]
+                _append_text(para, text[last_end:start], text[last_end - 1:last_end])
 
             # Span element
             span_style_name = f"S_auto{style_counter[0]}"
             style_counter[0] += 1
             span = ET.SubElement(para, _ns("text", "span"))
             span.set(_nsattr("text", "style-name"), span_style_name)
-            span.text = text[start:end]
+            _append_text(span, text[start:end], text[start - 1:start])
             _create_char_auto_style(auto_styles, span_style_name, span_style)
 
             last_end = end
 
         # Text after last span
         if last_end < len(text):
-            children = list(para)
-            if children:
-                if children[-1].tail is None:
-                    children[-1].tail = text[last_end:]
-                else:
-                    children[-1].tail += text[last_end:]
-            else:
-                para.text = (para.text or "") + text[last_end:]
+            _append_text(para, text[last_end:], text[last_end - 1:last_end])
     else:
-        para.text = text
+        _append_text(para, text)
 
 
 def _add_list_element(parent: ET.Element, auto_styles: ET.Element,
@@ -200,7 +216,7 @@ def _add_list_element(parent: ET.Element, auto_styles: ET.Element,
     for list_item in item.get("items", []):
         li = ET.SubElement(list_elem, _ns("text", "list-item"))
         para = ET.SubElement(li, _ns("text", "p"))
-        para.text = str(list_item)
+        _append_text(para, str(list_item))
 
 
 def _add_table_element(parent: ET.Element, auto_styles: ET.Element,
@@ -225,7 +241,7 @@ def _add_table_element(parent: ET.Element, auto_styles: ET.Element,
         for cell_value in row_data:
             cell = ET.SubElement(row, _ns("table", "table-cell"))
             para = ET.SubElement(cell, _ns("text", "p"))
-            para.text = str(cell_value)
+            _append_text(para, str(cell_value))
 
 
 def _add_page_break_element(parent: ET.Element, auto_styles: ET.Element,
@@ -353,7 +369,7 @@ def _build_calc_content(root: ET.Element, auto_styles: ET.Element,
                         cell_elem.set(_nsattr("office", "value-type"), "string")
 
                     para = ET.SubElement(cell_elem, _ns("text", "p"))
-                    para.text = str(cell_data.get("value", ""))
+                    _append_text(para, str(cell_data.get("value", "")))
 
 
 def _build_impress_content(root: ET.Element, auto_styles: ET.Element,
@@ -378,7 +394,7 @@ def _build_impress_content(root: ET.Element, auto_styles: ET.Element,
             frame.set(_nsattr("presentation", "class"), "title")
             tb = ET.SubElement(frame, _ns("draw", "text-box"))
             para = ET.SubElement(tb, _ns("text", "p"))
-            para.text = slide_data["title"]
+            _append_text(para, slide_data["title"])
 
         # Content text box
         if slide_data.get("content"):
@@ -390,7 +406,7 @@ def _build_impress_content(root: ET.Element, auto_styles: ET.Element,
             frame.set(_nsattr("presentation", "class"), "subtitle")
             tb = ET.SubElement(frame, _ns("draw", "text-box"))
             para = ET.SubElement(tb, _ns("text", "p"))
-            para.text = slide_data["content"]
+            _append_text(para, slide_data["content"])
 
         # Additional elements
         for elem in slide_data.get("elements", []):
@@ -402,7 +418,7 @@ def _build_impress_content(root: ET.Element, auto_styles: ET.Element,
                 frame.set(_nsattr("svg", "height"), elem.get("height", "5cm"))
                 tb = ET.SubElement(frame, _ns("draw", "text-box"))
                 para = ET.SubElement(tb, _ns("text", "p"))
-                para.text = elem.get("text", "")
+                _append_text(para, elem.get("text", ""))
 
 
 def create_styles_xml(doc_type: str, project: Dict[str, Any]) -> str:

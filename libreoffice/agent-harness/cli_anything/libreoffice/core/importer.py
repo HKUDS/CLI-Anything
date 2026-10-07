@@ -374,7 +374,31 @@ def _children_by_local(elem: ET.Element, local_name: str) -> List[ET.Element]:
 
 
 def _text_content(elem: ET.Element) -> str:
-    return "".join(elem.itertext()).strip()
+    """Read ODF mixed text, including whitespace represented by empty elements."""
+    def inline_text(node: ET.Element) -> str:
+        parts = [node.text or ""]
+        for child in node:
+            if child.tag == _q("text", "s"):
+                count = max(1, _int_attr(child, "text", "c", 1))
+                if count > 1_000_000:
+                    raise ValueError("ODF space repeat count exceeds 1000000")
+                parts.append(" " * count)
+            elif child.tag == _q("text", "tab"):
+                parts.append("\t")
+            elif child.tag == _q("text", "line-break"):
+                parts.append("\n")
+            else:
+                parts.append(inline_text(child))
+            parts.append(child.tail or "")
+        return "".join(parts)
+
+    if elem.tag in {_q("text", "p"), _q("text", "h")}:
+        return inline_text(elem)
+    paragraphs = [child for child in elem.iter()
+                  if child.tag in {_q("text", "p"), _q("text", "h")}]
+    if paragraphs:
+        return "\n".join(inline_text(child) for child in paragraphs)
+    return inline_text(elem).strip()
 
 
 def _q(prefix: str, local: str) -> str:
