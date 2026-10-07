@@ -1102,6 +1102,59 @@ class TestMeltRenderE2E:
             mean = ImageStat.Stat(Image.open(frame_path).convert("RGB")).mean
             assert max(mean) > 5, f"Rendered frame appears black: {mean}"
 
+    def test_render_scaled_project_with_audio(self, session, tmp_path, monkeypatch):
+        """Downscaled renders of projects with audio must finish (melt used to hang)."""
+        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+            pytest.skip("ffmpeg and ffprobe are required")
+
+        source = str(tmp_path / "av.mp4")
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-f", "lavfi", "-i", "testsrc=s=1920x1080:d=5:r=30000/1001",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=5",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "35",
+                "-c:a", "aac", "-shortest", source,
+            ],
+            check=True, capture_output=True, timeout=120,
+        )
+        tl_mod.add_track(session, "video", "V1")
+        clip_id = media_mod.import_media(session, source)["clip_id"]
+        tl_mod.add_clip(session, clip_id, 1, "00:00:00.000", "00:00:05.000")
+
+        real_run = subprocess.run
+
+        def bounded_run(cmd, **kwargs):
+            kwargs["timeout"] = 120
+            return real_run(cmd, **kwargs)
+
+        monkeypatch.setattr(export_mod.subprocess, "run", bounded_run)
+        output_path = str(tmp_path / "scaled.mp4")
+        try:
+            export_mod.render(session, output_path, "default", width=640, height=360, overwrite=True)
+        except subprocess.TimeoutExpired:
+            pytest.fail("melt hung while rendering a downscaled project with audio")
+
+        probe = json.loads(real_run(
+            ["ffprobe", "-v", "error", "-show_streams", "-of", "json", output_path],
+            check=True, capture_output=True, text=True, timeout=60,
+        ).stdout)
+        video = next(s for s in probe["streams"] if s["codec_type"] == "video")
+        assert (video["width"], video["height"]) == (640, 360)
+        assert abs(float(video["duration"]) - 5.0) < 0.2
+        assert video.get("sample_aspect_ratio", "1:1") == "1:1"
+        assert any(s["codec_type"] == "audio" for s in probe["streams"])
+
+        frame_path = str(tmp_path / "frame.png")
+        real_run(
+            ["ffmpeg", "-y", "-v", "error", "-ss", "2.5", "-i", output_path, "-frames:v", "1", frame_path],
+            check=True, capture_output=True, timeout=60,
+        )
+        frame = Image.open(frame_path).convert("RGB")
+        for left in (0, frame.width - 4):
+            edge = ImageStat.Stat(frame.crop((left, 0, left + 4, frame.height))).mean
+            assert max(edge) > 16, f"black bar at x={left}: {edge}"
+
 
 # ============================================================================
 # 10. CHAIN LENGTH BUG REGRESSION

@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+import subprocess
 import xml.etree.ElementTree as ET
 import tempfile
 from pathlib import Path
@@ -20,6 +21,7 @@ from cli_anything.shotcut.core import export as export_mod
 from cli_anything.shotcut.core import transitions as trans_mod
 from cli_anything.shotcut.core import compositing as comp_mod
 from cli_anything.shotcut.core import preview as preview_mod
+from cli_anything.shotcut.utils import melt_backend
 from cli_anything.shotcut.utils.time import (
     timecode_to_frames, frames_to_timecode, parse_time_input,
     frames_to_seconds, seconds_to_frames,
@@ -423,6 +425,74 @@ class TestPreview:
         assert any(item["role"] == "preview-clip" for item in manifest["artifacts"])
         assert any(item["role"] == "hero" for item in manifest["artifacts"])
         assert os.path.isfile(manifest["_manifest_path"])
+
+    @staticmethod
+    def _stub_preview_backends(monkeypatch):
+        """Stub render/probe/thumbnail and record the sizes capture() asks for."""
+        calls = {"render": [], "thumb": []}
+
+        def fake_render(session_obj, output_path, preset, width, height, overwrite, prefer_ffmpeg=False):
+            calls["render"].append((width, height))
+            Path(output_path).write_bytes(b"\x00\x00\x00\x18ftypmp42")
+            return {"output": output_path, "method": "melt"}
+
+        def fake_probe(path):
+            width, height = calls["render"][-1]
+            return {"duration_seconds": 3.0, "video_streams": [{"width": width, "height": height}]}
+
+        def fake_thumb(filepath, output_path, timecode, width, height):
+            calls["thumb"].append((width, height))
+            Path(output_path).write_bytes(b"\x89PNG\r\n\x1a\nthumb")
+            return {"output": output_path, "time": timecode}
+
+        monkeypatch.setattr(export_mod, "render", fake_render)
+        monkeypatch.setattr(media_mod, "probe_media", fake_probe)
+        monkeypatch.setattr(media_mod, "generate_thumbnail", fake_thumb)
+        return calls
+
+    @pytest.mark.parametrize("project_size, sample_aspect, expected", [
+        ((1920, 1080), (1, 1), (640, 360)),
+        ((1080, 1080), (1, 1), (360, 360)),
+        ((1080, 1920), (1, 1), (202, 360)),
+        ((720, 480), (10, 11), (490, 360)),
+    ])
+    def test_capture_keeps_project_aspect(self, tmp_path, monkeypatch, project_size, sample_aspect, expected):
+        session = Session("preview_aspect")
+        session.new_project()
+        profile = session.root.find("profile")
+        profile.set("width", str(project_size[0]))
+        profile.set("height", str(project_size[1]))
+        profile.set("sample_aspect_num", str(sample_aspect[0]))
+        profile.set("sample_aspect_den", str(sample_aspect[1]))
+        calls = self._stub_preview_backends(monkeypatch)
+
+        manifest = preview_mod.capture(session, root_dir=str(tmp_path))
+
+        assert calls["render"] == [expected]
+        assert calls["thumb"] and all(size == expected for size in calls["thumb"])
+        for artifact in manifest["artifacts"]:
+            assert (artifact["width"], artifact["height"]) == expected
+
+    def test_capture_does_not_reuse_bundle_rendered_at_another_size(self, tmp_path, monkeypatch):
+        session = Session("preview_cache")
+        session.new_project()
+        profile = session.root.find("profile")
+        profile.set("width", "1080")
+        profile.set("height", "1080")
+        calls = self._stub_preview_backends(monkeypatch)
+        real_fit = preview_mod._fit_to_project
+        legacy_sizing = {"on": True}
+        monkeypatch.setattr(
+            preview_mod, "_fit_to_project",
+            lambda s, w, h: (w, h) if legacy_sizing["on"] else real_fit(s, w, h),
+        )
+
+        preview_mod.capture(session, root_dir=str(tmp_path))
+        legacy_sizing["on"] = False
+        manifest = preview_mod.capture(session, root_dir=str(tmp_path))
+
+        assert manifest["cached"] is False
+        assert calls["render"] == [(640, 360), (360, 360)]
 
     def test_latest_bundle(self, tmp_path, monkeypatch):
         session = Session("preview_test")
@@ -1350,6 +1420,45 @@ class TestExport:
         actual = parse_time_input(session_with_track.get_main_tractor().get("out", "0"), 30000, 1001)
         assert abs(actual - expected) <= 1
 
+    @staticmethod
+    def _capture_melt_calls(monkeypatch):
+        """Replace the melt subprocess with a stub that records cmd and the temp MLT."""
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            with open(cmd[1], encoding="utf-8") as f:
+                calls.append({"cmd": list(cmd), "mlt": f.read()})
+            output_path = cmd[cmd.index("-consumer") + 1].split(":", 1)[1]
+            Path(output_path).write_bytes(b"\x00\x00\x00\x18ftypmp42")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(export_mod.subprocess, "run", fake_run)
+        return calls
+
+    def test_render_finds_melt_outside_path(self, session_with_track, tmp_path, monkeypatch):
+        shotcut_melt = "C:/Program Files/Shotcut/melt.exe"
+        monkeypatch.delenv("MELT_PATH", raising=False)
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        monkeypatch.setattr("platform.system", lambda: "Windows")
+        monkeypatch.setattr("glob.glob", lambda pattern: [shotcut_melt] if "Shotcut" in pattern else [])
+        calls = self._capture_melt_calls(monkeypatch)
+
+        export_mod.render(session_with_track, str(tmp_path / "out.mp4"))
+
+        assert calls[0]["cmd"][0] == os.path.abspath(shotcut_melt)
+
+    def test_render_scaling_keeps_project_profile(self, session_with_track, tmp_path, monkeypatch):
+        """A resized consumer must keep the project timing, scan mode and colours, with square pixels."""
+        monkeypatch.setattr("shutil.which", lambda name: "melt")
+        calls = self._capture_melt_calls(monkeypatch)
+
+        export_mod.render(session_with_track, str(tmp_path / "out.mp4"), width=640, height=360)
+
+        cmd = calls[0]["cmd"]
+        for arg in ("width=640", "height=360", "frame_rate_num=30000", "frame_rate_den=1001", "progressive=1",
+                    "sample_aspect_num=1", "sample_aspect_den=1", "colorspace=709"):
+            assert arg in cmd
+
     def test_set_tractor_out_single_clip(self, session_with_track, dummy_file):
         """_update_tractor_out sets tractor out to match a single clip duration."""
         clip_id = media_mod.import_media(session_with_track, dummy_file)["clip_id"]
@@ -1381,6 +1490,33 @@ class TestExport:
         tractor = get_main_tractor(s.root)
 
         assert tractor.get("out") == "00:00:00.000"
+
+
+class TestMeltLookup:
+    def test_find_melt_uses_env_override(self, tmp_path, monkeypatch):
+        fake_melt = tmp_path / "melt.exe"
+        fake_melt.write_bytes(b"")
+        monkeypatch.setenv("MELT_PATH", str(fake_melt))
+
+        assert melt_backend.find_melt() == os.path.abspath(str(fake_melt))
+
+    def test_find_melt_finds_shotcut_install_on_windows(self, monkeypatch):
+        shotcut_melt = "C:/Program Files/Shotcut/melt.exe"
+        monkeypatch.delenv("MELT_PATH", raising=False)
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        monkeypatch.setattr("platform.system", lambda: "Windows")
+        monkeypatch.setattr("glob.glob", lambda pattern: [shotcut_melt] if "Shotcut" in pattern else [])
+
+        assert melt_backend.find_melt() == os.path.abspath(shotcut_melt)
+
+    def test_find_melt_finds_shotcut_app_on_macos(self, monkeypatch):
+        mac_melt = "/Applications/Shotcut.app/Contents/MacOS/melt"
+        monkeypatch.delenv("MELT_PATH", raising=False)
+        monkeypatch.setattr("shutil.which", lambda name: None)
+        monkeypatch.setattr("platform.system", lambda: "Darwin")
+        monkeypatch.setattr("os.path.isfile", lambda path: path == mac_melt)
+
+        assert melt_backend.find_melt() == mac_melt
 
 
 # ============================================================================
