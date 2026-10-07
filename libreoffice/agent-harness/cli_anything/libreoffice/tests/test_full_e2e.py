@@ -1088,3 +1088,20 @@ class TestCLISubprocessE2E:
         assert os.path.exists(docx_path)
         assert zipfile.is_zipfile(docx_path)
         print(f"\n  CLI DOCX: {docx_path} ({os.path.getsize(docx_path):,} bytes)")
+
+
+@pytest.mark.parametrize("spans", [[], [{"start": 0, "end": 6, "style": {"bold": True}},
+                                      {"start": 8, "end": 14, "style": {"italic": True}}]])
+def test_writer_whitespace_survives_real_conversion(tmp_path, spans):
+    """LibreOffice must see line breaks, tabs and spaces, including span tails."""
+    from cli_anything.libreoffice.utils.odf_utils import write_odf
+    from cli_anything.libreoffice.utils.lo_backend import convert
+
+    text = "First\r\n\tSecond  column\n  <第三行> & fin  \nA\n B\nA \nB\nA\t B\nA \tB"
+    project = create_document(doc_type="writer")
+    project["content"] = [{"type": "paragraph", "text": text, "spans": spans}]
+    source = tmp_path / "whitespace.odt"
+    write_odf(str(source), "writer", project)
+    convert(str(source), "txt", output_dir=str(tmp_path))
+    result = (tmp_path / "whitespace.txt").read_text(encoding="utf-8-sig")
+    assert result == text.replace("\r\n", "\n") + "\n"
