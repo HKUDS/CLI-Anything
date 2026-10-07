@@ -3,11 +3,14 @@
 Shotcut and Kdenlive both use the MLT framework. The `melt` command-line
 tool can render MLT XML projects to video files.
 
-Requires: melt (system package)
+Requires: melt (system package, or the melt bundled with a Shotcut install;
+set MELT_PATH to use another one)
     apt install melt
 """
 
+import glob
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -59,13 +62,39 @@ def _validate_extra_args(extra_args: list) -> list:
 
 
 def find_melt() -> str:
-    """Find the melt executable. Raises RuntimeError if not found."""
+    """Find the melt executable.
+
+    Search order:
+      1. ``MELT_PATH`` environment variable (explicit override).
+      2. ``melt`` on ``PATH``.
+      3. The melt bundled with a standard Shotcut install (Windows, macOS).
+
+    Raises RuntimeError if not found.
+    """
+    env_path = os.environ.get("MELT_PATH")
+    if env_path and os.path.isfile(env_path):
+        return os.path.abspath(env_path)
+
     path = shutil.which("melt")
     if path:
         return path
+
+    if platform.system() == "Windows":
+        for pattern in ("C:/Program Files/Shotcut*/melt.exe",
+                        "C:/Program Files (x86)/Shotcut*/melt.exe"):
+            matches = sorted(glob.glob(pattern), reverse=True)
+            if matches:
+                return os.path.abspath(matches[0])
+
+    if platform.system() == "Darwin":
+        mac_path = "/Applications/Shotcut.app/Contents/MacOS/melt"
+        if os.path.isfile(mac_path):
+            return mac_path
+
     raise RuntimeError(
         "melt is not installed. Install it with:\n"
-        "  apt install melt   # Debian/Ubuntu"
+        "  apt install melt   # Debian/Ubuntu\n"
+        "or install Shotcut (it bundles melt), or set MELT_PATH to the melt executable."
     )
 
 

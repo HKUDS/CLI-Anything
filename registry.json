@@ -605,9 +605,9 @@
     {
       "name": "shotcut",
       "display_name": "Shotcut",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Video editing and rendering via melt/ffmpeg",
-      "requires": "melt (apt install melt), ffmpeg (apt install ffmpeg)",
+      "requires": "melt (apt install melt, or the one bundled with Shotcut; MELT_PATH overrides), ffmpeg (apt install ffmpeg)",
       "homepage": "https://shotcut.org",
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=shotcut/agent-harness",

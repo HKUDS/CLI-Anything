@@ -18,7 +18,7 @@ pip install cli-anything-shotcut
 
 **Prerequisites:**
 - Python 3.10+
-- `melt` (MLT CLI) — required for rendering and playback
+- `melt` (MLT CLI) — required for rendering and playback; the `melt` bundled with Shotcut is found automatically, or set `MELT_PATH`
 - `ffmpeg` / `ffprobe` — required for media probing
 - `shotcut` must be installed on your system
 
@@ -368,4 +368,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.0
+1.0.1

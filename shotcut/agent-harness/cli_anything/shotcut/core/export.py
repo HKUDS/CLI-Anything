@@ -2,10 +2,9 @@
 
 import os
 import subprocess
-import shutil
 from typing import Optional
 
-from ..utils import mlt_xml
+from ..utils import melt_backend, mlt_xml
 from .session import Session
 
 
@@ -172,12 +171,7 @@ def render(session: Session, output_path: str,
         available = ", ".join(sorted(EXPORT_PRESETS.keys()))
         raise ValueError(f"Unknown preset: {preset!r}. Available: {available}")
 
-    melt = shutil.which("melt")
-    if not melt:
-        raise RuntimeError(
-            "melt is required for rendering but not found. "
-            "Install it with: apt install melt  (or equivalent for your OS)"
-        )
+    melt = melt_backend.find_melt()
     # No ffmpeg fallback — melt is the only render path because it natively
     # reads MLT XML and handles all project features (transitions, compositing,
     # multi-track). Direct ffmpeg encoding cannot interpret MLT projects.
@@ -241,7 +235,17 @@ def _render_with_melt(session: Session, output_path: str,
             cmd.extend(["ar=" + preset["ar"]])
 
         if width and height:
-            cmd.extend([f"width={width}", f"height={height}"])
+            # A resized consumer otherwise falls back to melt's default profile
+            # (25 fps, interlaced, 16:15 pixels, BT.601): video gets re-timed and
+            # pillarboxed, and audio requests stall, which hangs melt on projects
+            # with sound. Keep the project timing and colours, with square pixels.
+            cmd.extend([f"width={width}", f"height={height}",
+                        "sample_aspect_num=1", "sample_aspect_den=1"])
+            profile = root.find("profile")
+            if profile is not None:
+                for name in ("frame_rate_num", "frame_rate_den", "progressive", "colorspace"):
+                    if profile.get(name):
+                        cmd.append(f"{name}={profile.get(name)}")
 
         if extra_args:
             cmd.extend(extra_args)

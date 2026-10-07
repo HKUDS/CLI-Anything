@@ -13,10 +13,10 @@ with open("cli_anything/shotcut/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-shotcut",
-    version="1.0.0",
+    version="1.0.1",
     author="cli-anything contributors",
     author_email="",
-    description="CLI harness for Shotcut - Video editing and rendering via melt/ffmpeg. Requires: melt (apt install melt), ffmpeg (apt install ffmpeg)",
+    description="CLI harness for Shotcut - Video editing and rendering via melt/ffmpeg. Requires: melt (apt install melt, or the one bundled with Shotcut; MELT_PATH overrides), ffmpeg (apt install ffmpeg)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/HKUDS/CLI-Anything",

@@ -29,7 +29,7 @@ from . import export as export_mod
 from . import media as media_mod
 from .session import Session
 
-HARNESS_VERSION = "1.0.0"
+HARNESS_VERSION = "1.0.1"
 LIVE_PROTOCOL_VERSION = "preview-live/v1"
 DEFAULT_REFRESH_HINT_MS = 1500
 DEFAULT_SOURCE_POLL_MS = 500
@@ -70,6 +70,26 @@ def _seconds_to_timecode(seconds: float) -> str:
     minutes, rem = divmod(rem, 60 * 1000)
     whole_seconds, ms = divmod(rem, 1000)
     return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}.{ms:03d}"
+
+
+def _fit_to_project(session: Session, max_width: int, max_height: int) -> tuple[int, int]:
+    """Fit the project's display frame into a max_width x max_height box of square pixels."""
+    profile = session.root.find("profile") if session.root is not None else None
+    try:
+        width = int(profile.get("width"))
+        height = int(profile.get("height"))
+        sar_num = int(profile.get("sample_aspect_num") or 1)
+        sar_den = int(profile.get("sample_aspect_den") or 1)
+    except (AttributeError, TypeError, ValueError):
+        return max_width, max_height
+    if width <= 0 or height <= 0:
+        return max_width, max_height
+    if sar_num <= 0 or sar_den <= 0:
+        sar_num = sar_den = 1
+    display_width = width * sar_num / sar_den
+    scale = min(max_width / display_width, max_height / height)
+    # Encoders such as libx264 need even dimensions.
+    return max(2, round(display_width * scale / 2) * 2), max(2, round(height * scale / 2) * 2)
 
 
 def _project_fingerprint(session: Session) -> str:
@@ -126,13 +146,24 @@ def capture(
         )
 
     config = RECIPES[recipe]
+    render_width, render_height = _fit_to_project(session, config["width"], config["height"])
+    thumb_width, thumb_height = _fit_to_project(
+        session, config["thumbnail_width"], config["thumbnail_height"]
+    )
     source_fingerprint = _project_fingerprint(session)
     prepared = prepare_bundle(
         software="shotcut",
         recipe=recipe,
         bundle_kind="capture",
         source_fingerprint=source_fingerprint,
-        options={k: config[k] for k in ("preset", "width", "height", "sample_ratios")},
+        options={
+            "preset": config["preset"],
+            "width": render_width,
+            "height": render_height,
+            "thumbnail_width": thumb_width,
+            "thumbnail_height": thumb_height,
+            "sample_ratios": config["sample_ratios"],
+        },
         harness_version=HARNESS_VERSION,
         project_path=session.project_path,
         root_dir=root_dir,
@@ -151,16 +182,16 @@ def capture(
         session,
         preview_clip,
         preset=config["preset"],
-        width=config["width"],
-        height=config["height"],
+        width=render_width,
+        height=render_height,
         overwrite=True,
         prefer_ffmpeg=True,
     )
     clip_meta = media_mod.probe_media(preview_clip)
     duration_s = float(clip_meta.get("duration_seconds", 0.0) or 0.0)
     video_stream = (clip_meta.get("video_streams") or [{}])[0]
-    width = int(video_stream.get("width") or config["width"])
-    height = int(video_stream.get("height") or config["height"])
+    width = int(video_stream.get("width") or render_width)
+    height = int(video_stream.get("height") or render_height)
 
     warnings: List[str] = []
     artifacts = [
@@ -186,8 +217,8 @@ def capture(
                 preview_clip,
                 image_path,
                 _seconds_to_timecode(capture_time),
-                config["thumbnail_width"],
-                config["thumbnail_height"],
+                thumb_width,
+                thumb_height,
             )
         except Exception as exc:
             warnings.append(f"frame sample {index + 1} failed: {exc}")
@@ -203,8 +234,8 @@ def capture(
                 role=role,
                 kind="image",
                 label=label,
-                width=config["thumbnail_width"],
-                height=config["thumbnail_height"],
+                width=thumb_width,
+                height=thumb_height,
                 time_s=round(capture_time, 3),
             )
         )
