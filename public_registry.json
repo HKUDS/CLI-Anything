@@ -537,6 +537,26 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "pixeltable",
+      "display_name": "Pixeltable CLI",
+      "version": "latest",
+      "description": "Official Pixeltable CLI (pxt) for multimodal database, orchestration, and serving in one file — init a project, apply TableModel schema, and start HTTP services",
+      "category": "database",
+      "requires": "Python >= 3.11",
+      "homepage": "https://docs.pixeltable.com",
+      "source_url": "https://github.com/pixeltable/pixeltable",
+      "skill_md": "https://github.com/pixeltable/pixeltable-skill/blob/main/skills/pixeltable-skill/SKILL.md",
+      "package_manager": "pip",
+      "install_cmd": "pip install 'pixeltable[serve]'",
+      "entry_point": "pxt",
+      "contributors": [
+        {
+          "name": "Pixeltable",
+          "url": "https://github.com/pixeltable"
+        }
+      ]
     }
   ]
 }
