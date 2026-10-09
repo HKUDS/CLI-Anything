@@ -39,14 +39,11 @@ def list_assets(asset_type, search, node, platform, active, limit, offset, outpu
     session = Session.load()
     client = require_auth(session)
 
-    type_map = {
-        "host": "hosts", "device": "devices", "database": "databases",
-        "web": "webs", "cloud": "clouds", "gpt": "gpts",
-        "ds": "directories", "custom": "customs",
-    }
-    endpoint = type_map.get(asset_type, "hosts")
-
-    params = {"limit": limit, "offset": offset}
+    # JMS v4: /assets/assets/ filtered by category is the complete, correct
+    # surface; legacy per-type endpoints (hosts/devices/...) can return empty
+    # for data created through the unified "assets" API.
+    endpoint = "assets"
+    params = {"limit": limit, "offset": offset, "category": asset_type}
     if search:
         params["search"] = search
     if node:
@@ -77,7 +74,10 @@ def get_asset(asset_id, asset_type, output):
     }
     endpoint = type_map.get(asset_type, "hosts")
 
-    resp = client.get(f"assets/{endpoint}/{asset_id}/")
+    # v4 unified endpoint first; legacy per-type endpoint as fallback.
+    resp = client.get(f"assets/assets/{asset_id}/")
+    if resp.status_code == 404:
+        resp = client.get(f"assets/{endpoint}/{asset_id}/")
     handle_api_error(resp, "get asset")
     print_result(resp.json(), fmt=output)
 

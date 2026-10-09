@@ -16,7 +16,7 @@ commands:
     subcommands:
       - name: login
         description: Authenticate to JumpServer and store session token
-        options: ["--url", "--username", "--password", "--org", "--insecure"]
+        options: ["--url", "--key-id", "--key-secret", "--username", "--password", "--org", "--insecure"]
       - name: logout
         description: Clear the current session
       - name: status
@@ -240,8 +240,11 @@ Stateful CLI harness for JumpServer bastion host. Manage assets, users, permissi
 # Install
 cd agent-harness && pip install -e .
 
-# Authenticate
-cli-anything-jumpserver auth login --url https://jumpserver.example.com --username admin
+# Authenticate (JMS v4 recommended: AccessKey 访问密钥, permanent)
+cli-anything-jumpserver auth login --url https://jumpserver.example.com
+# then enter AccessKey ID / Secret at the hidden prompts
+# (or pass --key-id/--key-secret; password login via
+#  --username/--password also works but session tokens expire ~1h)
 
 # List hosts
 cli-anything-jumpserver asset list --type host

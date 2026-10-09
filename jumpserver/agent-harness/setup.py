@@ -5,7 +5,7 @@ with open("cli_anything/jumpserver/README.md", "r") as fh:
 
 setup(
     name="cli-anything-jumpserver",
-    version="0.1.0",
+    version="0.2.0",
     description="Stateful CLI harness for JumpServer bastion host management",
     long_description=long_description,
     long_description_content_type="text/markdown",
