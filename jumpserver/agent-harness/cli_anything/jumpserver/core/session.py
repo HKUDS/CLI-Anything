@@ -32,6 +32,11 @@ class Session:
     org_name: str = ""
     verify_ssl: bool = True
     timeout: int = 60
+    # "Signature" = permanent AccessKey (keyid+secret, HMAC http-signature;
+    #                 the API auth JMS v4 offers end users);
+    # "Token" = PrivateToken / legacy default; "Bearer" = v4 session JWT.
+    auth_scheme: str = "Token"
+    access_key_id: str = ""
     _current_user: dict[str, Any] | None = field(default=None, repr=False)
 
     def save(self) -> None:
@@ -85,6 +90,10 @@ class JumpServerClient:
             backoff_factor=0.5,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET", "HEAD", "OPTIONS"],
+            # Return the final response instead of raising
+            # MaxRetryError, so callers can show the server's real error
+            # body (e.g. JMS returns 500 on unknown AccessKey keyId).
+            raise_on_status=False,
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self._http.mount("http://", adapter)
@@ -97,7 +106,7 @@ class JumpServerClient:
             "Content-Type": "application/json",
         }
         if self.session.token:
-            h["Authorization"] = f"Token {self.session.token}"
+            h["Authorization"] = f"{self.session.auth_scheme} {self.session.token}"
         if self.session.org_id:
             h["X-JMS-ORG"] = self.session.org_id
         return h
@@ -110,6 +119,35 @@ class JumpServerClient:
         self, method: str, path: str, **kwargs
     ) -> requests.Response:
         url = self._url(path)
+        if self.session.auth_scheme == "Signature" and self.session.access_key_id:
+            from urllib.parse import urlparse, urlencode
+            from cli_anything.jumpserver.utils import httpsig_auth
+            parts = urlparse(url)
+            # Fold params into the URL BEFORE signing so the signed
+            # (request-target) exactly matches what goes on the wire —
+            # HeaderVerifier validates against the server's full path+query.
+            params = kwargs.pop("params", None)
+            query = parts.query
+            if params:
+                clean = {k: v for k, v in params.items() if v is not None}
+                if clean:
+                    q = urlencode(clean, doseq=True)
+                    query = (query + "&" + q) if query else q
+            path_with_query = parts.path + (("?" + query) if query else "")
+            if query != parts.query:
+                url = "%s://%s%s?%s" % (parts.scheme, parts.netloc,
+                                        parts.path, query)
+            sig_headers = httpsig_auth.sign(
+                method=method,
+                path_with_query=path_with_query,
+                key_id=self.session.access_key_id,
+                secret=self.session.token,
+            )
+            base = self.headers
+            base.pop("Authorization", None)
+            base.update(sig_headers)
+            kwargs.setdefault("headers", base)
+            return self._http.request(method, url, **kwargs)
         kwargs.setdefault("headers", self.headers)
         return self._http.request(method, url, **kwargs)
 
@@ -155,9 +193,35 @@ class JumpServerClient:
         self.session.clear()
 
     def get_current_user(self) -> dict[str, Any]:
-        """Get current authenticated user profile."""
+        """Get current authenticated user profile.
+
+        If the configured auth scheme is rejected (401/403) and a token is
+        present, retry once with Token<->Bearer fallback and persist the
+        scheme that works. Signature mode tries Bearer fallback last.
+        """
         resp = self.get("users/profile/")
-        resp.raise_for_status()
+        if resp.status_code in (401, 403) and self.session.token:
+            order = (["Bearer", "Token"] if self.session.auth_scheme == "Signature"
+                     else ["Token"] if self.session.auth_scheme == "Bearer"
+                     else ["Bearer"])
+            saved = self.session.auth_scheme
+            for alt in order:
+                self.session.auth_scheme = alt
+                if alt == "Signature":
+                    continue
+                resp = self.get("users/profile/")
+                if resp.status_code == 200:
+                    self.session.auth_scheme = alt
+                    self.session.save()
+                    break
+            else:
+                self.session.auth_scheme = saved
+                resp = self.get("users/profile/")
+        if resp.status_code >= 400:
+            body = (resp.text or "").strip()[:200]
+            raise RuntimeError(
+                "auth check failed HTTP %s (%s): %s"
+                % (resp.status_code, self.session.auth_scheme, body))
         return resp.json()
 
     def paginate(

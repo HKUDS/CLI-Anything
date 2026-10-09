@@ -36,15 +36,23 @@ from cli_anything.jumpserver.utils import (
 
 @pytest.fixture(autouse=True)
 def clean_session_state():
-    """Ensure session and state files don't persist between tests."""
+    """Ensure session and state files don't persist between tests.
+
+    Any real on-disk session (e.g. a developer's live login) is stashed and
+    restored after the run so unit tests never destroy working credentials.
+    """
+    stash = {}
     for f in (SESSION_FILE, STATE_FILE):
         if f.exists():
+            stash[str(f)] = f.read_bytes()
             f.unlink()
     reset_state()
     yield
     for f in (SESSION_FILE, STATE_FILE):
         if f.exists():
             f.unlink()
+    for path, data in stash.items():
+        Path(path).write_bytes(data)
     reset_state()
 
 
@@ -569,3 +577,93 @@ class TestTruncation:
         long_val = _truncate("this_is_a_very_long_string", 10)
         assert long_val.endswith("...")
         assert len(long_val) == 10
+
+
+# ─── AccessKey (JMS v4) HTTP Signature tests ────────────────────
+
+
+class TestHttpSignature:
+    """httpsig_auth: the signature scheme JMS v4 AccessKeys require."""
+
+    def test_sign_matches_known_hmac(self):
+        import base64
+        import hashlib
+        import hmac
+        from cli_anything.jumpserver.utils import httpsig_auth
+
+        headers = httpsig_auth.sign(
+            method="get",
+            path_with_query="/api/v1/assets/assets/?limit=10",
+            key_id="24b4c0b1-0000-4000-8000-000000000000",
+            secret="testsecret",
+            date="Thu, 09 Oct 2026 10:30:00 GMT",
+        )
+        signing_string = (
+            "(request-target): get /api/v1/assets/assets/?limit=10\n"
+            "date: Thu, 09 Oct 2026 10:30:00 GMT"
+        )
+        expected = base64.b64encode(hmac.new(
+            b"testsecret", signing_string.encode(), hashlib.sha256
+        ).digest()).decode()
+        auth = headers["Authorization"]
+        assert auth.startswith(
+            'Signature keyId="24b4c0b1-0000-4000-8000-000000000000",'
+            'algorithm="hmac-sha256",headers="(request-target) date",')
+        assert expected in auth
+        assert headers["Date"] == "Thu, 09 Oct 2026 10:30:00 GMT"
+
+    @patch("requests.Session.request")
+    def test_client_signs_query_params_into_url(self, mock_request, empty_session):
+        """Regression: params must be folded into the URL BEFORE signing.
+
+        JMS HeaderVerifier validates the signature against the full
+        request-target including query string; signing only the path and
+        letting requests append params later produced 'Invalid signature'
+        401s on every list call.
+        """
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"count": 0, "results": []}
+        mock_request.return_value = mock_response
+
+        empty_session.base_url = "https://jms.example.com"
+        empty_session.token = "testsecret"
+        empty_session.access_key_id = "keyid-1"
+        empty_session.auth_scheme = "Signature"
+        client = empty_session.get_client()
+
+        client.get("assets/assets/", params={"limit": 10, "category": "host"})
+
+        args, kwargs = mock_request.call_args
+        sent_url = kwargs.get("url", args[1] if len(args) > 1 else "")
+        sent_headers = kwargs.get("headers", args[2] if len(args) > 2 else {})
+        # query must already be on the URL (not passed as params afterwards)
+        assert "limit=10" in sent_url and "category=host" in sent_url
+        assert "params" not in kwargs or not kwargs["params"]
+        auth = sent_headers.get("Authorization", "")
+        assert auth.startswith("Signature keyId=")
+        # signed path must equal the wire path+query
+        signed_target = ("get %s" % sent_url.replace(
+            "https://jms.example.com", ""))
+        assert signed_target.split("?")[1]  # query present in signature input
+        assert "Date" in sent_headers
+
+    @patch("requests.Session.request")
+    def test_get_current_user_falls_back_from_signature(self, mock_request, empty_session):
+        """Signature rejected -> probe Bearer then Token, persist winner."""
+        ok = MagicMock(status_code=200)
+        ok.json.return_value = {"username": "admin"}
+        denied = MagicMock(status_code=401)
+        denied.text = ""
+        denied.json.return_value = {"detail": "denied"}
+        mock_request.side_effect = [denied, denied, ok]
+
+        empty_session.base_url = "https://jms.example.com"
+        empty_session.token = "secret"
+        empty_session.access_key_id = "kid"
+        empty_session.auth_scheme = "Signature"
+        client = empty_session.get_client()
+        user = client.get_current_user()
+
+        assert user["username"] == "admin"
+        assert empty_session.auth_scheme == "Token"

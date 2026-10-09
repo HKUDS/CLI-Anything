@@ -24,14 +24,29 @@ def auth_group():
 
 @auth_group.command(name="login")
 @click.option("--url", "-u", required=True, help="JumpServer base URL (e.g., https://jumpserver.example.com)", envvar="JUMPSERVER_URL")
-@click.option("--username", "-n", required=True, help="Username", envvar="JUMPSERVER_USERNAME")
-@click.option("--password", "-p", required=True, help="Password", envvar="JUMPSERVER_PASSWORD")
+@click.option("--key-id", default=None, help="AccessKey ID (JMS v4 访问密钥, 永久有效)", envvar="JUMPSERVER_KEY_ID")
+@click.option("--key-secret", default=None, prompt=False, hide_input=True,
+              help="AccessKey Secret (JMS v4 访问密钥 Secret；建议用环境变量 JUMPSERVER_KEY_SECRET 传入，避免留在 shell 历史)",
+              envvar="JUMPSERVER_KEY_SECRET")
+@click.option("--username", "-n", default=None, help="Username (password login)", envvar="JUMPSERVER_USERNAME")
+@click.option("--password", "-p", default=None, help="Password (password login)", envvar="JUMPSERVER_PASSWORD")
 @click.option("--org", default=None, help="Organization ID (for multi-org deployments)")
 @click.option("--insecure", is_flag=True, help="Disable SSL verification")
 @click.option("--output", "-o", type=click.Choice(["table", "json", "yaml"]), default="table", help="Output format")
 @click.pass_context
-def login(ctx, url, username, password, org, insecure, output):
-    """Authenticate to JumpServer and store session token."""
+def login(ctx, url, key_id, key_secret, username, password, org, insecure, output):
+    """Authenticate to JumpServer and store session token.
+
+    Modes: --key-id/--key-secret (AccessKey 访问密钥, permanent, recommended
+    for JMS v4) or --username/--password (session token, expires ~1h).
+    """
+    if not (key_id and key_secret) and not (username and password):
+        # Interactive AccessKey mode: prompt (hidden) so secrets never
+        # appear on the command line, in env, or in shell history.
+        click.echo("Enter your JumpServer 访问密钥 (AccessKey). "
+                   "Create one in the Web UI: 头像 → 安全设置/API-Key → 访问密钥")
+        key_id = click.prompt("AccessKey ID")
+        key_secret = click.prompt("AccessKey Secret", hide_input=True)
     session = Session(
         base_url=url.rstrip("/"),
         verify_ssl=not insecure,
@@ -41,7 +56,15 @@ def login(ctx, url, username, password, org, insecure, output):
 
     try:
         client = session.get_client()
-        result = client.login(username, password)
+        if key_id:
+            session.token = key_secret.strip()
+            session.access_key_id = key_id.strip()
+            session.auth_scheme = "Signature"
+            session.token_expiry = 0.0
+            session.username = username or "accesskey"
+            session.save()
+        else:
+            result = client.login(username, password)
         user_info = client.get_current_user()
         session._current_user = user_info
         session.save()

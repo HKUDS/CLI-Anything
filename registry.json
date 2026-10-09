@@ -8,9 +8,9 @@
     {
       "name": "jumpserver",
       "display_name": "JumpServer",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Bastion host management — manage assets, users, permissions, sessions, accounts, and audit logs via JumpServer REST API",
-      "requires": "JumpServer v3.0+ instance",
+      "requires": "JumpServer v3.0+ instance (v4 AccessKey HTTP-signature auth supported)",
       "homepage": "https://www.jumpserver.org",
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=jumpserver/agent-harness",
