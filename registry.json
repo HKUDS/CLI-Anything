@@ -1522,7 +1522,7 @@
       "requires": "IssueBadge account + API key (app.issuebadge.com → Developer → API keys)",
       "homepage": "https://issuebadge.com",
       "source_url": "https://github.com/issuebadge2026/cli-anything-issuebadge",
-      "install_cmd": "pip install git+https://github.com/issuebadge2026/cli-anything-issuebadge.git",
+      "install_cmd": "pip install cli-anything-issuebadge",
       "entry_point": "cli-anything-issuebadge",
       "skill_md": "https://github.com/issuebadge2026/cli-anything-issuebadge/blob/main/cli_anything/issuebadge/skills/SKILL.md",
       "category": "web",
