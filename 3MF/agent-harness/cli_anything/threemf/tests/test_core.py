@@ -21,6 +21,7 @@ from xml.etree import ElementTree as ET
 
 import numpy as np
 import pytest
+from click.testing import CliRunner
 
 from cli_anything.threemf.core.parser import MeshData, ThreeMFData
 from cli_anything.threemf.utils import threemf_backend as backend
@@ -28,6 +29,7 @@ from cli_anything.threemf.core import inspector, repair, modifier
 from cli_anything.threemf.core import parser as parser_mod
 from cli_anything.threemf.core.inspector import DetectedHole, InspectParams
 from cli_anything.threemf.core.modifier import resize_holes, resize_single_hole
+from cli_anything.threemf.threemf_cli import cli
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +378,47 @@ class TestParser:
             source_path="",
         )
         assert data.raw_entries["thumbnail.png"] == payload
+
+    def test_repair_cli_roundtrips_float64_vertex_coordinates(self, tmp_path) -> None:
+        """Repair preserves close vertices translated away from the origin."""
+        source = tmp_path / "sliver.3mf"
+        output = tmp_path / "repaired.3mf"
+        model_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="{parser_mod.NS_CORE}">
+  <resources>
+    <object id="1" name="sliver" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="1000.001" y="0" z="0"/>
+          <vertex x="1000.003" y="0" z="0"/>
+          <vertex x="1000.001" y="1" z="0"/>
+          <vertex x="1000.001" y="0" z="1"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1"/>
+          <triangle v1="0" v2="1" v3="3"/>
+          <triangle v1="0" v2="3" v3="2"/>
+          <triangle v1="1" v2="2" v3="3"/>
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"""
+        with zipfile.ZipFile(source, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("3D/3dmodel.model", model_xml.encode("utf-8"))
+
+        original = parser_mod.parse_3mf(str(source)).meshes[0]
+        original_volume = backend.mesh_to_trimesh(original).volume
+        result = CliRunner().invoke(
+            cli, ["--json", "repair", str(source), "--output", str(output)]
+        )
+
+        assert result.exit_code == 0, result.output
+        repaired = parser_mod.parse_3mf(str(output)).meshes[0]
+        np.testing.assert_array_equal(repaired.vertices, original.vertices)
+        assert np.ptp(repaired.vertices[:, 0]) == pytest.approx(0.002)
+        assert backend.mesh_to_trimesh(repaired).volume == pytest.approx(original_volume)
 
     def test_parse_resize_write_preserves_triangle_attributes_and_component_transforms(self, tmp_path) -> None:
         """A 3MF fixture keeps triangle material/vendor attrs after vertex edits and write."""

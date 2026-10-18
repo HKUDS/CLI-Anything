@@ -370,9 +370,9 @@ def _build_mesh_element(md: MeshData, ns: str) -> ET.Element:
         ET.SubElement(
             verts_el,
             _tag("vertex", ns),
-            x=f"{row[0]:.6g}",
-            y=f"{row[1]:.6g}",
-            z=f"{row[2]:.6g}",
+            x=f"{row[0]:.17g}",
+            y=f"{row[1]:.17g}",
+            z=f"{row[2]:.17g}",
         )
 
     # Triangles
