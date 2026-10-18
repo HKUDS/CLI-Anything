@@ -28,7 +28,7 @@ GEOMETRY_TYPES = {
 
 
 def _field_type_enum(type_name: str):
-    from qgis.PyQt.QtCore import QMetaType
+    from qgis.core import Qgis
 
     normalized = type_name.strip().lower()
     if normalized not in FIELD_TYPES:
@@ -37,7 +37,15 @@ def _field_type_enum(type_name: str):
         )
 
     enum_name = FIELD_TYPES[normalized][1]
-    return getattr(QMetaType.Type, enum_name), FIELD_TYPES[normalized][0]
+    if Qgis.QGIS_VERSION_INT < 33800:
+        from qgis.PyQt.QtCore import QVariant
+
+        field_type = getattr(QVariant, enum_name)
+    else:
+        from qgis.PyQt.QtCore import QMetaType
+
+        field_type = getattr(QMetaType.Type, enum_name)
+    return field_type, FIELD_TYPES[normalized][0]
 
 
 def parse_field_specs(field_specs: Iterable[str]) -> list[dict]:
