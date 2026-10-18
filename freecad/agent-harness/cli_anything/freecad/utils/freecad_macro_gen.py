@@ -49,6 +49,11 @@ def _gen_header() -> List[str]:
 
 
 _RENDERABLE_PRIMITIVES = {"box", "cylinder", "sphere", "cone", "torus"}
+_BOOLEAN_OP_TYPES = {
+    "cut": "Part::Cut",
+    "fuse": "Part::Fuse",
+    "common": "Part::Common",
+}
 
 
 def _emit_primitive(lines: List[str], part_type: str, name: str, props: Dict[str, Any]) -> bool:
@@ -165,6 +170,8 @@ def _gen_parts(project: dict) -> List[str]:
 
     for part in parts:
         part_type = str(part.get("type", "box")).lower()
+        if part_type in _BOOLEAN_OP_TYPES:
+            continue
         name = _safe_name(part.get("name", f"Part_{part_type}"))
         render_spec = _render_spec_for_part(project, part)
         props = render_spec["params"] if render_spec else part.get("params", part.get("properties", {}))
@@ -194,6 +201,26 @@ def _gen_boolean_ops(project: dict) -> List[str]:
         "intersect": "Part::Common",
         "intersection": "Part::Common",
     }
+
+    for part in project.get("parts", []):
+        op_type = str(part.get("type", "")).lower()
+        fc_type = _BOOLEAN_OP_TYPES.get(op_type)
+        if not fc_type:
+            continue
+
+        params = part.get("params", {})
+        base_part = _part_by_id(project, params.get("base_id"))
+        tool_part = _part_by_id(project, params.get("tool_id"))
+        if not base_part or not tool_part:
+            continue
+
+        name = _safe_name(part.get("name", f"BoolOp_{op_type}"))
+        base_name = _safe_name(base_part.get("name", ""))
+        tool_name = _safe_name(tool_part.get("name", ""))
+        lines.append(f"obj_{name} = doc.addObject('{fc_type}', '{name}')")
+        lines.append(f"obj_{name}.Base = doc.getObject('{base_name}')")
+        lines.append(f"obj_{name}.Tool = doc.getObject('{tool_name}')")
+        lines.append("")
 
     for op in boolean_ops:
         op_type = op.get("type", "fuse").lower()
@@ -446,11 +473,12 @@ def _gen_placements(project: dict) -> List[str]:
     for part in parts:
         name = _safe_name(part.get("name", ""))
         render_spec = _render_spec_for_part(project, part)
-        if render_spec is None:
+        part_type = str(part.get("type", "")).lower()
+        if render_spec is None and part_type not in _BOOLEAN_OP_TYPES:
             lines.append(f"# WARNING: Skipping placement for unsupported part '{name}'")
             lines.append("")
             continue
-        placement = render_spec.get("placement", {})
+        placement = (render_spec or part).get("placement", {})
 
         if not placement:
             continue

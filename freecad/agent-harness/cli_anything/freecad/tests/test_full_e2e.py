@@ -325,6 +325,21 @@ class TestIntermediateFiles:
 
         print(f"\n  Macro: {macro_path} ({len(macro):,} chars, {macro.count(chr(10))} lines)")
 
+    def test_macro_generation_includes_part_boolean_results(self, tmp_path):
+        """Export macros should materialize boolean results stored in parts."""
+        proj = create_document(name="BooleanExport")
+        add_part(proj, "box", name="Base")
+        add_part(proj, "cylinder", name="Tool")
+        boolean_op(proj, "cut", 0, 1, name="CutResult")
+
+        macro = generate_macro(proj, str(tmp_path / "cut.step"))
+
+        assert "doc.addObject('Part::Cut', 'CutResult')" in macro
+        assert "obj_CutResult.Base = doc.getObject('Base')" in macro
+        assert "obj_CutResult.Tool = doc.getObject('Tool')" in macro
+        assert "Unknown part type 'cut'" not in macro
+        assert "Skipping placement for unsupported part 'CutResult'" not in macro
+
     def test_macro_generation_body_primitives_and_patterns(self, tmp_path):
         """Generate a macro containing body primitive placements and pattern features."""
         proj = create_document(name="MacroBodyTower")
