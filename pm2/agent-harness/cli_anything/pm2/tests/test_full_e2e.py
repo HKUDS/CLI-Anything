@@ -155,3 +155,20 @@ class TestProcessMetricsE2E:
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert isinstance(data, list)
+
+
+class TestLifecycleE2E:
+    """E2E tests for lifecycle commands."""
+
+    def test_stop_nonexistent_process(self):
+        """Stopping a process that does not exist exits with code 1."""
+        result = _run_cli("--json", "lifecycle", "stop", "__nonexistent_process_xyz__")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert data["success"] is False
+
+    def test_start_missing_script(self):
+        """Starting a script that does not exist exits with code 1."""
+        result = _run_cli("lifecycle", "start", "/nonexistent/__missing_script_xyz__.js")
+        assert result.returncode == 1
+        assert "[ERROR]" in result.stdout

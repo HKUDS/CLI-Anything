@@ -354,3 +354,50 @@ class TestFormatBytes:
         result = _format_bytes(52428800)  # 50 MB
         assert "MB" in result
         assert "50.0" in result
+
+
+# ===========================================================================
+# 9. CLI exit status
+# ===========================================================================
+
+_CLI_COMMANDS = [
+    ("cli_anything.pm2.core.lifecycle.restart_process", ["lifecycle", "restart", "app"]),
+    ("cli_anything.pm2.core.lifecycle.stop_process", ["lifecycle", "stop", "app"]),
+    ("cli_anything.pm2.core.lifecycle.start_process", ["lifecycle", "start", "app.js"]),
+    ("cli_anything.pm2.core.lifecycle.delete_process", ["lifecycle", "delete", "app"]),
+    ("cli_anything.pm2.core.logs.view_logs", ["logs", "view", "app"]),
+    ("cli_anything.pm2.core.logs.flush_logs", ["logs", "flush", "app"]),
+    ("cli_anything.pm2.core.system.save", ["system", "save"]),
+]
+
+
+class TestCliExitStatus:
+    """Commands exit 1 when PM2 reports a failure, 0 otherwise."""
+
+    @pytest.mark.parametrize("target,args", _CLI_COMMANDS)
+    def test_failure_exits_1(self, target, args):
+        from click.testing import CliRunner
+        from cli_anything.pm2.pm2_cli import main
+        with patch(target, return_value={"success": False, "message": "boom"}):
+            result = CliRunner().invoke(main, args)
+        assert result.exit_code == 1
+        assert "[ERROR] boom" in result.output
+
+    @pytest.mark.parametrize("target,args", _CLI_COMMANDS)
+    def test_success_exits_0(self, target, args):
+        from click.testing import CliRunner
+        from cli_anything.pm2.pm2_cli import main
+        with patch(target, return_value={"success": True, "message": "done"}):
+            result = CliRunner().invoke(main, args)
+        assert result.exit_code == 0
+        assert "[OK] done" in result.output
+
+    def test_failure_json_still_prints_result(self):
+        from click.testing import CliRunner
+        from cli_anything.pm2.pm2_cli import main
+        failed = {"action": "stop", "process": "app", "success": False,
+                  "stdout": "", "stderr": "Process or Namespace app not found"}
+        with patch("cli_anything.pm2.core.lifecycle.stop_process", return_value=failed):
+            result = CliRunner().invoke(main, ["--json", "lifecycle", "stop", "app"])
+        assert result.exit_code == 1
+        assert json.loads(result.output) == failed

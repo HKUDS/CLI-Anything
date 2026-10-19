@@ -52,6 +52,12 @@ def _output(data, as_json: bool):
                     click.echo(str(item))
 
 
+def _exit_on_failure(data):
+    """Exit with status 1 when a PM2 command reported a failure."""
+    if isinstance(data, dict) and data.get("success") is False:
+        sys.exit(1)
+
+
 # ── Main Group ───────────────────────────────────────────────────────────
 
 @click.group(invoke_without_command=True)
@@ -125,6 +131,7 @@ def lifecycle_restart(ctx, name):
     as_json = ctx.obj["json"]
     data = lifecycle_mod.restart_process(name, as_json=as_json)
     _output(data, as_json)
+    _exit_on_failure(data)
 
 
 @lifecycle.command("stop")
@@ -135,6 +142,7 @@ def lifecycle_stop(ctx, name):
     as_json = ctx.obj["json"]
     data = lifecycle_mod.stop_process(name, as_json=as_json)
     _output(data, as_json)
+    _exit_on_failure(data)
 
 
 @lifecycle.command("start")
@@ -146,6 +154,7 @@ def lifecycle_start(ctx, script, name):
     as_json = ctx.obj["json"]
     data = lifecycle_mod.start_process(script, name=name, as_json=as_json)
     _output(data, as_json)
+    _exit_on_failure(data)
 
 
 @lifecycle.command("delete")
@@ -156,6 +165,7 @@ def lifecycle_delete(ctx, name):
     as_json = ctx.obj["json"]
     data = lifecycle_mod.delete_process(name, as_json=as_json)
     _output(data, as_json)
+    _exit_on_failure(data)
 
 
 # Alias to avoid name collision with the click group
@@ -192,6 +202,7 @@ def logs_view(ctx, name, lines):
     as_json = ctx.obj["json"]
     data = logs.view_logs(name, lines=lines, as_json=as_json)
     _output(data, as_json)
+    _exit_on_failure(data)
 
 
 @logs_group.command("flush")
@@ -202,6 +213,7 @@ def logs_flush(ctx, name):
     as_json = ctx.obj["json"]
     data = logs.flush_logs(name=name, as_json=as_json)
     _output(data, as_json)
+    _exit_on_failure(data)
 
 
 # ── System Group ─────────────────────────────────────────────────────────
@@ -220,6 +232,7 @@ def system_save(ctx):
     as_json = ctx.obj["json"]
     data = system.save(as_json=as_json)
     _output(data, as_json)
+    _exit_on_failure(data)
 
 
 @system_group.command("startup")
