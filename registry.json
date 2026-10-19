@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "betaflight",
+      "display_name": "Betaflight",
+      "version": "1.0.0",
+      "description": "Inspect board configs, build and flash firmware, and configure flight controllers over MSP",
+      "requires": "Python 3.10+, make and ARM GNU GCC 13.3.1 for builds, dfu-util for flashing",
+      "homepage": "https://betaflight.com",
+      "source_url": "https://github.com/3u2t/cli-anything-betaflight",
+      "install_cmd": "pip install git+https://github.com/3u2t/cli-anything-betaflight.git#subdirectory=agent-harness",
+      "entry_point": "cli-anything-betaflight",
+      "skill_md": "https://github.com/3u2t/cli-anything-betaflight/blob/main/skills/cli-anything-betaflight/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "3u2t",
+          "url": "https://github.com/3u2t"
+        }
+      ]
     }
   ]
 }
