@@ -5,7 +5,7 @@ with open("cli_anything/krita/README.md", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-krita",
-    version="1.0.0",
+    version="1.0.1",
     description="CLI harness for Krita digital painting application",
     long_description=long_description,
     long_description_content_type="text/markdown",

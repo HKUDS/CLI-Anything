@@ -7,6 +7,7 @@ be installed.
 
 import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -93,9 +94,13 @@ class TestRealKritaExport:
     Krita MUST be installed. Tests fail (not skip) if Krita is missing.
     """
 
-    def test_export_png(self, tmp_dir):
+    @pytest.mark.parametrize("colorspace,depth", [
+        ("RGBA", "U8"), ("RGBA", "U16"), ("GRAYA", "U8"), ("CMYKA", "U8"),
+    ])
+    def test_export_png(self, tmp_dir, colorspace, depth):
         krita_path = find_krita()
-        proj = create_project(name="PNG Export", width=256, height=256)
+        proj = create_project(name="PNG Export", width=256, height=256,
+                              colorspace=colorspace, depth=depth)
         add_layer(proj, "TestLayer")
 
         kra_path = os.path.join(tmp_dir, "export_test.kra")
@@ -107,17 +112,15 @@ class TestRealKritaExport:
             capture_output=True, text=True, timeout=60,
         )
 
-        if result.returncode == 0 and os.path.exists(png_path):
-            size = os.path.getsize(png_path)
-            assert size > 0
-            # Validate PNG magic bytes
-            with open(png_path, "rb") as f:
-                magic = f.read(8)
-                assert magic[:4] == b"\x89PNG", f"Not a valid PNG: {magic}"
-            print(f"\n  PNG: {png_path} ({size:,} bytes)")
-        else:
-            # Krita headless export may require display on some systems
-            pytest.skip(f"Krita export failed (may need display): {result.stderr[:200]}")
+        assert result.returncode == 0, result.stderr
+        assert os.path.isfile(png_path), result.stderr
+        size = os.path.getsize(png_path)
+        assert size > 0
+        # Validate PNG magic bytes
+        with open(png_path, "rb") as f:
+            magic = f.read(8)
+            assert magic[:4] == b"\x89PNG", f"Not a valid PNG: {magic}"
+        print(f"\n  PNG: {png_path} ({size:,} bytes)")
 
     def test_export_jpeg(self, tmp_dir):
         krita_path = find_krita()
@@ -132,15 +135,14 @@ class TestRealKritaExport:
             capture_output=True, text=True, timeout=60,
         )
 
-        if result.returncode == 0 and os.path.exists(jpeg_path):
-            size = os.path.getsize(jpeg_path)
-            assert size > 0
-            with open(jpeg_path, "rb") as f:
-                magic = f.read(2)
-                assert magic == b"\xff\xd8", f"Not a valid JPEG: {magic}"
-            print(f"\n  JPEG: {jpeg_path} ({size:,} bytes)")
-        else:
-            pytest.skip(f"Krita export failed (may need display): {result.stderr[:200]}")
+        assert result.returncode == 0, result.stderr
+        assert os.path.isfile(jpeg_path), result.stderr
+        size = os.path.getsize(jpeg_path)
+        assert size > 0
+        with open(jpeg_path, "rb") as f:
+            magic = f.read(2)
+            assert magic == b"\xff\xd8", f"Not a valid JPEG: {magic}"
+        print(f"\n  JPEG: {jpeg_path} ({size:,} bytes)")
 
 
 # ===========================================================================
@@ -174,7 +176,7 @@ class TestCLISubprocess:
         return subprocess.run(
             self.CLI_BASE + args,
             capture_output=True, text=True,
-            check=check,
+            check=check, timeout=60,
         )
 
     def test_help(self):
@@ -209,6 +211,28 @@ class TestCLISubprocess:
         assert result.returncode == 0
         presets = json.loads(result.stdout)
         assert len(presets) > 0
+
+    def test_render_creates_png_with_project_dimensions(self, tmp_dir):
+        project = os.path.join(tmp_dir, "render.json")
+        output = os.path.join(tmp_dir, "render.png")
+        self._run(["--json", "project", "new", "-n", "Render Test",
+                   "-w", "64", "-h", "48", "-o", project])
+        result = self._run(["--json", "-p", project, "export", "render", output])
+        data = json.loads(result.stdout)
+        assert os.path.isfile(output), data
+        assert data["file_size"] == os.path.getsize(output) > 0
+        with open(output, "rb") as image:
+            header = image.read(24)
+        assert header[:8] == b"\x89PNG\r\n\x1a\n"
+        assert struct.unpack(">II", header[16:24]) == (64, 48)
+
+        # Replacing an existing destination must also produce a fresh render.
+        with open(output, "wb") as image:
+            image.write(b"old export")
+        result = self._run(["--json", "-p", project, "export", "render", output, "--overwrite"])
+        assert json.loads(result.stdout)["file_size"] == os.path.getsize(output) > 10
+        with open(output, "rb") as image:
+            assert image.read(8) == b"\x89PNG\r\n\x1a\n"
 
     def test_filter_list(self):
         result = self._run(["--json", "filter", "list"])

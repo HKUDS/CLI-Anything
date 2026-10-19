@@ -67,21 +67,27 @@ cli-anything-krita --project project.json
 
 | Preset | Format | Description |
 |--------|--------|-------------|
-| `png` | PNG | Full alpha, compression 6 |
-| `png-web` | PNG | Optimized for web |
-| `jpeg` | JPEG | Quality 90 |
-| `jpeg-web` | JPEG | Quality 75 |
-| `tiff` | TIFF | Uncompressed |
+| `png` | PNG | Krita defaults |
+| `png-web` | PNG | Alias using Krita defaults |
+| `jpeg` | JPEG | Krita defaults |
+| `jpeg-web` | JPEG | Alias using Krita defaults |
+| `tiff` | TIFF | Krita defaults |
 | `psd` | PSD | Photoshop compatible |
 | `pdf` | PDF | Document export |
 | `svg` | SVG | Vector export |
-| `webp` | WebP | Quality 85 |
+| `webp` | WebP | Krita defaults |
+
+Krita 5.2's CLI does not support `--export-option`. Compression, quality, and
+indexed-colour settings therefore use Krita's defaults; the web/low/LZW preset
+names are format aliases, not separate encodings. Custom export keyword options
+are rejected rather than sent as unsupported flags.
 
 ## How it works
 
 1. **Project JSON** stores the document state (layers, filters, canvas settings)
 2. **Build .kra** generates a valid Krita archive from the project state
 3. **Krita --export** invokes the real Krita application for rendering
-4. **Output verification** checks the exported file for correctness
+4. **Output verification** requires a successful Krita exit and a non-empty file
+   before publishing the result. A failed `--overwrite` preserves the previous file.
 
 The CLI is an interface TO Krita, not a replacement. All rendering is done by Krita's engine.

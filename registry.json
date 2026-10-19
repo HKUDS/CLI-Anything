@@ -388,7 +388,7 @@
     {
       "name": "krita",
       "display_name": "Krita",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Digital painting and raster image editing via Krita CLI export pipeline",
       "requires": "krita (krita.org)",
       "homepage": "https://krita.org",

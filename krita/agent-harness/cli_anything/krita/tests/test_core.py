@@ -8,9 +8,14 @@ import json
 import os
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from cli_anything.krita.core import export as export_module
+from cli_anything.krita.krita_cli import cli
 from cli_anything.krita.core.project import (
     create_project,
     open_project,
@@ -311,6 +316,73 @@ class TestExport:
         build_kra_from_project(sample_project, kra_path)
         with zipfile.ZipFile(kra_path, "r") as zf:
             assert "documentinfo.xml" in zf.namelist()
+
+    def test_kra_uses_native_empty_tiles_and_project_canvas(self, tmp_dir, sample_project):
+        kra_path = os.path.join(tmp_dir, "test.kra")
+        build_kra_from_project(sample_project, kra_path)
+        with zipfile.ZipFile(kra_path) as archive:
+            xml = archive.read("maindoc.xml")
+            assert b"<!DOCTYPE DOC " in xml
+            ns = {"k": "http://www.calligra.org/DTD/krita"}
+            image = ET.fromstring(xml).find("k:IMAGE", ns)
+            assert image.attrib["name"] == "Test"
+            assert (image.attrib["width"], image.attrib["height"]) == ("800", "600")
+            layer = image.find("k:layers/k:layer", ns)
+            path = f"Test/layers/{layer.attrib['filename']}"
+            assert archive.read(path) == (
+                b"VERSION 2\nTILEWIDTH 64\nTILEHEIGHT 64\nPIXELSIZE 4\nDATA 0\n"
+            )
+            assert archive.read(path + ".defaultpixel") == b"\x00" * 4
+
+    @pytest.mark.parametrize("failure", ["nonzero", "missing", "empty"])
+    @pytest.mark.parametrize("overwrite", [False, True])
+    def test_render_rejects_failed_output(self, tmp_path, monkeypatch, failure, overwrite):
+        project = tmp_path / "project.json"
+        output = tmp_path / "output.png"
+        save_project(create_project("Failure Test", 64, 48), str(project))
+        original = b"previous export"
+        if overwrite:
+            output.write_bytes(original)
+        staging_dirs = []
+
+        def fake_export(input_path, output_path):
+            staging_dirs.append(Path(input_path).parent)
+            if failure == "empty":
+                Path(output_path).touch()
+            elif failure == "nonzero":
+                Path(output_path).write_bytes(b"partial export")
+            return {"ok": failure != "nonzero", "returncode": 1 if failure == "nonzero" else 0,
+                    "stdout": "", "stderr": "backend failed" if failure == "nonzero" else ""}
+
+        monkeypatch.setattr(export_module, "export_file", fake_export)
+        args = ["--json", "-p", str(project), "export", "render", str(output)]
+        if overwrite:
+            args.append("--overwrite")
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert "error" in data and "file_size" not in data
+        if failure == "nonzero":
+            assert "backend failed" in data["error"]
+        else:
+            assert "non-empty output" in data["error"]
+        if overwrite:
+            assert output.read_bytes() == original
+        else:
+            assert not output.exists()
+        assert staging_dirs and all(not path.exists() for path in staging_dirs)
+
+    def test_render_refuses_existing_destination_without_overwrite(self, tmp_path, monkeypatch):
+        output = tmp_path / "output.png"
+        output.write_bytes(b"previous export")
+
+        def unexpected_export(**kwargs):
+            pytest.fail("Krita should not run when overwrite is disabled")
+
+        monkeypatch.setattr(export_module, "export_file", unexpected_export)
+        with pytest.raises(FileExistsError):
+            export_module.export_image(create_project("Existing", 64, 48), str(output))
+        assert output.read_bytes() == b"previous export"
 
 
 # ===========================================================================

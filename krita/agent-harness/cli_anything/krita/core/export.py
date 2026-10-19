@@ -29,7 +29,7 @@ from cli_anything.krita.utils.krita_backend import (
 EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     "png": {
         "extension": "png",
-        "description": "PNG with full alpha, compression 6",
+        "description": "PNG (Krita default export settings)",
         "mime": "image/png",
         "options": {
             "alpha": True,
@@ -39,7 +39,7 @@ EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "png-web": {
         "extension": "png",
-        "description": "PNG optimized for web (indexed if possible)",
+        "description": "PNG alias (Krita default export settings)",
         "mime": "image/png",
         "options": {
             "alpha": True,
@@ -49,7 +49,7 @@ EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "jpeg": {
         "extension": "jpg",
-        "description": "JPEG quality 90",
+        "description": "JPEG (Krita default export settings)",
         "mime": "image/jpeg",
         "options": {
             "quality": 90,
@@ -57,7 +57,7 @@ EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "jpeg-web": {
         "extension": "jpg",
-        "description": "JPEG quality 75",
+        "description": "JPEG alias (Krita default export settings)",
         "mime": "image/jpeg",
         "options": {
             "quality": 75,
@@ -65,7 +65,7 @@ EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "jpeg-low": {
         "extension": "jpg",
-        "description": "JPEG quality 50",
+        "description": "JPEG alias (Krita default export settings)",
         "mime": "image/jpeg",
         "options": {
             "quality": 50,
@@ -73,7 +73,7 @@ EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "tiff": {
         "extension": "tiff",
-        "description": "TIFF uncompressed",
+        "description": "TIFF (Krita default export settings)",
         "mime": "image/tiff",
         "options": {
             "compression": "none",
@@ -81,7 +81,7 @@ EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "tiff-lzw": {
         "extension": "tiff",
-        "description": "TIFF with LZW compression",
+        "description": "TIFF alias (Krita default export settings)",
         "mime": "image/tiff",
         "options": {
             "compression": "lzw",
@@ -107,7 +107,7 @@ EXPORT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "webp": {
         "extension": "webp",
-        "description": "WebP quality 85",
+        "description": "WebP (Krita default export settings)",
         "mime": "image/webp",
         "options": {
             "quality": 85,
@@ -166,14 +166,31 @@ def _make_blank_png(width: int, height: int) -> bytes:
 # ---------------------------------------------------------------------------
 
 
+def _native_color_settings(image_props: dict) -> Tuple[str, int]:
+    """Resolve Krita's native colour-space ID and bytes per blank pixel."""
+    model = image_props.get("colorspace", "RGBA")
+    model = {"RGB": "RGBA", "GRAY": "GRAYA", "CMYK": "CMYKA"}.get(model, model)
+    depth = image_props.get("depth", image_props.get("color_depth", "U8"))
+    color_ids = {
+        "RGBA": {"U8": "RGBA", "U16": "RGBA16", "F16": "RGBAF16", "F32": "RGBAF32"},
+        "GRAYA": {"U8": "GRAYA", "U16": "GRAYAU16", "F16": "GRAYAF16", "F32": "GRAYAF32"},
+        "CMYKA": {"U8": "CMYK", "U16": "CMYKAU16", "F32": "CMYKAF32"},
+    }
+    try:
+        color_id = color_ids[model][depth]
+        channels = {"RGBA": 4, "GRAYA": 2, "CMYKA": 5}[model]
+        return color_id, channels * {"U8": 1, "U16": 2, "F16": 2, "F32": 4}[depth]
+    except KeyError:
+        raise ValueError(f"Unsupported Krita colour space/depth: {model}/{depth}") from None
+
+
 def _build_maindoc_xml(project: dict) -> bytes:
     """Build maindoc.xml content from project state."""
-    image_props = project.get("image", {})
+    image_props = project.get("canvas", project.get("image", {}))
     width = image_props.get("width", 1920)
     height = image_props.get("height", 1080)
-    colorspace = image_props.get("colorspace", "RGBA")
-    color_depth = image_props.get("color_depth", "U8")
-    name = image_props.get("name", "Untitled")
+    colorspace, _ = _native_color_settings(image_props)
+    name = project.get("name", image_props.get("name", "Untitled"))
     resolution = image_props.get("resolution", 72.0)
 
     doc = ET.Element("DOC")
@@ -225,13 +242,19 @@ def _build_maindoc_xml(project: dict) -> bytes:
 
     buf = BytesIO()
     tree.write(buf, encoding="UTF-8", xml_declaration=True)
-    return buf.getvalue()
+    # Krita checks the document type before reading the layer stack.
+    return buf.getvalue().replace(
+        b"<DOC ",
+        b'<!DOCTYPE DOC PUBLIC "-//KDE//DTD krita 2.0//EN" '
+        b'"http://www.calligra.org/DTD/krita-2.0.dtd">\n<DOC ',
+        1,
+    )
 
 
 def _build_documentinfo_xml(project: dict) -> bytes:
     """Build documentinfo.xml with Dublin Core metadata."""
-    image_props = project.get("image", {})
-    name = image_props.get("name", "Untitled")
+    image_props = project.get("canvas", project.get("image", {}))
+    name = project.get("name", image_props.get("name", "Untitled"))
     author = project.get("author", "CLI-Anything")
 
     doc = ET.Element("document-info")
@@ -267,7 +290,7 @@ def build_kra_from_project(project: dict, output_path: str) -> str:
     - mimetype (first entry, uncompressed): ``application/x-kra``
     - maindoc.xml with image properties and layer stack
     - documentinfo.xml with Dublin Core metadata
-    - A blank RGBA PNG for each paint layer under ``<image_name>/layers/``
+    - Empty native tile data for each paint layer under ``<image_name>/layers/``
 
     Parameters
     ----------
@@ -284,10 +307,10 @@ def build_kra_from_project(project: dict, output_path: str) -> str:
     output_path = os.path.abspath(output_path)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    image_props = project.get("image", {})
+    image_props = project.get("canvas", project.get("image", {}))
     width = image_props.get("width", 1920)
     height = image_props.get("height", 1080)
-    image_name = image_props.get("name", "Untitled")
+    image_name = project.get("name", image_props.get("name", "Untitled"))
 
     layers = project.get("layers", [])
     if not layers:
@@ -310,15 +333,21 @@ def build_kra_from_project(project: dict, output_path: str) -> str:
         # documentinfo.xml
         zf.writestr("documentinfo.xml", _build_documentinfo_xml(project))
 
-        # Blank pixel layer PNGs
-        blank_png = _make_blank_png(width, height)
+        # PNG is valid for the merged preview, but paint layers require Krita's
+        # native tile stream. No tiles represents a transparent blank layer.
+        zf.writestr("mergedimage.png", _make_blank_png(width, height))
+        _, pixel_size = _native_color_settings(image_props)
+        empty_tiles = (
+            f"VERSION 2\nTILEWIDTH 64\nTILEHEIGHT 64\nPIXELSIZE {pixel_size}\nDATA 0\n"
+        ).encode("ascii")
         for layer in layers:
             if layer.get("type", "paintlayer") != "paintlayer":
                 continue
             layer_name = layer.get("name", "Layer")
             filename = _layer_filename(layer_name)
             layer_path = f"{image_name}/layers/{filename}"
-            zf.writestr(layer_path, blank_png)
+            zf.writestr(layer_path, empty_tiles)
+            zf.writestr(layer_path + ".defaultpixel", b"\x00" * pixel_size)
 
     return output_path
 
@@ -353,7 +382,7 @@ def export_image(
         If *False* (default), raise ``FileExistsError`` when *output_path*
         already exists.
     **kwargs
-        Extra options forwarded to the backend export call.
+        Unsupported: Krita's CLI uses its default export settings.
 
     Returns
     -------
@@ -382,32 +411,38 @@ def export_image(
         )
 
     preset_config = EXPORT_PRESETS[preset]
-    export_options = {**preset_config.get("options", {}), **kwargs}
+    if kwargs:
+        raise ValueError("Krita's CLI does not support custom export options")
 
-    # Build a temporary .kra from the project state
-    tmp_dir = tempfile.mkdtemp(prefix="krita_export_")
-    kra_path = os.path.join(tmp_dir, "project.kra")
-    build_kra_from_project(project, kra_path)
-
-    # Use the Krita backend to export
-    method = "krita_backend"
-    try:
-        export_file(
+    # Export into a fresh staging path so an old destination cannot masquerade
+    # as a successful render, and --overwrite preserves it if rendering fails.
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="krita_export_",
+                                     dir=os.path.dirname(output_path)) as tmp_dir:
+        kra_path = os.path.join(tmp_dir, "project.kra")
+        build_kra_from_project(project, kra_path)
+        staged_output = os.path.join(tmp_dir, "render" + Path(output_path).suffix)
+        # Krita 5.2 has no --export-option flag; presets select the format, while
+        # compression/quality use Krita's defaults.
+        result = export_file(
             input_path=kra_path,
-            output_path=output_path,
-            export_options=export_options,
+            output_path=staged_output,
         )
-    except Exception:
-        # Re-raise so callers can handle backend failures
-        raise
-
-    file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        if not result["ok"]:
+            detail = result.get("stderr") or result.get("stdout") or "no diagnostic output"
+            raise RuntimeError(
+                f"Krita export failed (exit {result['returncode']}): {detail}"
+            )
+        if not os.path.isfile(staged_output) or os.path.getsize(staged_output) == 0:
+            raise RuntimeError("Krita export produced no non-empty output file")
+        file_size = os.path.getsize(staged_output)
+        os.replace(staged_output, output_path)
 
     return {
         "output_path": output_path,
         "file_size": file_size,
         "format": preset_config["extension"],
-        "method": method,
+        "method": "krita_backend",
     }
 
 

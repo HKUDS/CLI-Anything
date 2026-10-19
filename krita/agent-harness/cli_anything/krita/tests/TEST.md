@@ -76,6 +76,32 @@
 
 ## Part 2: Test Results
 
+### Issue #582 regression validation (2026-10-19)
+
+Environment: Ubuntu 24.04, Krita 5.2.2, Python 3.12, Xvfb display.
+
+The installed `cli-anything-krita` command reproduced the failure on main
+(`34f5195`): `project new -w 64 -h 48`, followed by `export render output.png`,
+returned exit 0 and `file_size: 0` without creating `output.png`. Direct Krita
+export of the generated KRA exited 1 with "format is not supported or the file
+is corrupted". The strict PNG, JPEG, and CLI-render regressions all failed
+before the fix.
+
+After the fix:
+
+```text
+python3 -m pytest cli_anything/krita/tests/ -v
+59 passed in 12.60s
+```
+
+This run includes real PNG exports (RGBA U8/U16, GRAYA U8, CMYKA U8), JPEG,
+and installed-CLI render/overwrite with a verified 64x48 PNG header. No export
+failures are skipped. Injected backend failures cover nonzero exit, missing
+output, and empty output, both with and without an existing destination;
+each reports an error, cleans staging files, and preserves any prior export.
+
+### Historical run
+
 Last run: 2026-03-22
 
 ```
