@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-06-19"
+    "updated": "2026-10-20"
   },
   "clis": [
     {
@@ -1511,6 +1511,25 @@
         {
           "name": "workcr",
           "url": "https://github.com/workcr"
+        }
+      ]
+    },
+    {
+      "name": "notion",
+      "display_name": "Notion",
+      "version": "0.1.0",
+      "description": "Search and manage Notion pages, databases, data sources, and content blocks through the Notion API",
+      "requires": "A Notion integration token and pages shared with the integration",
+      "homepage": "https://www.notion.com/",
+      "source_url": "https://github.com/heivin/cli-anything-notion",
+      "install_cmd": "pip install git+https://github.com/heivin/cli-anything-notion.git",
+      "entry_point": "cli-anything-notion",
+      "skill_md": "https://github.com/heivin/cli-anything-notion/blob/main/skills/cli-anything-notion/SKILL.md",
+      "category": "productivity",
+      "contributors": [
+        {
+          "name": "heivin",
+          "url": "https://github.com/heivin"
         }
       ]
     }
