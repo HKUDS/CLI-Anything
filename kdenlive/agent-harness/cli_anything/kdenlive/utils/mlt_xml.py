@@ -1,6 +1,7 @@
 """Kdenlive CLI - MLT XML generation helpers and timecode conversions."""
 
 import json
+import math
 import re
 import uuid
 import xml.etree.ElementTree as ET
@@ -41,9 +42,15 @@ def seconds_to_timecode(seconds: float) -> str:
 
 def timecode_to_seconds(tc: str) -> float:
     try:
-        return float(tc)
+        value = float(tc)
     except ValueError:
         pass
+    else:
+        # float() also accepts "-5", "nan" and "inf", none of which is a position
+        # on the timeline (seconds_to_timecode already rejects negatives).
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"Invalid timecode: {tc}. Seconds must be a finite, non-negative number.")
+        return value
 
     pattern = r'^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$'
     m = re.match(pattern, tc)

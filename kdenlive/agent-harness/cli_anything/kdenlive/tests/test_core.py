@@ -649,6 +649,11 @@ class TestTimecodeUtils:
     def test_timecode_to_seconds_plain_float(self):
         assert timecode_to_seconds("30.5") == 30.5
 
+    @pytest.mark.parametrize("bad", ["-5", "-0.5", "nan", "inf", "-inf"])
+    def test_timecode_to_seconds_rejects_negative_and_non_finite(self, bad):
+        with pytest.raises(ValueError):
+            timecode_to_seconds(bad)
+
     def test_timecode_to_seconds_invalid(self):
         with pytest.raises(ValueError, match="Invalid timecode"):
             timecode_to_seconds("invalid")
