@@ -2,7 +2,7 @@
 name: >-
   cli-anything-minimax
 description: >-
-  Command-line interface for MiniMax AI — chat (MiniMax-M3, MiniMax-M2.7) and speech-2.x TTS via the MiniMax API.
+  Command-line interface for MiniMax AI — chat (MiniMax-M3.1-Flash, MiniMax-M3) and speech-2.x TTS via the MiniMax API.
 ---
 
 # cli-anything-minimax
@@ -30,11 +30,11 @@ cli-anything-minimax --help
 # Start interactive REPL
 cli-anything-minimax
 
-# Chat with MiniMax-M3
+# Chat with MiniMax-M3.1-Flash
 cli-anything-minimax chat --prompt "What is AI?"
 
 # Alternate chat model
-cli-anything-minimax chat --prompt "Quick answer" --model MiniMax-M2.7
+cli-anything-minimax chat --prompt "Quick answer" --model MiniMax-M3
 
 # Stream chat response
 cli-anything-minimax stream --prompt "Write a poem about code"
@@ -122,8 +122,11 @@ cli-anything-minimax tts --text "Fast" --model speech-2.8-turbo --voice English_
 
 | Model ID | Description |
 |----------|-------------|
-| `MiniMax-M3` | Next-generation flagship model (default) |
-| `MiniMax-M2.7` | Peak Performance. Ultimate Value. |
+| `MiniMax-M3.1-Flash` | Multimodal coding model with tunable thinking depth (default) |
+| `MiniMax-M3` | Multimodal flagship model |
+
+The command's `--model` overrides the root `--model`, then saved `default_model`,
+then MiniMax-M3.1-Flash. Explicit legacy/custom IDs and saved history are preserved.
 
 ## TTS Models
 
@@ -147,4 +150,4 @@ cli-anything-minimax tts --text "Fast" --model speech-2.8-turbo --voice English_
 
 ## Version
 
-1.0.0
+1.1.1

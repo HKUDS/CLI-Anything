@@ -157,13 +157,14 @@ class TestCLISubprocessSmoke:
 
         models = self._run(["models"], tmp_path)
         assert "MiniMax-M3" in models.stdout
-        assert "MiniMax-M2.7" in models.stdout
+        assert "MiniMax-M3.1-Flash" in models.stdout
+        assert "MiniMax-M2.7" not in models.stdout
         assert "MiniMax-M2.7-highspeed" not in models.stdout
 
         models_json = self._run(["--json", "models"], tmp_path)
         model_payload = json.loads(models_json.stdout)
         assert isinstance(model_payload, list)
-        assert [m["id"] for m in model_payload] == ["MiniMax-M3", "MiniMax-M2.7"]
+        assert [m["id"] for m in model_payload] == ["MiniMax-M3.1-Flash", "MiniMax-M3"]
 
         tts_models = self._run(["--json", "models", "--tts"], tmp_path)
         tts_model_payload = json.loads(tts_models.stdout)
@@ -251,7 +252,8 @@ class TestCLISubprocessSmoke:
         assert tts_payload["output_file"] == str(audio_path)
         assert tts_payload["size_bytes"] == 4
         assert audio_path.read_bytes() == bytes([0xFF, 0xFB, 0x11, 0x22])
-        assert any(req["path"].endswith("/chat/completions") for req in requests_seen)
+        chat_request = next(req for req in requests_seen if req["path"].endswith("/chat/completions"))
+        assert chat_request["payload"]["model"] == "MiniMax-M3.1-Flash"
         assert any(req["path"].endswith("/v1/t2a_v2") for req in requests_seen)
 
 

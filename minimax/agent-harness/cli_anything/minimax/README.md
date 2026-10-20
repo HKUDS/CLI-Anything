@@ -34,11 +34,11 @@ cli-anything-minimax tts --text "Hello world" --output hello.mp3
 ### Chat
 
 ```bash
-# Simple chat (default model: MiniMax-M3)
+# Simple chat (default model: MiniMax-M3.1-Flash)
 cli-anything-minimax chat --prompt "Explain quantum computing"
 
 # Alternate chat model
-cli-anything-minimax chat --prompt "Quick answer please" --model MiniMax-M2.7
+cli-anything-minimax chat --prompt "Quick answer please" --model MiniMax-M3
 
 # Streaming output
 cli-anything-minimax stream --prompt "Write a haiku about AI"
@@ -107,8 +107,14 @@ cli-anything-minimax models --tts
 
 | Model | Description |
 |-------|-------------|
-| `MiniMax-M3` | Next-generation flagship model (default) |
-| `MiniMax-M2.7` | Peak Performance. Ultimate Value. |
+| `MiniMax-M3.1-Flash` | Multimodal coding model with tunable thinking depth (default) |
+| `MiniMax-M3` | Multimodal flagship model |
+
+Chat, streaming, and connectivity checks use the command's `--model`, then the
+root `--model`, then the saved `default_model`, then MiniMax-M3.1-Flash.
+Explicit legacy and custom model IDs remain supported. Saved configuration and
+session history are not migrated. The API supplies adaptive thinking by default;
+this CLI does not send thinking or reasoning-effort overrides.
 
 ### TTS
 

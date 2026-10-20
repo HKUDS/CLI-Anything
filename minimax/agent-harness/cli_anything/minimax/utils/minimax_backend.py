@@ -42,44 +42,50 @@ TEXT_MODEL_CONFIG = {
         "parameter_refresh": "parameter-refresh",
         "input_capability": "input-capability",
     },
-    "model_id": "MiniMax-M3",
-    "model_ids": ["MiniMax-M3", "MiniMax-M2.7"],
+    "model_id": "MiniMax-M3.1-Flash",
+    "model_ids": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
     "models": [
+        {
+            "model_id": "MiniMax-M3.1-Flash",
+            "context_window": 1000000,
+            "max_output_tokens": 524288,
+            "pricing_usd_per_million_tokens": {
+                "input": 0.15,
+                "output": 0.60,
+                "cache_read": 0.015,
+                "cache_write": None,
+            },
+            "input_modalities": ["text", "image", "video"],
+            "thinking": ["adaptive"],
+        },
         {
             "model_id": "MiniMax-M3",
             "context_window": 1000000,
             "pricing_usd_per_million_tokens": {
-                "input": 0.6,
-                "output": 2.4,
-                "cache_read": 0.12,
-                "cache_write": None,
-            },
-            "input_modalities": ["text", "image", "video"],
-            "thinking": ["adaptive", "disabled"],
-        },
-        {
-            "model_id": "MiniMax-M2.7",
-            "context_window": 204800,
-            "pricing_usd_per_million_tokens": {
                 "input": 0.3,
                 "output": 1.2,
                 "cache_read": 0.06,
-                "cache_write": 0.375,
+                "cache_write": None,
             },
-            "input_modalities": ["text"],
-            "thinking": ["always_on"],
+            "pricing_note": (
+                "Standard pricing for context <=512k; above 512k, input/output/"
+                "cache-read cost $0.60/$2.40/$0.12 per million tokens. "
+                "Priority pricing is 1.5x standard."
+            ),
+            "input_modalities": ["text", "image", "video"],
+            "thinking": ["adaptive", "disabled"],
         },
     ],
     "anthropic_base_url": "https://api.minimax.io/anthropic",
     "openai_base_url": "https://api.minimax.io/v1",
     "context_window": 1000000,
     "pricing_usd_per_million_tokens": {
-        "input": 0.6,
-        "output": 2.4,
-        "cache_read": 0.12,
+        "input": 0.15,
+        "output": 0.60,
+        "cache_read": 0.015,
         "cache_write": None,
     },
-    "thinking": ["adaptive", "disabled"],
+    "thinking": ["adaptive"],
 }
 
 MULTIMODAL_CONFIG = {
@@ -168,14 +174,15 @@ CHAT_MODELS = [
     {
         "id": model["model_id"],
         "description": (
-            "Next-generation flagship model (default)"
-            if model["model_id"] == "MiniMax-M3"
-            else "Peak Performance. Ultimate Value."
+            "Multimodal coding model with tunable thinking depth (default)"
+            if model["model_id"] == "MiniMax-M3.1-Flash"
+            else "Multimodal flagship model"
         ),
         "context_window": model["context_window"],
         "pricing_usd_per_million_tokens": model["pricing_usd_per_million_tokens"],
         "input_modalities": model["input_modalities"],
         "thinking": model["thinking"],
+        **{key: model[key] for key in ("max_output_tokens", "pricing_note") if key in model},
     }
     for model in TEXT_MODEL_CONFIG["models"]
 ]
@@ -270,7 +277,7 @@ def _get_api_base() -> str:
 
 def chat_completion(
     api_key: Optional[str] = None,
-    model: str = "MiniMax-M3",
+    model: str = TEXT_MODEL_CONFIG["model_id"],
     messages: Optional[list] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -304,7 +311,7 @@ def chat_completion(
 
 def chat_completion_stream(
     api_key: Optional[str] = None,
-    model: str = "MiniMax-M3",
+    model: str = TEXT_MODEL_CONFIG["model_id"],
     messages: Optional[list] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -441,7 +448,7 @@ def tts_synthesize(
 
 def run_full_workflow(
     api_key: Optional[str] = None,
-    model: str = "MiniMax-M3",
+    model: str = TEXT_MODEL_CONFIG["model_id"],
     prompt: str = "",
     system_message: Optional[str] = None,
     temperature: Optional[float] = None,

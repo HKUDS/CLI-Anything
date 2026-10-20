@@ -1364,8 +1364,8 @@
     {
       "name": "minimax",
       "display_name": "MiniMax",
-      "version": "1.1.0",
-      "description": "Chat and TTS via MiniMax AI API — MiniMax-M3 and MiniMax-M2.7 chat models and speech-2.x TTS",
+      "version": "1.1.1",
+      "description": "Chat and TTS via MiniMax AI API — MiniMax-M3.1-Flash and MiniMax-M3 chat models and speech-2.x TTS",
       "requires": "MINIMAX_API_KEY",
       "homepage": "https://platform.minimax.io",
       "source_url": null,

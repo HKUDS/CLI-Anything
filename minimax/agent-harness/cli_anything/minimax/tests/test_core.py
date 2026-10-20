@@ -68,32 +68,30 @@ def test_save_and_load_config(tmp_path):
 
 def test_text_model_catalog():
     """The text catalog must match the refreshed MiniMax target models."""
-    assert TEXT_MODEL_CONFIG["model_id"] == "MiniMax-M3"
-    assert TEXT_MODEL_CONFIG["model_ids"] == ["MiniMax-M3", "MiniMax-M2.7"]
+    assert TEXT_MODEL_CONFIG["model_id"] == "MiniMax-M3.1-Flash"
+    assert TEXT_MODEL_CONFIG["model_ids"] == ["MiniMax-M3.1-Flash", "MiniMax-M3"]
 
-    model_ids = [m["id"] for m in CHAT_MODELS]
-    assert model_ids == ["MiniMax-M3", "MiniMax-M2.7"]
-    assert len(CHAT_MODELS) == 2
-    assert CHAT_MODELS[0]["id"] == "MiniMax-M3"
+    assert [m["id"] for m in CHAT_MODELS] == ["MiniMax-M3.1-Flash", "MiniMax-M3"]
     assert CHAT_MODELS[0]["context_window"] == 1000000
+    assert CHAT_MODELS[0]["max_output_tokens"] == 524288
     assert CHAT_MODELS[0]["pricing_usd_per_million_tokens"] == {
-        "input": 0.6,
-        "output": 2.4,
-        "cache_read": 0.12,
+        "input": 0.15,
+        "output": 0.60,
+        "cache_read": 0.015,
         "cache_write": None,
     }
     assert CHAT_MODELS[0]["input_modalities"] == ["text", "image", "video"]
-    assert CHAT_MODELS[0]["thinking"] == ["adaptive", "disabled"]
-    assert CHAT_MODELS[1]["id"] == "MiniMax-M2.7"
-    assert CHAT_MODELS[1]["context_window"] == 204800
+    assert CHAT_MODELS[0]["thinking"] == ["adaptive"]
+    assert CHAT_MODELS[1]["context_window"] == 1000000
     assert CHAT_MODELS[1]["pricing_usd_per_million_tokens"] == {
         "input": 0.3,
         "output": 1.2,
         "cache_read": 0.06,
-        "cache_write": 0.375,
+        "cache_write": None,
     }
-    assert CHAT_MODELS[1]["input_modalities"] == ["text"]
-    assert CHAT_MODELS[1]["thinking"] == ["always_on"]
+    assert "above 512k" in CHAT_MODELS[1]["pricing_note"]
+    assert CHAT_MODELS[1]["input_modalities"] == ["text", "image", "video"]
+    assert CHAT_MODELS[1]["thinking"] == ["adaptive", "disabled"]
 
 
 def test_regional_endpoints_catalog():
