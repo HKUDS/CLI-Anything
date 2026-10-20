@@ -86,8 +86,12 @@ def frames_to_seconds(frames: int, fps_num: int = DEFAULT_FPS_NUM,
 
 def seconds_to_frames(seconds: float, fps_num: int = DEFAULT_FPS_NUM,
                       fps_den: int = DEFAULT_FPS_DEN) -> int:
-    """Convert seconds to frame count."""
-    return int(seconds * fps_num / fps_den)
+    """Convert seconds to frame count, rounded to the nearest frame.
+
+    Truncating with int() turned float noise into a lost frame: 30 frames at
+    29.97 fps is 1.001 s, and 1.001 * 30000 / 1001 evaluates to 29.999...
+    """
+    return round(seconds * fps_num / fps_den)
 
 
 def parse_time_input(value: str, fps_num: int = DEFAULT_FPS_NUM,

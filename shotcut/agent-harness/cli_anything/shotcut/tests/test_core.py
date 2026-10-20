@@ -45,6 +45,11 @@ class TestTimecode:
         frames = timecode_to_frames("00:00:01.000")
         assert 29 <= frames <= 30
 
+    def test_seconds_to_frames_round_trips_frames_to_seconds(self):
+        for frames in (15, 30, 60, 65, 120, 4999):
+            secs = frames_to_seconds(frames, 30000, 1001)
+            assert seconds_to_frames(secs, 30000, 1001) == frames
+
     def test_hh_mm_ss(self):
         frames = timecode_to_frames("00:01:00")
         fps = 30000 / 1001
