@@ -287,6 +287,74 @@ class TestImport:
             with pytest.raises(ValueError, match="Invalid ODF meta.xml"):
                 importer_mod.import_document(malformed)
 
+    @staticmethod
+    def _import_with_content(proj, writer, filename, content_xml):
+        """Import a document whose content.xml is replaced by ``content_xml``."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source" + os.path.splitext(filename)[1])
+            target = os.path.join(tmp, filename)
+            writer(proj, source)
+            with zipfile.ZipFile(source, "r") as zin, zipfile.ZipFile(target, "w") as zout:
+                for info in zin.infolist():
+                    data = zin.read(info.filename)
+                    if info.filename == "content.xml":
+                        data = content_xml.encode("utf-8")
+                    zout.writestr(info, data)
+            return importer_mod.import_document(target)
+
+    _NS = (
+        'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+        'xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+        'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"'
+    )
+
+    def test_import_calc_rows_inside_header_rows_and_row_groups(self):
+        # LibreOffice writes print-title rows in table-header-rows and
+        # outline groups in table-row-group.
+        cell = '<table:table-cell office:value-type="string"><text:p>{}</text:p></table:table-cell>'
+        row = lambda a, b: f"<table:table-row>{cell.format(a)}{cell.format(b)}</table:table-row>"
+        content_xml = (
+            f'<?xml version="1.0" encoding="UTF-8"?><office:document-content {self._NS} office:version="1.2">'
+            '<office:body><office:spreadsheet><table:table table:name="Budget">'
+            f'<table:table-header-rows>{row("Item", "Cost")}</table:table-header-rows>'
+            f'<table:table-row-group>{row("Rent", "1500")}'
+            f'<table:table-row-group>{row("Food", "600")}</table:table-row-group></table:table-row-group>'
+            f'{row("Total", "2100")}'
+            '</table:table></office:spreadsheet></office:body></office:document-content>'
+        )
+        imported = self._import_with_content(
+            create_document(doc_type="calc"), to_ods, "grouped.ods", content_xml,
+        )
+
+        cells = imported["sheets"][0]["cells"]
+        assert {ref: cells[ref]["value"] for ref in ("A1", "A2", "A3", "A4", "B4")} == {
+            "A1": "Item", "A2": "Rent", "A3": "Food", "A4": "Total", "B4": "2100",
+        }
+
+    def test_import_writer_header_rows_and_sections(self):
+        content_xml = (
+            f'<?xml version="1.0" encoding="UTF-8"?><office:document-content {self._NS} office:version="1.2">'
+            '<office:body><office:text>'
+            '<table:table table:name="T1">'
+            '<table:table-header-rows><table:table-row>'
+            '<table:table-cell><text:p>Item</text:p></table:table-cell>'
+            '<table:table-cell><text:p>Cost</text:p></table:table-cell>'
+            '</table:table-row></table:table-header-rows>'
+            '<table:table-row>'
+            '<table:table-cell><text:p>Rent</text:p></table:table-cell>'
+            '<table:table-cell><text:p>1500</text:p></table:table-cell>'
+            '</table:table-row></table:table>'
+            '<text:section text:name="Section1"><text:p>In a section.</text:p>'
+            '<text:section text:name="Section2"><text:p>Nested.</text:p></text:section></text:section>'
+            '</office:text></office:body></office:document-content>'
+        )
+        imported = self._import_with_content(
+            create_document(doc_type="writer"), to_odt, "sections.odt", content_xml,
+        )
+
+        table, *paragraphs = imported["content"]
+        assert table["data"] == [["Item", "Cost"], ["Rent", "1500"]]
+        assert [p["text"] for p in paragraphs] == ["In a section.", "Nested."]
 
 # ── Writer Tests ─────────────────────────────────────────────────
 

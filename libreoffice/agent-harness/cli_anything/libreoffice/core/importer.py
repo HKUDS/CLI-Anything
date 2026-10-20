@@ -183,7 +183,7 @@ def _parse_writer_content(root: ET.Element) -> List[Dict[str, Any]]:
         return []
 
     content = []
-    for child in list(text_root):
+    for child in _writer_blocks(text_root):
         local = _local_name(child.tag)
         if local == "h":
             text = _text_content(child)
@@ -215,6 +215,17 @@ def _parse_writer_content(root: ET.Element) -> List[Dict[str, Any]]:
     return content
 
 
+def _writer_blocks(parent: ET.Element) -> List[ET.Element]:
+    """Block elements of the body, including those inside (nested) sections."""
+    blocks = []
+    for child in list(parent):
+        if _local_name(child.tag) == "section":
+            blocks.extend(_writer_blocks(child))
+        else:
+            blocks.append(child)
+    return blocks
+
+
 def _parse_list_items(list_elem: ET.Element) -> List[str]:
     items = []
     for item_elem in _children_by_local(list_elem, "list-item"):
@@ -227,7 +238,7 @@ def _parse_list_items(list_elem: ET.Element) -> List[str]:
 def _parse_writer_table(table_elem: ET.Element) -> Optional[Dict[str, Any]]:
     rows = []
     max_cols = 0
-    for row_elem in _children_by_local(table_elem, "table-row"):
+    for row_elem in _table_rows(table_elem):
         row_values = _parse_table_row_values(row_elem)
         if any(value != "" for value in row_values):
             rows.append(row_values)
@@ -265,7 +276,7 @@ def _parse_calc_cells(table_elem: ET.Element) -> Dict[str, Dict[str, Any]]:
     cells: Dict[str, Dict[str, Any]] = {}
     row_index = 1
 
-    for row_elem in _children_by_local(table_elem, "table-row"):
+    for row_elem in _table_rows(table_elem):
         row_repeat = max(1, _int_attr(row_elem, "table", "number-rows-repeated", 1))
         row_cells = _parse_calc_row(row_elem, row_index)
         if row_cells:
@@ -367,6 +378,23 @@ def _parse_table_row_values(row_elem: ET.Element) -> List[str]:
         for _ in range(min(repeat, 1000)):
             values.append(text)
     return values
+
+
+# Wrappers that hold table rows. LibreOffice writes them for repeated heading
+# rows, print titles and outline groups, and ODF allows them nested.
+_ROW_CONTAINERS = ("table-header-rows", "table-rows", "table-row-group")
+
+
+def _table_rows(table_elem: ET.Element) -> List[ET.Element]:
+    """All table rows in document order, including those inside row wrappers."""
+    rows = []
+    for child in list(table_elem):
+        local = _local_name(child.tag)
+        if local == "table-row":
+            rows.append(child)
+        elif local in _ROW_CONTAINERS:
+            rows.extend(_table_rows(child))
+    return rows
 
 
 def _children_by_local(elem: ET.Element, local_name: str) -> List[ET.Element]:
