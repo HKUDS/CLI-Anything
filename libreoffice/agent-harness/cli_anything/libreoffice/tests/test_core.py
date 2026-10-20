@@ -3,12 +3,14 @@
 Tests use synthetic data only -- no LibreOffice installation needed.
 """
 
+import io
 import json
 import os
 import sys
 import tempfile
 import shutil
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import pytest
 
@@ -207,6 +209,22 @@ class TestImport:
         assert formula == "=A1+A2"
         assert 'table:formula="of:=A1+A2"' in content_xml
         assert "of:of:=" not in content_xml
+
+    def test_calc_content_declares_openformula_namespace(self):
+        proj = create_document(doc_type="calc", name="formula_ns")
+        set_cell(proj, "A1", "0", cell_type="float", formula="=1+1")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "formula.ods")
+            to_ods(proj, path)
+            content_xml = parse_odf(path)["content_xml"]
+
+        # Formulas are written as "of:=...", which only resolves when the
+        # document binds the `of` prefix to the OpenFormula namespace.
+        namespaces = dict(
+            ns for _, ns in ET.iterparse(io.BytesIO(content_xml.encode("utf-8")), events=["start-ns"])
+        )
+        assert namespaces.get("of") == "urn:oasis:names:tc:opendocument:xmlns:of:1.2"
 
     def test_import_impress_odp(self):
         proj = create_document(doc_type="impress", name="import_impress")

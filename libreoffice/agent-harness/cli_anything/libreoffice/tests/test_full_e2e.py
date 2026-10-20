@@ -876,6 +876,23 @@ class TestCalcToXLSX:
                 f"No sheet found in XLSX. Files: {names}"
         print(f"\n  XLSX output: {result['output']} ({result['file_size']:,} bytes)")
 
+    def test_calc_formula_is_computed_in_xlsx(self, tmp_dir):
+        proj = create_document(doc_type="calc", name="Formula Test")
+        set_cell(proj, "B1", "1500", cell_type="float")
+        set_cell(proj, "B2", "600", cell_type="float")
+        set_cell(proj, "B3", "0", cell_type="float", formula="=SUM(B1:B2)")
+
+        xlsx_path = os.path.join(tmp_dir, "formula.xlsx")
+        export(proj, xlsx_path, preset="xlsx", overwrite=True)
+
+        with zipfile.ZipFile(xlsx_path) as zf:
+            sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+        ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        cell = sheet.find(".//s:c[@r='B3']", ns)
+        assert cell is not None
+        assert cell.get("t") != "e", "LibreOffice could not evaluate the formula"
+        assert float(cell.find("s:v", ns).text) == 2100
+
     def test_calc_to_csv(self, tmp_dir):
         proj = create_document(doc_type="calc", name="CSV Test")
         set_cell(proj, "A1", "Name")
