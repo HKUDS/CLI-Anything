@@ -30,12 +30,12 @@ def _add_disabled_filter(parent, service, counter):
 def seconds_to_timecode(seconds: float) -> str:
     if seconds < 0:
         raise ValueError(f"Seconds must be non-negative: {seconds}")
-    hours = int(seconds // 3600)
-    remainder = seconds - hours * 3600
-    minutes = int(remainder // 60)
-    remainder = remainder - minutes * 60
-    secs = int(remainder)
-    millis = int(round((remainder - secs) * 1000))
+    # Round once to whole milliseconds, then split: rounding the fractional part
+    # on its own could yield 1000 ms (e.g. 1.9996 -> "00:00:01.1000").
+    total_ms = int(round(seconds * 1000))
+    hours, total_ms = divmod(total_ms, 3_600_000)
+    minutes, total_ms = divmod(total_ms, 60_000)
+    secs, millis = divmod(total_ms, 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
 
 

@@ -632,6 +632,11 @@ class TestTimecodeUtils:
     def test_seconds_to_timecode_simple(self):
         assert seconds_to_timecode(65.5) == "00:01:05.500"
 
+    def test_seconds_to_timecode_rounds_up_into_next_second(self):
+        assert seconds_to_timecode(1.9996) == "00:00:02.000"
+        assert seconds_to_timecode(59.9999) == "00:01:00.000"
+        assert seconds_to_timecode(3599.9995) == "01:00:00.000"
+
     def test_seconds_to_timecode_hours(self):
         assert seconds_to_timecode(3661.123) == "01:01:01.123"
 
