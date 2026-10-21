@@ -163,7 +163,7 @@ def get_shape_info(session: Session, cell_id: str,
         raise ValueError(f"Cell not found: {cell_id}")
 
     info = drawio_xml.get_cell_info(cell)
-    info["style_parsed"] = drawio_xml.parse_style(cell.get("style", ""))
+    info["style_parsed"] = drawio_xml.parse_style(info["style"])
     return info
 
 
