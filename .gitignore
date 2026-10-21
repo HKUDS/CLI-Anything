@@ -102,6 +102,7 @@
 !/3MF/
 !/calibre/
 !/rekordbox/
+!/pdmaner/
 !/eez-studio/
 !/live2d/
 !/tigris/
@@ -213,6 +214,8 @@
 /calibre/*
 /calibre/.*
 /rekordbox/*
+/pdmaner/*
+/pdmaner/.*
 /rekordbox/.*
 /eez-studio/*
 /eez-studio/.*
@@ -290,6 +293,7 @@
 !/mailchimp/agent-harness/
 !/live2d/agent-harness/
 !/rekordbox/agent-harness/
+!/pdmaner/agent-harness/
 !/eez-studio/agent-harness/
 !/tigris/agent-harness/
 !/cc-switch/agent-harness/

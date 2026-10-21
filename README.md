@@ -1378,6 +1378,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 50</td>
 </tr>
 <tr>
+<tr>
 <td align="center"><strong>🗄️ <a href="tigris/agent-harness/">Tigris</a></strong></td>
 <td>Object Storage (S3-compatible, global, no egress) — buckets, objects, snapshots, IAM, access keys</td>
 <td><code>cli-anything-tigris</code></td>
@@ -1385,12 +1386,19 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
 </tr>
 <tr>
+<td align="center"><strong>🗄️ <a href="pdmaner/agent-harness/">PDManer</a></strong></td>
+<td>Database Modeling</td>
+<td><code>cli-anything-pdmaner</code></td>
+<td>JSON (.chnr.json)</td>
+<td align="center">✅ 75</td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
-<td align="center"><strong>✅ 2,461</strong></td>
+<td align="center"><strong>✅ 2,536</strong></td>
 </tr>
 </table>
 
-> **100% pass rate** across all 2,461 tests — 1,732 unit tests + 579 end-to-end tests + 19 Node.js tests.
+> **100% pass rate** across all 2,536 tests — 1,791 unit tests + 595 end-to-end tests + 19 Node.js tests.
 
 ---
 
@@ -1436,9 +1444,10 @@ nsight-graphics 51 passed ✅   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 3mf            50 passed  ✅   (50 unit)
+pdmaner        75 passed  ✅   (59 unit + 16 e2e)
 joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,464 passed  ✅   100% pass rate
+TOTAL        2,539 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1542,7 +1551,8 @@ cli-anything/
 ├── ☁️ cloudcompare/agent-harness/       # CloudCompare CLI (88 tests)
 ├── 🔍 exa/agent-harness/               # Exa CLI (40 tests)
 └── ⛅ cloudanalyzer/agent-harness/      # CloudAnalyzer CLI (14 tests)
-└── 🔩 3MF/agent-harness/               # 3MF Mesh Editor CLI (50+ tests)
+├── 🔩 3MF/agent-harness/               # 3MF Mesh Editor CLI (50+ tests)
+└── 🗄️ pdmaner/agent-harness/            # PDManer database modeling CLI (75 tests)
 ```
 
 Each `agent-harness/` contains an installable Python package under `cli_anything.<software>/` with Click CLI, core modules, utils (including `repl_skin.py` and backend wrapper), and comprehensive tests.

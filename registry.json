@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "pdmaner",
+      "display_name": "PDManer",
+      "version": "0.1.0",
+      "description": "Database modeling CLI - manage entities, views, ER diagrams, dictionaries, and domains in PDManer .chnr.json projects, with DDL/SQL export",
+      "requires": "Python 3.10+",
+      "homepage": "https://www.pdmaner.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=pdmaner/agent-harness",
+      "entry_point": "cli-anything-pdmaner",
+      "skill_md": "skills/cli-anything-pdmaner/SKILL.md",
+      "category": "database",
+      "contributors": [
+        {
+          "name": "anyanyna",
+          "url": "https://github.com/anyanyna"
+        }
+      ]
     }
   ]
 }
