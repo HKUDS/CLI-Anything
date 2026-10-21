@@ -149,11 +149,26 @@ def get_root(mxfile: ET.Element, diagram_index: int = 0) -> ET.Element:
 # Query operations
 # ============================================================================
 
+def _cell_elements(root: ET.Element) -> list[ET.Element]:
+    """Cells under <root>, including <UserObject>/<object> wrappers.
+
+    draw.io wraps a cell that has a link, tooltip or custom data: the wrapper
+    holds the id and label, the inner <mxCell> holds style and geometry.
+    """
+    return [el for el in root if el.tag == "mxCell"
+            or (el.tag in ("UserObject", "object") and el.find("mxCell") is not None)]
+
+
+def _mx(cell: ET.Element) -> ET.Element:
+    """The <mxCell> holding style, vertex/edge and geometry for a cell."""
+    return cell if cell.tag == "mxCell" else cell.find("mxCell")
+
+
 def get_all_cells(mxfile: ET.Element, diagram_index: int = 0) -> list[ET.Element]:
-    """Get all user mxCell elements (excluding system cells id=0 and id=1)."""
+    """Get all user cell elements (excluding system cells id=0 and id=1)."""
     root = get_root(mxfile, diagram_index)
     cells = []
-    for cell in root.findall("mxCell"):
+    for cell in _cell_elements(root):
         cid = cell.get("id", "")
         if cid not in ("0", "1"):
             cells.append(cell)
@@ -162,19 +177,19 @@ def get_all_cells(mxfile: ET.Element, diagram_index: int = 0) -> list[ET.Element
 
 def get_vertices(mxfile: ET.Element, diagram_index: int = 0) -> list[ET.Element]:
     """Get all shape (vertex) cells."""
-    return [c for c in get_all_cells(mxfile, diagram_index) if c.get("vertex") == "1"]
+    return [c for c in get_all_cells(mxfile, diagram_index) if _mx(c).get("vertex") == "1"]
 
 
 def get_edges(mxfile: ET.Element, diagram_index: int = 0) -> list[ET.Element]:
     """Get all edge (connector) cells."""
-    return [c for c in get_all_cells(mxfile, diagram_index) if c.get("edge") == "1"]
+    return [c for c in get_all_cells(mxfile, diagram_index) if _mx(c).get("edge") == "1"]
 
 
 def find_cell_by_id(mxfile: ET.Element, cell_id: str,
                     diagram_index: int = 0) -> Optional[ET.Element]:
     """Find a cell by its ID."""
     root = get_root(mxfile, diagram_index)
-    for cell in root.iter("mxCell"):
+    for cell in _cell_elements(root):
         if cell.get("id") == cell_id:
             return cell
     return None
@@ -182,7 +197,7 @@ def find_cell_by_id(mxfile: ET.Element, cell_id: str,
 
 def get_cell_geometry(cell: ET.Element) -> dict:
     """Get the geometry of a cell as a dict."""
-    geo = cell.find("mxGeometry")
+    geo = _mx(cell).find("mxGeometry")
     if geo is None:
         return {}
     return {
@@ -195,18 +210,19 @@ def get_cell_geometry(cell: ET.Element) -> dict:
 
 def get_cell_info(cell: ET.Element) -> dict:
     """Get summary info for a cell."""
+    mx = _mx(cell)
     info = {
         "id": cell.get("id", ""),
-        "value": cell.get("value", ""),
-        "style": cell.get("style", ""),
+        "value": cell.get("value" if cell.tag == "mxCell" else "label", ""),
+        "style": mx.get("style", ""),
     }
-    if cell.get("vertex") == "1":
+    if mx.get("vertex") == "1":
         info["type"] = "vertex"
         info.update(get_cell_geometry(cell))
-    elif cell.get("edge") == "1":
+    elif mx.get("edge") == "1":
         info["type"] = "edge"
-        info["source"] = cell.get("source", "")
-        info["target"] = cell.get("target", "")
+        info["source"] = mx.get("source", "")
+        info["target"] = mx.get("target", "")
     return info
 
 
@@ -248,6 +264,7 @@ def build_style(style_dict: dict) -> str:
 
 def set_style_property(cell: ET.Element, key: str, value: str) -> None:
     """Set a single style property on a cell."""
+    cell = _mx(cell)
     style = parse_style(cell.get("style", ""))
     style[key] = value
     cell.set("style", build_style(style))
@@ -255,6 +272,7 @@ def set_style_property(cell: ET.Element, key: str, value: str) -> None:
 
 def remove_style_property(cell: ET.Element, key: str) -> None:
     """Remove a style property from a cell."""
+    cell = _mx(cell)
     style = parse_style(cell.get("style", ""))
     style.pop(key, None)
     cell.set("style", build_style(style))
@@ -404,12 +422,12 @@ def remove_cell(mxfile: ET.Element, cell_id: str,
 
     # First collect edges connected to this cell
     to_remove = []
-    for cell in root.findall("mxCell"):
+    for cell in _cell_elements(root):
         cid = cell.get("id", "")
         if cid == cell_id:
             to_remove.append(cell)
             removed = True
-        elif cell.get("source") == cell_id or cell.get("target") == cell_id:
+        elif _mx(cell).get("source") == cell_id or _mx(cell).get("target") == cell_id:
             to_remove.append(cell)
 
     for cell in to_remove:
@@ -424,7 +442,7 @@ def update_cell_label(mxfile: ET.Element, cell_id: str, label: str,
     cell = find_cell_by_id(mxfile, cell_id, diagram_index)
     if cell is None:
         return False
-    cell.set("value", label)
+    cell.set("value" if cell.tag == "mxCell" else "label", label)
     return True
 
 
@@ -434,7 +452,7 @@ def move_cell(mxfile: ET.Element, cell_id: str, x: float, y: float,
     cell = find_cell_by_id(mxfile, cell_id, diagram_index)
     if cell is None:
         return False
-    geo = cell.find("mxGeometry")
+    geo = _mx(cell).find("mxGeometry")
     if geo is None:
         return False
     geo.set("x", str(x))
@@ -449,7 +467,7 @@ def resize_cell(mxfile: ET.Element, cell_id: str,
     cell = find_cell_by_id(mxfile, cell_id, diagram_index)
     if cell is None:
         return False
-    geo = cell.find("mxGeometry")
+    geo = _mx(cell).find("mxGeometry")
     if geo is None:
         return False
     geo.set("width", str(width))

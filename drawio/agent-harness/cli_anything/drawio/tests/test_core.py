@@ -867,3 +867,59 @@ class TestWorkflows:
             assert len(edges) == 1
         finally:
             os.unlink(path)
+
+
+class TestUserObjectCells:
+    """draw.io saves a shape with a link/tooltip/data as <UserObject id=..>
+    wrapping an id-less <mxCell>; those shapes must be visible and addressable."""
+
+    XML = (
+        '<mxfile><diagram id="p" name="Page-1"><mxGraphModel><root>'
+        '<mxCell id="0"/><mxCell id="1" parent="0"/>'
+        '<mxCell id="a" value="Plain" style="rounded=0;" vertex="1" parent="1">'
+        '<mxGeometry x="40" y="40" width="120" height="60" as="geometry"/></mxCell>'
+        '<UserObject label="Docs" link="https://example.com" id="b">'
+        '<mxCell style="rounded=0;" vertex="1" parent="1">'
+        '<mxGeometry x="240" y="40" width="120" height="60" as="geometry"/></mxCell>'
+        '</UserObject>'
+        '<object label="" id="e"><mxCell edge="1" parent="1" source="a" target="b">'
+        '<mxGeometry relative="1" as="geometry"/></mxCell></object>'
+        '</root></mxGraphModel></diagram></mxfile>'
+    )
+
+    def _session(self, tmp_path):
+        path = tmp_path / "linked.drawio"
+        path.write_text(self.XML, encoding="utf-8")
+        s = Session()
+        s.open_project(str(path))
+        return s
+
+    def test_wrapped_cells_are_listed(self, tmp_path):
+        s = self._session(tmp_path)
+        shapes = {c["id"]: c for c in shapes_mod.list_shapes(s)}
+        assert set(shapes) == {"a", "b"}
+        assert shapes["b"]["value"] == "Docs"
+        assert shapes["b"]["x"] == 240.0
+        edges = conn_mod.list_connectors(s)
+        assert [(e["id"], e["source"], e["target"]) for e in edges] == [("e", "a", "b")]
+
+    def test_duplicate_id_of_wrapped_cell_is_rejected(self, tmp_path):
+        s = self._session(tmp_path)
+        with pytest.raises(ValueError, match="already exists"):
+            shapes_mod.add_shape(s, cell_id="b")
+
+    def test_wrapped_cell_can_be_edited_and_removed(self, tmp_path):
+        s = self._session(tmp_path)
+        conn_mod.add_connector(s, "b", "a")
+        shapes_mod.update_label(s, "b", "Renamed")
+        shapes_mod.move_shape(s, "b", 300, 50)
+        shapes_mod.resize_shape(s, "b", 150, 70)
+        shapes_mod.set_style(s, "b", "fillColor", "#ff0000")
+        drawio_xml.remove_style_property(drawio_xml.find_cell_by_id(s.root, "b"), "rounded")
+        info = shapes_mod.get_shape_info(s, "b")
+        assert info["value"] == "Renamed"
+        assert (info["x"], info["width"]) == (300.0, 150.0)
+        assert info["style_parsed"] == {"fillColor": "#ff0000"}
+        shapes_mod.remove_shape(s, "b")
+        assert [c["id"] for c in shapes_mod.list_shapes(s)] == ["a"]
+        assert conn_mod.list_connectors(s) == []
