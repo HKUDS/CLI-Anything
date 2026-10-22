@@ -38,5 +38,9 @@ def merge_files(paths: List[str]) -> List[LogMessage]:
     all_msgs: List[LogMessage] = []
     for path in paths:
         all_msgs.extend(parse_file(path))
-    all_msgs.sort(key=lambda m: (m.timestamp or __import__("datetime").datetime.min, m.sequence))
+    all_msgs.sort(key=lambda m: (
+        m.timestamp or __import__("datetime").datetime.min,
+        m.timestamp_ms,
+        m.sequence,
+    ))
     return all_msgs

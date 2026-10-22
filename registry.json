@@ -84,7 +84,7 @@
     {
       "name": "nslogger",
       "display_name": "NSLogger",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Capture, parse, filter, export, and mirror NSLogger iOS/macOS logs from the CLI",
       "requires": "macOS for native Bonjour live capture; Python 3.10+",
       "homepage": "https://github.com/fpillet/NSLogger",

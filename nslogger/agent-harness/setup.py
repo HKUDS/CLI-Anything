@@ -3,7 +3,7 @@ from setuptools import setup, find_namespace_packages
 
 setup(
     name="cli-anything-nslogger",
-    version="0.1.0",
+    version="0.1.1",
     description="CLI harness for NSLogger — read, filter, export, and monitor NSLogger log files",
     long_description=open("cli_anything/nslogger/README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

@@ -8,7 +8,7 @@ import tempfile
 
 import pytest
 
-from cli_anything.nslogger.utils.generate import generate_sample_file
+from cli_anything.nslogger.utils.generate import encode_message, generate_sample_file
 from cli_anything.nslogger.core.parser import parse_raw_file
 from cli_anything.nslogger.core.filter import filter_messages
 from cli_anything.nslogger.core.stats import compute_stats
@@ -356,6 +356,16 @@ class TestBlocksCommand:
 # ---------------------------------------------------------------------------
 
 class TestMergeCommand:
+    def test_merge_keeps_millisecond_order_across_files(self, tmp_path):
+        later = tmp_path / "later.rawnsloggerdata"
+        earlier = tmp_path / "earlier.rawnsloggerdata"
+        later.write_bytes(encode_message(sequence=0, timestamp=1700000000.875, text="later"))
+        earlier.write_bytes(encode_message(sequence=1, timestamp=1700000000.125, text="earlier"))
+
+        result = run_cli("merge", str(later), str(earlier), "--format", "json")
+
+        assert [message["text"] for message in json.loads(result.stdout)] == ["earlier", "later"]
+
     def test_merge_two_files(self, tmp_path):
         a = str(tmp_path / "a.rawnsloggerdata")
         b = str(tmp_path / "b.rawnsloggerdata")

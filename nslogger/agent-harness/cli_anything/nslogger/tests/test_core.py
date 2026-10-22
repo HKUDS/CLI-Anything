@@ -544,6 +544,33 @@ class TestExtractClients:
 
 
 class TestMergeFiles:
+    @pytest.mark.parametrize("reverse_paths", [False, True])
+    def test_merge_orders_same_second_messages_by_milliseconds(self, tmp_path, reverse_paths):
+        later = self._write(tmp_path, "later.rawnsloggerdata",
+                            {"text": "later", "timestamp": 1700000000.875})
+        earlier = self._write(tmp_path, "earlier.rawnsloggerdata",
+                              {"text": "earlier", "timestamp": 1700000000.125})
+        paths = [later, earlier]
+        if reverse_paths:
+            paths.reverse()
+
+        result = merge_files(paths)
+
+        assert [m.text for m in result] == ["earlier", "later"]
+        assert [m.timestamp_ms for m in result] == [125, 875]
+
+    def test_merge_uses_sequence_only_after_full_timestamp(self, tmp_path):
+        path = tmp_path / "sequence.rawnsloggerdata"
+        path.write_bytes(
+            encode_message(sequence=0, timestamp=1700000000.875, text="later")
+            + encode_message(sequence=2, timestamp=1700000000.125, text="earlier second")
+            + encode_message(sequence=1, timestamp=1700000000.125, text="earlier first")
+        )
+
+        result = merge_files([str(path)])
+
+        assert [m.text for m in result] == ["earlier first", "earlier second", "later"]
+
     def _write(self, tmp_path, name, *messages_kwargs):
         path = str(tmp_path / name)
         with open(path, "wb") as f:

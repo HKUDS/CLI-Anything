@@ -544,7 +544,7 @@ _FILE_COMMANDS = {"read", "filter", "tail", "stats", "clients", "blocks", "expor
 
 def _run_repl(ctx, file: Optional[str] = None):
     """Launch the shared cli-anything REPL and dispatch commands through Click."""
-    skin = ReplSkin("nslogger", version="0.1.0")
+    skin = ReplSkin("nslogger", version="0.1.1")
     skin.print_banner()
 
     current_file = file
