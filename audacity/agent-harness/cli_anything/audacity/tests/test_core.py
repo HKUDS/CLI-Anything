@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+from copy import deepcopy
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -305,6 +306,37 @@ class TestClips:
                  start_time=0.0, end_time=10.0, trim_start=0.0, trim_end=10.0)
         result = trim_clip(proj, 0, 0, trim_end=8.0)
         assert result["trim_end"] == 8.0
+
+    @pytest.mark.parametrize("bounds", [
+        {"trim_start": 11.0},
+        {"trim_start": 4.0, "trim_end": 3.0},
+        {"trim_start": -1.0},
+        {"trim_end": -1.0},
+    ])
+    def test_trim_rejects_invalid_range_without_mutating_clip(self, bounds):
+        proj = self._make_project_with_track()
+        clip = add_clip(proj, 0, "/fake/audio.wav", start_time=0.0,
+                        end_time=10.0, trim_start=0.0, trim_end=10.0)
+        before = deepcopy(proj)
+        with pytest.raises(ValueError):
+            trim_clip(proj, 0, 0, **bounds)
+        assert proj == before
+        assert clip is proj["tracks"][0]["clips"][0]
+
+    @pytest.mark.parametrize("bounds, expected", [
+        ({"trim_start": 2.0}, (2.0, 10.0, 2.0, 10.0)),
+        ({"trim_end": 8.0}, (0.0, 8.0, 0.0, 8.0)),
+        ({"trim_start": 2.0, "trim_end": 8.0}, (2.0, 8.0, 2.0, 8.0)),
+        ({"trim_start": 10.0}, (10.0, 10.0, 10.0, 10.0)),
+    ])
+    def test_trim_valid_ranges_preserve_timeline_semantics(self, bounds, expected):
+        proj = self._make_project_with_track()
+        add_clip(proj, 0, "/fake/audio.wav", start_time=0.0,
+                 end_time=10.0, trim_start=0.0, trim_end=10.0)
+        clip = trim_clip(proj, 0, 0, **bounds)
+        assert tuple(clip[key] for key in (
+            "start_time", "end_time", "trim_start", "trim_end"
+        )) == expected
 
     def test_list_clips(self):
         proj = self._make_project_with_track()

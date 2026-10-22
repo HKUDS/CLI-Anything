@@ -774,6 +774,51 @@ class TestCLISubprocess:
             payload = json.load(handle)
         assert len(payload["tracks"][0]["clips"]) == 1
 
+    @pytest.mark.parametrize("bounds", [
+        ["--trim-start", "2"],
+        ["--trim-start", "0.75", "--trim-end", "0.5"],
+    ])
+    def test_cli_invalid_trim_preserves_project(self, tmp_dir, sine_wav, bounds):
+        project_path = os.path.join(tmp_dir, "trim.json")
+        project = create_project(channels=1)
+        add_track(project)
+        add_clip(project, 0, sine_wav)
+        save_project(project, project_path)
+        with open(project_path, "rb") as handle:
+            before = handle.read()
+
+        result = self._run_cli([
+            "--json", "--project", project_path, "clip", "trim", "0", "0", *bounds,
+        ])
+        assert result.returncode == 1, result.stdout
+        assert json.loads(result.stdout)["type"] == "ValueError"
+        with open(project_path, "rb") as handle:
+            assert handle.read() == before
+
+    def test_cli_valid_trim_persists_and_renders(self, tmp_dir, sine_wav):
+        project_path = os.path.join(tmp_dir, "trim.json")
+        project = create_project(channels=1)
+        add_track(project)
+        add_clip(project, 0, sine_wav)
+        save_project(project, project_path)
+
+        result = self._run_cli([
+            "--json", "--project", project_path, "clip", "trim", "0", "0",
+            "--trim-start", "0.25", "--trim-end", "0.75",
+        ])
+        assert result.returncode == 0, result.stderr
+        clip = open_project(project_path)["tracks"][0]["clips"][0]
+        assert clip["start_time"] == clip["trim_start"] == 0.25
+        assert clip["end_time"] == clip["trim_end"] == 0.75
+
+        output_path = os.path.join(tmp_dir, "trimmed.wav")
+        result = self._run_cli([
+            "--project", project_path, "export", "render", output_path,
+        ])
+        assert result.returncode == 0, result.stderr
+        with wave.open(output_path, "rb") as rendered:
+            assert rendered.getnframes() / rendered.getframerate() == 0.75
+
 
 # ── True Backend E2E Tests (requires SoX installed) ──────────────
 

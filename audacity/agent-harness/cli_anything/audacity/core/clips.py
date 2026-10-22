@@ -155,17 +155,20 @@ def trim_clip(
 
     clip = clips[clip_index]
 
+    new_trim_start = clip["trim_start"] if trim_start is None else trim_start
+    new_trim_end = clip["trim_end"] if trim_end is None else trim_end
+    if new_trim_start < 0:
+        raise ValueError("trim_start must be >= 0")
+    if new_trim_end < new_trim_start:
+        raise ValueError("trim_end must be >= trim_start")
+
     if trim_start is not None:
-        if trim_start < 0:
-            raise ValueError("trim_start must be >= 0")
         old_trim_start = clip["trim_start"]
         delta = trim_start - old_trim_start
         clip["trim_start"] = trim_start
         clip["start_time"] = clip["start_time"] + delta
 
     if trim_end is not None:
-        if trim_end < clip["trim_start"]:
-            raise ValueError("trim_end must be >= trim_start")
         old_duration = clip["end_time"] - clip["start_time"]
         new_duration = trim_end - clip["trim_start"]
         clip["trim_end"] = trim_end
