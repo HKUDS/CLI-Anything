@@ -142,6 +142,8 @@ class TestProbe:
         assert data["height"] == 1080
         assert data["duration_seconds"] == 12.5
         assert data["size_bytes"] == 1024
+        invoked_args = mock_run.call_args[0][0]
+        assert invoked_args[invoked_args.index("-select_streams") + 1] == "v:0"
 
     def test_probe_missing_file_errors(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["probe", "/does/not/exist.mov"])

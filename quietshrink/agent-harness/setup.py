@@ -9,7 +9,7 @@ long_description = readme.read_text(encoding="utf-8") if readme.exists() else ""
 
 setup(
     name="cli-anything-quietshrink",
-    version="1.0.0",
+    version="1.0.1",
     author="quietshrink contributors",
     description=(
         "Agent-native CLI harness for quietshrink — compress screen recordings "

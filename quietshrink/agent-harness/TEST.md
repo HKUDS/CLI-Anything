@@ -6,7 +6,7 @@ The harness ships with 15 unit/smoke tests under `cli_anything/quietshrink/tests
 
 ```bash
 pip install -e '.[dev]'
-pytest cli_anything/quietshrink/tests/ -v
+pytest cli_anything/quietshrink/tests/test_cli.py -v
 ```
 
 Test groups:
@@ -19,6 +19,20 @@ Test groups:
 - `TestCompress` — quality flag passthrough, JSON output, bash failure handling
 
 All 15 tests pass on Python 3.10+ with no external dependencies (bash CLI and ffmpeg are mocked).
+
+## Probe end-to-end tests
+
+Install `ffmpeg` and `ffprobe` on `PATH`, then run:
+
+```bash
+CLI_ANYTHING_FORCE_INSTALLED=1 python -m pytest cli_anything/quietshrink/tests/ -v
+```
+
+This runs all 15 harness tests plus three real probe regressions. The E2E tests
+generate tiny FFV1 videos with PCM or FLAC audio, verify their stream order, and
+invoke the installed CLI with the real ffprobe backend. Audio-first and
+video-first files must report the video codec and dimensions. These tests need
+neither the standalone quietshrink compressor nor an Apple hardware encoder.
 
 ## Bash CLI tests (upstream)
 

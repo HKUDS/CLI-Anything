@@ -115,6 +115,7 @@ def probe(input_path: Path, json_mode: bool) -> None:
 
     cmd = [
         "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,width,height,r_frame_rate",
         "-show_entries", "format=duration,bit_rate,size",
         "-of", "json",
@@ -124,7 +125,7 @@ def probe(input_path: Path, json_mode: bool) -> None:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         probe_data = json.loads(result.stdout)
         size = input_path.stat().st_size
-        video_stream = next((s for s in probe_data.get("streams", []) if s.get("codec_name") not in ("aac", "mp3")), {})
+        video_stream = next(iter(probe_data.get("streams", [])), {})
         duration = float(probe_data.get("format", {}).get("duration", 0))
 
         info = {
