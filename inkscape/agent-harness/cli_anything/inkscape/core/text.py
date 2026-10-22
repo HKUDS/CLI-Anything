@@ -5,6 +5,7 @@ Handles adding text elements and modifying text properties.
 
 from typing import Dict, Any, List, Optional
 
+from cli_anything.inkscape.utils.project_ids import _IDElement
 from cli_anything.inkscape.utils.svg_utils import generate_id, parse_style, serialize_style
 
 
@@ -76,8 +77,8 @@ def add_text(
     }
     style = serialize_style(style_parts)
 
-    obj_id = generate_id("text")
-    obj = {
+    obj_id = generate_id("text", project)
+    obj = _IDElement({
         "id": obj_id,
         "name": name or obj_id,
         "type": "text",
@@ -94,7 +95,7 @@ def add_text(
         "style": style,
         "transform": "",
         "layer": _default_layer_id(project),
-    }
+    })
     if box_width is not None:
         obj["box_width"] = box_width
     if box_height is not None:

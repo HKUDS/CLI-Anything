@@ -1026,7 +1026,7 @@ def repl(project_path):
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("inkscape", version="1.0.1")
+    skin = ReplSkin("inkscape", version="1.0.2")
 
     if project_path:
         _load_or_seed_project(project_path)

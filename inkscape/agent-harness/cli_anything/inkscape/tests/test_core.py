@@ -65,6 +65,84 @@ def reset_ids():
 
 # ── SVG Utils Tests ─────────────────────────────────────────────
 
+class TestProjectIDUniqueness:
+    def test_first_added_layer_does_not_reuse_default_layer_id(self):
+        proj = create_document()
+        original_id = proj["layers"][0]["id"]
+
+        added = add_layer(proj)
+
+        assert added["id"] != original_id
+        assert proj["layers"][0]["id"] == original_id
+
+    @pytest.mark.parametrize("factory, collection", [
+        (add_rect, "objects"),
+        (add_circle, "objects"),
+        (add_ellipse, "objects"),
+        (add_line, "objects"),
+        (add_polygon, "objects"),
+        (add_path, "objects"),
+        (add_star, "objects"),
+        (add_text, "objects"),
+        (add_layer, "layers"),
+        (add_linear_gradient, "gradients"),
+        (add_radial_gradient, "gradients"),
+    ])
+    def test_add_after_reopening_preserves_unique_ids(
+        self, tmp_path, factory, collection,
+    ):
+        proj = create_document()
+        original_id = factory(proj)["id"]
+        path = str(tmp_path / "drawing.json")
+        save_document(proj, path)
+
+        # A new one-shot CLI process starts with a fresh ID counter.
+        reset_id_counter()
+        reopened = open_document(path)
+        added = factory(reopened)
+
+        ids = [item["id"] for item in reopened[collection]]
+        assert added["id"] != original_id
+        assert original_id in ids
+        assert len(ids) == len(set(ids))
+
+    def test_duplicate_after_reopening_keeps_layer_references_distinct(self):
+        proj = create_document()
+        original = add_rect(proj)
+        reset_id_counter()
+
+        duplicate = duplicate_object(proj, 0)
+
+        assert duplicate["id"] != original["id"]
+        assert proj["layers"][0]["objects"] == [original["id"], duplicate["id"]]
+
+    def test_boolean_result_does_not_reuse_an_unrelated_path_id(self):
+        proj = create_document()
+        existing = add_path(proj)
+        add_rect(proj)
+        add_circle(proj)
+        reset_id_counter()
+
+        result = path_union(proj, 1, 2)
+
+        assert result["id"] != existing["id"]
+        assert proj["layers"][0]["objects"] == [existing["id"], result["id"]]
+
+    def test_generated_ids_share_one_namespace_across_collections(self):
+        proj = create_document()
+        # Existing projects can use IDs independent of their element types.
+        proj["objects"] = [{"id": "rect1"}, {"id": "rect4"}]
+        proj["layers"][0]["id"] = "rect2"
+        proj["gradients"] = [{"id": "rect3"}]
+
+        added = add_rect(proj)
+
+        assert added["id"] == "rect5"
+        assert [obj["id"] for obj in proj["objects"]] == ["rect1", "rect4", "rect5"]
+        assert proj["layers"][0]["id"] == "rect2"
+        assert proj["gradients"][0]["id"] == "rect3"
+
+
 class TestSVGUtils:
     def test_parse_style(self):
         result = parse_style("fill:#ff0000;stroke:#000;stroke-width:2")

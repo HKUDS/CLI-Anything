@@ -6,6 +6,7 @@ This module manages layers in the JSON project format.
 
 from typing import Dict, Any, List, Optional
 
+from cli_anything.inkscape.utils.project_ids import _IDElement
 from cli_anything.inkscape.utils.svg_utils import generate_id
 
 
@@ -33,15 +34,15 @@ def add_layer(
         counter += 1
         final_name = f"{name} {counter}"
 
-    layer_id = generate_id("layer")
-    layer = {
+    layer_id = generate_id("layer", project)
+    layer = _IDElement({
         "id": layer_id,
         "name": final_name,
         "visible": visible,
         "locked": locked,
         "opacity": opacity,
         "objects": [],
-    }
+    })
 
     layers = project.setdefault("layers", [])
     if position is not None:

@@ -189,3 +189,41 @@ test_full_e2e.py   47 passed
 
 ============================= 197 passed in 1.93s ==============================
 ```
+
+## Project ID allocation follow-up (PR #567)
+
+`test_project_ids.py` adds 55 public-API regression cases. They cover operation
+counts for repeated shape/gradient creation; returned-dictionary ID edits;
+mapping mutators including partially failing updates; list insertion, slice and
+deletion operations; retained external references; equal-length replacement;
+duplicate IDs; copy/deepcopy aliasing; reset; JSON reopen; SVG serialization; and
+session undo/redo.
+
+At the original PR head `b0b47edf008888b5808f23b41637590254d250c7`, the initial
+52-case selection produced **2 failed, 50 passed**. The final fixed selection produced
+**55 passed**, and the existing core suite produced **169 passed**.
+
+Actual core API measurements on Windows / Python 3.12.12, three plain timing
+runs per size (median seconds; profiling/counting performed separately):
+
+| Allocations | ID item reads before | ID item reads after | Rect before / after (s) | Linear gradient before / after (s) |
+|---:|---:|---:|---:|---:|
+| 1,000 | 500,500 | 1 | 0.0105367 / 0.0023271 | 0.0115150 / 0.0019807 |
+| 2,000 | 2,001,000 | 1 | 0.0437036 / 0.0043137 | 0.0470259 / 0.0039665 |
+| 4,000 | 8,002,000 | 1 | 0.1697078 / 0.0084796 | 0.1848005 / 0.0080804 |
+| 8,000 | 32,004,000 | 1 | 0.9205239 / 0.0167863 | 0.8473457 / 0.0162363 |
+| 10,000 | 50,005,000 | 1 | 1.2784924 / 0.0203612 | 1.3308895 / 0.0209283 |
+
+Reads count `dict.get` calls on existing items during `generate_id`, excluding
+the project mapping. After the fix, collection append/index maintenance still
+does linear work. Timing includes the complete `add_rect` or
+`add_linear_gradient` loop. Arbitrary external plain collections retain a
+conservative scan, and edits to tracked IDs may invalidate other document
+indexes. No private index attributes are serialized into project JSON.
+
+The full affected suite was run without installing Inkscape: **276 passed,
+5 failed**. The unchanged baseline was **221 passed, 5 failed**. Both runs fail
+only Inkscape discovery, version, native PNG, PDF, and dimensioned PNG tests.
+Those backend checks remain unverified; the failures were not skipped or
+weakened. Independent review reported no blocking issues and independently
+reran the 224 core/regression tests successfully.

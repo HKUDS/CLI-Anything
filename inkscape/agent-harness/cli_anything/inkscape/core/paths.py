@@ -10,6 +10,7 @@ Inkscape actions for rendering.
 from typing import Dict, Any, List, Optional
 import copy
 
+from cli_anything.inkscape.utils.project_ids import _IDElement
 from cli_anything.inkscape.utils.svg_utils import generate_id
 
 # Path operations that Inkscape supports
@@ -163,8 +164,8 @@ def _path_boolean(
     obj_b = objects[index_b]
 
     # Create a new path object representing the boolean result
-    obj_id = generate_id("path")
-    result_obj = {
+    obj_id = generate_id("path", project)
+    result_obj = _IDElement({
         "id": obj_id,
         "name": name or f"{operation}_{obj_a.get('name', '')}_{obj_b.get('name', '')}",
         "type": "path",
@@ -178,7 +179,7 @@ def _path_boolean(
             "source_b": obj_b.get("id", ""),
             "inkscape_action": PATH_OPERATIONS[operation]["inkscape_action"],
         },
-    }
+    })
 
     # Remove the source objects (boolean ops consume both)
     # Remove higher index first to avoid index shifting

@@ -10,6 +10,8 @@ import os
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
+from cli_anything.inkscape.utils.project_ids import _track_project_ids
+
 from cli_anything.inkscape.utils.svg_utils import (
     create_svg_element, serialize_svg, write_svg_file, parse_svg_file,
     SVG_NS, INKSCAPE_NS, find_all_shapes, _ns,
@@ -95,7 +97,7 @@ def create_document(
             "software": "inkscape-cli 1.0",
         },
     }
-    return project
+    return _track_project_ids(project)
 
 
 def open_document(path: str) -> Dict[str, Any]:
@@ -106,7 +108,7 @@ def open_document(path: str) -> Dict[str, Any]:
         project = json.load(f)
     if "version" not in project or "document" not in project:
         raise ValueError(f"Invalid document file: {path}")
-    return project
+    return _track_project_ids(project)
 
 
 def save_document(project: Dict[str, Any], path: str) -> str:

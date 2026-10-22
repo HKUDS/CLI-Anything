@@ -752,6 +752,45 @@ class TestCLISubprocess:
         assert result.returncode == 0
         assert not os.path.exists(out)
 
+    def test_one_shot_commands_keep_ids_and_references_unique(self, tmp_dir):
+        project_path = os.path.join(tmp_dir, "unique-ids.json")
+        svg_path = os.path.join(tmp_dir, "unique-ids.svg")
+        self._run(["document", "new", "-o", project_path])
+        prefix = ["--project", project_path, "--save"]
+
+        # Each invocation starts a fresh Python process and reloads the project.
+        for command in [
+            ["layer", "add", "--name", "Foreground"],
+            ["shape", "add-rect", "--name", "First"],
+            ["shape", "add-rect", "--name", "Second"],
+            ["gradient", "add-linear", "--color1", "#ff0000"],
+            ["gradient", "add-linear", "--color1", "#0000ff"],
+            ["gradient", "apply", "0", "0"],
+            ["gradient", "apply", "1", "1"],
+            ["layer", "move-object", "1", "1"],
+        ]:
+            self._run(prefix + command)
+
+        proj = open_document(project_path)
+        ids = [item["id"] for collection in ("objects", "layers", "gradients")
+               for item in proj[collection]]
+        assert len(ids) == len(set(ids))
+        for index in range(2):
+            obj = proj["objects"][index]
+            layer = proj["layers"][index]
+            gradient = proj["gradients"][index]
+            assert layer["objects"] == [obj["id"]]
+            assert obj["layer"] == layer["id"]
+            assert parse_style(obj["style"])["fill"] == f"url(#{gradient['id']})"
+
+        self._run(["--project", project_path, "export", "svg", svg_path])
+        svg = ET.parse(svg_path).getroot()
+        svg_ids = [element.get("id") for element in svg.iter() if element.get("id")]
+        assert len(svg_ids) == len(set(svg_ids))
+        for obj in proj["objects"]:
+            layer = svg.find(f"{{{SVG_NS}}}g[@id='{obj['layer']}']")
+            assert [element.get("id") for element in layer] == [obj["id"]]
+
     def test_document_new_json_output(self, tmp_dir):
         out = os.path.join(tmp_dir, "test.json")
         result = self._run(["--json", "document", "new", "-o", out])

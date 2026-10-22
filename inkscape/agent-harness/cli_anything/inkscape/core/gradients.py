@@ -6,6 +6,7 @@ and listing gradients.
 
 from typing import Dict, Any, List, Optional
 
+from cli_anything.inkscape.utils.project_ids import _IDElement
 from cli_anything.inkscape.utils.svg_utils import generate_id, parse_style, serialize_style
 
 
@@ -35,8 +36,8 @@ def add_linear_gradient(
     if gradient_units not in ("objectBoundingBox", "userSpaceOnUse"):
         raise ValueError(f"Invalid gradientUnits: {gradient_units}")
 
-    grad_id = generate_id("linearGradient")
-    gradient = {
+    grad_id = generate_id("linearGradient", project)
+    gradient = _IDElement({
         "id": grad_id,
         "name": name or grad_id,
         "type": "linear",
@@ -44,7 +45,7 @@ def add_linear_gradient(
         "x2": x2, "y2": y2,
         "gradientUnits": gradient_units,
         "stops": stops,
-    }
+    })
 
     project.setdefault("gradients", []).append(gradient)
     return gradient
@@ -83,8 +84,8 @@ def add_radial_gradient(
     if fy is None:
         fy = cy
 
-    grad_id = generate_id("radialGradient")
-    gradient = {
+    grad_id = generate_id("radialGradient", project)
+    gradient = _IDElement({
         "id": grad_id,
         "name": name or grad_id,
         "type": "radial",
@@ -93,7 +94,7 @@ def add_radial_gradient(
         "fx": fx, "fy": fy,
         "gradientUnits": gradient_units,
         "stops": stops,
-    }
+    })
 
     project.setdefault("gradients", []).append(gradient)
     return gradient

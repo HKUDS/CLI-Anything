@@ -9,6 +9,8 @@ from defusedxml.ElementTree import parse as _defused_parse, fromstring as _defus
 import re
 from typing import Dict, Optional, Any
 
+from cli_anything.inkscape.utils.project_ids import _collection_ids
+
 # ── SVG Namespaces ──────────────────────────────────────────────
 
 SVG_NS = "http://www.w3.org/2000/svg"
@@ -161,11 +163,28 @@ def update_element_style(element: ET.Element, updates: Dict[str, str]) -> Dict[s
 _id_counter = 0
 
 
-def generate_id(prefix: str = "obj") -> str:
-    """Generate a unique ID for an SVG element."""
+def generate_id(
+    prefix: str = "obj",
+    project: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Generate an ID not already used by an element in the project.
+
+    The counter is process-local, so it cannot by itself prevent collisions
+    after reopening a document or with the initial layer's fixed ID.
+    SVG IDs share one namespace across objects, layers, and gradients.
+    """
     global _id_counter
-    _id_counter += 1
-    return f"{prefix}{_id_counter}"
+    # Keep the three indexes separate: rebuilding their union would still
+    # copy every ID on every allocation. Plain external collections are scanned.
+    existing_ids = [
+        _collection_ids((project or {}).get(collection, []))
+        for collection in ("objects", "layers", "gradients")
+    ]
+    while True:
+        _id_counter += 1
+        candidate = f"{prefix}{_id_counter}"
+        if not any(candidate in ids for ids in existing_ids):
+            return candidate
 
 
 def reset_id_counter() -> None:
