@@ -283,6 +283,30 @@ def test_e2e_cli_error_for_missing_project_is_json(cli_base, tmp_path, base_url)
     assert "No project selected" in payload["error"]
 
 
+@pytest.mark.parametrize("command", [
+    ["project", "open", "9999999999999"],
+    ["data", "rows", "--project-id", "9999999999999"],
+])
+def test_e2e_cli_rejects_server_error_without_changing_session(
+    backend, cli_base, tmp_path, base_url, command,
+):
+    assert "9999999999999" not in backend.list_projects().get("projects", {})
+    session = tmp_path / "session.json"
+    original = json.dumps({"project_id": "existing-selection", "project_name": "Keep me"})
+    session.write_text(original, encoding="utf-8")
+
+    result = _run(cli_base, [
+        "--json", "--base-url", base_url, "--session", str(session), *command,
+    ], check=False)
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    payload = json.loads(result.stderr)
+    assert payload["ok"] is False
+    assert "Failed to find project id #9999999999999" in payload["error"]
+    assert session.read_text(encoding="utf-8") == original
+
+
 def test_e2e_recovery_delete_project_removes_from_listing(backend, sample_csv):
     created = backend.create_project(sample_csv, name="cli-anything-e2e-delete")
     project_id = _project_id(created)

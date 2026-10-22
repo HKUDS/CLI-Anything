@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+import requests
 from click.testing import CliRunner
 
 from cli_anything.openrefine.core.operations import (
@@ -328,6 +329,37 @@ def test_service_redo_backend_when_project(tmp_path):
 @pytest.mark.parametrize("text,expected", [("{\"a\": 1}", {"a": 1}), ("plain", "plain"), ("", "")])
 def test_coerce_json_or_text(text, expected):
     assert _coerce_json_or_text(text) == expected
+
+
+@pytest.mark.parametrize("payload", [
+    {"code": "error", "message": "Operation rejected"},
+    {"status": "error", "message": "Project not found"},
+    {"code": "error"},
+    {"status": "error"},
+])
+def test_backend_json_rejects_application_errors(monkeypatch, payload):
+    backend = OpenRefineBackend()
+    response = requests.Response()
+    response.status_code = 200
+    response._content = json.dumps(payload).encode("utf-8")
+    monkeypatch.setattr(backend, "_request", lambda *args, **kwargs: response)
+
+    with pytest.raises(OpenRefineError) as caught:
+        backend._json("GET", "/command/core/get-rows", csrf=False)
+    assert str(caught.value) == str(payload.get("message") or payload)
+
+
+@pytest.mark.parametrize("payload", [
+    {"code": "ok"}, {"status": "ok"}, {"status": "pending"}, {"rows": []},
+])
+def test_backend_json_preserves_success_payloads(monkeypatch, payload):
+    backend = OpenRefineBackend()
+    response = requests.Response()
+    response.status_code = 200
+    response._content = json.dumps(payload).encode("utf-8")
+    monkeypatch.setattr(backend, "_request", lambda *args, **kwargs: response)
+
+    assert backend._json("GET", "/command/core/get-rows", csrf=False) == payload
 
 
 def test_backend_undo_uses_openrefine_undo_id():

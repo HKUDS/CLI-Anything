@@ -148,6 +148,8 @@ class OpenRefineBackend:
             raise OpenRefineError(f"Expected JSON from {path}, got: {response.text[:200]}") from exc
         if not isinstance(payload, dict):
             raise OpenRefineError(f"Expected JSON object from {path}")
+        if payload.get("code") == "error" or payload.get("status") == "error":
+            raise OpenRefineError(str(payload.get("message") or payload))
         return payload
 
     def _request(self, method: str, path: str, csrf: bool = True, **kwargs: Any) -> requests.Response:
