@@ -1513,6 +1513,44 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "bluesky",
+      "display_name": "Bluesky",
+      "version": "0.1.0",
+      "description": "Post, read timeline, search, and check profiles on Bluesky via the AT Protocol",
+      "requires": "Bluesky account with an App Password",
+      "homepage": "https://bsky.app",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=bluesky/agent-harness",
+      "entry_point": "cli-anything-bluesky",
+      "skill_md": "skills/cli-anything-bluesky/SKILL.md",
+      "category": "communication",
+      "contributors": [
+        {
+          "name": "Northernator",
+          "url": "https://github.com/Northernator"
+        }
+      ]
+    },
+    {
+      "name": "notepad",
+      "display_name": "Notepad",
+      "version": "0.1.0",
+      "description": "Drive Windows Notepad via UI Automation: capture the tree, invoke elements, set text",
+      "requires": "Windows; pip install uiautomation",
+      "homepage": "https://apps.microsoft.com/detail/9msmlrh6lzf3",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=notepad/agent-harness",
+      "entry_point": "cli-anything-notepad",
+      "skill_md": "skills/cli-anything-notepad/SKILL.md",
+      "category": "office",
+      "contributors": [
+        {
+          "name": "Northernator",
+          "url": "https://github.com/Northernator"
+        }
+      ]
     }
   ]
 }

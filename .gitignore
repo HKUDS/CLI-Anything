@@ -345,3 +345,7 @@ assets/gen_typing_gif.py
 !/jumpserver/
 !/jumpserver/agent-harness/
 !/cli_anything/jumpserver/
+!/bluesky/
+!/bluesky/agent-harness/
+!/notepad/
+!/notepad/agent-harness/
