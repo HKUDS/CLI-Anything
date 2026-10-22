@@ -1517,21 +1517,24 @@
     {
       "name": "asus-router-agent",
       "display_name": "ASUS Router Agent",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Bounded native ASUSWRT router reads and human-authorized operations",
       "requires": "Python 3.11+, compatible ASUSWRT router, Linux desktop Secret Service; optional native OpenSSH",
       "homepage": "https://www.asus.com/networking-iot-servers/wifi-routers/",
       "source_url": "https://github.com/hehehe0803/asus-router-agent",
-      "install_cmd": "pip install git+https://github.com/hehehe0803/asus-router-agent.git@v0.1.0",
+      "install_cmd": "python -m pip install git+https://github.com/hehehe0803/asus-router-agent.git@v0.2.0",
       "entry_point": "router-agent",
-      "skill_md": "https://raw.githubusercontent.com/hehehe0803/asus-router-agent/v0.1.0/SKILL.md",
+      "skill_md": "https://raw.githubusercontent.com/hehehe0803/asus-router-agent/v0.2.0/SKILL.md",
       "category": "network",
       "contributors": [
         {
           "name": "hehehe0803",
           "url": "https://github.com/hehehe0803"
         }
-      ]
+      ],
+      "install_strategy": "command",
+      "uninstall_cmd": "python -m pip show -q asus-router-agent && python -m pip uninstall -y asus-router-agent",
+      "update_cmd": "python -m pip install --upgrade git+https://github.com/hehehe0803/asus-router-agent.git@v0.2.0"
     }
   ]
 }
