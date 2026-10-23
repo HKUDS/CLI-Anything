@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "openbrowser",
+      "display_name": "OpenBrowser",
+      "version": "0.1.1",
+      "description": "Agent-native CLI for OpenBrowser: profiles, Windows lifecycle, CDP page control, network capture, and egress proof.",
+      "requires": "Windows 10/11, OpenBrowser 1.0.25+ running, Local API key",
+      "homepage": "https://github.com/sheying2013/OpenBrowser",
+      "source_url": "https://cnb.cool/wuxiantian/my-anythingCLI",
+      "install_cmd": "pip install git+https://cnb.cool/wuxiantian/my-anythingCLI.git@v0.1.1",
+      "entry_point": "cli-anything-openbrowser",
+      "skill_md": "https://cnb.cool/wuxiantian/my-anythingCLI/-/git/raw/main/.agents/skills/openbrowser-cli-usage/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "wuxiantian",
+          "url": "https://cnb.cool/wuxiantian"
+        }
+      ]
     }
   ]
 }
