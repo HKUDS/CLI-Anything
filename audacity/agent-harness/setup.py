@@ -13,7 +13,7 @@ with open("cli_anything/audacity/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-audacity",
-    version="1.0.0",
+    version="1.0.1",
     author="cli-anything contributors",
     author_email="",
     description="CLI harness for Audacity - Audio editing and processing via sox. Requires: sox (apt install sox)",

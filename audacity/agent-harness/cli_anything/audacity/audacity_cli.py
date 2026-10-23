@@ -776,7 +776,7 @@ def repl(project_path):
     _repl_mode = True
 
     from cli_anything.audacity.utils.repl_skin import ReplSkin
-    skin = ReplSkin("audacity", version="1.0.0")
+    skin = ReplSkin("audacity", version="1.0.1")
 
     if project_path:
         sess = get_session()

@@ -311,6 +311,8 @@ def _render_clip(
             for i in range(0, len(samples) - 1, 2):
                 mono.append((samples[i] + samples[i + 1]) / 2.0)
             samples = mono
+            # Subsequent resampling must use the converted buffer layout.
+            src_channels = 1
 
         # Resample if needed (simple linear interpolation)
         if src_rate != sample_rate:
