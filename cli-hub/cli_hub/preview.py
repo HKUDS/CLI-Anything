@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -1830,6 +1831,19 @@ def open_in_browser(target: str) -> Dict[str, Any]:
             "browser": label,
             "pid": process.pid,
             "command": full_command,
+        }
+    # On Windows, browsers are often registered as URL handlers without a
+    # matching executable on PATH. Use the system default as a fallback.
+    try:
+        opened = webbrowser.open(target, new=1)
+    except (OSError, webbrowser.Error):
+        opened = False
+    if opened:
+        return {
+            "launched": True,
+            "browser": "default browser",
+            "pid": None,
+            "command": [],
         }
     return {
         "launched": False,

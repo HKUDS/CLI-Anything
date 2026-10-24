@@ -367,6 +367,13 @@ def preview_html(preview_ref, output_path, poll_ms):
     click.echo(rendered)
 
 
+def _browser_launch_message(launched):
+    message = f"Opened in {launched['browser']}"
+    if launched.get("pid") is not None:
+        message += f": pid {launched['pid']}"
+    return message
+
+
 def _serve_live_session(session_ref, poll_ms, auto_open, port):
     session_dir, session = load_session(session_ref)
     output_path = Path(session_dir) / "live.html"
@@ -377,7 +384,7 @@ def _serve_live_session(session_ref, poll_ms, auto_open, port):
     if auto_open:
         launched = open_in_browser(live_url)
         if launched.get("launched"):
-            click.echo(f"Opened in {launched['browser']}: pid {launched['pid']}")
+            click.echo(_browser_launch_message(launched))
         else:
             click.echo(
                 "Browser launch unavailable. Open this manually:\n"
@@ -420,7 +427,7 @@ def preview_open(preview_ref, output_path, poll_ms, port):
     launched = open_in_browser(Path(rendered).resolve().as_uri())
     click.echo(rendered)
     if launched.get("launched"):
-        click.echo(f"Opened in {launched['browser']}: pid {launched['pid']}")
+        click.echo(_browser_launch_message(launched))
     else:
         click.echo(f"Open this file manually: {rendered}")
 

@@ -869,6 +869,31 @@ class TestPreviewBundle:
         assert result["browser"] == "chromium"
         assert "--app=http://127.0.0.1:9933/live.html" in result["command"]
 
+    @patch("cli_hub.preview.shutil.which", return_value=None)
+    @patch("webbrowser.open", return_value=True)
+    def test_open_in_browser_uses_system_default(self, mock_open, mock_which):
+        target = "file:///tmp/preview.html"
+        result = open_in_browser(target)
+        mock_open.assert_called_once_with(target, new=1)
+        assert result["launched"] is True
+        assert result["browser"] == "default browser"
+        assert result["pid"] is None
+
+    @patch("cli_hub.preview.shutil.which", return_value=None)
+    @patch("webbrowser.open", return_value=True)
+    def test_previews_open_reports_default_browser(self, mock_open, mock_which, tmp_path):
+        bundle_dir = _make_preview_bundle(tmp_path)
+        runner = click.testing.CliRunner()
+        result = runner.invoke(
+            main,
+            ["previews", "open", str(bundle_dir)],
+            env={"CLI_HUB_NO_ANALYTICS": "1"},
+        )
+        assert result.exit_code == 0
+        assert (bundle_dir / "preview.html").is_file()
+        assert "Opened in default browser" in result.output
+        mock_open.assert_called_once()
+
     def test_previews_inspect_cli_handles_session(self, tmp_path):
         session_dir = _make_preview_session(tmp_path)
         runner = click.testing.CliRunner()
