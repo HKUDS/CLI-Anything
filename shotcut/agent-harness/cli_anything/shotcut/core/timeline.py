@@ -627,8 +627,6 @@ def move_clip(session: Session, from_track: int, clip_index: int,
         to_track: Destination track index
         to_position: Position on destination track (None = append)
     """
-    session.checkpoint()
-
     # Get the clip entry from source track
     src_playlist = _get_track_playlist(session, from_track)
 
@@ -644,6 +642,10 @@ def move_clip(session: Session, from_track: int, clip_index: int,
     if clip_element is None:
         raise IndexError(f"Clip index {clip_index} not found on track {from_track}")
 
+    # Validate the destination before restoring transitions or removing the clip.
+    dst_playlist = _get_track_playlist(session, to_track)
+    session.checkpoint()
+
     producer_id = clip_element.get("producer")
 
     from . import transitions as trans_mod
@@ -658,7 +660,6 @@ def move_clip(session: Session, from_track: int, clip_index: int,
     src_playlist.remove(clip_element)
 
     # Add to destination
-    dst_playlist = _get_track_playlist(session, to_track)
     if to_position is not None:
         insert_idx = _prepare_insert_index(dst_playlist, to_position, session)
         mlt_xml.add_entry_to_playlist(

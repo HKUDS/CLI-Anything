@@ -605,7 +605,7 @@
     {
       "name": "shotcut",
       "display_name": "Shotcut",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Video editing and rendering via melt/ffmpeg",
       "requires": "melt (apt install melt), ffmpeg (apt install ffmpeg)",
       "homepage": "https://shotcut.org",
