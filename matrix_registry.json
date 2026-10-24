@@ -31,7 +31,8 @@
         "videocaptioner",
         "gimp",
         "krita",
-        "inkscape"
+        "inkscape",
+        "vlc"
       ],
       "capabilities": [
         {
@@ -261,7 +262,8 @@
             {"kind": "api", "name": "Ideogram", "requires": {"env": ["IDEOGRAM_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
             {"kind": "api", "name": "Stability AI", "requires": {"env": ["STABILITY_API_KEY"]}, "cost_tier": "metered", "quality_tier": "high", "offline": false},
             {"kind": "native", "name": "ffmpeg frame-grab", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "basic", "offline": true},
-            {"kind": "native", "name": "ImageMagick convert/magick", "requires": {"binary": ["magick"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
+            {"kind": "native", "name": "ImageMagick convert/magick", "requires": {"binary": ["magick"]}, "cost_tier": "free", "quality_tier": "good", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-vlc", "requires": {"binary": ["cli-anything-vlc"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
           ]
         },
         {
@@ -271,7 +273,8 @@
           "outputs": ["video:path"],
           "skill_search_hints": ["encode", "transcode", "codec"],
           "providers": [
-            {"kind": "native", "name": "ffmpeg", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true}
+            {"kind": "native", "name": "ffmpeg", "requires": {"binary": ["ffmpeg"]}, "cost_tier": "free", "quality_tier": "sota", "offline": true},
+            {"kind": "harness-cli", "name": "cli-anything-vlc", "requires": {"binary": ["cli-anything-vlc"]}, "cost_tier": "free", "quality_tier": "good", "offline": true}
           ]
         },
         {

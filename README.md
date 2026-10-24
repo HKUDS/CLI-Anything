@@ -821,7 +821,7 @@ The meta-skill points agents to the live CLI-Hub catalog, where they can choose 
 | **🤖 AI/ML Platforms** | Automate model training, inference pipelines, and hyperparameter tuning through structured commands | Stable Diffusion WebUI, ComfyUI, Ollama, InvokeAI, Text-generation-webui, Open WebUI, Fooocus, Kohya_ss, AnythingLLM, SillyTavern |
 | **📊 Data & Analytics** | Enable programmatic data processing, visualization, and statistical analysis workflows | JupyterLab, Apache Superset, Metabase, Redash, DBeaver, KNIME, Orange, OpenSearch Dashboards, Lightdash |
 | **💻 Development Tools** | Streamline code editing, building, testing, and deployment processes via command interfaces | Jenkins, Gitea, Hoppscotch, Portainer, pgAdmin, SonarQube, ArgoCD, OpenLens, Insomnia, Beekeeper Studio, **[iTerm2](https://iterm2.com)** |
-| **🎨 Creative & Media** | Control content creation, editing, and rendering workflows programmatically | Blender, GIMP, OBS Studio, Audacity, WaveTone, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour |
+| **🎨 Creative & Media** | Control content creation, editing, and rendering workflows programmatically | Blender, GIMP, OBS Studio, Audacity, WaveTone, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour, VLC |
 | **🎮 Game Development** | Manage game projects, scenes, exports, and scripting through headless engine interfaces | **[Godot Engine](https://godotengine.org)**, **[s&box](https://sbox.game)** |
 | **🔬 Scientific Computing** | Automate research workflows, simulations, and complex calculations | ImageJ, FreeCAD, QGIS, ParaView, Gephi, LibreCAD, Stellarium, KiCad, JASP, Jamovi |
 | **🏢 Enterprise & Office** | Convert business applications and productivity tools into agent-accessible systems | NextCloud, GitLab, Grafana, Mattermost, LibreOffice, AppFlowy, NocoDB, Odoo (Community), Plane, ERPNext |
@@ -1096,6 +1096,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td><code>cli-anything-audacity</code></td>
 <td>Python wave + sox</td>
 <td align="center">✅ 161</td>
+</tr>
+<tr>
+<td align="center"><strong>🎬 VLC</strong></td>
+<td>Media Playback & Transcoding</td>
+<td><code>cli-anything-vlc</code></td>
+<td>Real VLC engine (transcode / stream / snapshot)</td>
+<td align="center">✅ 19</td>
 </tr>
 <tr>
 <td align="center"><strong>WaveTone</strong></td>
@@ -1411,6 +1418,7 @@ gimp          107 passed  ✅   (64 unit + 43 e2e)
 blender       208 passed  ✅   (150 unit + 58 e2e)
 inkscape      202 passed  ✅   (148 unit + 54 e2e)
 audacity      161 passed  ✅   (107 unit + 54 e2e)
+vlc            32 passed  ✅   (27 unit + 5 e2e)
 wavetone       30 passed  ✅   (24 unit + 6 default e2e, 2 backend-gated e2e skipped; 32 passed opt-in)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 mubu           96 passed  ✅   (85 unit + 11 e2e)
@@ -1504,6 +1512,7 @@ cli-anything/
 ├── 🧊 blender/agent-harness/            # Blender CLI (208 tests)
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI (202 tests)
 ├── 🎵 audacity/agent-harness/           # Audacity CLI (161 tests)
+├── 🎬 vlc/agent-harness/               # VLC CLI (32 tests: 27 unit + 5 e2e)
 ├── wavetone/agent-harness/              # WaveTone CLI (32 tests: 30 default + 2 backend-gated e2e)
 ├── 🌐 browser/agent-harness/            # Browser CLI (DOMShell MCP, new)
 ├── 🌐 web-yu-pri/agent-harness/         # Japan Post Web Yu-pri CLI (new)

@@ -346,7 +346,7 @@ cli-anything-gimp
 | **🤖 AI/MLプラットフォーム** | 構造化されたコマンドでモデルの訓練、推論パイプライン、ハイパーパラメータチューニングを自動化 | Stable Diffusion WebUI, ComfyUI, InvokeAI, Text-generation-webui, Open WebUI, Fooocus, Kohya_ss, AnythingLLM, SillyTavern |
 | **📊 データ & アナリティクス** | プログラマティックなデータ処理、可視化、統計分析ワークフローを実現 | JupyterLab, Apache Superset, Metabase, Redash, DBeaver, KNIME, Orange, OpenSearch Dashboards, Lightdash |
 | **💻 開発ツール** | コマンドインターフェースでコード編集、ビルド、テスト、デプロイプロセスを効率化 | Jenkins, Gitea, Hoppscotch, Portainer, pgAdmin, SonarQube, ArgoCD, OpenLens, Insomnia, Beekeeper Studio |
-| **🎨 クリエイティブ & メディア** | コンテンツ作成、編集、レンダリングワークフローをプログラムで制御 | Blender, GIMP, OBS Studio, Audacity, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour |
+| **🎨 クリエイティブ & メディア** | コンテンツ作成、編集、レンダリングワークフローをプログラムで制御 | Blender, GIMP, OBS Studio, Audacity, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour, VLC |
 | **🔬 科学計算** | 研究ワークフロー、シミュレーション、複雑な計算を自動化 | ImageJ, FreeCAD, QGIS, ParaView, Gephi, LibreCAD, Stellarium, KiCad, JASP, Jamovi |
 | **🏢 エンタープライズ & オフィス** | ビジネスアプリケーションと生産性ツールをエージェントがアクセス可能なシステムに変換 | NextCloud, GitLab, Grafana, Mattermost, LibreOffice, AppFlowy, NocoDB, Odoo (Community), Plane, ERPNext |
 | **📞 コミュニケーション & コラボレーション** | 構造化されたCLIで会議のスケジュール、参加者管理、録画取得、レポートを自動化 | Zoom, Jitsi Meet, BigBlueButton, Mattermost |
@@ -502,6 +502,13 @@ CLI-Anythingはコードベースを持つあらゆるソフトウェアで動�
 <td align="center">✅ 161</td>
 </tr>
 <tr>
+<td align="center"><strong>🎬 VLC</strong></td>
+<td>メディア再生とトランスコード</td>
+<td><code>cli-anything-vlc</code></td>
+<td>実際の VLC エンジン（トランスコード / ストリーム / スナップショット）</td>
+<td align="center">✅ 19</td>
+</tr>
+<tr>
 <td align="center"><strong>📄 LibreOffice</strong></td>
 <td>オフィススイート (Writer, Calc, Impress)</td>
 <td><code>cli-anything-libreoffice</code></td>
@@ -591,6 +598,7 @@ gimp          107 passed  ✅   (64 unit + 43 e2e)
 blender       208 passed  ✅   (150 unit + 58 e2e)
 inkscape      202 passed  ✅   (148 unit + 54 e2e)
 audacity      161 passed  ✅   (107 unit + 54 e2e)
+vlc           32 passed  ✅   (27 unit + 5 e2e)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 obs-studio    153 passed  ✅   (116 unit + 37 e2e)
 kdenlive      155 passed  ✅   (111 unit + 44 e2e)
@@ -654,6 +662,7 @@ cli-anything/
 ├── 🧊 blender/agent-harness/            # Blender CLI (208テスト)
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI (202テスト)
 ├── 🎵 audacity/agent-harness/           # Audacity CLI (161テスト)
+├── 🎬 vlc/agent-harness/               # VLC CLI (32テスト: 27 unit + 5 e2e)
 ├── 📄 libreoffice/agent-harness/        # LibreOffice CLI (158テスト)
 ├── 📹 obs-studio/agent-harness/         # OBS Studio CLI (153テスト)
 ├── 🎞️ kdenlive/agent-harness/           # Kdenlive CLI (155テスト)

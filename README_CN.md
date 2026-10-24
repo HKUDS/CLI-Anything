@@ -433,7 +433,7 @@ cli-anything-gimp
 | **🤖 AI/ML 平台** | 用结构化命令驱动模型训练、推理流水线和超参搜索 | Stable Diffusion WebUI、ComfyUI、InvokeAI、Text-generation-webui、Open WebUI、Fooocus、Kohya_ss、AnythingLLM、SillyTavern |
 | **📊 数据与分析** | 以编程方式完成数据处理、可视化和统计分析工作流 | JupyterLab、Apache Superset、Metabase、Redash、DBeaver、KNIME、Orange、OpenSearch Dashboards、Lightdash |
 | **💻 开发工具** | 通过 CLI 串联代码编辑、构建、测试与部署流程 | Jenkins、Gitea、Hoppscotch、Portainer、pgAdmin、SonarQube、ArgoCD、OpenLens、Insomnia、Beekeeper Studio |
-| **🎨 创意与媒体** | 以编程方式控制内容创作、编辑和渲染工作流 | Blender、GIMP、OBS Studio、Audacity、WaveTone、Krita、Kdenlive、Shotcut、Inkscape、Darktable、LMMS、Ardour |
+| **🎨 创意与媒体** | 以编程方式控制内容创作、编辑和渲染工作流 | Blender、GIMP、OBS Studio、Audacity、WaveTone、Krita、Kdenlive、Shotcut、Inkscape、Darktable、LMMS、Ardour、VLC |
 | **📐 图表与可视化** | 以编程方式创建和操作流程图、架构图、ER 图等各类图表 | Draw.io (diagrams.net)、Mermaid、PlantUML、Excalidraw、yEd |
 | **🔬 科学计算** | 自动化科研工作流、仿真模拟和复杂计算 | ImageJ、FreeCAD、QGIS、ParaView、Gephi、LibreCAD、Stellarium、KiCad、JASP、Jamovi |
 | **🏢 企业与办公** | 将商业应用和生产力工具转化为 Agent 可访问的系统 | NextCloud、GitLab、Grafana、Mattermost、LibreOffice、AppFlowy、NocoDB、Odoo (Community)、Plane、ERPNext |
@@ -599,6 +599,13 @@ CLI-Anything 适用于任何有代码库的软件 —— 不限领域，不限�
 <td align="center">✅ 161</td>
 </tr>
 <tr>
+<td align="center"><strong>🎬 VLC</strong></td>
+<td>媒体播放与转码</td>
+<td><code>cli-anything-vlc</code></td>
+<td>真实 VLC 引擎（转码 / 推流 / 抽帧）</td>
+<td align="center">✅ 19</td>
+</tr>
+<tr>
 <td align="center"><strong>WaveTone</strong></td>
 <td>音频扒谱辅助</td>
 <td><code>cli-anything-wavetone</code></td>
@@ -744,6 +751,7 @@ gimp          107 passed  ✅   (64 unit + 43 e2e)
 blender       208 passed  ✅   (150 unit + 58 e2e)
 inkscape      202 passed  ✅   (148 unit + 54 e2e)
 audacity      161 passed  ✅   (107 unit + 54 e2e)
+vlc           32 passed  ✅   (27 unit + 5 e2e)
 wavetone       30 passed  ✅   (24 unit + 6 default e2e，2 backend-gated e2e skipped；32 passed opt-in)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 obs-studio    153 passed  ✅   (116 unit + 37 e2e)
@@ -829,6 +837,7 @@ cli-anything/
 ├── 🧊 blender/agent-harness/            # Blender CLI（208 项测试）
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI（202 项测试）
 ├── 🎵 audacity/agent-harness/           # Audacity CLI（161 项测试）
+├── 🎬 vlc/agent-harness/               # VLC CLI（32 项测试：27 单元 + 5 e2e）
 ├── wavetone/agent-harness/              # WaveTone CLI（32 项测试：30 default + 2 backend-gated e2e）
 ├── 📄 libreoffice/agent-harness/        # LibreOffice CLI（158 项测试）
 ├── 📚 zotero/agent-harness/             # Zotero CLI（新增，支持文献导入）

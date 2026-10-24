@@ -277,6 +277,11 @@
 !/n8n/agent-harness/
 !/obsidian/agent-harness/
 !/joplin/agent-harness/
+# VLC: allow the top-level dir, but track only its agent-harness subtree
+!/vlc/
+/vlc/*
+/vlc/.*
+!/vlc/agent-harness/
 !/calibre/agent-harness/
 !/safari/
 !/safari/agent-harness/

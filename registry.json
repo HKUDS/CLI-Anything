@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-06-19"
+    "updated": "2026-10-17"
   },
   "clis": [
     {
@@ -1511,6 +1511,25 @@
         {
           "name": "workcr",
           "url": "https://github.com/workcr"
+        }
+      ]
+    },
+    {
+      "name": "vlc",
+      "display_name": "VLC",
+      "version": "1.0.0",
+      "description": "Agent-native CLI for VLC — define media jobs (transcode, stream, snapshot) as structured JSON and run them through the real VLC engine, with --json output and an undo/redo REPL.",
+      "requires": "VLC media player (v3.0+) installed and on PATH",
+      "homepage": "https://www.videolan.org/vlc/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=vlc/agent-harness",
+      "entry_point": "cli-anything-vlc",
+      "skill_md": "skills/cli-anything-vlc/SKILL.md",
+      "category": "multimedia",
+      "contributors": [
+        {
+          "name": "oldslowdog",
+          "url": "https://github.com/oldslowdog"
         }
       ]
     }

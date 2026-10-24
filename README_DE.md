@@ -475,7 +475,7 @@ Der Meta-Skill verweist Agenten auf den Live-Katalog von CLI-Hub, wo sie ein CLI
 | **🤖 AI/ML-Plattformen** | Mit strukturierten Befehlen Modell-Training, Inferenz-Pipelines und Hyperparameter-Tuning automatisieren | Stable Diffusion WebUI, ComfyUI, InvokeAI, Text-generation-webui, Open WebUI, Fooocus, Kohya_ss, AnythingLLM, SillyTavern |
 | **📊 Daten & Analytics** | Programmatische Datenverarbeitung, Visualisierung und statistische Analyse-Workflows | JupyterLab, Apache Superset, Metabase, Redash, DBeaver, KNIME, Orange, OpenSearch Dashboards, Lightdash |
 | **💻 Entwickler-Tools** | Code-Editor, Build, Test und Deployment-Prozesse über Command-Interfaces streamlinen | Jenkins, Gitea, Hoppscotch, Portainer, pgAdmin, SonarQube, ArgoCD, OpenLens, Insomnia, Beekeeper Studio |
-| **🎨 Kreativ & Medien** | Content-Erstellung, Editing und Rendering-Workflows programmatisch steuern | Blender, GIMP, OBS Studio, Audacity, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour |
+| **🎨 Kreativ & Medien** | Content-Erstellung, Editing und Rendering-Workflows programmatisch steuern | Blender, GIMP, OBS Studio, Audacity, Krita, Kdenlive, Shotcut, Inkscape, Darktable, LMMS, Ardour, VLC |
 | **🔬 Wissenschaftliches Rechnen** | Forschungs-Workflows, Simulationen und aufwendige Berechnungen automatisieren | ImageJ, FreeCAD, QGIS, ParaView, Gephi, LibreCAD, Stellarium, KiCad, JASP, Jamovi |
 | **🏢 Enterprise & Office** | Business-Anwendungen und Produktivitäts-Tools in agent-zugängliche Systeme verwandeln | NextCloud, GitLab, Grafana, Mattermost, LibreOffice, AppFlowy, NocoDB, Odoo (Community), Plane, ERPNext |
 | **📞 Kommunikation & Zusammenarbeit** | Mit strukturierten CLIs Meeting-Scheduling, Teilnehmer-Verwaltung, Aufzeichnungen und Reports automatisieren | Zoom, Jitsi Meet, BigBlueButton, Mattermost |
@@ -729,6 +729,13 @@ Für jede Anwendung wird ein komplettes, produktionsreifes CLI-Interface erzeugt
 <td align="center">✅ 161</td>
 </tr>
 <tr>
+<td align="center"><strong>🎬 VLC</strong></td>
+<td>Medienwiedergabe & Transcodierung</td>
+<td><code>cli-anything-vlc</code></td>
+<td>Echte VLC-Engine (Transcodieren / Streamen / Snapshot)</td>
+<td align="center">✅ 19</td>
+</tr>
+<tr>
 <td align="center"><strong>📄 LibreOffice</strong></td>
 <td>Office-Suite (Writer, Calc, Impress)</td>
 <td><code>cli-anything-libreoffice</code></td>
@@ -811,6 +818,7 @@ gimp          107 passed  ✅   (64 unit + 43 e2e)
 blender       208 passed  ✅   (150 unit + 58 e2e)
 inkscape      202 passed  ✅   (148 unit + 54 e2e)
 audacity      161 passed  ✅   (107 unit + 54 e2e)
+vlc           32 passed  ✅   (27 unit + 5 e2e)
 libreoffice   158 passed  ✅   (89 unit + 69 e2e)
 obs-studio    153 passed  ✅   (116 unit + 37 e2e)
 kdenlive      155 passed  ✅   (111 unit + 44 e2e)
@@ -873,6 +881,7 @@ cli-anything/
 ├── 🧊 blender/agent-harness/            # Blender CLI (208 Tests)
 ├── ✏️ inkscape/agent-harness/            # Inkscape CLI (202 Tests)
 ├── 🎵 audacity/agent-harness/           # Audacity CLI (161 Tests)
+├── 🎬 vlc/agent-harness/               # VLC CLI (32 Tests: 27 unit + 5 e2e)
 ├── 📄 libreoffice/agent-harness/        # LibreOffice CLI (158 Tests)
 ├── 📹 obs-studio/agent-harness/         # OBS Studio CLI (153 Tests)
 ├── 🎞️ kdenlive/agent-harness/           # Kdenlive CLI (155 Tests)

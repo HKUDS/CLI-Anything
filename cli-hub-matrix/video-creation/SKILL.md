@@ -397,6 +397,7 @@ Use this to apply already-designed caption/subtitle assets, watermarks, or pictu
 | Provider | Kind | Requires | Cost | Quality | Offline |
 |---|---|---|---|---|---|
 | `cli-anything-gimp` / `krita` / `inkscape` | harness-cli | installed | free | high | yes |
+| `cli-anything-vlc` | harness-cli | installed | free | good | yes |
 | `Pillow` | python | pkg | free | good | yes |
 | `cairosvg` / `html2image` | python | pkg | free | good | yes |
 | OpenAI GPT-Image-1 | api | `OPENAI_API_KEY` | metered | sota | no |
@@ -411,6 +412,7 @@ Use this to apply already-designed caption/subtitle assets, watermarks, or pictu
 | Provider | Kind | Requires | Cost | Quality | Offline |
 |---|---|---|---|---|---|
 | `ffmpeg` | native | binary | free | sota | yes |
+| `cli-anything-vlc` | harness-cli | installed | free | good | yes |
 
 ### `quality.review` — technical and editorial investigation before delivery
 

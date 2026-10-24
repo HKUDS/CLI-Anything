@@ -1,0 +1,10 @@
+# Python build / test artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Generated E2E sample (synthesised at test time)
+cli_anything/vlc/tests/assets/
