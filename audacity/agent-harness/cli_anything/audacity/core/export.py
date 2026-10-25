@@ -288,7 +288,7 @@ def _render_clip(
         trim_end = clip.get("trim_end", None)
 
         start_idx = int(trim_start * src_rate) * src_channels
-        if trim_end is not None and trim_end > 0:
+        if trim_end is not None:
             end_idx = int(trim_end * src_rate) * src_channels
         else:
             end_idx = len(samples)
