@@ -178,8 +178,8 @@ def set_text_property(
     internal_name = field_map.get(prop, prop)
     obj[internal_name] = value
 
-    # Rebuild style string
-    _rebuild_text_style(obj)
+    # Update only the edited CSS property, preserving unrelated styles.
+    _rebuild_text_style(obj, prop)
 
     return obj
 
@@ -238,8 +238,8 @@ def layout_text_lines(obj: Dict[str, Any]) -> List[str]:
 
 # ── Internal Helpers ────────────────────────────────────────────
 
-def _rebuild_text_style(obj: Dict[str, Any]) -> None:
-    """Rebuild the style string from object properties."""
+def _rebuild_text_style(obj: Dict[str, Any], changed_property: str) -> None:
+    """Update the edited style property without restoring stale object fields."""
     style_parts = {}
     if "font_family" in obj:
         style_parts["font-family"] = obj["font_family"]
@@ -266,7 +266,10 @@ def _rebuild_text_style(obj: Dict[str, Any]) -> None:
     if "stroke" in obj:
         style_parts["stroke"] = obj["stroke"]
 
-    obj["style"] = serialize_style(style_parts)
+    current_style = parse_style(obj.get("style", ""))
+    if changed_property in style_parts:
+        current_style[changed_property] = style_parts[changed_property]
+    obj["style"] = serialize_style(current_style)
 
 
 def text_anchor_x(obj: Dict[str, Any]) -> float:
