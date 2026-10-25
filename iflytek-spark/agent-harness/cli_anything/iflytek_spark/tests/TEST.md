@@ -32,6 +32,25 @@ All tests run the installed `cli-anything-iflytek-spark` command through
 Point the live tests at a server with the usual settings, e.g.
 `IFLYTEK_SPARK_BACKEND=llamacpp` or `IFLYTEK_SPARK_BASE_URL=http://host:30000/v1`.
 
+## Session and truncated-stream verification (2026-10-25)
+
+Windows, Python 3.12.6, with mocked HTTP and no live model calls:
+
+```text
+Head ae7e03be with seven new regression cases: 7 failed, 51 passed, 2 skipped
+Fixed code, complete unit suite:              58 passed, 2 skipped
+Fixed code, CLI subprocess suite:              4 passed, 7 skipped
+```
+
+The regressions cover stale session objects, clear followed by a stale append,
+three synchronized writer processes, split opening tags in truncated streams,
+and text/JSON CLI output and saved history. The file lock covers reload, append
+and save as one transaction; readers and clear use the same lock. The real
+multi-process test ran on Windows; POSIX file-mode checks remain skipped there.
+The four subprocess cases used the module entry point; the seven live cases
+were skipped with the backend set to an unreachable loopback port.
+No historical live-model result below validates this follow-up.
+
 ## Review-fix verification (2026-10-22)
 
 Windows, Python 3.12.6; HTTP mocked for the unit suite. No model server or

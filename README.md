@@ -19,7 +19,7 @@ CLI-Anything: Bridging the Gap Between AI Agents and the World's Software</stron
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-5_min-blue?style=for-the-badge" alt="Quick Start"></a>
   <a href="https://hkuds.github.io/CLI-Anything/"><img src="https://img.shields.io/badge/CLI_Hub-Browse_%26_Install-ff69b4?style=for-the-badge" alt="CLI Hub"></a>
   <a href="#-demonstrations"><img src="https://img.shields.io/badge/Demos-18_Apps-green?style=for-the-badge" alt="Demos"></a>
-  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-3%2C130%2B_Documented-blue?style=for-the-badge" alt="Documented test cases"></a>
+  <a href="#-test-results"><img src="https://img.shields.io/badge/Tests-3%2C137%2B_Documented-blue?style=for-the-badge" alt="Documented test cases"></a>
   <a href="https://arxiv.org/abs/2606.03854"><img src="https://img.shields.io/badge/Tech_Report-arXiv%3A2606.03854-b31b1b?style=for-the-badge" alt="Tech Report"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow?style=for-the-badge" alt="License"></a>
 </p>
@@ -1389,7 +1389,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td>Open LLM (on-device, 1M context) — chat, streaming, reasoning split, multi-turn sessions</td>
 <td><code>cli-anything-iflytek-spark</code></td>
 <td>OpenAI-compatible server: SGLang / vLLM / Ollama / llama.cpp / iFlytek Astron MaaS</td>
-<td align="center"><a href="iflytek-spark/agent-harness/">64 (53 unit + 11 E2E)</a></td>
+<td align="center"><a href="iflytek-spark/agent-harness/">71 (60 unit + 11 E2E)</a></td>
 </tr>
 <tr>
 <td align="center" colspan="4"><strong>Documented subtotal (numeric rows)</strong></td>
@@ -1397,7 +1397,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 </tr>
 </table>
 
-> The numeric test counts above total **3,130 documented cases**, including 53 Spark unit cases and 11 Spark E2E cases. Rows marked “New” or listing command counts are excluded. This catalog subtotal is not a claim that every backend suite was run together; check each harness's verification notes and environment requirements.
+> The numeric test counts above total **3,137 documented cases**, including 60 Spark unit cases and 11 Spark E2E cases. Rows marked “New” or listing command counts are excluded. This catalog subtotal is not a claim that every backend suite was run together; check each harness's verification notes and environment requirements.
 
 ---
 

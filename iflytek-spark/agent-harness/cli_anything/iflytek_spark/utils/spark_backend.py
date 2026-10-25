@@ -215,7 +215,8 @@ class ThinkStreamSplitter:
 
     With a pre-filled ``<think>`` the stream carries reasoning until the first
     ``</think>``, so content is buffered until that marker shows up. If the
-    stream ends without one, the buffer is emitted as content.
+    stream ends without one, an explicit opening tag still marks reasoning;
+    unmarked text is emitted as content.
     """
 
     def __init__(self, passthrough: bool = False):
@@ -257,6 +258,9 @@ class ThinkStreamSplitter:
             return []
         pending, self._buffer = self._buffer, ""
         self.passthrough = True
+        if pending.lstrip().startswith(THINK_OPEN):
+            reasoning = pending.lstrip()[len(THINK_OPEN):].strip()
+            return [("reasoning", reasoning)] if reasoning else []
         return self._content(pending)
 
     def _content(self, text: str) -> list[tuple[str, str]]:

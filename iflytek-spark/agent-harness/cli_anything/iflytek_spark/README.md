@@ -111,7 +111,12 @@ python -m pytest cli_anything/iflytek_spark/tests/test_core.py -v      # no serv
 python -m pytest cli_anything/iflytek_spark/tests/test_full_e2e.py -v  # needs a live server
 ```
 
-The unit suite collects 53 cases, including two POSIX file-mode checks that skip
+Session reads, appends and clears use one file-lock protocol on POSIX and
+Windows. Each append reloads the saved history while holding the lock, so
+concurrent commands retain both exchanges. Inference uses a snapshot; concurrent
+requests do not automatically include answers that were still in flight.
+
+The unit suite collects 60 cases, including two POSIX file-mode checks that skip
 on Windows. The E2E file contains four offline CLI subprocess cases and seven
 live-backend cases. Running the offline cases does not verify model inference
 or a remote provider; use a real server for the complete E2E run.

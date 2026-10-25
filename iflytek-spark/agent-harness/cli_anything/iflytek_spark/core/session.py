@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
 
 
-def _locked_save_json(path, data, **dump_kwargs) -> None:
-    """Write JSON with an exclusive file lock where the platform supports it."""
+@contextmanager
+def _locked_session_file(path):
+    """Keep reads and read-modify-write transactions under the same lock."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     f = os.fdopen(fd, "r+", encoding="utf-8")
@@ -19,21 +20,20 @@ def _locked_save_json(path, data, **dump_kwargs) -> None:
             os.fchmod(f.fileno(), 0o600)
         else:
             os.chmod(path, 0o600)
-        _locked = False
-        try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        else:
             import fcntl
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            _locked = True
-        except (ImportError, OSError):
-            pass
         try:
-            f.seek(0)
-            f.truncate()
-            json.dump(data, f, **dump_kwargs)
-            f.flush()
+            yield f
         finally:
-            if _locked:
-                import fcntl
+            f.flush()
+            f.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
@@ -50,44 +50,57 @@ class ChatSession:
         self.history: list[dict] = []
         self.max_history = 50
         if os.path.exists(self.session_file):
-            try:
-                with open(self.session_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                self.messages = data.get("messages", [])
-                self.history = data.get("history", [])
-            except (json.JSONDecodeError, IOError):
-                self.messages = []
-                self.history = []
+            self._refresh()
+
+    def _load(self, f):
+        f.seek(0)
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError:
+            data = {}
+        self.messages = data.get("messages", [])
+        self.history = data.get("history", [])
+
+    def _refresh(self):
+        with _locked_session_file(self.session_file) as f:
+            self._load(f)
 
     def add_exchange(self, prompt: str, answer: str, model: str = ""):
-        self.messages.append({"role": "user", "content": prompt})
-        self.messages.append({"role": "assistant", "content": answer})
-        self.history.append(
-            {"prompt": prompt, "model": model, "timestamp": datetime.now().isoformat(timespec="seconds")}
-        )
-        if len(self.history) > self.max_history:
-            self.history = self.history[-self.max_history:]
-        self._save()
+        with _locked_session_file(self.session_file) as f:
+            self._load(f)
+            self.messages.append({"role": "user", "content": prompt})
+            self.messages.append({"role": "assistant", "content": answer})
+            self.history.append(
+                {"prompt": prompt, "model": model, "timestamp": datetime.now().isoformat(timespec="seconds")}
+            )
+            if len(self.history) > self.max_history:
+                self.history = self.history[-self.max_history:]
+            self._save(f)
 
     def get_messages(self) -> list[dict]:
+        self._refresh()
         return list(self.messages)
 
     def clear(self):
-        self.messages = []
-        self.history = []
-        self._save()
+        with _locked_session_file(self.session_file) as f:
+            self.messages = []
+            self.history = []
+            self._save(f)
 
     def status(self) -> dict:
+        self._refresh()
         return {
             "message_count": len(self.messages),
             "turns": len(self.messages) // 2,
             "session_file": self.session_file,
         }
 
-    def _save(self):
-        _locked_save_json(
-            self.session_file,
+    def _save(self, f):
+        f.seek(0)
+        f.truncate()
+        json.dump(
             {"messages": self.messages, "history": self.history},
+            f,
             indent=2,
             ensure_ascii=False,
         )

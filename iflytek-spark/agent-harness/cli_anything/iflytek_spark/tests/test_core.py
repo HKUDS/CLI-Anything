@@ -1,6 +1,7 @@
 """Unit tests for the Spark-X2.5 harness — no server required (HTTP is mocked)."""
 
 import json
+import multiprocessing
 import os
 import stat
 from unittest.mock import MagicMock, patch
@@ -176,6 +177,13 @@ class TestStreamSplitter:
     def test_no_close_tag_flushes_as_content(self):
         assert self._run(["just ", "text"]) == [("content", "just text")]
 
+    @pytest.mark.parametrize("pieces", [
+        ["<think>unfinished calculation"],
+        ["\n<th", "ink>", "unfinished calculation"],
+    ])
+    def test_unfinished_explicit_thinking_stays_reasoning(self, pieces):
+        assert self._run(pieces) == [("reasoning", "unfinished calculation")]
+
     def test_passthrough(self):
         assert self._run(["a</think>b"], passthrough=True) == [("content", "a</think>b")]
 
@@ -309,7 +317,56 @@ class TestRequests:
 # ── session ──────────────────────────────────────────────────────────
 
 
+def _append_from_process(path, barrier, prompt):
+    session = ChatSession(path)
+    barrier.wait(timeout=20)
+    session.add_exchange(prompt, "answer", "model")
+
+
 class TestSession:
+    def test_stale_sessions_preserve_both_exchanges(self, tmp_path):
+        path = str(tmp_path / "session.json")
+        first, second = ChatSession(path), ChatSession(path)
+        first.add_exchange("first", "one")
+        second.add_exchange("second", "two")
+        assert [m["content"] for m in first.get_messages()] == ["first", "one", "second", "two"]
+        assert first.status()["turns"] == 2
+
+    def test_clear_does_not_resurrect_stale_history(self, tmp_path):
+        path = str(tmp_path / "session.json")
+        first = ChatSession(path)
+        first.add_exchange("old", "answer")
+        second = ChatSession(path)
+        first.clear()
+        assert second.get_messages() == []
+        second.add_exchange("new", "answer")
+        assert ChatSession(path).get_messages() == [
+            {"role": "user", "content": "new"},
+            {"role": "assistant", "content": "answer"},
+        ]
+
+    def test_concurrent_processes_preserve_each_exchange(self, tmp_path):
+        path = str(tmp_path / "session.json")
+        context = multiprocessing.get_context("spawn")
+        barrier = context.Barrier(3)
+        workers = [context.Process(target=_append_from_process, args=(path, barrier, str(i)))
+                   for i in range(3)]
+        try:
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=30)
+                assert worker.exitcode == 0
+        finally:
+            for worker in workers:
+                if worker.is_alive():
+                    worker.terminate()
+                    worker.join(timeout=5)
+        stored = ChatSession(path)
+        assert {m["content"] for m in stored.get_messages() if m["role"] == "user"} == {"0", "1", "2"}
+        assert stored.status()["turns"] == 3
+        assert len(stored.history) == 3
+
     def test_session_creation_requests_private_mode(self, tmp_path):
         target = str(tmp_path / "session.json")
         with patch.object(session_module.os, "open", wraps=os.open) as open_file:
@@ -352,6 +409,20 @@ class TestSession:
 
 
 class TestCLI:
+    @pytest.mark.parametrize("json_output", [False, True])
+    def test_unfinished_thinking_is_not_displayed_or_saved_as_answer(self, isolated_home, json_output):
+        chunks = [{"choices": [{"delta": {"content": p}}]}
+                  for p in ["<th", "ink>private calculation"]]
+        args = (["--json"] if json_output else []) + ["stream", "--no-think", "q"]
+        with patch("requests.post", return_value=_sse_response(chunks)):
+            result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0, result.output
+        assert "private calculation" not in result.output
+        if json_output:
+            assert json.loads(result.output)["content"] == ""
+        stored = ChatSession(str(isolated_home / "session.json"))
+        assert all("private calculation" not in m["content"] for m in stored.get_messages())
+
     def test_help(self):
         result = CliRunner().invoke(cli, ["--help"])
         assert result.exit_code == 0
