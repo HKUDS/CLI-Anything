@@ -1,6 +1,7 @@
 """Tests for cli-hub — registry, installer, analytics, and CLI."""
 
 import json
+import shutil
 import os
 import sys
 import tempfile
@@ -294,7 +295,8 @@ def _make_preview_session(tmp_path: Path, *, with_trajectory: bool = False) -> P
     bundle_dir = _make_preview_bundle(tmp_path)
     session_dir = tmp_path / "live-session"
     session_dir.mkdir()
-    (session_dir / "current").symlink_to(bundle_dir, target_is_directory=True)
+    # Live sessions support copied bundles without Windows symlink privilege.
+    shutil.copytree(bundle_dir, session_dir / "current")
     session = {
         "protocol_version": "preview-live/v1",
         "software": "shotcut",
@@ -845,7 +847,8 @@ class TestPreviewBundle:
         content = output_path.read_text()
         assert "CLI-Anything Live Preview Session" in content
         assert 'const CURRENT_LINK = "current";' in content
-        assert "manifest = await fetchJson(`${CURRENT_LINK}/manifest.json`);" in content
+        assert "const currentLink = session.current_link || CURRENT_LINK;" in content
+        assert "manifest = await fetchJson(`${currentLink}/manifest.json`);" in content
         assert "const POLL_MS = 800;" in content
 
     def test_render_live_html_with_trajectory(self, tmp_path):

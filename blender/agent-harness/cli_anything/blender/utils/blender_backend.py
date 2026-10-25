@@ -83,7 +83,7 @@ def render_scene_headless(
         Dict with output path, file size, method, blender version
     """
     with tempfile.NamedTemporaryFile(
-        suffix=".py", mode="w", delete=False, prefix="blender_render_"
+        suffix=".py", mode="w", encoding="utf-8", delete=False, prefix="blender_render_"
     ) as f:
         f.write(bpy_script_content)
         script_path = f.name

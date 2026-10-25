@@ -627,7 +627,7 @@ def render_session_text(session_ref: str) -> str:
 
 def _artifact_href(output_dir: Path, bundle_dir: Path, artifact_path: str) -> str:
     target = (bundle_dir / artifact_path).resolve()
-    return os.path.relpath(target, output_dir)
+    return Path(os.path.relpath(target, output_dir)).as_posix()
 
 
 def _render_artifact_card(output_dir: Path, bundle_dir: Path, artifact: Dict[str, Any]) -> str:
@@ -1615,7 +1615,7 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
 
     function artifactUrl(session, artifact) {{
       const rev = encodeURIComponent(session.updated_at || Date.now());
-      return `${{CURRENT_LINK}}/${{artifact.path}}?rev=${{rev}}`;
+      return `${{session.current_link || CURRENT_LINK}}/${{artifact.path}}?rev=${{rev}}`;
     }}
 
     function pickArtifact(manifest, role, mediaPrefix) {{
@@ -1743,11 +1743,12 @@ def render_live_html(session_ref: str, output_path: str, poll_ms: int = 1500) ->
     async function refresh() {{
       try {{
         const session = await fetchJson("session.json");
-        const manifest = await fetchJson(`${{CURRENT_LINK}}/manifest.json`);
+        const currentLink = session.current_link || CURRENT_LINK;
+        const manifest = await fetchJson(`${{currentLink}}/manifest.json`);
         const trajectoryPayload = await fetchTrajectory(session);
         const trajectory = normalizeTrajectory(session, trajectoryPayload);
         let summary = {{}};
-        const summaryPath = manifest.summary_path ? `${{CURRENT_LINK}}/${{manifest.summary_path}}` : `${{CURRENT_LINK}}/summary.json`;
+        const summaryPath = manifest.summary_path ? `${{currentLink}}/${{manifest.summary_path}}` : `${{currentLink}}/summary.json`;
         try {{
           summary = await fetchJson(summaryPath);
         }} catch (error) {{
