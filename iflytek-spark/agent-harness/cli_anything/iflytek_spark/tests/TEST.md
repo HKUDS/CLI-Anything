@@ -34,7 +34,7 @@ Point the live tests at a server with the usual settings, e.g.
 
 ## Session and truncated-stream verification (2026-10-25)
 
-Windows, Python 3.12.6, with mocked HTTP and no live model calls:
+Windows, Python 3.11.15, with mocked HTTP and no live model calls:
 
 ```text
 Head ae7e03be with seven new regression cases: 7 failed, 51 passed, 2 skipped
@@ -49,6 +49,9 @@ and save as one transaction; readers and clear use the same lock. The real
 multi-process test ran on Windows; POSIX file-mode checks remain skipped there.
 The four subprocess cases used the module entry point; the seven live cases
 were skipped with the backend set to an unreachable loopback port.
+A final run of both test files together passed 62 cases and skipped nine.
+The interpreter version was captured in that run; 3.12.6 in the initial
+follow-up note was a transcription error from the earlier review session.
 No historical live-model result below validates this follow-up.
 
 ## Review-fix verification (2026-10-22)
