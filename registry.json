@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "voxtype",
+      "display_name": "Voxtype",
+      "version": "1.0.0",
+      "description": "Push-to-talk voice-to-text for Linux — validated config with undo/redo, file transcription, meeting transcripts and daemon control via the voxtype binary",
+      "requires": "voxtype >= 1.1 (yay -S voxtype-bin, or https://voxtype.io), a whisper model, ffmpeg",
+      "homepage": "https://voxtype.io",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=voxtype/agent-harness",
+      "entry_point": "cli-anything-voxtype",
+      "skill_md": "skills/cli-anything-voxtype/SKILL.md",
+      "category": "audio",
+      "contributors": [
+        {
+          "name": "MDsniper",
+          "url": "https://github.com/MDsniper"
+        }
+      ]
     }
   ]
 }

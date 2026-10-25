@@ -1294,6 +1294,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 98</td>
 </tr>
 <tr>
+<td align="center"><strong>🎙️ <a href="voxtype/agent-harness/">Voxtype</a></strong></td>
+<td>Push-to-talk Voice-to-Text (Linux)</td>
+<td><code>cli-anything-voxtype</code></td>
+<td>voxtype binary (whisper.cpp) + ffmpeg</td>
+<td align="center">✅ 115</td>
+</tr>
+<tr>
 <td align="center"><strong>🧬 <a href="unimol_tools/agent-harness/">Uni-Mol Tools</a></strong></td>
 <td>Molecular Property Prediction (AI4S)</td>
 <td><code>cli-anything-unimol-tools</code></td>
@@ -1437,8 +1444,9 @@ unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 3mf            50 passed  ✅   (50 unit)
 joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
+voxtype       115 passed  ✅   (75 unit + 40 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,464 passed  ✅   100% pass rate
+TOTAL        2,579 passed  ✅   100% pass rate
 ```
 
 ---
@@ -1530,6 +1538,7 @@ cli-anything/
 ├── 🧩 dify-workflow/agent-harness/      # Dify Workflow CLI wrapper (11 tests)
 ├── 🛡️ adguardhome/agent-harness/       # AdGuard Home CLI (36 tests)
 ├── 🦙 ollama/agent-harness/             # Ollama CLI (98 tests)
+├── 🎙️ voxtype/agent-harness/            # Voxtype CLI (115 tests)
 ├── 🎮 godot/agent-harness/              # Godot Engine CLI (24 tests)
 ├── 📦 sbox/agent-harness/               # s&box CLI (244 tests: 157 unit + 17 orchestrator + 50 e2e + 20 exit-code)
 ├── 🎨 sketch/agent-harness/             # Sketch CLI (19 tests, Node.js)
