@@ -961,7 +961,7 @@
     {
       "name": "intelwatch",
       "display_name": "Intelwatch",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Competitive intelligence, M&A due diligence, and OSINT directly from your terminal.",
       "requires": "Node.js >=18",
       "homepage": "https://github.com/ashroth/intelwatch",
