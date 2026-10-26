@@ -116,8 +116,8 @@ The following are denied until the matching global grant is explicit:
   transform/background-transform, and trigger actions:
   `--allow-command-actions`.
 - Profile/history writes: `--allow-filesystem-write`.
-- Directory walking with an explicit `walker-root`: `--allow-walker`; root or
-  home additionally requires `--allow-broad-walker`.
+- Directory walking with an explicit `walker-root`: `--allow-walker`; `/` or any
+  root containing the home directory additionally requires `--allow-broad-walker`.
 - Full environment inheritance: `--allow-env-inherit`.
 - An explicit `FZF_DEFAULT_OPTS_FILE`: `--allow-default-opts-file`.
 - TCP and unsafe listeners: see the listener policy below.
