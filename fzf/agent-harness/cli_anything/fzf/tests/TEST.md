@@ -10,8 +10,8 @@
 
 ## Test inventory plan
 
-- `test_core.py`: 95 unit and CLI-isolation test cases.
-- `test_full_e2e.py`: 78 tests against the real backend,
+- `test_core.py`: 97 unit and CLI-isolation test cases.
+- `test_full_e2e.py`: 79 tests against the real backend,
   installed console script, PTYs, and owned listener fixtures.
 - `test_option_coverage.py`: 12 schema and live help/man
   completeness tests.
