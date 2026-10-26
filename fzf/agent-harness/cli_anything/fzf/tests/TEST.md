@@ -176,13 +176,36 @@ lifecycle, and no orphan process/socket.
 
 ## Test results
 
-### Current collected inventory (not an executed result)
+### Current release run (2026-10-27, source head `45aa3ba`)
 
-After the expert-option surface fix (commit `83fed65`), `pytest --collect-only`
-finds 188 tests: `test_core.py` 97, `test_option_coverage.py` 12, and
-`test_full_e2e.py` 79. No full release run of this 188-test inventory is
-recorded yet; the results below must be refreshed from such a run before
-release.
+Run by the outer release executor from a `git archive` snapshot of source head
+`45aa3bac77cfde4018e66caec35ef41a0099daef`, after the expert-option surface
+fix (commit `83fed65`). Python 3.12.15, real backend
+`/var/home/louranicas/.local/bin/fzf` `0.74.5 (c0a193e0)` (SHA-256
+`c8d3ac08594f271a108528beb15338c42be113d392816b10bf5955cd139293e8`). The
+tests ran against the installed wheel `cli_anything_fzf-1.0.0-py3-none-any.whl`
+(SHA-256
+`bb72abcdd44c6682416220f1d4953307eb01d2688d48be047ed7303bcd8c4148`), built
+with offline `uv build` and installed with `uv pip install --offline` into a
+fresh virtual environment.
+
+| Suite | Pass | Fail | Skip | Not run |
+|---|---:|---:|---:|---:|
+| `test_core.py` | 97 | 0 | 0 | 0 |
+| `test_option_coverage.py` | 12 | 0 | 0 | 0 |
+| `test_full_e2e.py` | 79 | 0 | 0 | 0 |
+| **Total** | **188** | **0** | **0** | **0** |
+
+```bash
+CLI_ANYTHING_FZF_BACKEND=/var/home/louranicas/.local/bin/fzf \
+CLI_ANYTHING_FORCE_INSTALLED=1 \
+<release-venv>/bin/python \
+  -m pytest fzf/agent-harness/cli_anything/fzf/tests -q --tb=short
+# 188 passed in 16.99s  (exit 0)
+```
+
+All 16 collected listener cases in `test_full_e2e.py` ran and passed within
+that suite, so the ad hoc listener failure noted below was not reproduced.
 
 ### Pipeline test-phase scenarios observed on 2026-10-27
 
@@ -205,7 +228,8 @@ the real backend. These are partial evidence, not a full-suite pass:
   REPL refuses non-TTY stdin with `tty_required`.
 - An ad hoc `listener start` in that environment failed with
   `listener_start_failed` (worker exit 1). `listener stop` then reported
-  verified cleanup. This was not counted as a listener pass.
+  verified cleanup. This was not counted as a listener pass; the current
+  release run above covers the listener cases.
 
 ### Historical release run (before the expert-option fix)
 
@@ -220,7 +244,7 @@ These counts are the 185-test inventory of that time, not the current code:
 | `test_full_e2e.py` | 78 | 0 | 0 | 0 |
 | **Total** | **185** | **0** | **0** | **0** |
 
-Release command and its historical result (re-run it for the current code):
+Historical release command and result:
 
 ```bash
 CLI_ANYTHING_FZF_BACKEND=/var/home/louranicas/.local/bin/fzf \
