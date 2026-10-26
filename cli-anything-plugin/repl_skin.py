@@ -232,6 +232,8 @@ class ReplSkin:
         meta_lines: list[str] = []
         meta_lines.extend(_meta_lines("Install:", self.skill_install_cmd))
         meta_lines.extend(_meta_lines("Global skill:", _display_home_path(self.global_skill_path)))
+        if self.skill_path:
+            meta_lines.extend(_meta_lines("Skill:", _display_home_path(self.skill_path)))
         print(top)
         print(_box_line(title))
         print(_box_line(ver))
