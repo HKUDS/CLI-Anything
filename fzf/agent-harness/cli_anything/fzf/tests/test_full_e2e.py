@@ -444,6 +444,24 @@ def test_unknown_expert_option_requires_grant_and_is_one_token(installed_cli, ba
     allowed, payload = run_cli(installed_cli, backend, ["--allow-unknown-options", *args])
     assert allowed.returncode == 0
     assert "--future=value with spaces" in payload["data"]["argv"]
+    assert payload["data"]["refused"] is False
+    assert payload["data"]["refusal_reasons"] == []
+
+
+def test_granted_expert_option_reaches_real_backend(installed_cli, backend):
+    args = ["filter", "run", "--item", "apple", "--query", "a", "--expert-option", "--future=1"]
+    denied, error = run_cli(installed_cli, backend, args)
+    assert_error(denied, error, "unknown_options_denied")
+    executed, payload = run_cli(installed_cli, backend, ["--allow-unknown-options", *args])
+    plan = payload["data"]["plan"]
+    result = payload["data"]["result"]
+    assert plan["refused"] is False
+    assert plan["executed"] is True
+    assert plan["argv"][-1] == "--future=1"
+    assert "subprocess_capable" in plan["effect_classes"]
+    assert result["process_exit_code"] == 2
+    assert result["stderr"] == "unknown option: --future\n"
+    assert executed.returncode == 2
 
 
 def test_inherited_secret_value_never_appears_in_plan(installed_cli, backend):

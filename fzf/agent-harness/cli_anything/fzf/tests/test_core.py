@@ -274,6 +274,18 @@ def test_expert_escape_hatch_is_one_argv_token_and_visible():
     assert analysis["effects"] == ["subprocess_capable"]
 
 
+@pytest.mark.parametrize("surface", ["declarative", "listener"])
+def test_expert_option_is_accepted_on_execution_surfaces_only_with_grant(surface):
+    item = parse_expert_option("--future-mode", Policy(allow_unknown_options=True))
+    granted = validate_option_set([item], Policy(allow_unknown_options=True), surface=surface)
+    assert granted["refusals"] == []
+    assert granted["effects"] == ["subprocess_capable"]
+    denied = validate_option_set([item], Policy(), surface=surface)
+    assert denied["refusals"] == [
+        {"option": "--future-mode", "reason": "requires allow-unknown-options"}
+    ]
+
+
 @pytest.mark.parametrize(
     ("value", "kind", "loopback"),
     [

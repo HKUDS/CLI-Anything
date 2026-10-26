@@ -463,7 +463,9 @@ def validate_option_set(options: Iterable[OptionValue], policy: Policy, *, surfa
         seen[option.name] = option.source
         effects.update(spec.get("effects", ["pure"]))
         required_surface = spec.get("surface", "declarative")
-        if required_surface not in {"declarative", surface}:
+        if required_surface not in {"declarative", surface} and not (
+            required_surface == "expert-option" and option.source == "expert-option"
+        ):
             refusals.append({
                 "option": f"--{option.name}",
                 "reason": f"available only through the {required_surface} command surface",
@@ -476,6 +478,8 @@ def validate_option_set(options: Iterable[OptionValue], policy: Policy, *, surfa
             granted = policy.allow_filesystem_write
         elif requirement == "allow-walker":
             granted = policy.allow_walker
+        elif requirement == "allow-unknown-options":
+            granted = policy.allow_unknown_options
         elif requirement == "allow-unsafe-listener":
             granted = policy.allow_unsafe_listener
         elif requirement == "managed-listener-only":
