@@ -176,8 +176,42 @@ lifecycle, and no orphan process/socket.
 
 ## Test results
 
-Observed on 2026-10-26 in the isolated task worktree with Python 3.12.15 and the
-real `/var/home/louranicas/.local/bin/fzf` backend:
+### Current collected inventory (not an executed result)
+
+After the expert-option surface fix (commit `83fed65`), `pytest --collect-only`
+finds 188 tests: `test_core.py` 97, `test_option_coverage.py` 12, and
+`test_full_e2e.py` 79. No full release run of this 188-test inventory is
+recorded yet; the results below must be refreshed from such a run before
+release.
+
+### Pipeline test-phase scenarios observed on 2026-10-27
+
+The no-mistakes test phase for this change exercised targeted scenarios against
+the real backend. These are partial evidence, not a full-suite pass:
+
+- Expert-option regressions: 11 selected tests (from 176 collected in
+  `test_core.py` and `test_full_e2e.py`) passed, including
+  `test_granted_expert_option_reaches_real_backend` and
+  `test_expert_option_is_accepted_on_execution_surfaces_only_with_grant` for
+  the declarative and listener surfaces.
+- Manual CLI transcripts: `backend inspect`/`verify-spec` (180 addressable
+  options, complete), filter matching, field options, no-match exit 1, NUL-safe
+  bytes, and dry-run plans behaved as documented. Without
+  `--allow-unknown-options`, an expert option is refused. With the grant it
+  executes, and fzf itself rejects the unknown flag. Known options, `--listen`,
+  and non-`--long` forms stay refused. Command actions without grants still
+  get `plan_refused`.
+- Profile creation needs `--allow-filesystem-write` and writes mode 0600. The
+  REPL refuses non-TTY stdin with `tty_required`.
+- An ad hoc `listener start` in that environment failed with
+  `listener_start_failed` (worker exit 1). `listener stop` then reported
+  verified cleanup. This was not counted as a listener pass.
+
+### Historical release run (before the expert-option fix)
+
+Observed on 2026-10-26, before commit `83fed65`, in the isolated task worktree
+with Python 3.12.15 and the real `/var/home/louranicas/.local/bin/fzf` backend.
+These counts are the 185-test inventory of that time, not the current code:
 
 | Suite | Pass | Fail | Skip | Not run |
 |---|---:|---:|---:|---:|
@@ -186,7 +220,7 @@ real `/var/home/louranicas/.local/bin/fzf` backend:
 | `test_full_e2e.py` | 78 | 0 | 0 | 0 |
 | **Total** | **185** | **0** | **0** | **0** |
 
-Release command and observed result:
+Release command and its historical result (re-run it for the current code):
 
 ```bash
 CLI_ANYTHING_FZF_BACKEND=/var/home/louranicas/.local/bin/fzf \
