@@ -679,6 +679,25 @@
       ]
     },
     {
+      "name": "iflytek-spark",
+      "display_name": "iFlytek Spark-X2.5",
+      "version": "1.0.0",
+      "description": "Chat with iFlytek's open Spark-X2.5 models via SGLang, vLLM, Ollama, llama.cpp or Astron MaaS, with reasoning split from the answer",
+      "requires": "A running Spark-X2.5 server (SGLang, vLLM, Ollama, llama.cpp) or an iFlytek Astron MaaS API key",
+      "homepage": "https://github.com/XHToken/Spark-X2.5",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=iflytek-spark/agent-harness",
+      "entry_point": "cli-anything-iflytek-spark",
+      "skill_md": "skills/cli-anything-iflytek-spark/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "FenjuFu",
+          "url": "https://github.com/FenjuFu"
+        }
+      ]
+    },
+    {
       "name": "seaclip",
       "display_name": "SeaClip",
       "version": "1.0.0",
