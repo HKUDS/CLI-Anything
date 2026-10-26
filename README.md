@@ -1133,6 +1133,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 76</td>
 </tr>
 <tr>
+<td align="center"><strong><a href="copt/agent-harness/">COPT</a></strong></td>
+<td>Mathematical Optimization</td>
+<td><code>cli-anything-copt</code></td>
+<td>Native <code>copt_cmd</code> solver</td>
+<td align="center">✅ <a href="copt/agent-harness/cli_anything/copt/tests/TEST.md">20</a></td>
+</tr>
+<tr>
 <td align="center"><strong>⚡ <a href="n8n/agent-harness/">n8n</a></strong></td>
 <td>Workflow Automation</td>
 <td><code>cli-anything-n8n</code></td>

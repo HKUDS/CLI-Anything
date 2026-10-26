@@ -6,6 +6,25 @@
   },
   "clis": [
     {
+      "name": "copt",
+      "display_name": "COPT",
+      "version": "1.0.0",
+      "description": "Inspect, solve, convert, and diagnose LP/MIP models through the native Cardinal Optimizer command line with structured JSON output",
+      "requires": "Licensed COPT installation with copt_cmd (tested with 8.0.2)",
+      "homepage": "https://www.copt.de/",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=copt/agent-harness",
+      "entry_point": "cli-anything-copt",
+      "skill_md": "skills/cli-anything-copt/SKILL.md",
+      "category": "science",
+      "contributors": [
+        {
+          "name": "jingchengwang86-max",
+          "url": "https://github.com/jingchengwang86-max"
+        }
+      ]
+    },
+    {
       "name": "jumpserver",
       "display_name": "JumpServer",
       "version": "0.1.0",

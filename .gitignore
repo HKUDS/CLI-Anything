@@ -107,6 +107,7 @@
 !/tigris/
 !/cc-switch/
 !/siyuan/
+!/copt/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
 /gimp/.*
@@ -224,6 +225,8 @@
 /cc-switch/.*
 /siyuan/*
 /siyuan/.*
+/copt/*
+/copt/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -294,6 +297,7 @@
 !/tigris/agent-harness/
 !/cc-switch/agent-harness/
 !/siyuan/agent-harness/
+!/copt/agent-harness/
 
 # Exclude non-gedit demo macros from macrocli (local only)
 /macrocli/agent-harness/cli_anything/macrocli/macro_definitions/demo/flameshot*
@@ -308,6 +312,7 @@
 **/dist/
 **/build/
 **/.pytest_cache/
+**/.venv/
 **/*.egg
 **/*.wav
 **/*.blend
