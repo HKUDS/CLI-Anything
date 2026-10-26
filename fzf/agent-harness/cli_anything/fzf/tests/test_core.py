@@ -520,6 +520,55 @@ def test_api_key_cannot_be_supplied_as_environment_text(backend):
         )
 
 
+def _walker_plan(backend, root, policy):
+    return build_plan(
+        backend_override=str(backend),
+        mode="filter",
+        options=[parse_option(f"walker-root={root}")],
+        input_source=InputSource("walker", {"kind": "backend-walker"}, None),
+        policy=policy,
+        dry_run=True,
+        timeout=1,
+    ).public
+
+
+BROAD_WALKER_REFUSAL = {
+    "input": "backend-walker",
+    "reason": "root or home traversal requires allow-broad-walker",
+}
+
+
+@pytest.mark.parametrize("relative", ["var/home/user", "var/home", "var", "alias-home", "alias-parent"])
+def test_walker_root_containing_home_requires_broad_grant(backend, tmp_path, monkeypatch, relative):
+    home = tmp_path / "var" / "home" / "user"
+    home.mkdir(parents=True)
+    (tmp_path / "alias-home").symlink_to(home)
+    (tmp_path / "alias-parent").symlink_to(home.parent)
+    monkeypatch.setenv("HOME", str(home))
+    root = tmp_path / relative
+    refused = _walker_plan(backend, root, Policy(allow_walker=True))
+    assert refused["refused"]
+    assert BROAD_WALKER_REFUSAL in refused["refusal_reasons"]
+    granted = _walker_plan(backend, root, Policy(allow_walker=True, allow_broad_walker=True))
+    assert not granted["refused"]
+    assert granted["argv"] == [str(backend), f"--walker-root={root}"]
+
+
+def test_filesystem_root_walker_requires_broad_grant(backend):
+    assert BROAD_WALKER_REFUSAL in _walker_plan(backend, "/", Policy(allow_walker=True))["refusal_reasons"]
+    assert not _walker_plan(backend, "/", Policy(allow_walker=True, allow_broad_walker=True))["refused"]
+
+
+@pytest.mark.parametrize("relative", ["var/home/user/project", "var/home/sibling", "elsewhere"])
+def test_walker_root_not_containing_home_needs_only_walker_grant(backend, tmp_path, monkeypatch, relative):
+    home = tmp_path / "var" / "home" / "user"
+    home.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    plan = _walker_plan(backend, tmp_path / relative, Policy(allow_walker=True))
+    assert not plan["refused"]
+    assert plan["refusal_reasons"] == []
+
+
 def test_source_contains_no_shell_true():
     package = Path(__file__).parents[1]
     sources = "\n".join(path.read_text(encoding="utf-8") for path in package.rglob("*.py"))

@@ -245,9 +245,10 @@ def build_plan(
             analysis["refusals"].append(
                 {"input": "backend-walker", "reason": "an explicit --option walker-root=DIR is required"}
             )
-        broad = {str(Path("/").resolve()), str(Path.home().resolve())}
-        resolved_roots = [str(Path(root).expanduser().resolve(strict=False)) for root in roots]
-        if any(root in broad for root in resolved_roots) and not policy.allow_broad_walker:
+        home = Path.home().resolve()
+        resolved_roots = [Path(root).expanduser().resolve(strict=False) for root in roots]
+        broad = any(root == Path("/").resolve() or home.is_relative_to(root) for root in resolved_roots)
+        if broad and not policy.allow_broad_walker:
             analysis["refusals"].append(
                 {"input": "backend-walker", "reason": "root or home traversal requires allow-broad-walker"}
             )

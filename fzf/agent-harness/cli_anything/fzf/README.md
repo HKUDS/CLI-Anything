@@ -364,7 +364,8 @@ proven dead.
   deliberately visible and conservative but cannot predict future fzf semantics;
   it is therefore classified subprocess-capable.
 - Explicit input files may read any path the invoking OS user can read. Broad
-  implicit traversal is denied; root/home walker roots need a second grant.
+  implicit traversal is denied; walker roots that are `/` or contain the home
+  directory need a second grant.
 - Canonical base64 input is decoded directly to bounded candidate bytes; it is
   not interpreted as text or a command.
 - History is both reading and writing and is limited to interactive modes.
