@@ -6,6 +6,25 @@
   },
   "clis": [
     {
+      "name": "firetv-control",
+      "display_name": "Fire TV Control",
+      "version": "0.2.0",
+      "description": "Fire OS device management: APK lifecycle, shared files, remote keys, screenshots, launcher inspection, and Docker-hosted live browser video",
+      "requires": "ADB and an authorized Fire OS device; FFmpeg and scrcpy server for browser video (included in Docker)",
+      "homepage": "https://github.com/GustavoHSCruz/firetv-control",
+      "source_url": "https://github.com/GustavoHSCruz/firetv-control",
+      "install_cmd": "pip install git+https://github.com/GustavoHSCruz/firetv-control.git@v0.2.0",
+      "entry_point": "firetv-control",
+      "skill_md": "https://raw.githubusercontent.com/GustavoHSCruz/firetv-control/v0.2.0/skills/firetv-control/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "GustavoHSCruz",
+          "url": "https://github.com/GustavoHSCruz"
+        }
+      ]
+    },
+    {
       "name": "jumpserver",
       "display_name": "JumpServer",
       "version": "0.1.0",
