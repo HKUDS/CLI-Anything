@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -97,12 +98,14 @@ def load_config() -> dict:
 def save_config(config: dict) -> None:
     config_file = get_config_file()
     config_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_file, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
+    fd, temporary = tempfile.mkstemp(prefix=".config-", suffix=".json", dir=config_file.parent)
     try:
-        config_file.chmod(0o600)
-    except OSError:
-        pass
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        os.replace(temporary, config_file)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def mask_secret(value: Optional[str]) -> Optional[str]:
@@ -203,6 +206,8 @@ def split_reasoning(message: dict) -> tuple[str, str]:
         return reasoning.strip(), content.strip()
     idx = content.find(THINK_CLOSE)
     if idx == -1:
+        if content.lstrip().startswith(THINK_OPEN):
+            return content.lstrip()[len(THINK_OPEN):].strip(), ""
         return "", content.strip()
     head = content[:idx].lstrip()
     if head.startswith(THINK_OPEN):
@@ -392,6 +397,10 @@ def chat_completion_stream(
                 chunk = json.loads(payload)
             except json.JSONDecodeError:
                 continue
+            if chunk.get("error") is not None:
+                error = chunk["error"]
+                detail = error.get("message", "generation failed") if isinstance(error, dict) else str(error)
+                raise RuntimeError(f"Spark API streaming error: {detail}")
             if chunk.get("model"):
                 response_model = chunk["model"]
             if isinstance(chunk.get("usage"), dict):
@@ -411,6 +420,9 @@ def chat_completion_stream(
         raise _connection_error(settings["base_url"], e)
     except requests.RequestException as e:
         raise _http_error(resp, e)
+    finally:
+        if resp is not None:
+            resp.close()
 
     return {
         "model": response_model,

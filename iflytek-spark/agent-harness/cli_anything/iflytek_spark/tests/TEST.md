@@ -110,3 +110,9 @@ Coverage notes: SGLang, vLLM, Ollama and MaaS were not run live here. They
 share the same OpenAI-compatible code path, and their response shapes
 (`reasoning_content`, `reasoning`, `…</think>answer` without an opening tag)
 are covered by the unit tests.
+
+## Review follow-up — 2026-10-26
+
+On Windows with Python 3.11.15, the final offline suite passes 72 cases and skips 11 (four POSIX permissions cases and seven live-server cases). Ten new executable regressions fail on e2b18c46; two additional config-permission regressions require POSIX and were skipped locally.
+
+The regressions cover unfinished non-streaming thinking blocks, HTTP-200 SSE error frames before and after partial output, JSON filesystem errors, preserving the previous config after a failed write, config-file permissions before writing, and resolved connection settings in isolated test subprocesses. Streaming failures leave session history unchanged and close the response. Config replacement uses a private temporary file in the same directory. No live model requests or POSIX execution were performed for this follow-up.

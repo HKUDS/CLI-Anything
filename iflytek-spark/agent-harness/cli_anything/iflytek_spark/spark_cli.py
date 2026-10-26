@@ -82,7 +82,7 @@ def handle_error(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except (RuntimeError, ValueError) as e:
+        except (RuntimeError, ValueError, OSError) as e:
             if _json_output:
                 click.echo(json.dumps({"error": str(e), "type": type(e).__name__}, ensure_ascii=False))
             else:

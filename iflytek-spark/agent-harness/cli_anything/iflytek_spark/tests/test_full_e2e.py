@@ -51,6 +51,14 @@ class TestCLISubprocess:
     @pytest.fixture(autouse=True)
     def _home(self, tmp_path):
         self.env = dict(os.environ, IFLYTEK_SPARK_HOME=str(tmp_path), PYTHONIOENCODING="utf-8")
+        for name, field in (("IFLYTEK_SPARK_BACKEND", "backend"),
+                            ("IFLYTEK_SPARK_BASE_URL", "base_url"),
+                            ("IFLYTEK_SPARK_API_KEY", "api_key"),
+                            ("IFLYTEK_SPARK_MODEL", "model")):
+            if SETTINGS.get(field) is None:
+                self.env.pop(name, None)
+            else:
+                self.env[name] = SETTINGS[field]
 
     def _run(self, args, input=None):
         return subprocess.run(
@@ -140,3 +148,26 @@ class TestCLISubprocess:
         data = self._json(["chat", "--no-session", "--no-think", "--max-tokens", "64"],
                           input="Reply with the single word: pong")
         assert "pong" in data["content"].lower()
+
+
+def test_isolated_subprocess_keeps_resolved_connection_settings(tmp_path, monkeypatch):
+    from cli_anything.iflytek_spark.utils import spark_backend as backend
+    source_home = tmp_path / "source"
+    monkeypatch.setenv(backend.ENV_HOME, str(source_home))
+    for name in (backend.ENV_BACKEND, backend.ENV_BASE_URL, backend.ENV_API_KEY, backend.ENV_MODEL):
+        monkeypatch.delenv(name, raising=False)
+    backend.save_config({"backend": "maas", "base_url": "http://127.0.0.1:9/custom",
+                         "api_key": "local-test-key", "default_model": "custom-model"})
+    settings = backend.resolve_settings()
+    monkeypatch.setitem(globals(), "SETTINGS", settings)
+    suite = TestCLISubprocess()
+    isolated = tmp_path / "isolated"
+    TestCLISubprocess._home.__wrapped__(suite, isolated)
+    result = subprocess.run(
+        [sys.executable, "-c", "import json; from cli_anything.iflytek_spark.utils.spark_backend import resolve_settings; print(json.dumps(resolve_settings()))"],
+        env=suite.env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == settings
+    assert suite.env[backend.ENV_HOME] == str(isolated)
+    assert not (isolated / "config.json").exists()

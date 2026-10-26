@@ -527,3 +527,92 @@ class TestCLI:
         assert data["finish_reason"] == "length"
         assert data["usage"] == usage
         assert ChatSession(str(backend.get_home_dir() / "session.json")).messages[-1]["content"] == "done"
+
+
+class TestReviewRegressions:
+    @pytest.mark.parametrize("show_reasoning", [False, True])
+    def test_unfinished_nonstream_reasoning_not_saved_as_answer(self, isolated_home, show_reasoning):
+        response = _completion("  <think>unfinished calculation")
+        response["choices"][0]["finish_reason"] = "length"
+        args = ["--json", "chat", "hi"]
+        if show_reasoning:
+            args.append("--show-reasoning")
+        with patch.object(backend.requests, "post", return_value=_json_response(response)):
+            result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["content"] == ""
+        assert data["finish_reason"] == "length"
+        if show_reasoning:
+            assert data["reasoning"] == "unfinished calculation"
+        else:
+            assert "reasoning" not in data
+        messages = ChatSession(str(isolated_home / "session.json")).get_messages()
+        assert messages[-1]["content"] == ""
+
+    @pytest.mark.parametrize("error", [{"message": "generation failed"}, "generation failed"])
+    @pytest.mark.parametrize("partial", [False, True])
+    def test_stream_error_is_failure_and_preserves_session(self, isolated_home, error, partial):
+        session = ChatSession(str(isolated_home / "session.json"))
+        session.add_exchange("earlier", "answer", "spark2.5")
+        before = (isolated_home / "session.json").read_bytes()
+        chunks = []
+        if partial:
+            chunks.append({"choices": [{"delta": {"content": "</think>partial"}}]})
+        chunks.append({"error": error})
+        response = _sse_response(chunks)
+        with patch.object(backend.requests, "post", return_value=response):
+            result = CliRunner().invoke(cli, ["--json", "stream", "hi"])
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert "generation failed" in data["error"]
+        assert data["type"] == "RuntimeError"
+        response.close.assert_called_once()
+        assert (isolated_home / "session.json").read_bytes() == before
+
+    @pytest.mark.parametrize("command", [["config", "set", "backend", "ollama"],
+                                        ["chat", "hi"]])
+    def test_filesystem_errors_have_json_schema(self, isolated_home, command, monkeypatch):
+        blocker = isolated_home / "file-not-directory"
+        blocker.write_text("blocked", encoding="utf-8")
+        monkeypatch.setenv(backend.ENV_HOME, str(blocker / "child"))
+        result = CliRunner().invoke(cli, ["--json"] + command)
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert data["error"]
+        assert data["type"] in {"NotADirectoryError", "FileNotFoundError", "FileExistsError"}
+
+    def test_failed_config_write_preserves_previous_file(self, isolated_home):
+        save_config({"api_key": "old-test-key"})
+        before = (isolated_home / "config.json").read_bytes()
+
+        def fail_after_write(data, stream, **kwargs):
+            stream.write('{"api_key":')
+            raise OSError("simulated full disk")
+
+        with patch.object(backend.json, "dump", side_effect=fail_after_write):
+            with pytest.raises(OSError, match="simulated full disk"):
+                save_config({"api_key": "new-test-key"})
+        assert (isolated_home / "config.json").read_bytes() == before
+        assert sorted(p.name for p in isolated_home.iterdir()) == ["config.json"]
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+    @pytest.mark.parametrize("existing", [False, True])
+    def test_config_private_before_first_secret_write(self, isolated_home, existing):
+        target = isolated_home / "config.json"
+        if existing:
+            target.write_text('{}', encoding="utf-8")
+            target.chmod(0o644)
+        dump = backend.json.dump
+
+        def assert_private(data, stream, **kwargs):
+            assert stat.S_IMODE(os.fstat(stream.fileno()).st_mode) == 0o600
+            return dump(data, stream, **kwargs)
+
+        previous_umask = os.umask(0o022)
+        try:
+            with patch.object(backend.json, "dump", side_effect=assert_private):
+                save_config({"api_key": "test-secret"})
+        finally:
+            os.umask(previous_umask)
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
