@@ -10,7 +10,7 @@
 
 ## Test inventory plan
 
-- `test_core.py`: 97 unit and CLI-isolation test cases.
+- `test_core.py`: 106 unit and CLI-isolation test cases.
 - `test_full_e2e.py`: 79 tests against the real backend,
   installed console script, PTYs, and owned listener fixtures.
 - `test_option_coverage.py`: 12 schema and live help/man
@@ -154,7 +154,7 @@ lifecycle, and no orphan process/socket.
 | `--with-shell` or preview without policy | deterministic refusal |
 | inherited `FZF_DEFAULT_COMMAND`/opts file | absent from constructed environment |
 | raw `FZF_API_KEY` request/output | refused/redacted |
-| broad walker without root and grant | refused |
+| broad walker without root and grant (`/`, home, or any resolved ancestor of home such as `/var/home`, `/home`, `/var`) | refused |
 | history without filesystem-write grant | refused |
 | non-loopback or unsafe listener without grants/key | refused |
 | injected listener mode/address from defaults or generic options | refused; managed start retains ownership |
@@ -176,7 +176,39 @@ lifecycle, and no orphan process/socket.
 
 ## Test results
 
-### Current release run (2026-10-27, source head `45aa3ba`)
+### Current release run (2026-10-27, source head `f47dd7a`)
+
+Run by the outer release executor from a `git archive` snapshot of source head
+`f47dd7ab32a9c47acf80383b029679530403119e`, after the broad-walker
+ancestor-of-home fix. Python 3.12.15, real backend
+`/var/home/louranicas/.local/bin/fzf` `0.74.5 (c0a193e0)` (SHA-256
+`c8d3ac08594f271a108528beb15338c42be113d392816b10bf5955cd139293e8`). The
+tests ran against the installed wheel `cli_anything_fzf-1.0.0-py3-none-any.whl`
+(SHA-256
+`6f650d17ace4adb0f0aa0b57dacb055953ed12844fcd211f700b2d8eab9e3a7c`), built
+with offline `uv build` and installed with `uv pip install --offline` into a
+fresh virtual environment. Evidence report:
+`/var/mnt/storage/firstmate-lab/repos/firstmate/data/fzf-cli-harness-tmux/release-evidence-walker.C744b1/RELEASE-EVIDENCE.txt`.
+
+| Suite | Pass | Fail | Skip | Not run |
+|---|---:|---:|---:|---:|
+| `test_core.py` | 106 | 0 | 0 | 0 |
+| `test_option_coverage.py` | 12 | 0 | 0 | 0 |
+| `test_full_e2e.py` | 79 | 0 | 0 | 0 |
+| **Total** | **197** | **0** | **0** | **0** |
+
+```bash
+CLI_ANYTHING_FZF_BACKEND=/var/home/louranicas/.local/bin/fzf \
+CLI_ANYTHING_FORCE_INSTALLED=1 \
+<release-venv>/bin/python \
+  -m pytest fzf/agent-harness/cli_anything/fzf/tests -q --tb=short
+# 197 passed in 16.76s  (exit 0)
+```
+
+All 16 collected listener cases in `test_full_e2e.py` ran and passed within
+that suite, so the ad hoc listener failure noted below was not reproduced.
+
+### Previous release run (2026-10-27, source head `45aa3ba`, before the broad-walker fix)
 
 Run by the outer release executor from a `git archive` snapshot of source head
 `45aa3bac77cfde4018e66caec35ef41a0099daef`, after the expert-option surface
@@ -205,7 +237,8 @@ CLI_ANYTHING_FORCE_INSTALLED=1 \
 ```
 
 All 16 collected listener cases in `test_full_e2e.py` ran and passed within
-that suite, so the ad hoc listener failure noted below was not reproduced.
+that suite. This run predates the broad-walker ancestor-of-home fix and its 9
+added `test_core.py` cases.
 
 ### Pipeline test-phase scenarios observed on 2026-10-27
 
@@ -228,8 +261,8 @@ the real backend. These are partial evidence, not a full-suite pass:
   REPL refuses non-TTY stdin with `tty_required`.
 - An ad hoc `listener start` in that environment failed with
   `listener_start_failed` (worker exit 1). `listener stop` then reported
-  verified cleanup. This was not counted as a listener pass; the current
-  release run above covers the listener cases.
+  verified cleanup. This was not counted as a listener pass; the release
+  runs above cover the listener cases.
 
 ### Historical release run (before the expert-option fix)
 
