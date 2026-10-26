@@ -360,6 +360,7 @@ def chat_completion_stream(
     content_parts: list[str] = []
     response_model = model
     finish_reason = None
+    completed = False
     usage = {}
 
     def dispatch(events):
@@ -392,6 +393,7 @@ def chat_completion_stream(
                 continue
             payload = line[5:].strip()
             if payload == "[DONE]":
+                completed = True
                 break
             try:
                 chunk = json.loads(payload)
@@ -408,6 +410,7 @@ def chat_completion_stream(
             choices = chunk.get("choices") or [{}]
             if choices[0].get("finish_reason") is not None:
                 finish_reason = choices[0]["finish_reason"]
+                completed = True
             delta = choices[0].get("delta", {})
             think = delta.get("reasoning_content") or delta.get("reasoning")
             if think:
@@ -415,6 +418,8 @@ def chat_completion_stream(
                 dispatch([("reasoning", think)])
             if delta.get("content"):
                 dispatch(splitter.feed(delta["content"]))
+        if not completed:
+            raise RuntimeError("Spark API stream ended before a completion marker")
         dispatch(splitter.flush())
     except requests.ConnectionError as e:
         raise _connection_error(settings["base_url"], e)

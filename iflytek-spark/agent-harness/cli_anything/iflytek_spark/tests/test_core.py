@@ -371,7 +371,10 @@ class TestSession:
         target = str(tmp_path / "session.json")
         with patch.object(session_module.os, "open", wraps=os.open) as open_file:
             ChatSession(target).add_exchange("dummy prompt", "dummy answer")
-        assert open_file.call_args.args == (target, os.O_RDWR | os.O_CREAT, 0o600)
+        created = [call.args for call in open_file.call_args_list if call.args[1] & os.O_CREAT]
+        assert created
+        assert all(args[2] == 0o600 for args in created)
+        assert any(args[0] == target + ".lock" for args in created)
 
     def test_existing_session_is_restricted_before_writing(self, tmp_path):
         target = str(tmp_path / "session.json")
@@ -616,3 +619,91 @@ class TestReviewRegressions:
         finally:
             os.umask(previous_umask)
         assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+class TestPersistenceFollowup:
+    @pytest.mark.parametrize("clear", [False, True])
+    def test_failed_session_write_preserves_history(self, isolated_home, clear):
+        target = isolated_home / "session.json"
+        session = ChatSession(str(target))
+        session.add_exchange("original", "answer")
+        before = target.read_bytes()
+
+        def fail(data, stream, **kwargs):
+            stream.write('{"messages":')
+            raise OSError("simulated full disk")
+
+        with patch.object(session_module.json, "dump", side_effect=fail):
+            with pytest.raises(OSError, match="simulated full disk"):
+                if clear:
+                    session.clear()
+                else:
+                    session.add_exchange("new", "answer")
+        assert target.read_bytes() == before
+        assert ChatSession(str(target)).status()["turns"] == 1
+
+    @pytest.mark.parametrize("partial", [False, True])
+    def test_stream_eof_without_completion_preserves_session(self, isolated_home, partial):
+        target = isolated_home / "session.json"
+        ChatSession(str(target)).add_exchange("original", "answer")
+        before = target.read_bytes()
+        response = _sse_response([])
+        chunks = [{"choices": [{"delta": {"content": "</think>partial"}}]}] if partial else []
+        response.iter_lines.return_value = [f"data: {json.dumps(c)}".encode() for c in chunks]
+        with patch.object(backend.requests, "post", return_value=response):
+            result = CliRunner().invoke(cli, ["--json", "stream", "hi"])
+        assert result.exit_code == 1
+        assert "completion" in json.loads(result.output)["error"]
+        assert target.read_bytes() == before
+        response.close.assert_called_once()
+
+    @pytest.mark.parametrize("terminal", ["done", "finish_reason"])
+    def test_stream_accepts_either_completion_marker(self, terminal):
+        response = _sse_response([])
+        chunk = {"choices": [{"delta": {"content": "answer"}}]}
+        if terminal == "finish_reason":
+            chunk["choices"][0]["finish_reason"] = "stop"
+        response.iter_lines.return_value = [f"data: {json.dumps(chunk)}".encode()]
+        if terminal == "done":
+            response.iter_lines.return_value.append(b"data: [DONE]")
+        with patch.object(backend.requests, "post", return_value=response):
+            result = chat_completion_stream(resolve_settings(), [])
+        assert result["content"] == "answer"
+
+    def test_repl_history_exists_before_prompt_session(self, isolated_home, monkeypatch):
+        from cli_anything.iflytek_spark import spark_cli
+        target = isolated_home / "repl-history"
+        skin = MagicMock()
+        skin.history_file = str(target)
+        skin.get_input.side_effect = EOFError
+        def create():
+            assert target.is_file()
+            assert target.read_bytes() == b""
+            return None
+        skin.create_prompt_session.side_effect = create
+        monkeypatch.setattr(spark_cli, "_repl_mode", False)
+        with patch("cli_anything.iflytek_spark.utils.repl_skin.ReplSkin", return_value=skin):
+            result = CliRunner().invoke(cli, ["repl"])
+        assert result.exit_code == 0, result.exception
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX permissions are not Windows ACLs")
+    @pytest.mark.parametrize("existing", [False, True])
+    def test_repl_history_is_private_before_loading(self, isolated_home, monkeypatch, existing):
+        from cli_anything.iflytek_spark import spark_cli
+        target = isolated_home / "repl-history"
+        if existing:
+            target.write_text("old test command", encoding="utf-8")
+            target.chmod(0o644)
+        skin = MagicMock()
+        skin.history_file = str(target)
+        skin.get_input.side_effect = EOFError
+        def create():
+            assert stat.S_IMODE(target.stat().st_mode) == 0o600
+            if existing:
+                assert target.read_text(encoding="utf-8") == "old test command"
+            return None
+        skin.create_prompt_session.side_effect = create
+        monkeypatch.setattr(spark_cli, "_repl_mode", False)
+        with patch("cli_anything.iflytek_spark.utils.repl_skin.ReplSkin", return_value=skin):
+            result = CliRunner().invoke(cli, ["repl"])
+        assert result.exit_code == 0, result.exception

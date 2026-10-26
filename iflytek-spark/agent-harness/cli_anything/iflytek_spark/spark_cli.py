@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import shlex
 import sys
 
@@ -405,6 +406,14 @@ def repl(ctx):
 
     skin = ReplSkin("iflytek_spark", version=__version__)
     skin.print_banner()
+    history_fd = os.open(skin.history_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        if hasattr(os, "fchmod"):
+            os.fchmod(history_fd, 0o600)
+        else:
+            os.chmod(skin.history_file, 0o600)
+    finally:
+        os.close(history_fd)
     pt_session = skin.create_prompt_session()
 
     commands = {

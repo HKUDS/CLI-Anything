@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -12,10 +13,11 @@ from datetime import datetime
 def _locked_session_file(path):
     """Keep reads and read-modify-write transactions under the same lock."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    path = path + ".lock"
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     f = os.fdopen(fd, "r+", encoding="utf-8")
     with f:
-        # Creation mode is atomic on POSIX; restrict pre-existing sessions too.
+        # The lock inode stays stable when the session data is replaced.
         if hasattr(os, "fchmod"):
             os.fchmod(f.fileno(), 0o600)
         else:
@@ -27,7 +29,7 @@ def _locked_session_file(path):
             import fcntl
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
-            yield f
+            yield
         finally:
             f.flush()
             f.seek(0)
@@ -52,22 +54,23 @@ class ChatSession:
         if os.path.exists(self.session_file):
             self._refresh()
 
-    def _load(self, f):
-        f.seek(0)
+    def _load(self):
         try:
-            data = json.load(f)
-        except json.JSONDecodeError:
+            os.chmod(self.session_file, 0o600)
+            with open(self.session_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
             data = {}
         self.messages = data.get("messages", [])
         self.history = data.get("history", [])
 
     def _refresh(self):
-        with _locked_session_file(self.session_file) as f:
-            self._load(f)
+        with _locked_session_file(self.session_file):
+            self._load()
 
     def add_exchange(self, prompt: str, answer: str, model: str = ""):
-        with _locked_session_file(self.session_file) as f:
-            self._load(f)
+        with _locked_session_file(self.session_file):
+            self._load()
             self.messages.append({"role": "user", "content": prompt})
             self.messages.append({"role": "assistant", "content": answer})
             self.history.append(
@@ -75,17 +78,17 @@ class ChatSession:
             )
             if len(self.history) > self.max_history:
                 self.history = self.history[-self.max_history:]
-            self._save(f)
+            self._save()
 
     def get_messages(self) -> list[dict]:
         self._refresh()
         return list(self.messages)
 
     def clear(self):
-        with _locked_session_file(self.session_file) as f:
+        with _locked_session_file(self.session_file):
             self.messages = []
             self.history = []
-            self._save(f)
+            self._save()
 
     def status(self) -> dict:
         self._refresh()
@@ -95,12 +98,18 @@ class ChatSession:
             "session_file": self.session_file,
         }
 
-    def _save(self, f):
-        f.seek(0)
-        f.truncate()
-        json.dump(
-            {"messages": self.messages, "history": self.history},
-            f,
-            indent=2,
-            ensure_ascii=False,
-        )
+    def _save(self):
+        directory = os.path.dirname(os.path.abspath(self.session_file))
+        fd, temporary = tempfile.mkstemp(prefix=".session-", suffix=".json", dir=directory)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"messages": self.messages, "history": self.history},
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            os.replace(temporary, self.session_file)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)

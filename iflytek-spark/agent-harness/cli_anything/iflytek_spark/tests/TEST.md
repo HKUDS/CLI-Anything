@@ -116,3 +116,9 @@ are covered by the unit tests.
 On Windows with Python 3.11.15, the final offline suite passes 72 cases and skips 11 (four POSIX permissions cases and seven live-server cases). Ten new executable regressions fail on e2b18c46; two additional config-permission regressions require POSIX and were skipped locally.
 
 The regressions cover unfinished non-streaming thinking blocks, HTTP-200 SSE error frames before and after partial output, JSON filesystem errors, preserving the previous config after a failed write, config-file permissions before writing, and resolved connection settings in isolated test subprocesses. Streaming failures leave session history unchanged and close the response. Config replacement uses a private temporary file in the same directory. No live model requests or POSIX execution were performed for this follow-up.
+
+## Persistence follow-up — 2026-10-26
+
+The final Windows / Python 3.11.15 suite passes 79 cases and skips 13: six POSIX permission cases and seven live-server cases. On c1a76d06, five new regressions fail, two completion-marker controls pass, and two new POSIX REPL-permission cases skip.
+
+Session replacement now happens under a separate persistent lock file so failed writes preserve the previous conversation while concurrent processes keep sharing the same lock. The existing real three-process append regression still passes. REPL history is created/restricted before prompt-toolkit loads it, without changing the shared repl_skin.py copy. Streams require [DONE] or a terminal finish_reason before committing the exchange. Actual POSIX permissions, Windows ACL isolation and live models were not validated.
