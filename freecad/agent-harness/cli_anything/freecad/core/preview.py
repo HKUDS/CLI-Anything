@@ -242,12 +242,13 @@ def _generate_preview_macro(
     height: int,
     background: str,
 ) -> str:
+    names = macro_gen._FreeCADNameAllocator()
     lines: List[str] = []
     lines.extend(macro_gen._gen_header())
-    lines.extend(macro_gen._gen_parts(project))
-    lines.extend(macro_gen._gen_boolean_ops(project))
-    lines.extend(macro_gen._gen_bodies(project))
-    lines.extend(macro_gen._gen_placements(project))
+    lines.extend(macro_gen._gen_parts(project, names))
+    lines.extend(macro_gen._gen_boolean_ops(project, names))
+    lines.extend(macro_gen._gen_bodies(project, names))
+    lines.extend(macro_gen._gen_placements(project, names))
     lines.extend(
         [
             "doc.recompute()",

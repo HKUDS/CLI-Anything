@@ -428,20 +428,22 @@ def _generate_motion_macro(
     if fit_mode not in FIT_MODES:
         raise ValueError(f"Unknown fit_mode '{fit_mode}'")
 
-    part_object_items = []
-    for part in project.get("parts", []):
-        render_spec = macro_gen._render_spec_for_part(project, part)
-        if render_spec is None:
-            continue
-        safe_name = macro_gen._safe_name(part.get("name", f"Part_{part.get('id', 'unknown')}"))
-        part_object_items.append(f"    '{int(part['id'])}': obj_{safe_name},")
-
+    names = macro_gen._FreeCADNameAllocator()
     lines: List[str] = []
     lines.extend(macro_gen._gen_header())
-    lines.extend(macro_gen._gen_parts(project))
-    lines.extend(macro_gen._gen_boolean_ops(project))
-    lines.extend(macro_gen._gen_bodies(project))
-    lines.extend(macro_gen._gen_placements(project))
+    lines.extend(macro_gen._gen_parts(project, names))
+    lines.extend(macro_gen._gen_boolean_ops(project, names))
+    lines.extend(macro_gen._gen_bodies(project, names))
+    lines.extend(macro_gen._gen_placements(project, names))
+
+    part_object_items = []
+    for part in project.get("parts", []):
+        if macro_gen._render_spec_for_part(project, part) is None:
+            continue
+        var = names.part_var(part.get("id"))
+        if var is None:
+            continue
+        part_object_items.append(f"    '{int(part['id'])}': {var},")
     lines.extend(
         [
             "doc.recompute()",
