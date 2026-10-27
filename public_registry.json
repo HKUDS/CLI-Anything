@@ -537,6 +537,30 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "pictograph",
+      "display_name": "Pictograph CLI",
+      "version": "latest",
+      "description": "Official Pictograph CLI for real-time computer vision: label images with SAM3, train RF-DETR and YOLOX models, deploy them as GPU endpoints, stream live RTSP or WebRTC video to them, and call trained models as tools. Every command takes --json.",
+      "category": "ai",
+      "requires": "Python >= 3.10, a Pictograph API key (free tier, no card)",
+      "homepage": "https://pictograph.io",
+      "docs_url": "https://pictograph.io/docs/cli",
+      "source_url": "https://github.com/pictograph-io/pictograph-sdk",
+      "package_manager": "pip",
+      "install_strategy": "command",
+      "install_cmd": "pip install 'pictograph[cli]'",
+      "uninstall_cmd": "pip uninstall -y pictograph",
+      "update_cmd": "pip install --upgrade 'pictograph[cli]'",
+      "skill_md": "https://github.com/pictograph-io/pictograph-sdk/blob/main/src/pictograph/skills/pictograph-cv/SKILL.md",
+      "entry_point": "pictograph",
+      "contributors": [
+        {
+          "name": "Pictograph",
+          "url": "https://pictograph.io"
+        }
+      ]
     }
   ]
 }
