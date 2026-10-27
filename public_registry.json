@@ -1,7 +1,7 @@
 {
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
-    "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
+    "description": "Public CLI Registry \u2014 Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
     "updated": "2026-08-20"
   },
   "clis": [
@@ -234,7 +234,7 @@
       "name": "generate-veo-video",
       "display_name": "Generate Veo Video",
       "version": "0.2.5",
-      "description": "CLI for generating videos with Google Veo 3.1 via Vertex AI/Gemini — text-to-video, image-to-video, reference images, frame morphing, and video extension",
+      "description": "CLI for generating videos with Google Veo 3.1 via Vertex AI/Gemini \u2014 text-to-video, image-to-video, reference images, frame morphing, and video extension",
       "category": "ai",
       "requires": "Python >= 3.10, uv, GOOGLE_CLOUD_PROJECT env var (GEMINI_API_KEY optional)",
       "homepage": "https://github.com/charles-forsyth/generate-veo-video",
@@ -301,7 +301,7 @@
       "name": "jimeng",
       "display_name": "Jimeng / Dreamina CLI",
       "version": "latest",
-      "description": "Official ByteDance AI image and video generation CLI — text-to-image, text-to-video, image-to-video, digital human, and intelligent canvas; domestic brand is Jimeng (即梦), international brand is Dreamina",
+      "description": "Official ByteDance AI image and video generation CLI \u2014 text-to-image, text-to-video, image-to-video, digital human, and intelligent canvas; domestic brand is Jimeng (\u5373\u68a6), international brand is Dreamina",
       "category": "ai",
       "requires": "Jimeng / Dreamina account and API key",
       "homepage": "https://jimeng.jianying.com/",
@@ -325,7 +325,7 @@
       "version": "bundled",
       "description": "Official Obsidian command line interface for vault automation, developer tools, screenshots, search, history, and plugin workflows",
       "category": "knowledge",
-      "requires": "Obsidian 1.12.7+ installer, Obsidian desktop app running, and Command line interface enabled in Settings → General",
+      "requires": "Obsidian 1.12.7+ installer, Obsidian desktop app running, and Command line interface enabled in Settings \u2192 General",
       "homepage": "https://obsidian.md/help/cli",
       "source_url": null,
       "package_manager": "bundled",
@@ -367,7 +367,7 @@
       "name": "deployhq",
       "display_name": "DeployHQ CLI",
       "version": "0.16.3",
-      "description": "Deploy code, manage projects/servers, run and monitor deployments via the DeployHQ platform — for humans and AI agents",
+      "description": "Deploy code, manage projects/servers, run and monitor deployments via the DeployHQ platform \u2014 for humans and AI agents",
       "category": "devops",
       "requires": "DeployHQ account (free tier available); Homebrew for the default install path",
       "homepage": "https://www.deployhq.com",
@@ -390,7 +390,7 @@
       "name": "obsidian-agent-cli",
       "display_name": "Obsidian CLI",
       "version": "0.1.1",
-      "description": "Full-featured CLI for Obsidian — manage notes, canvases, Excalidraw diagrams, Kanban boards, periodic notes, git, tasks, and more. Includes an AI agent skill for persistent knowledge capture and project memory.",
+      "description": "Full-featured CLI for Obsidian \u2014 manage notes, canvases, Excalidraw diagrams, Kanban boards, periodic notes, git, tasks, and more. Includes an AI agent skill for persistent knowledge capture and project memory.",
       "category": "productivity",
       "requires": "Obsidian desktop app, Local REST API community plugin",
       "homepage": "https://obsidian.md",
@@ -409,10 +409,10 @@
       "name": "arcgis-pro",
       "display_name": "ArcGIS Pro",
       "version": "0.1.0",
-      "description": "Agent-native CLI for ArcGIS Pro (ArcPy): professional cartography (layouts + map series), geoprocessing, and feature query/edit — plus a live-Pro MCP bridge that drives the open session.",
+      "description": "Agent-native CLI for ArcGIS Pro (ArcPy): professional cartography (layouts + map series), geoprocessing, and feature query/edit \u2014 plus a live-Pro MCP bridge that drives the open session.",
       "category": "scientific",
       "platform": "windows",
-      "requires": "Windows only — ArcGIS Pro is Windows-only. Needs a licensed ArcGIS Pro install with ArcPy (its bundled arcgispro-py3 Python); the optional live-Pro MCP bridge additionally needs the .NET 8 SDK.",
+      "requires": "Windows only \u2014 ArcGIS Pro is Windows-only. Needs a licensed ArcGIS Pro install with ArcPy (its bundled arcgispro-py3 Python); the optional live-Pro MCP bridge additionally needs the .NET 8 SDK.",
       "homepage": "https://www.esri.com/en-us/arcgis/products/arcgis-pro/overview",
       "source_url": "https://github.com/Jasper0122/CLI-Anything-Arcgis-Pro",
       "package_manager": "pip",
@@ -430,7 +430,7 @@
       "name": "cloakbrowser",
       "display_name": "CloakBrowser CLI",
       "version": "latest",
-      "description": "Agent-friendly CLI for CloakBrowser — stealth Chromium that passes every bot detection test. Covers fingerprint flags, humanize behaviors, page operations, content extraction, cookies, storage, network, multi-page sessions, and CDP gateway.",
+      "description": "Agent-friendly CLI for CloakBrowser \u2014 stealth Chromium that passes every bot detection test. Covers fingerprint flags, humanize behaviors, page operations, content extraction, cookies, storage, network, multi-page sessions, and CDP gateway.",
       "category": "web",
       "requires": "Node.js >= 20, cloakbrowser >= 0.3.0, playwright-core >= 1.40.0",
       "homepage": "https://github.com/dreamor/cloakbrowser-cli",
@@ -478,7 +478,7 @@
       "name": "browser-cdp",
       "display_name": "Browser CDP",
       "version": "0.1.0",
-      "description": "Browser automation via raw Chrome DevTools Protocol — connects to YOUR existing Chrome, no extensions, no new browser, inherits all cookies and sessions",
+      "description": "Browser automation via raw Chrome DevTools Protocol \u2014 connects to YOUR existing Chrome, no extensions, no new browser, inherits all cookies and sessions",
       "category": "web",
       "requires": "Chrome/Chromium with --remote-debugging-port=9222, Python >= 3.10",
       "homepage": "https://github.com/Uname58/cdp-agent-kit",
@@ -501,7 +501,7 @@
       "name": "pieces",
       "display_name": "Pieces OS CLI",
       "version": "1.0.0",
-      "description": "Agent-native CLI for Pieces OS — persistent long-term memory for developers. Search, create, and manage memory assets, snippets, and models via Pieces OS REST API.",
+      "description": "Agent-native CLI for Pieces OS \u2014 persistent long-term memory for developers. Search, create, and manage memory assets, snippets, and models via Pieces OS REST API.",
       "category": "productivity",
       "requires": "Pieces OS running locally (http://localhost:39300)",
       "homepage": "https://pieces.app",
@@ -520,7 +520,7 @@
       "name": "vivideo",
       "display_name": "Vivideo CLI",
       "version": "1.0.2",
-      "description": "Vivideo AI video generation CLI — create avatar and text-to-video content from the terminal, scripts, CI, or agents. Supports auto and manual modes, model/avatar/voice/brand-kit listing, credit estimates, and status/wait polling.",
+      "description": "Vivideo AI video generation CLI \u2014 create avatar and text-to-video content from the terminal, scripts, CI, or agents. Supports auto and manual modes, model/avatar/voice/brand-kit listing, credit estimates, and status/wait polling.",
       "category": "ai",
       "requires": "Node.js >= 18.17, VIVIDEO_API_KEY",
       "homepage": "https://vivideo.ai",
@@ -535,6 +535,27 @@
         {
           "name": "Vivideo",
           "url": "https://vivideo.ai"
+        }
+      ]
+    },
+    {
+      "name": "sweethome3d",
+      "display_name": "Sweet Home 3D CLI",
+      "version": "1.2.0",
+      "description": "Agent-native CLI harness for Sweet Home 3D floor planning software: 2D/3D architectural drafting, wall/room layout, door/window placement, and SVG/DXF/SH3D export",
+      "category": "3d-cad",
+      "requires": "Sweet Home 3D 7.5+ (optional for pure Python headless drafting; bundled Java HomeFileRecorder adapter supported)",
+      "homepage": "http://www.sweethome3d.com/",
+      "source_url": "https://github.com/syamsulalam/cli-anything-sweethome3d",
+      "package_manager": "pip",
+      "pypi_package": "cli-anything-sweethome3d",
+      "install_cmd": "pip install git+https://github.com/syamsulalam/cli-anything-sweethome3d.git",
+      "entry_point": "cli-anything-sweethome3d",
+      "skill_md": "https://raw.githubusercontent.com/syamsulalam/cli-anything-sweethome3d/main/SKILL.md",
+      "contributors": [
+        {
+          "name": "Syamsul Alam",
+          "url": "https://github.com/syamsulalam"
         }
       ]
     }
