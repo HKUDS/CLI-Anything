@@ -101,6 +101,9 @@ def add_camera(
 
     if look_at is not None and len(look_at) != 3:
         raise ValueError(f"look_at must have 3 components, got {len(look_at)}")
+    if look_at is not None and location is not None and \
+            [float(v) for v in look_at] == [float(v) for v in location]:
+        raise ValueError("look_at target must differ from camera location")
 
     cam_name = _unique_camera_name(project, name or "Camera")
 
@@ -182,6 +185,8 @@ def set_camera(
                 value = [float(x) for x in value.split(",")]
             if len(value) != 3:
                 raise ValueError("look_at must have 3 components")
+            if [float(x) for x in value] == [float(x) for x in cam["location"]]:
+                raise ValueError("look_at target must differ from camera location")
             cam["look_at"] = [float(x) for x in value]
     elif prop == "focal_length":
         val = float(value)

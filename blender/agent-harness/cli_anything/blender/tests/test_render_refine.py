@@ -73,3 +73,13 @@ def test_e2e_red_cube_look_at_centred(tmp_path):
             rr, gg, bb = px[x, y]
             if rr > 60 and rr > gg + 40 and rr > bb + 40: xs.append(x)
     assert xs and abs(sum(xs) / len(xs) - 160) < 25
+
+
+def test_look_at_equal_to_location_rejected():
+    p = _scene()
+    with pytest.raises(ValueError, match="differ"):
+        add_camera(p, location=[1, 2, 3], look_at=[1, 2, 3])
+    add_camera(p, location=[1, 2, 3])
+    with pytest.raises(ValueError, match="differ"):
+        set_camera(p, 0, "look_at", "1,2,3")
+    assert p["cameras"][0]["look_at"] is None

@@ -58,3 +58,13 @@ def test_render_script_only_writes_script_no_png(tmp_path):
     assert r.exit_code == 0, r.output
     assert (tmp_path / "_render_script.py").is_file()
     assert not out.exists()
+
+
+def test_camera_look_at_equal_to_location_fails_cleanly():
+    runner = CliRunner()
+    _new_scene(runner)
+    assert _run(runner, "camera", "add", "--location", "1,2,3").exit_code == 0
+    r = _run(runner, "camera", "look-at", "0", "1,2,3")
+    assert r.exit_code != 0, r.output
+    assert "Traceback" not in r.output
+    assert r.exception is None or isinstance(r.exception, SystemExit)
