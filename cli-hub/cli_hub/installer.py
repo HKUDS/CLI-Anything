@@ -66,14 +66,52 @@ _UV_INSTALL_HINT = (
 
 _SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
 
+# Blocked shell operators that enable command injection even inside pipelines.
+# These are never safe to pass through shell=True, regardless of source trust.
+_DANGEROUS_SHELL_PATTERNS = (
+    # Command substitution — can execute arbitrary binaries
+    "$(", "`",
+    # File redirection to overwrite system files
+    "> /etc", ">> /etc", "> /usr", "> /opt",
+    # chmod/chown on system dirs
+    "chmod +s", "chown root",
+    # Download-and-execute patterns
+    "curl |", "wget |", "curl -o", "wget -O",
+    # Python/perl -c one-liners (too permissive)
+    "python -c", "python3 -c", "perl -e",
+)
+
+
+def _validate_command(cmd: str) -> bool:
+    """Reject commands matching known malicious patterns before execution."""
+    if not cmd or not isinstance(cmd, str):
+        return False
+    lower = cmd.lower()
+    for pattern in _DANGEROUS_SHELL_PATTERNS:
+        if pattern in lower:
+            print(f"  ⚠️  Blocked command pattern '{pattern}' in install_cmd")
+            return False
+    # Reject empty or whitespace-only
+    if not cmd.strip():
+        return False
+    return True
+
 
 def _run_command(cmd):
     """Run a command string.
 
-    Uses shell=True when the command contains shell operators (pipes, &&, etc.)
-    so that script-type installs like ``curl … | bash`` work correctly.
-    Commands come from the trusted registry, not from user input.
+    Uses shell=True only when the command contains safe shell operators
+    (pipes, &&, etc.) so that script-type installs like ``curl … | bash``
+    work correctly.  Dangerous operators are blocked.
+
+    Commands come from the registry (harness or public), not from user input.
     """
+    if not _validate_command(cmd):
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=1, stdout="",
+            stderr=f"Command rejected by security policy: {cmd[:200]}"
+        )
+
     use_shell = any(c in cmd for c in _SHELL_METACHARACTERS)
     try:
         return subprocess.run(
@@ -81,6 +119,7 @@ def _run_command(cmd):
             capture_output=True,
             text=True,
             shell=use_shell,
+            timeout=300,  # 5-minute safety timeout
         )
     except FileNotFoundError as exc:
         missing = exc.filename or shlex.split(cmd)[0]
@@ -89,6 +128,11 @@ def _run_command(cmd):
             returncode=127,
             stdout="",
             stderr=f"Command not found: {missing}",
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=124, stdout="",
+            stderr="Command timed out after 300 seconds"
         )
 
 
