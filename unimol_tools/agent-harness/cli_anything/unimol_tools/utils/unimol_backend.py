@@ -1,5 +1,6 @@
 """Uni-Mol Backend Adapter - Wraps unimol_tools API"""
 
+import json
 import os
 import time
 from typing import Dict, Any, Optional
@@ -108,9 +109,40 @@ class UniMolBackend:
             metric_file = os.path.join(config["save_path"], "metric.result")
             if os.path.exists(metric_file):
                 try:
+                    import ast
                     import pickle
+                    from io import BytesIO
+
+                    class _RestrictedUnpickler(pickle.Unpickler):
+                        """Only allow safe built-in types during unpickling to prevent RCE."""
+                        ALLOWED_BUILTINS = {
+                            "builtins": {"dict", "list", "tuple", "set", "frozenset",
+                                         "int", "float", "bool", "str", "bytes",
+                                         "complex", "slice", "range"},
+                        }
+
+                        def find_class(self, module, name):
+                            allowed = self.ALLOWED_BUILTINS.get(module, set())
+                            if name in allowed:
+                                return super().find_class(module, name)
+                            raise pickle.UnpicklingError(
+                                f"Refusing to unpickle {module}.{name} — not in safe allowlist"
+                            )
+
                     with open(metric_file, 'rb') as f:
-                        saved_metrics = pickle.load(f)
+                        # First try JSON, then restricted pickle, fall back to ast.literal_eval
+                        raw = f.read()
+                    try:
+                        saved_metrics = json.loads(raw.decode("utf-8"))
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        try:
+                            saved_metrics = _RestrictedUnpickler(BytesIO(raw)).load()
+                        except pickle.UnpicklingError:
+                            try:
+                                saved_metrics = ast.literal_eval(raw.decode("utf-8", errors="replace"))
+                            except (ValueError, SyntaxError):
+                                raise ValueError("Unrecognized metric.result format")
+
                     metrics_json = self._convert_metrics_to_json(saved_metrics)
                     print(f"[UniMolBackend] Loaded metrics from {metric_file}")
                 except Exception as e:
