@@ -49,3 +49,13 @@ def test_camera_look_at_bad_target_fails():
     assert _run(runner, "camera", "add").exit_code == 0
     r = _run(runner, "camera", "look-at", "0", "1,2")
     assert r.exit_code != 0, r.output
+
+
+def test_render_script_only_writes_script_no_png(tmp_path):
+    runner = CliRunner()
+    _new_scene(runner)
+    out = tmp_path / "out.png"
+    r = _run(runner, "render", "execute", str(out), "--script-only")
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "_render_script.py").is_file()
+    assert not out.exists()
