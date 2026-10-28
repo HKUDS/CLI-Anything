@@ -41,3 +41,11 @@ def test_camera_add_then_look_at_updates_list():
     assert r.exit_code == 0, r.output
     data = json.loads(r.output[r.output.index("["):])
     assert data[0]["look_at"] == [4, 5, 6]
+
+
+def test_camera_look_at_bad_target_fails():
+    runner = CliRunner()
+    _new_scene(runner)
+    assert _run(runner, "camera", "add").exit_code == 0
+    r = _run(runner, "camera", "look-at", "0", "1,2")
+    assert r.exit_code != 0, r.output
