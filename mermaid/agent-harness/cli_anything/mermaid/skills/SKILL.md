@@ -128,6 +128,16 @@ cli-anything-mermaid --project flow.json export share --mode edit
 cli-anything-mermaid --project flow.json export share --mode view
 ```
 
+### Existing render outputs
+
+On macOS/Linux, overwrites preserve ordinary permissions, ownership, ACLs and
+labels while stripping setuid/setgid and excluding Linux capability/IMA/EVM
+metadata from replacement content. Hard-linked outputs, observed destination
+identity changes, and named output-link rotation/removal (including link chains)
+are refused. Revalidation is best-effort, not an atomic compare-and-swap with rename;
+serialize concurrent output writers when strict exclusion is needed. Existing
+output overwrites remain unsupported on other platforms; new outputs use umask.
+
 ### Interactive REPL Session
 
 ```bash
@@ -180,4 +190,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.0
+1.0.1

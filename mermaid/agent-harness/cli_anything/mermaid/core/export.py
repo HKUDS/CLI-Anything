@@ -14,7 +14,7 @@ def render(session: Session, output_path: str, fmt: str = "svg", overwrite: bool
     if os.path.exists(output_path) and not overwrite:
         raise FileExistsError(f"Output already exists: {output_path}")
     serialized = mermaid_backend.serialize_state(session.state)
-    result = mermaid_backend.render_to_file(serialized, output_path, fmt)
+    result = mermaid_backend.render_to_file(serialized, output_path, fmt, overwrite=overwrite)
     result["action"] = "render"
     return result
 

@@ -57,8 +57,17 @@ class Session:
     def open_project(self, path: str) -> dict:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Project not found: {path}")
-        with open(path, "r", encoding="utf-8") as fh:
-            self.state = json.load(fh)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                state = json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid Mermaid project file {path}: {exc}") from exc
+        if not isinstance(state, dict) or not isinstance(state.get("code"), str):
+            raise ValueError(
+                f"Invalid Mermaid project file {path}: expected a JSON object with a string 'code' field"
+            )
+        state.setdefault("mermaid", json.dumps({"theme": "default"}, indent=2))
+        self.state = state
         self.project_path = os.path.abspath(path)
         self.modified = False
         self.undo_stack.clear()

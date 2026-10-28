@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import errno
 
 import click
 
@@ -37,7 +38,22 @@ def emit(data, message: str | None = None) -> None:
         click.echo(str(data))
 
 
-@click.group(invoke_without_command=True)
+class _CleanErrorGroup(click.Group):
+    """Report expected harness errors as clean CLI errors, not tracebacks."""
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except (click.exceptions.Exit, click.exceptions.Abort):
+            # Click control flow (e.g. --help exits 0 via Exit, a RuntimeError subclass).
+            raise
+        except (RuntimeError, ValueError, OSError) as exc:
+            if isinstance(exc, OSError) and exc.errno == errno.EPIPE:
+                raise  # Click's outer main() owns quiet broken-pipe handling.
+            raise click.ClickException(str(exc)) from exc
+
+
+@click.group(cls=_CleanErrorGroup, invoke_without_command=True)
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON")
 @click.option("--project", "project_path", default=None, help="Open a Mermaid project file")
 @click.option("--dry-run", "dry_run", is_flag=True, default=False,
@@ -56,7 +72,11 @@ def cli(ctx, json_mode: bool, project_path: str | None, dry_run: bool) -> None:
         if dry_run:
             return
         if project_path and _session and _session.is_open and _session.modified:
-            _session.save_project()
+            # Runs on context close, after the group's invoke() has returned.
+            try:
+                _session.save_project()
+            except (RuntimeError, ValueError, OSError) as exc:
+                raise click.ClickException(str(exc)) from exc
 
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl)
@@ -191,7 +211,7 @@ REPL_COMMANDS = {
 def repl() -> None:
     """Interactive REPL."""
     session = get_session()
-    skin = ReplSkin("mermaid", version="1.0.0")
+    skin = ReplSkin("mermaid", version="1.0.1")
     skin.print_banner()
     prompt_session = skin.create_prompt_session()
     while True:
