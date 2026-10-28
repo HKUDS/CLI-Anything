@@ -83,3 +83,15 @@ def test_look_at_equal_to_location_rejected():
     with pytest.raises(ValueError, match="differ"):
         set_camera(p, 0, "look_at", "1,2,3")
     assert p["cameras"][0]["look_at"] is None
+
+
+@needs_blender
+def test_render_overwrite_guard(tmp_path):
+    p = _scene()
+    add_object(p, mesh_type="cube", name="C")
+    add_camera(p, location=[5, -5, 5], look_at=[0, 0, 0], set_active=True)
+    out = str(tmp_path / "o.png")
+    assert render_scene(p, out, overwrite=False)["returncode"] == 0
+    with pytest.raises(FileExistsError):
+        render_scene(p, out, overwrite=False)
+    assert render_scene(p, out, overwrite=True)["returncode"] == 0
