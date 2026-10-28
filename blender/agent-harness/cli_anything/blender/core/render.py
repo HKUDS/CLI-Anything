@@ -6,6 +6,9 @@ for actual Blender rendering.
 
 import os
 import json
+import glob
+import shutil
+import subprocess
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -185,8 +188,9 @@ def render_scene(
     frame: Optional[int] = None,
     animation: bool = False,
     overwrite: bool = False,
+    script_only: bool = False,
 ) -> Dict[str, Any]:
-    """Render the scene by generating a bpy script.
+    """Render the scene: generate a bpy script and run Blender on it.
 
     Since we cannot call Blender directly in all environments, this generates
     a Python script that can be run with `blender --background --python script.py`.
@@ -197,9 +201,10 @@ def render_scene(
         frame: Specific frame to render (None = current frame)
         animation: If True, render the full animation range
         overwrite: Allow overwriting existing files
+        script_only: Only write the script, do not run Blender
 
     Returns:
-        Dict with render info and script path
+        Dict with render info, script path, return code and stderr tail
     """
     if os.path.exists(output_path) and not overwrite and not animation:
         raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite.")
@@ -236,7 +241,42 @@ def render_scene(
     else:
         result["frame"] = frame or scene_settings.get("frame_current", 1)
 
+    if script_only:
+        return result
+
+    blender_bin = find_blender_binary()
+    result["command"] = f"{blender_bin} --background --python {os.path.abspath(script_path)}"
+    proc = subprocess.run(
+        [blender_bin, "--background", "--python", os.path.abspath(script_path)],
+        capture_output=True, text=True,
+    )
+    result["returncode"] = proc.returncode
+    result["stderr_tail"] = "\n".join((proc.stderr or "").splitlines()[-20:])
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Blender exited with code {proc.returncode}:\n{result['stderr_tail']}")
+    if not animation and not os.path.exists(abs_output_path):
+        raise RuntimeError(
+            f"Blender finished but output not written: {abs_output_path}\n{result['stderr_tail']}")
     return result
+
+
+def find_blender_binary() -> str:
+    """Locate Blender: $BLENDER_BIN, PATH, then ~/tools/blender/*/blender."""
+    env = os.environ.get("BLENDER_BIN")
+    if env:
+        if os.path.isfile(env) and os.access(env, os.X_OK):
+            return env
+        raise FileNotFoundError(f"BLENDER_BIN is set but not executable: {env}")
+    found = shutil.which("blender")
+    if found:
+        return found
+    for cand in sorted(glob.glob(os.path.expanduser("~/tools/blender/*/blender"))):
+        if os.access(cand, os.X_OK):
+            return cand
+    raise FileNotFoundError(
+        "Blender binary not found. Set BLENDER_BIN, add blender to PATH, "
+        "or install under ~/tools/blender/*/blender (or use --script-only).")
 
 
 def generate_bpy_script(

@@ -862,15 +862,20 @@ def render_presets():
 @click.option("--frame", "-f", type=int, default=None, help="Specific frame to render")
 @click.option("--animation", "-a", is_flag=True, help="Render full animation")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
+@click.option("--script-only", is_flag=True, help="Only write the bpy script, do not run Blender")
 @handle_error
-def render_execute(output_path, frame, animation, overwrite):
-    """Render the scene (generates bpy script)."""
+def render_execute(output_path, frame, animation, overwrite, script_only):
+    """Render the scene (generates bpy script and runs Blender)."""
     sess = get_session()
     result = render_mod.render_scene(
         sess.get_project(), output_path,
         frame=frame, animation=animation, overwrite=overwrite,
+        script_only=script_only,
     )
-    output(result, f"Render script generated: {result['script_path']}")
+    if script_only:
+        output(result, f"Render script generated: {result['script_path']}")
+    else:
+        output(result, f"Rendered: {result['output_path']} (rc={result['returncode']})")
 
 
 @render_group.command("script")

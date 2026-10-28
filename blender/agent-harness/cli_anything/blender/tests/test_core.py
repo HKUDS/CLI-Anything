@@ -885,10 +885,42 @@ class TestRender:
         add_object(proj, name="Cube")
         with tempfile.TemporaryDirectory() as tmp:
             output_path = os.path.join(tmp, "render.png")
-            result = render_scene(proj, output_path, overwrite=True)
+            result = render_scene(proj, output_path, overwrite=True, script_only=True)
             assert os.path.exists(result["script_path"])
             assert "blender" in result["command"]
             assert result["engine"] == "CYCLES"
+
+    def test_render_scene_runs_stub_binary(self, monkeypatch):
+        proj = self._make_scene()
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = os.path.join(tmp, "stubblender")
+            out = os.path.join(tmp, "out.png")
+            with open(stub, "w") as f:
+                f.write(f"#!/bin/sh\necho err1 >&2\ntouch {out}\n")
+            os.chmod(stub, 0o755)
+            monkeypatch.setenv("BLENDER_BIN", stub)
+            result = render_scene(proj, out, overwrite=True)
+            assert result["returncode"] == 0
+            assert "err1" in result["stderr_tail"]
+            assert os.path.exists(out)
+
+    def test_render_scene_missing_output_raises(self, monkeypatch):
+        proj = self._make_scene()
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = os.path.join(tmp, "stubblender")
+            with open(stub, "w") as f:
+                f.write("#!/bin/sh\nexit 0\n")
+            os.chmod(stub, 0o755)
+            monkeypatch.setenv("BLENDER_BIN", stub)
+            with pytest.raises(RuntimeError):
+                render_scene(proj, os.path.join(tmp, "x.png"), overwrite=True)
+
+    def test_render_scene_missing_binary_raises(self, monkeypatch):
+        proj = self._make_scene()
+        monkeypatch.setenv("BLENDER_BIN", "/nonexistent/blender")
+        with tempfile.TemporaryDirectory() as tmp:
+            with pytest.raises(FileNotFoundError):
+                render_scene(proj, os.path.join(tmp, "x.png"), overwrite=True)
 
     def test_render_scene_overwrite_protection(self):
         proj = self._make_scene()
