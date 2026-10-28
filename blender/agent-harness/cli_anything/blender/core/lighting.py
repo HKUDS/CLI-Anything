@@ -66,6 +66,7 @@ def add_camera(
     clip_start: float = 0.1,
     clip_end: float = 1000.0,
     set_active: bool = False,
+    look_at: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Add a camera to the scene.
 
@@ -80,6 +81,7 @@ def add_camera(
         clip_start: Near clipping distance
         clip_end: Far clipping distance
         set_active: Whether to set this as the active camera
+        look_at: Optional [x, y, z] world point the camera is aimed at
 
     Returns:
         The new camera dict
@@ -97,6 +99,9 @@ def add_camera(
     if rotation is not None and len(rotation) != 3:
         raise ValueError(f"Rotation must have 3 components, got {len(rotation)}")
 
+    if look_at is not None and len(look_at) != 3:
+        raise ValueError(f"look_at must have 3 components, got {len(look_at)}")
+
     cam_name = _unique_camera_name(project, name or "Camera")
 
     camera = {
@@ -112,6 +117,7 @@ def add_camera(
         "dof_enabled": False,
         "dof_focus_distance": 10.0,
         "dof_aperture": 2.8,
+        "look_at": [float(v) for v in look_at] if look_at is not None else None,
         "is_active": False,
     }
 
@@ -150,7 +156,7 @@ def set_camera(
     valid_props = [
         "location", "rotation", "focal_length", "sensor_width",
         "clip_start", "clip_end", "type", "name",
-        "dof_enabled", "dof_focus_distance", "dof_aperture",
+        "dof_enabled", "dof_focus_distance", "dof_aperture", "look_at",
     ]
 
     if prop not in valid_props:
@@ -168,6 +174,15 @@ def set_camera(
         if len(value) != 3:
             raise ValueError("Rotation must have 3 components")
         cam["rotation"] = [float(x) for x in value]
+    elif prop == "look_at":
+        if value is None or (isinstance(value, str) and value.lower() in ("none", "off", "")):
+            cam["look_at"] = None
+        else:
+            if isinstance(value, str):
+                value = [float(x) for x in value.split(",")]
+            if len(value) != 3:
+                raise ValueError("look_at must have 3 components")
+            cam["look_at"] = [float(x) for x in value]
     elif prop == "focal_length":
         val = float(value)
         if val <= 0:

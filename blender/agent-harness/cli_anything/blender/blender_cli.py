@@ -618,17 +618,20 @@ def camera():
               default="PERSP")
 @click.option("--focal-length", "-f", type=float, default=50.0, help="Focal length (mm)")
 @click.option("--active", is_flag=True, help="Set as active camera")
+@click.option("--look-at", "look_at", default=None, help="Aim at world point x,y,z (overrides rotation)")
 @handle_error
-def camera_add(name, location, rotation, camera_type, focal_length, active):
+def camera_add(name, location, rotation, camera_type, focal_length, active, look_at):
     """Add a camera to the scene."""
     loc = [float(x) for x in location.split(",")] if location else None
     rot = [float(x) for x in rotation.split(",")] if rotation else None
+    tgt = [float(x) for x in look_at.split(",")] if look_at else None
 
     sess = get_session()
     sess.snapshot("Add camera")
     cam = light_mod.add_camera(
         sess.get_project(), name=name, location=loc, rotation=rot,
         camera_type=camera_type, focal_length=focal_length, set_active=active,
+        look_at=tgt,
     )
     output(cam, f"Added camera: {cam['name']}")
 
@@ -648,6 +651,18 @@ def camera_set(index, prop, value):
     light_mod.set_camera(sess.get_project(), index, prop, value)
     output({"camera": index, "property": prop, "value": value},
            f"Set camera {index} {prop}")
+
+
+@camera.command("look-at")
+@click.argument("index", type=int)
+@click.argument("target")
+@handle_error
+def camera_look_at(index, target):
+    """Aim camera INDEX at world point TARGET (x,y,z), or 'off' to clear."""
+    sess = get_session()
+    sess.snapshot(f"Camera {index} look-at")
+    light_mod.set_camera(sess.get_project(), index, "look_at", target)
+    output({"camera": index, "look_at": target}, f"Camera {index} now looks at {target}")
 
 
 @camera.command("set-active")

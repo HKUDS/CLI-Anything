@@ -111,6 +111,13 @@ def _gen_render_settings(project: Dict[str, Any]) -> List[str]:
         f"scene.render.film_transparent = {render.get('film_transparent', False)}",
     ]
 
+    if engine == "WORKBENCH":
+        lines.extend([
+            "scene.display.shading.color_type = 'MATERIAL'",
+            "scene.display.shading.light = 'STUDIO'",
+            "scene.display.shading.show_cavity = True",
+            "scene.display.shading.show_object_outline = True",
+        ])
     if engine == "CYCLES":
         lines.append(f"scene.cycles.samples = {render.get('samples', 128)}")
         lines.append(f"scene.cycles.use_denoising = {render.get('use_denoising', True)}")
@@ -174,6 +181,7 @@ def _gen_materials(project: Dict[str, Any]) -> List[str]:
         lines.extend([
             f"mat_{var_name} = bpy.data.materials.new(name='{name}')",
             f"mat_{var_name}.use_nodes = True",
+            f"mat_{var_name}.diffuse_color = ({color[0]}, {color[1]}, {color[2]}, {color[3]})",
             f"bsdf_{var_name} = mat_{var_name}.node_tree.nodes.get('Principled BSDF')",
             f"if bsdf_{var_name}:",
             f"    bsdf_{var_name}.inputs['Base Color'].default_value = ({color[0]}, {color[1]}, {color[2]}, {color[3]})",
@@ -411,6 +419,14 @@ def _gen_cameras(project: Dict[str, Any]) -> List[str]:
             f"cam_obj.location = ({loc[0]}, {loc[1]}, {loc[2]})",
             f"cam_obj.rotation_euler = (math.radians({rot[0]}), math.radians({rot[1]}), math.radians({rot[2]}))",
         ])
+
+        tgt = cam.get("look_at")
+        if tgt:
+            lines.extend([
+                "from mathutils import Vector",
+                f"_target = Vector(({tgt[0]}, {tgt[1]}, {tgt[2]}))",
+                "cam_obj.rotation_euler = (_target - cam_obj.location).to_track_quat('-Z', 'Y').to_euler()",
+            ])
 
         if cam.get("is_active", False):
             lines.append("scene.camera = cam_obj")
