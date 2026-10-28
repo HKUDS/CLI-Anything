@@ -250,7 +250,8 @@ def list_cameras(project: Dict[str, Any]) -> List[Dict[str, Any]]:
             "location": cam.get("location", [0, 0, 5]),
             "rotation": cam.get("rotation", [0, 0, 0]),
             "focal_length": cam.get("focal_length", 50.0),
-            "is_active": cam.get("is_active", False),
+            "focal_length": cam.get("focal_length", 50.0),
+            "look_at": cam.get("look_at"),
         })
     return result
 

@@ -29,7 +29,6 @@ def _new_scene(runner):
     assert r.exit_code == 0, r.output
 
 
-@pytest.mark.xfail(strict=True, reason="core.lighting.list_cameras omits 'look_at' from its summary dict")
 def test_camera_add_then_look_at_updates_list():
     runner = CliRunner()
     _new_scene(runner)
