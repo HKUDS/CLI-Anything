@@ -1385,6 +1385,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
 </tr>
 <tr>
+<td align="center"><strong>🌐 <a href="cheaperinference/agent-harness/">Cheaper Inference</a></strong></td>
+<td>OpenAI-compatible LLM API — chat, streaming, model listing</td>
+<td><code>cli-anything-cheaperinference</code></td>
+<td>REST API (OpenAI-compatible)</td>
+<td align="center">✅ 9</td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
 <td align="center"><strong>✅ 2,461</strong></td>
 </tr>

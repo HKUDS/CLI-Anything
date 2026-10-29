@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "cheaperinference",
+      "display_name": "Cheaper Inference",
+      "version": "1.0.0",
+      "description": "Access AI models via Cheaper Inference's OpenAI-compatible API (GPT, Claude, DeepSeek, GLM)",
+      "requires": "CHEAPER_INFERENCE_API_KEY",
+      "homepage": "https://cheaperinference.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cheaperinference/agent-harness",
+      "entry_point": "cli-anything-cheaperinference",
+      "skill_md": "skills/cli-anything-cheaperinference/SKILL.md",
+      "category": "ai",
+      "contributors": [
+        {
+          "name": "aiapienthusiast",
+          "url": "https://github.com/aiapienthusiast"
+        }
+      ]
     }
   ]
 }
