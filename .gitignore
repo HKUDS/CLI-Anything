@@ -339,9 +339,13 @@ assets/gen_typing_gif.py
 !/notebooklm/
 /notebooklm/*
 /notebooklm/.*
+/gatekeeper/*
+/gatekeeper/.*
 !/notebooklm/agent-harness/
 !/intelwatch/
 !/intelwatch/agent-harness/
 !/jumpserver/
 !/jumpserver/agent-harness/
+!/gatekeeper/
+!/gatekeeper/agent-harness/
 !/cli_anything/jumpserver/

@@ -1385,6 +1385,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="tigris/agent-harness/">New</a></td>
 </tr>
 <tr>
+<td align="center"><strong>🛡️ <a href="gatekeeper/agent-harness/">Gatekeeper AI</a></strong></td>
+<td>Procurement Bid Evaluation — compliance matrix, pricing checks, risk flags, vendor ranking</td>
+<td><code>cli-anything-gatekeeper</code></td>
+<td>Gatekeeper AI production API + Supabase auth</td>
+<td align="center">✅ 77</td>
+</tr>
+<tr>
 <td align="center" colspan="4"><strong>Total</strong></td>
 <td align="center"><strong>✅ 2,461</strong></td>
 </tr>
@@ -1543,6 +1550,7 @@ cli-anything/
 ├── 🔍 exa/agent-harness/               # Exa CLI (40 tests)
 └── ⛅ cloudanalyzer/agent-harness/      # CloudAnalyzer CLI (14 tests)
 └── 🔩 3MF/agent-harness/               # 3MF Mesh Editor CLI (50+ tests)
+└── 🛡️ gatekeeper/agent-harness/        # Gatekeeper AI procurement CLI (77 tests)
 ```
 
 Each `agent-harness/` contains an installable Python package under `cli_anything.<software>/` with Click CLI, core modules, utils (including `repl_skin.py` and backend wrapper), and comprehensive tests.

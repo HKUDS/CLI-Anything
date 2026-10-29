@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "gatekeeper",
+      "display_name": "Gatekeeper AI",
+      "version": "1.0.0",
+      "description": "Procurement bid evaluation — compliance matrix, pricing checks, risk flags and vendor ranking via the Gatekeeper AI API",
+      "requires": "Gatekeeper account (free Starter plan at gatekeeper.blog)",
+      "homepage": "https://www.gatekeeper.blog",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=gatekeeper/agent-harness",
+      "entry_point": "cli-anything-gatekeeper",
+      "skill_md": "skills/cli-anything-gatekeeper/SKILL.md",
+      "category": "business",
+      "contributors": [
+        {
+          "name": "darkknight4563",
+          "url": "https://github.com/darkknight4563"
+        }
+      ]
     }
   ]
 }
