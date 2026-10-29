@@ -542,9 +542,19 @@ def _blend_with_mode(base, layer, mode):
     else:
         blended = l_rgb  # Fallback to normal
 
-    # Composite: result = blended * layer_alpha + base * (1 - layer_alpha)
-    result_rgb = blended * l_alpha + b_rgb * (1.0 - l_alpha)
+    # W3C Compositing and Blending Level 1 (§9 / §5.1 source-over):
+    # blend the backdrop/source colors, then source-over the premultiplied
+    # channels so a transparent backdrop cannot leak its hidden RGB into the
+    # visible result. Finally unpremultiply for Pillow's straight RGBA.
+    # https://www.w3.org/TR/compositing-1/#blending
+    co = (
+        (1.0 - l_alpha) * b_alpha * b_rgb
+        + (1.0 - b_alpha) * l_alpha * l_rgb
+        + b_alpha * l_alpha * blended
+    )
     result_alpha = np.clip(b_alpha + l_alpha * (1.0 - b_alpha), 0, 1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        result_rgb = np.where(result_alpha > 0, co / result_alpha, 0.0)
 
     result = np.concatenate([result_rgb, result_alpha], axis=2)
     result = np.clip(result * 255, 0, 255).astype(np.uint8)

@@ -577,3 +577,42 @@ class TestLockedSaveJson:
             data = json.load(f)
         assert "thread" in data
         assert "iteration" in data
+
+
+# ── Blend compositing (Pillow fallback) ───────────────────────────
+
+class TestBlendCompositing:
+    """Regression coverage for W3C source-over after blend (#612)."""
+
+    def _blend(self, base_rgba, source_rgba, mode):
+        from PIL import Image
+        from cli_anything.gimp.core.export import _blend_with_mode
+        base = Image.new("RGBA", (1, 1), base_rgba)
+        source = Image.new("RGBA", (1, 1), source_rgba)
+        return _blend_with_mode(base, source, mode).getpixel((0, 0))
+
+    def test_transparent_backdrop_does_not_leak_hidden_rgb(self):
+        # Hidden blue behind alpha=0 must not tint the red source.
+        assert self._blend((0, 0, 255, 0), (255, 0, 0, 128), "multiply") == (255, 0, 0, 128)
+
+    def test_transparent_backdrop_screen_keeps_source(self):
+        assert self._blend((0, 255, 0, 0), (10, 20, 30, 200), "screen") == (10, 20, 30, 200)
+
+    def test_transparent_source_keeps_backdrop(self):
+        assert self._blend((0, 128, 0, 200), (255, 0, 0, 0), "difference") == (0, 128, 0, 200)
+
+    def test_opaque_multiply_red_on_blue_is_black(self):
+        assert self._blend((0, 0, 255, 255), (255, 0, 0, 255), "multiply") == (0, 0, 0, 255)
+
+    def test_opaque_screen_black_on_color_keeps_color(self):
+        assert self._blend((40, 80, 120, 255), (0, 0, 0, 255), "screen") == (40, 80, 120, 255)
+
+    def test_partial_alpha_output_alpha_is_source_over(self):
+        # αo = αs + αb*(1-αs) = 0.5 + 0.5*0.5 = 0.75 → 191
+        out = self._blend((0, 0, 255, 128), (255, 0, 0, 128), "lighten")
+        assert out[3] == 191
+
+    def test_modes_on_transparent_backdrop_match_source_rgb(self):
+        for mode in ("multiply", "screen", "overlay", "darken", "lighten", "difference"):
+            assert self._blend((12, 34, 56, 0), (200, 100, 50, 180), mode) == (200, 100, 50, 180)
+
