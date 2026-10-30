@@ -656,6 +656,55 @@ def test_profile_create_inspect_compose_and_execute(installed_cli, backend, tmp_
     assert selection_texts(payload) == ["src/module.py"]
 
 
+@pytest.mark.parametrize("dangling", [False, True], ids=["existing-target", "dangling-target"])
+def test_profile_create_refuses_final_component_symlink(installed_cli, backend, tmp_path, dangling):
+    target = tmp_path / "target.json"
+    sentinel = b"public CLI target must remain unchanged\n"
+    if not dangling:
+        target.write_bytes(sentinel)
+    output = tmp_path / "profile.json"
+    output.symlink_to(target)
+    create_args = [
+        "--allow-filesystem-write",
+        "profile",
+        "create",
+        str(output),
+        "--name",
+        "replacement",
+        "--overwrite",
+    ]
+
+    dry_result, dry_error = run_cli(installed_cli, backend, ["--dry-run", *create_args])
+    assert_error(dry_result, dry_error, "profile_path_unsafe")
+    actual_result, actual_error = run_cli(installed_cli, backend, create_args)
+    assert_error(actual_result, actual_error, "profile_path_unsafe")
+
+    assert output.is_symlink()
+    if dangling:
+        assert not target.exists()
+    else:
+        assert target.read_bytes() == sentinel
+
+
+def test_profile_create_regular_file_overwrite_preserves_mode(installed_cli, backend, tmp_path):
+    output = tmp_path / "regular.json"
+    base_args = ["--allow-filesystem-write", "profile", "create", str(output)]
+
+    created, _ = run_cli(installed_cli, backend, [*base_args, "--name", "original"])
+    assert created.returncode == 0
+    assert (output.stat().st_mode & 0o777) == 0o600
+
+    overwritten, payload = run_cli(
+        installed_cli,
+        backend,
+        [*base_args, "--name", "replacement", "--overwrite"],
+    )
+    assert overwritten.returncode == 0
+    assert payload["data"]["mode"] == "0600"
+    assert (output.stat().st_mode & 0o777) == 0o600
+    assert json.loads(output.read_text(encoding="utf-8"))["name"] == "replacement"
+
+
 def test_opts_file_requires_grant_and_is_composed(installed_cli, backend, tmp_path):
     opts = tmp_path / "fzf.opts"
     opts.write_text("--layout=reverse --scheme=path\n", encoding="utf-8")

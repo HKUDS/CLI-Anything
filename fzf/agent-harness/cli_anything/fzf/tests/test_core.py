@@ -429,6 +429,44 @@ def test_profile_write_mode_load_and_overwrite(tmp_path):
     assert load_profile(str(path))["resolved_options"][0].argv_token() == "--scheme=path"
     with pytest.raises(ValidationError, match="already exists"):
         write_profile(str(path), name="base", description="", options=[], bindings=[])
+    overwritten = write_profile(
+        str(path),
+        name="replacement",
+        description="updated",
+        options=["layout=reverse"],
+        bindings=[],
+        overwrite=True,
+    )
+    assert overwritten["mode"] == "0600"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert load_profile(str(path))["name"] == "replacement"
+
+
+@pytest.mark.parametrize("dangling", [False, True], ids=["existing-target", "dangling-target"])
+def test_profile_overwrite_refuses_final_component_symlink(tmp_path, dangling):
+    target = tmp_path / "target.json"
+    sentinel = b"existing target must remain unchanged\n"
+    if not dangling:
+        target.write_bytes(sentinel)
+    output = tmp_path / "profile.json"
+    output.symlink_to(target)
+
+    with pytest.raises(ValidationError) as raised:
+        write_profile(
+            str(output),
+            name="replacement",
+            description="",
+            options=[],
+            bindings=[],
+            overwrite=True,
+        )
+
+    assert raised.value.code == "profile_path_unsafe"
+    assert output.is_symlink()
+    if dangling:
+        assert not target.exists()
+    else:
+        assert target.read_bytes() == sentinel
 
 
 def test_profile_composition_overrides_scalars_and_appends_bindings(tmp_path):

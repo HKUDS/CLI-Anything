@@ -107,6 +107,15 @@ def compose_profiles(paths: list[str]) -> dict:
     }
 
 
+def profile_output_path(path_value: str) -> Path:
+    """Keep the lexical output path and refuse final-component symlinks."""
+
+    requested = Path(path_value).expanduser()
+    if requested.is_symlink():
+        raise ValidationError("profile_path_unsafe", "Profile output path cannot be a symlink")
+    return requested.absolute()
+
+
 def write_profile(
     path_value: str,
     *,
@@ -118,7 +127,7 @@ def write_profile(
 ) -> dict:
     """Atomically create or replace a profile with mode 0600."""
 
-    path = Path(path_value).expanduser().resolve(strict=False)
+    path = profile_output_path(path_value)
     document = {
         "schema_version": PROFILE_SCHEMA,
         "name": name,

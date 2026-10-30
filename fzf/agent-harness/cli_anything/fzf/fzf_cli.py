@@ -44,7 +44,7 @@ from cli_anything.fzf.core.planner import (
     prepare_environment,
     refresh_plan_id,
 )
-from cli_anything.fzf.core.profiles import compose_profiles, load_profile, write_profile
+from cli_anything.fzf.core.profiles import compose_profiles, load_profile, profile_output_path, write_profile
 from cli_anything.fzf.core.results import exit_semantics, parse_benchmark, parse_output
 from cli_anything.fzf.core.validation import (
     Policy,
@@ -626,13 +626,14 @@ def profile_create(
             parse_option(option)
         for binding in bindings:
             parse_option(f"bind={binding}")
+        output_path = profile_output_path(output)
         _emit(
             ctx,
             "profile.create",
             {
                 "dry_run": True,
                 "executed": False,
-                "path": str(Path(output).expanduser().resolve(strict=False)),
+                "path": str(output_path),
                 "overwrite": overwrite,
                 "profile": {"name": name, "description": description, "options": list(options), "bindings": list(bindings)},
             },
