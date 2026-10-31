@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-08-20"
+    "updated": "2026-10-31"
   },
   "clis": [
     {
@@ -535,6 +535,30 @@
         {
           "name": "Vivideo",
           "url": "https://vivideo.ai"
+        }
+      ]
+    },
+    {
+      "name": "photoshop",
+      "display_name": "Adobe Photoshop",
+      "version": "1.0.0",
+      "description": "Agent-native CLI for Adobe Photoshop on macOS: documents, layers, text, adjustments, history and PNG/JPEG/PSD export — every command executes inside the running app via AppleScript/ExtendScript.",
+      "category": "image",
+      "platform": "macos",
+      "requires": "macOS only — Adobe Photoshop installed in /Applications (verified on Adobe Photoshop 2026 27.10.0). The terminal needs Automation permission for Photoshop (System Settings → Privacy & Security → Automation). Python >= 3.10.",
+      "homepage": "https://www.adobe.com/products/photoshop.html",
+      "source_url": "https://github.com/CodeAndCanvas728/cli-anything-photoshop",
+      "package_manager": "pip",
+      "install_strategy": "command",
+      "install_cmd": "pip install \"git+https://github.com/CodeAndCanvas728/cli-anything-photoshop.git@v1.0.0\"",
+      "uninstall_cmd": "pip uninstall -y cli-anything-photoshop",
+      "update_cmd": "pip install --upgrade --force-reinstall \"git+https://github.com/CodeAndCanvas728/cli-anything-photoshop.git@v1.0.0\"",
+      "entry_point": "cli-anything-photoshop",
+      "skill_md": "https://raw.githubusercontent.com/CodeAndCanvas728/cli-anything-photoshop/v1.0.0/skills/cli-anything-photoshop/SKILL.md",
+      "contributors": [
+        {
+          "name": "CodeAndCanvas728",
+          "url": "https://github.com/CodeAndCanvas728"
         }
       ]
     }
