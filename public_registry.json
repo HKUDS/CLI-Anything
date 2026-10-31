@@ -541,7 +541,7 @@
     {
       "name": "photoshop",
       "display_name": "Adobe Photoshop",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Agent-native CLI for Adobe Photoshop on macOS: documents, layers, text, adjustments, history and PNG/JPEG/PSD export — every command executes inside the running app via AppleScript/ExtendScript.",
       "category": "image",
       "platform": "macos",
@@ -550,11 +550,11 @@
       "source_url": "https://github.com/CodeAndCanvas728/cli-anything-photoshop",
       "package_manager": "pip",
       "install_strategy": "command",
-      "install_cmd": "pip install \"git+https://github.com/CodeAndCanvas728/cli-anything-photoshop.git@v1.0.0\"",
+      "install_cmd": "pip install \"git+https://github.com/CodeAndCanvas728/cli-anything-photoshop.git@v1.0.1\"",
       "uninstall_cmd": "pip uninstall -y cli-anything-photoshop",
-      "update_cmd": "pip install --upgrade --force-reinstall \"git+https://github.com/CodeAndCanvas728/cli-anything-photoshop.git@v1.0.0\"",
+      "update_cmd": "pip install --upgrade --force-reinstall \"git+https://github.com/CodeAndCanvas728/cli-anything-photoshop.git@v1.0.1\"",
       "entry_point": "cli-anything-photoshop",
-      "skill_md": "https://raw.githubusercontent.com/CodeAndCanvas728/cli-anything-photoshop/v1.0.0/skills/cli-anything-photoshop/SKILL.md",
+      "skill_md": "https://raw.githubusercontent.com/CodeAndCanvas728/cli-anything-photoshop/v1.0.1/skills/cli-anything-photoshop/SKILL.md",
       "contributors": [
         {
           "name": "CodeAndCanvas728",
