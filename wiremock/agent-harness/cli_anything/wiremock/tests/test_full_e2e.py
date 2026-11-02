@@ -323,10 +323,13 @@ class TestLiveServer(unittest.TestCase):
 
     @skip_no_server
     def test_stub_list_human_shows_total(self):
+        # WireMock may have default stubs; count them before adding one
+        result = _run("--json", "stub", "list")
+        before = json.loads(result.stdout)["meta"]["total"]
         _run("stub", "quick", "GET", "/listed", "200")
         result = _run("stub", "list")
         self.assertEqual(result.returncode, 0)
-        self.assertIn("Stubs (1 total)", result.stdout)
+        self.assertIn(f"Stubs ({before + 1} total)", result.stdout)
 
     @skip_no_server
     def test_request_list_and_reset(self):
