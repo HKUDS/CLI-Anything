@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-08-20"
+    "updated": "2026-11-02"
   },
   "clis": [
     {
@@ -535,6 +535,26 @@
         {
           "name": "Vivideo",
           "url": "https://vivideo.ai"
+        }
+      ]
+    },
+    {
+      "name": "nexscope-cli",
+      "display_name": "Nexscope CLI",
+      "version": "0.1.5",
+      "description": "Command-line access to 300+ e-commerce data services (Amazon, TikTok Shop, Shopee, Walmart, Etsy, Temu, eBay, Shopify and more) for developers and AI agents. Ships with agent skills; also available as a remote MCP server.",
+      "category": "data-science",
+      "requires": "Python >= 3.11, Nexscope API key",
+      "homepage": "https://www.nexscope.ai/?co-from=cli-anything",
+      "source_url": "https://github.com/nexscope-ai/nexscope-cli",
+      "package_manager": "pip",
+      "install_cmd": "pip install nexscope-cli",
+      "skill_md": "https://github.com/nexscope-ai/nexscope-cli/blob/main/cli/nexscope_cli/skills/amazon-search/SKILL.md",
+      "entry_point": "nexscope",
+      "contributors": [
+        {
+          "name": "nexscope-ai",
+          "url": "https://github.com/nexscope-ai"
         }
       ]
     }
