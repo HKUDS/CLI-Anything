@@ -203,3 +203,24 @@ class TestJSONOutputValidity:
         if result.stdout.strip():
             data = json.loads(result.stdout)
             assert "error" in data
+
+
+# ============================================================================
+# 5. Document commands (real ChromaDB)
+# ============================================================================
+
+class TestDocumentE2E:
+    """Test document operations against real ChromaDB."""
+
+    def test_document_count_json(self):
+        """document count --json should return the count of a new collection."""
+        name = f"cli_anything_e2e_count_{os.getpid()}"
+        result = _run(["--json", "collection", "create", "--name", name])
+        assert result.returncode == 0
+        try:
+            result = _run(["--json", "document", "count", "--collection", name])
+            assert result.returncode == 0
+            data = json.loads(result.stdout)
+            assert data == {"collection": name, "count": 0}
+        finally:
+            _run(["--json", "collection", "delete", "--name", name])

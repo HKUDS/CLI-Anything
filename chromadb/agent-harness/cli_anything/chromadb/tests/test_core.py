@@ -215,9 +215,9 @@ class TestBackendDocuments:
 
     def test_count_documents_url(self):
         b = self._make_backend()
-        b._session.post.return_value = self._mock_response(42)
+        b._session.get.return_value = self._mock_response(42)
         result = b.count_documents("col-id")
-        called_url = b._session.post.call_args[0][0]
+        called_url = b._session.get.call_args[0][0]
         assert "col-id/count" in called_url
         assert result == 42
 

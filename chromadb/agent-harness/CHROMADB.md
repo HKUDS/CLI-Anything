@@ -114,7 +114,7 @@ All under ChromaDB v2 API (`/api/v2/`):
 | `/api/v2/tenants/{t}/databases/{d}/collections/{id}/add` | POST | `document add` |
 | `/api/v2/tenants/{t}/databases/{d}/collections/{id}/get` | POST | `document get` |
 | `/api/v2/tenants/{t}/databases/{d}/collections/{id}/delete` | POST | `document delete` |
-| `/api/v2/tenants/{t}/databases/{d}/collections/{id}/count` | POST | `document count` |
+| `/api/v2/tenants/{t}/databases/{d}/collections/{id}/count` | GET | `document count` |
 | `/api/v2/tenants/{t}/databases/{d}/collections/{id}/query` | POST | `query search` |
 
 ## Output Formats

@@ -120,9 +120,8 @@ class ChromaDBBackend:
 
     def count_documents(self, collection_id: str) -> int:
         """Count documents in a collection."""
-        r = self._session.post(
+        r = self._session.get(
             f"{self._tenant_db_prefix}/collections/{collection_id}/count",
-            json={},
         )
         r.raise_for_status()
         return r.json()
