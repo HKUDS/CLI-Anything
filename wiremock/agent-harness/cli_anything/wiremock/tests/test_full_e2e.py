@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 # ---------------------------------------------------------------------------
@@ -222,6 +223,11 @@ class TestLiveServer(unittest.TestCase):
             "WIREMOCK_SCHEME": parsed.scheme or "http",
         }
 
+    def _serve(self, path):
+        """Send a request to the mock server itself so it lands in the journal."""
+        import requests
+        requests.get(f"{WIREMOCK_URL.rstrip('/')}{path}", timeout=10)
+
     @skip_no_server
     def test_status_running(self):
         result = _run("--json", "status")
@@ -299,18 +305,68 @@ class TestLiveServer(unittest.TestCase):
         self.assertEqual(data["status"], "ok")
 
     @skip_no_server
+    def test_stub_import(self):
+        stubs = {"mappings": [
+            {"request": {"method": "GET", "url": "/imported"}, "response": {"status": 201}},
+        ]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "stubs.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(stubs, f)
+            result = _run("--json", "stub", "import", path)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), {"status": "ok"})
+
+        result = _run("--json", "stub", "list")
+        urls = [m["request"].get("url") for m in json.loads(result.stdout)["mappings"]]
+        self.assertIn("/imported", urls)
+
+    @skip_no_server
+    def test_stub_list_human_shows_total(self):
+        # WireMock may have default stubs; count them before adding one
+        result = _run("--json", "stub", "list")
+        before = json.loads(result.stdout)["meta"]["total"]
+        _run("stub", "quick", "GET", "/listed", "200")
+        result = _run("stub", "list")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(f"Stubs ({before + 1} total)", result.stdout)
+
+    @skip_no_server
     def test_request_list_and_reset(self):
         # List requests
         result = _run("--json", "request", "list")
         self.assertEqual(result.returncode, 0)
         data = json.loads(result.stdout)
-        self.assertIn("serveEvents", data)
+        self.assertIn("requests", data)
 
         # Reset
         result = _run("--json", "request", "reset")
         self.assertEqual(result.returncode, 0)
         data = json.loads(result.stdout)
         self.assertEqual(data["status"], "ok")
+
+    @skip_no_server
+    def test_request_list_human_shows_served_requests(self):
+        _run("stub", "quick", "GET", "/served", "200")
+        self._serve("/served")
+        result = _run("request", "list")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Requests (1 total)", result.stdout)
+        self.assertIn("/served", result.stdout)
+
+    @skip_no_server
+    def test_request_find_and_unmatched_human_show_urls(self):
+        _run("stub", "quick", "GET", "/served", "200")
+        self._serve("/served")
+        self._serve("/not-stubbed")
+        pattern = json.dumps({"method": "GET", "url": "/served"})
+        result = _run("request", "find", pattern)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("/served", result.stdout)
+
+        result = _run("request", "unmatched")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("/not-stubbed", result.stdout)
 
     @skip_no_server
     def test_request_count(self):

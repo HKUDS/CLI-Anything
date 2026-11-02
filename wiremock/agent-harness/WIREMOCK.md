@@ -234,7 +234,7 @@ cli-anything-wiremock --json request count '{"method":"GET","url":"/health"}'
 
 JSON output varies by command type:
 
-- **Data commands** return the raw WireMock API JSON directly (e.g. `stub list` returns `{"mappings": [...], "total": N}`)
-- **Void operations** (delete, reset, save) return `{"status": "ok"}`
+- **Data commands** return the raw WireMock API JSON directly (e.g. `stub list` returns `{"mappings": [...], "meta": {"total": N}}`)
+- **Void operations** (delete, reset, save, import) return `{"status": "ok"}`
 - **`status` command** returns `{"status": "running"|"stopped", "host": "...", "port": N}`
 - **Errors** return `{"status": "error", "message": "..."}` (printed to stderr in human mode)

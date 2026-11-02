@@ -108,7 +108,7 @@ def stub_list(ctx, limit, offset):
             print_table(
                 ["ID", "Name", "Method", "URL", "Status"],
                 rows,
-                title=f"Stubs ({data.get('total', 0)} total)",
+                title=f"Stubs ({data.get('meta', {}).get('total', 0)} total)",
             )
     except Exception as e:
         error(str(e), json_mode)
@@ -238,11 +238,11 @@ def stub_import(ctx, file_path):
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
-        result = StubsManager(client).import_stubs(data)
+        StubsManager(client).import_stubs(data)
         if json_mode:
-            print_json(result)
+            print_json({"status": "ok"})
         else:
-            success("Stubs imported", result)
+            success("Stubs imported")
     except Exception as e:
         error(str(e), json_mode)
 
@@ -269,7 +269,7 @@ def request_list(ctx, limit):
         if json_mode:
             print_json(data)
         else:
-            events = data.get("serveEvents", [])
+            events = data.get("requests", [])
             rows = [
                 (
                     e.get("id", "")[:8] + "...",
@@ -283,7 +283,7 @@ def request_list(ctx, limit):
             print_table(
                 ["ID", "Method", "URL", "Status", "Matched"],
                 rows,
-                title=f"Requests ({data.get('total', 0)} total)",
+                title=f"Requests ({data.get('meta', {}).get('total', 0)} total)",
             )
     except Exception as e:
         error(str(e), json_mode)
@@ -305,14 +305,13 @@ def request_find(ctx, pattern_json):
             requests_list = data.get("requests", [])
             rows = [
                 (
-                    r.get("request", {}).get("method", ""),
-                    r.get("request", {}).get("url", ""),
-                    r.get("responseDefinition", {}).get("status", ""),
+                    r.get("method", ""),
+                    r.get("url", ""),
                 )
                 for r in requests_list
             ]
             print_table(
-                ["Method", "URL", "Status"],
+                ["Method", "URL"],
                 rows,
                 title=f"Matching requests ({len(requests_list)})",
             )
@@ -352,8 +351,8 @@ def request_unmatched(ctx):
             requests_list = data.get("requests", [])
             rows = [
                 (
-                    r.get("request", {}).get("method", ""),
-                    r.get("request", {}).get("url", ""),
+                    r.get("method", ""),
+                    r.get("url", ""),
                 )
                 for r in requests_list
             ]

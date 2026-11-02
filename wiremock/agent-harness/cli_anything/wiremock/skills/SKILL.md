@@ -108,9 +108,9 @@ cli-anything-wiremock --json stub quick GET /api/hello 200 --body '{"hello":"wor
 # → {"id": "abc-123", "request": {...}, "response": {...}, ...}
 
 cli-anything-wiremock --json stub list
-# → {"mappings": [...], "total": N}
+# → {"mappings": [...], "meta": {"total": N}}
 
-# Void commands (delete, reset, save) return:
+# Void commands (delete, reset, save, import) return:
 # → {"status": "ok"}
 
 # Errors return:

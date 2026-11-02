@@ -43,10 +43,9 @@ class StubsManager:
         r = self.client.post("/mappings/save")
         r.raise_for_status()
 
-    def import_stubs(self, stubs: dict) -> dict:
+    def import_stubs(self, stubs: dict) -> None:
         r = self.client.post("/mappings/import", json=stubs)
         r.raise_for_status()
-        return r.json()
 
     def find_by_metadata(self, pattern: dict) -> dict:
         r = self.client.post("/mappings/find-by-metadata", json=pattern)

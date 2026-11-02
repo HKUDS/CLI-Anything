@@ -246,10 +246,13 @@ class TestStubsManager(unittest.TestCase):
 
     @patch("requests.post")
     def test_import_stubs(self, mock_post):
-        mock_post.return_value = _mock_response(200, {"mappings": []})
+        # WireMock answers a successful import with 200 and an empty body
+        from requests.exceptions import JSONDecodeError
+        mock_post.return_value = _mock_response(200)
+        mock_post.return_value.json.side_effect = JSONDecodeError("Expecting value", "", 0)
         result = self.mgr.import_stubs({"mappings": []})
         assert "/mappings/import" in mock_post.call_args.args[0]
-        self.assertIn("mappings", result)
+        self.assertIsNone(result)
 
     @patch("requests.post")
     def test_find_by_metadata(self, mock_post):
