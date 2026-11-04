@@ -457,6 +457,16 @@ def add_clip(session: Session, clip_id: str, track_index: int,
             f"Use 'media import' first."
         )
 
+    # Validate timecodes before touching the project: a malformed in/out
+    # written into the playlist makes every later load of the .mlt fail.
+    fps_num, fps_den = _get_fps(session)
+    for label, value in (("in", in_point), ("out", out_point), ("at", at_time)):
+        if value is not None:
+            try:
+                parse_time_input(value, fps_num, fps_den)
+            except ValueError as exc:
+                raise ValueError(f"Invalid {label} point {value!r}: {exc}") from None
+
     resource = mlt_xml.get_property(bin_chain, "resource", "")
     session.checkpoint()
 

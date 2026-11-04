@@ -15,6 +15,16 @@ PROFILES = {
         "display_aspect_num": "16", "display_aspect_den": "9",
         "progressive": "1", "colorspace": "709",
     },
+    # Exact 30 fps (30/1), for sources recorded at integer frame rates.
+    # hd1080p30 is NTSC 29.97 (30000/1001); mixing the two accumulates
+    # timecode drift on long timelines.
+    "hd1080p30exact": {
+        "width": "1920", "height": "1080",
+        "frame_rate_num": "30", "frame_rate_den": "1",
+        "sample_aspect_num": "1", "sample_aspect_den": "1",
+        "display_aspect_num": "16", "display_aspect_den": "9",
+        "progressive": "1", "colorspace": "709",
+    },
     "hd1080p60": {
         "width": "1920", "height": "1080",
         "frame_rate_num": "60000", "frame_rate_den": "1001",

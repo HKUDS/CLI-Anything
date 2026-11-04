@@ -1,5 +1,6 @@
 """Filter management: apply, remove, configure filters on clips and tracks."""
 
+import math
 from typing import Optional
 import xml.etree.ElementTree as ET
 
@@ -27,10 +28,10 @@ FILTER_REGISTRY = {
         "category": "audio",
         "description": "Adjust audio volume",
         "params": {
-            "level": {"type": "float", "default": "1.0", "range": "0.0-5.0",
-                      "description": "Volume level (1.0 = normal)"},
-            "gain": {"type": "float", "default": "0.0",
-                     "description": "Gain in dB"},
+            "level": {"type": "float", "default": "0", "range": "-60-20",
+                      "description": "Volume in dB (0 = unity; MLT 'level' is dB, not linear)"},
+            "gain": {"type": "float", "default": "1.0", "range": "0.0-5.0",
+                     "description": "Linear gain (1.0 = unity, 0.5 = -6 dB)"},
         },
     },
     "blur": {
@@ -87,8 +88,8 @@ FILTER_REGISTRY = {
         "category": "audio",
         "description": "Audio fade in",
         "params": {
-            "level": {"type": "string", "default": "00:00:00.000=0;00:00:01.000=1",
-                      "description": "Keyframed volume (timecode=value pairs)"},
+            "level": {"type": "string", "default": "00:00:00.000=-60;00:00:01.000=0",
+                      "description": "Keyframed volume in dB (timecode=dB pairs; -60 = silent, 0 = unity)"},
         },
     },
     "fadeout-audio": {
@@ -96,8 +97,8 @@ FILTER_REGISTRY = {
         "category": "audio",
         "description": "Audio fade out",
         "params": {
-            "level": {"type": "string", "default": "00:00:00.000=1;00:00:01.000=0",
-                      "description": "Keyframed volume (timecode=value pairs)"},
+            "level": {"type": "string", "default": "00:00:00.000=0;00:00:01.000=-60",
+                      "description": "Keyframed volume in dB (timecode=dB pairs; 0 = unity, -60 = silent)"},
         },
     },
     "sepia": {
@@ -945,6 +946,23 @@ def _find_filter_index(target: ET.Element, service: str) -> tuple[int | None, ET
     return None, None
 
 
+SILENCE_DB = -60.0
+
+
+def _linear_to_db(level) -> str:
+    """Convert a linear volume level (1.0 = unity) to the dB string MLT expects.
+
+    The MLT ``volume`` filter's ``level`` property is in decibels, not linear
+    gain. Writing ``0.15`` there means +0.15 dB (inaudible), not 15 %.
+    Values <= 0 map to SILENCE_DB.
+    """
+    value = float(level)
+    if value <= 0:
+        return f"{SILENCE_DB:g}"
+    db = 20.0 * math.log10(value)
+    return f"{round(db, 3):g}"
+
+
 def set_volume_envelope(
     session: Session,
     points: list[tuple[str, str]],
@@ -952,6 +970,9 @@ def set_volume_envelope(
     track_index: Optional[int] = None,
     clip_index: Optional[int] = None,
 ) -> dict:
+    """Set a keyframed volume envelope. ``points`` are (timecode, linear level)
+    with 1.0 = unity; levels are converted to dB because MLT's ``volume``
+    filter ``level`` property is in dB."""
     if not points:
         raise ValueError("At least one time=level point is required")
 
@@ -960,8 +981,7 @@ def set_volume_envelope(
 
     normalized: dict[int, str] = {}
     for timecode, level in points:
-        float(level)
-        normalized[parse_time_input(timecode, fps_num, fps_den)] = str(level)
+        normalized[parse_time_input(timecode, fps_num, fps_den)] = _linear_to_db(level)
 
     envelope = ";".join(
         f"{frames_to_timecode(frame, fps_num, fps_den)}={level}"

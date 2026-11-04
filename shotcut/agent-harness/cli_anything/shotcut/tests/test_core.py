@@ -659,6 +659,13 @@ class TestPreview:
 # ============================================================================
 
 class TestProject:
+    def test_hd1080p30exact_profile_is_integer_30fps(self):
+        s = Session()
+        proj_mod.new_project(s, "hd1080p30exact")
+        prof = s.get_profile()
+        assert (prof["frame_rate_num"], prof["frame_rate_den"]) == ("30", "1")
+        assert (prof["width"], prof["height"]) == ("1920", "1080")
+
     def test_new_project(self):
         s = Session()
         result = proj_mod.new_project(s, "hd1080p30")
@@ -754,6 +761,20 @@ class TestTimeline:
     def test_add_clip_not_imported(self, session_with_track):
         with pytest.raises(ValueError, match="not imported"):
             tl_mod.add_clip(session_with_track, "clip999", 1)
+
+    def test_add_clip_rejects_malformed_timecode(self, session_with_track, dummy_file):
+        clip_id = media_mod.import_media(session_with_track, dummy_file)["clip_id"]
+        with pytest.raises(ValueError, match="Invalid in point"):
+            tl_mod.add_clip(session_with_track, clip_id, 1,
+                            in_point="00:12:00.000 00:12:30.000", out_point=None)
+        with pytest.raises(ValueError, match="Invalid out point"):
+            tl_mod.add_clip(session_with_track, clip_id, 1,
+                            in_point="00:00:00.000", out_point="abc")
+        with pytest.raises(ValueError, match="Invalid at point"):
+            tl_mod.add_clip(session_with_track, clip_id, 1, at_time="nope")
+        # Nothing was written: the track is still empty
+        clips = tl_mod.list_clips(session_with_track, 1)
+        assert [c for c in clips if c.get("clip_index") is not None] == []
 
     def test_add_and_list_clip(self, session_with_track, dummy_file):
         clip_id = media_mod.import_media(session_with_track, dummy_file)["clip_id"]
@@ -1146,7 +1167,19 @@ class TestFilters:
         assert result["action"] == "set_volume_envelope"
         filters = filt_mod.list_filters(session_with_clip, track_index=1)
         assert filters[0]["service"] == "volume"
-        assert filters[0]["params"]["level"].count("=") == 3
+        level = filters[0]["params"]["level"]
+        assert level.count("=") == 3
+        # MLT volume 'level' is dB: 1.0 -> 0 dB, 0.25 -> -12.041 dB
+        assert "00:00:00.000=0;" in level
+        assert "=-12.041;" in level
+        assert "=0.25" not in level
+
+    def test_linear_to_db_edges(self):
+        assert filt_mod._linear_to_db(1.0) == "0"
+        assert filt_mod._linear_to_db("0.5") == "-6.021"
+        assert filt_mod._linear_to_db(0) == "-60"
+        assert filt_mod._linear_to_db(-1) == "-60"
+        assert filt_mod._linear_to_db(2.0) == "6.021"
 
     def test_duck_volume(self, session_with_clip):
         result = filt_mod.duck_volume(
@@ -1158,7 +1191,15 @@ class TestFilters:
         )
         assert result["action"] == "duck_volume"
         filters = filt_mod.list_filters(session_with_clip, track_index=1)
-        assert "0.3" in filters[0]["params"]["level"]
+        level = filters[0]["params"]["level"]
+        # 0.3 linear must land in the XML as -10.458 dB, never as "0.3"
+        assert "=-10.458" in level
+        assert "=0.3" not in level
+
+    def test_fade_audio_defaults_are_db(self):
+        reg = filt_mod.FILTER_REGISTRY
+        assert reg["fadein-audio"]["params"]["level"]["default"] == "00:00:00.000=-60;00:00:01.000=0"
+        assert reg["fadeout-audio"]["params"]["level"]["default"] == "00:00:00.000=0;00:00:01.000=-60"
 
     def test_duck_window_dotdot_split(self):
         windows_cli = ["00:00:01.000..00:00:03.000"]
