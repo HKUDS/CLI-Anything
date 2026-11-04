@@ -10,7 +10,7 @@
 
 ## Test inventory plan
 
-- `test_core.py`: 108 unit and CLI-isolation test cases.
+- `test_core.py`: 110 unit and CLI-isolation test cases.
 - `test_full_e2e.py`: 82 tests against the real backend,
   installed console script, PTYs, and owned listener fixtures.
 - `test_option_coverage.py`: 12 schema and live help/man
@@ -69,12 +69,14 @@ Expected: 20 tests.
 - Enforce safe overwrite and file permissions.
 - Refuse existing and dangling final-component profile output symlinks in dry-run
   and execution without changing their targets.
+- Refuse existing and dangling symlinked sibling profile lock files without
+  creating or changing their targets.
 - Decode newline/NUL output without losing exact bytes; separate query and
   expect prefixes; map all documented fzf exits.
 - Validate listener containment, ownership tokens, PID start-time checks,
   HTTP response parsing, and secret-free state serialization.
 
-Expected: 19 tests.
+Expected: 21 tests.
 
 ## End-to-end test plan
 
