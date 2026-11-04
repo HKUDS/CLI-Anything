@@ -1,0 +1,5 @@
+include FZF.md
+include README.md
+include pyproject.toml
+recursive-include cli_anything/fzf *.json *.md
+global-exclude __pycache__ *.py[cod]
