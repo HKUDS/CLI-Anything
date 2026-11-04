@@ -645,7 +645,7 @@ def filter_list(track_index, clip_index):
 @click.option("--clip", "clip_index", default=None, type=int,
               help="Clip index on track (omit for track-level)")
 @click.option("--point", "points", multiple=True, required=True,
-              help="Time=level pair, e.g. 00:00:00.000=1.0")
+              help="Time=level pair, linear (1.0 = unity), e.g. 00:00:00.000=1.0")
 @handle_error
 def filter_volume_envelope(track_index, clip_index, points):
     """Create or replace a keyframed volume envelope on a track or clip."""
@@ -667,9 +667,9 @@ def filter_volume_envelope(track_index, clip_index, points):
 @click.option("--window", "windows", multiple=True, required=True,
               help="Ducking window START..END")
 @click.option("--normal", "normal_level", default=1.0, show_default=True, type=float,
-              help="Normal volume level")
+              help="Normal volume level, linear (1.0 = unity)")
 @click.option("--duck", "duck_level", default=0.25, show_default=True, type=float,
-              help="Ducked volume level")
+              help="Ducked volume level, linear (0.25 = -12 dB)")
 @click.option("--attack", default="00:00:00.150", show_default=True,
               help="Attack time (fade to duck)")
 @click.option("--release", default="00:00:00.250", show_default=True,
