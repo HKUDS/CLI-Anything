@@ -286,6 +286,10 @@ Schema:
 
 Later profiles override non-repeatable options; repeatable bindings/colors append.
 Writes are locked, atomic, mode 0600, and refuse overwrite unless requested.
+An output path that is a symlink (existing or dangling) is refused with
+`profile_path_unsafe` in both dry-run and execution; a symlinked sibling
+`.<name>.lock` file is refused the same way when writing. Symlink targets are
+left untouched.
 
 ### `config inspect`
 
