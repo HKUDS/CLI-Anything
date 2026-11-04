@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import tempfile
@@ -20,7 +21,13 @@ PROFILE_SCHEMA = "cli-anything-fzf-profile/v1"
 def _exclusive_lock(path: Path) -> Iterator[None]:
     lock_path = path.with_name(f".{path.name}.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+", encoding="utf-8") as lock:
+    try:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValidationError("profile_path_unsafe", "Profile lock path cannot be a symlink") from exc
+        raise
+    with os.fdopen(fd, "a+", encoding="utf-8") as lock:
         try:
             import fcntl
 
@@ -149,7 +156,6 @@ def write_profile(
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
-            os.chmod(path, 0o600)
         finally:
             try:
                 os.unlink(temporary)

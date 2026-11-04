@@ -469,6 +469,28 @@ def test_profile_overwrite_refuses_final_component_symlink(tmp_path, dangling):
         assert target.read_bytes() == sentinel
 
 
+@pytest.mark.parametrize("dangling", [False, True], ids=["existing-target", "dangling-target"])
+def test_profile_create_refuses_planted_lock_symlink(tmp_path, dangling):
+    target = tmp_path / "lock-target"
+    sentinel = b"lock target must remain unchanged\n"
+    if not dangling:
+        target.write_bytes(sentinel)
+    output = tmp_path / "profile.json"
+    lock = tmp_path / ".profile.json.lock"
+    lock.symlink_to(target)
+
+    with pytest.raises(ValidationError) as raised:
+        write_profile(str(output), name="p", description="", options=[], bindings=[])
+
+    assert raised.value.code == "profile_path_unsafe"
+    assert lock.is_symlink()
+    assert not output.exists()
+    if dangling:
+        assert not target.exists()
+    else:
+        assert target.read_bytes() == sentinel
+
+
 def test_profile_composition_overrides_scalars_and_appends_bindings(tmp_path):
     first = tmp_path / "first.json"
     second = tmp_path / "second.json"
