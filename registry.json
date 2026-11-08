@@ -255,7 +255,7 @@
     {
       "name": "drawio",
       "display_name": "Draw.io",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Diagram creation and export via draw.io CLI",
       "requires": "draw.io desktop app",
       "homepage": "https://www.drawio.com",

@@ -211,4 +211,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.0
+1.0.1
