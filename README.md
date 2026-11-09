@@ -1126,6 +1126,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 158</td>
 </tr>
 <tr>
+<td align="center"><strong><a href="turso/agent-harness/">Turso</a></strong></td>
+<td>Local Native Database</td>
+<td><code>cli-anything-turso</code></td>
+<td>Native pyturso 0.8.3 SDK</td>
+<td align="center"><a href="turso/agent-harness/">SQL, CRUD, transactions, export</a></td>
+</tr>
+<tr>
 <td align="center"><strong><a href="openrefine/agent-harness/">OpenRefine</a></strong></td>
 <td>Data Cleaning</td>
 <td><code>cli-anything-openrefine</code></td>

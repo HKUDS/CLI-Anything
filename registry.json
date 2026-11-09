@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "turso",
+      "display_name": "Turso (local native engine)",
+      "version": "0.1.0",
+      "description": "Local native Turso file selection, parameterized SQL, schema, table CRUD, atomic CRUD transactions and bounded exports",
+      "requires": "Python 3.10+ and native pyturso==0.8.3",
+      "homepage": "https://github.com/tursodatabase/turso",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=turso/agent-harness",
+      "entry_point": "cli-anything-turso",
+      "skill_md": "skills/cli-anything-turso/SKILL.md",
+      "category": "database",
+      "contributors": [
+        {
+          "name": "CLI-Anything contributors",
+          "url": "https://github.com/HKUDS/CLI-Anything"
+        }
+      ]
     }
   ]
 }
