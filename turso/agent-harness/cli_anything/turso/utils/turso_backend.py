@@ -1,4 +1,5 @@
 """Real native pyturso backend. There is deliberately no sqlite3 fallback."""
+import contextlib
 import csv
 import hashlib
 import importlib
@@ -77,6 +78,10 @@ class Database:
             return {"columns": columns, "rows": json_value(rows[:limit]),
                     "row_count": min(len(rows), limit), "truncated": truncated,
                     "rows_affected": cur.rowcount if cur.rowcount >= 0 else None}
+        except KeyboardInterrupt:
+            with contextlib.suppress(Exception):
+                conn.interrupt()
+            raise
         finally:
             cur.close()
 
@@ -100,6 +105,11 @@ class Database:
             # native exception traceback also retains closed connection objects
             # and their file locks inside a long-lived REPL.
             failure = TursoError(f"{exc}{suffix}", operation_index=getattr(exc, "operation_index", None))
+        except KeyboardInterrupt:
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
+            raise
         finally:
             if conn is not None:
                 try:

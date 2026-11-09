@@ -92,6 +92,10 @@ with a separate `columns` array, preserving duplicate column names.
 
 `--json` emits one JSON object on stdout per successful command. Errors emit one
 JSON object on stderr, leave stdout empty, and exit 1; CLI usage errors exit 2.
+Ctrl-C/SIGINT during a command reports `error: "interrupted"` and exits 130 (the
+REPL records the failure and continues). The open native transaction is rolled back
+and the connection released; native work is only interrupted once control returns
+to Python, so cancellation of arbitrary native SQL is not guaranteed.
 `ok`, `database`, and `error` identify failures; transaction statement failures
 also report a zero-based `operation_index`. Standard `--help`/`--version` retain
 Click's text format. Without `--json`, results are formatted JSON for inspection.

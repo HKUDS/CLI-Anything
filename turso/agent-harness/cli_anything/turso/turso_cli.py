@@ -54,6 +54,11 @@ def execute(args, state):
         return 2 if isinstance(exc, click.UsageError) else 1
     except click.exceptions.Exit as exc:
         return exc.exit_code
+    except (click.exceptions.Abort, KeyboardInterrupt):
+        if "--json" in args:
+            state.as_json = True
+        emit(state, {"error": "interrupted"}, error=True)
+        return 130
 
 
 @click.group(invoke_without_command=True)

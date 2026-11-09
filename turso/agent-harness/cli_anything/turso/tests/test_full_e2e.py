@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -456,6 +457,76 @@ def test_repl_help_quit_eof_parse_and_nested_paths():
     errors = [json.loads(line) for line in result.stderr.splitlines()]
     assert len(errors) == 3 and all(error["ok"] is False for error in errors)
     assert json.loads(result.stdout)["selected"] is False
+
+
+ENDLESS_ROWS = 'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT x FROM c'
+
+
+def _interrupt_while_db_open(proc, db):
+    fd_dir = Path(f"/proc/{proc.pid}/fd")
+    deadline = time.monotonic() + 10
+    while True:
+        assert proc.poll() is None and time.monotonic() < deadline
+        opened = []
+        for fd in fd_dir.iterdir():
+            try:
+                opened.append(os.readlink(fd))
+            except OSError:
+                pass
+        if str(Path(db).resolve()) in opened:
+            break
+        time.sleep(0.02)
+    time.sleep(0.3)
+    proc.send_signal(signal.SIGINT)
+
+
+def _json_lines(text):
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="needs /proc fd introspection")
+def test_one_shot_interrupt_reports_and_releases(fixture_db):
+    data("--database", fixture_db, "sql", "INSERT INTO items (label) VALUES ('kept')")
+    proc = subprocess.Popen(CLI + ["--json", "--database", str(fixture_db), "sql", ENDLESS_ROWS],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        _interrupt_while_db_open(proc, fixture_db)
+        stdout, stderr = proc.communicate(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+    assert proc.returncode == 130, (stdout, stderr)
+    assert stdout == "" and "Traceback" not in stderr
+    errors = _json_lines(stderr)
+    assert errors == [{"ok": False, "database": str(fixture_db.resolve()), "error": "interrupted"}]
+    data("--database", fixture_db, "sql", "INSERT INTO items (label) VALUES ('after')")
+    rows = data("--database", fixture_db, "sql", "SELECT label FROM items ORDER BY id")["rows"]
+    assert rows == [["kept"], ["after"]]
+
+
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="needs /proc fd introspection")
+def test_repl_interrupt_recovers_and_releases(fixture_db):
+    proc = subprocess.Popen(CLI + ["--json", "--database", str(fixture_db)],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    try:
+        proc.stdin.write(f"sql {shlex.quote(ENDLESS_ROWS)}\n")
+        proc.stdin.flush()
+        _interrupt_while_db_open(proc, fixture_db)
+        proc.stdin.write("sql \"INSERT INTO items (label) VALUES ('after')\"\n"
+                         "sql \"SELECT label FROM items\"\nquit\n")
+        stdout, stderr = proc.communicate(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+    assert proc.returncode == 1, (stdout, stderr)
+    assert "Traceback" not in stderr
+    assert [e["error"] for e in _json_lines(stderr)] == ["interrupted"]
+    outputs = _json_lines(stdout)
+    assert outputs[0]["rows_affected"] == 1 and outputs[1]["rows"] == [["after"]]
+    assert data("--database", fixture_db, "sql", "SELECT count(*) FROM items")["rows"] == [[1]]
 
 
 @pytest.mark.parametrize("ending", [b"exit\n", b"\x03", b"\x04"], ids=["exit", "interrupt", "eof"])
