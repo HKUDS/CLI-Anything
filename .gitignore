@@ -345,3 +345,9 @@ assets/gen_typing_gif.py
 !/jumpserver/
 !/jumpserver/agent-harness/
 !/cli_anything/jumpserver/
+
+# Local native Turso harness
+!/turso/
+/turso/*
+/turso/.*
+!/turso/agent-harness/

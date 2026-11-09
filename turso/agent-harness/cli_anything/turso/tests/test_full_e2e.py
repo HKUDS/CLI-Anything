@@ -1,0 +1,316 @@
+"""Real native Turso, installed CLI and piped REPL workflows. No backend skips."""
+import csv
+import json
+import os
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+
+import pytest
+import turso
+
+from cli_anything.turso.utils.turso_backend import Database, create_database
+
+
+def _resolve_cli(name):
+    path = shutil.which(name)
+    if path:
+        print(f"[_resolve_cli] Using installed command: {path}")
+        return [path]
+    if os.environ.get("CLI_ANYTHING_FORCE_INSTALLED", "").strip() == "1":
+        raise RuntimeError(f"{name} not in PATH. Install with pip install -e .")
+    return [sys.executable, "-m", "cli_anything.turso.turso_cli"]
+
+
+CLI = _resolve_cli("cli-anything-turso")
+
+
+def run(*args, code=0, input=None):
+    result = subprocess.run(CLI + ["--json", *map(str, args)], input=input,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == code, (result.stdout, result.stderr)
+    return result
+
+
+def data(*args, code=0):
+    result = run(*args, code=code)
+    assert not (result.stderr if code == 0 else result.stdout), (result.stdout, result.stderr)
+    return json.loads(result.stdout if code == 0 else result.stderr)
+
+
+@pytest.fixture
+def fixture_db(tmp_path):
+    path = tmp_path / "native database with spaces.db"
+    assert not path.exists()
+    out = data("db", "create", path)
+    assert out["database"] == str(path.resolve())
+    assert out["rows"][0][0] == "0.8.3"
+    data("--database", path, "sql", 'CREATE TABLE items (id INTEGER PRIMARY KEY, label TEXT UNIQUE, note TEXT, raw BLOB)')
+    print(f"\n  Native Turso fixture: {path}")
+    return path
+
+
+def test_help_and_native_dependency():
+    result = subprocess.run(CLI + ["--help"], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0 and "transaction" in result.stdout
+    info = data("doctor")
+    assert info["backend"] == "pyturso" and info["sdk_version"] == "0.8.3"
+    assert info["native_extensions"]
+    assert all(Path(p["path"]).is_file() and len(p["sha256"]) == 64 for p in info["native_extensions"])
+
+
+def test_database_selection_schema_and_no_overwrite(fixture_db, tmp_path):
+    db = fixture_db
+    session = tmp_path / "selected db.json"
+    selected = data("--session", session, "db", "open", db)
+    assert selected["database"] == str(db)
+    assert data("--session", session, "table", "list")["rows"] == [["items"]]
+    assert [row[1] for row in data("--session", session, "table", "describe", "items")["rows"]] == ["id", "label", "note", "raw"]
+    assert any(row[1] == "items" for row in data("--session", session, "schema")["rows"])
+    assert data("db", "create", db, code=1)["ok"] is False
+    assert data("--session", session, "db", "close")["database"] is None
+    assert data("--session", session, "schema", code=1)["ok"] is False
+
+
+def test_crud_binds_escaping_and_null(fixture_db):
+    db = fixture_db
+    text = 'O\'Brien | "quoted"\n雪\t\\end'
+    values = {"id": 1, "label": text, "note": None, "raw": {"$blob": "00ff22"}}
+    assert data("--database", db, "table", "insert", "items", "--values", json.dumps(values))["rows_affected"] == 1
+    rows = data("--database", db, "table", "rows", "items", "--where", '{"note":null}')["rows"]
+    assert rows == [[1, text, None, {"$blob": "00ff22"}]]
+    assert data("--database", db, "sql", "SELECT :word, ?2", "--params", '["named",3]')["rows"] == [["named", 3]]
+    assert data("--database", db, "sql", "SELECT :word", "--params", '{"word":"bound"}')["rows"] == [["bound"]]
+    data("--database", db, "table", "update", "items", "--where", '{"id":1}', "--values", '{"note":"updated"}')
+    assert data("--database", db, "table", "rows", "items")["rows"][0][2] == "updated"
+    assert data("--database", db, "table", "delete", "items", code=1)["ok"] is False
+    data("--database", db, "table", "delete", "items", "--where", '{"id":1}')
+    assert data("--database", db, "table", "rows", "items")["rows"] == []
+
+
+def test_quoted_table_and_column_names(fixture_db):
+    db = fixture_db
+    table = 'odd" table;--'
+    data("--database", db, "sql", 'CREATE TABLE "odd"" table;--" ("a""b" TEXT)')
+    data("--database", db, "table", "insert", table, "--values", json.dumps({'a"b': "'); DROP TABLE items;--"}))
+    assert data("--database", db, "table", "rows", table)["rows"] == [["'); DROP TABLE items;--"]]
+    assert data("--database", db, "table", "rows", "items")["rows"] == []
+
+
+def test_sql_row_cap_and_returning_are_durable(fixture_db):
+    db = fixture_db
+    result = data("--database", db, "sql", "INSERT INTO items(id,label) VALUES (1,'a'),(2,'b'),(3,'c') RETURNING id", "--limit", 1)
+    assert len(result["rows"]) == 1 and result["truncated"] is True
+    assert data("--database", db, "sql", "SELECT count(*) FROM items")["rows"] == [[3]]
+    result = data("--database", db, "table", "rows", "items", "--limit", 2)
+    assert result["row_count"] == 2 and result["truncated"] is True
+    assert data("--database", db, "sql", "SELECT 1,2 UNION ALL SELECT 3,4", "--limit", 1)["rows"] == [[1, 2]]
+
+
+def test_transaction_commit_and_constraint_rollback(fixture_db, tmp_path):
+    db = fixture_db
+    manifest = tmp_path / "operations with spaces.json"
+    manifest.write_text(json.dumps([
+        {"op": "insert", "table": "items", "values": {"id": 1, "label": "a"}},
+        {"op": "insert", "table": "items", "values": {"id": 2, "label": "b"}},
+    ]))
+    assert data("--database", db, "transaction", "run", manifest)["committed"] is True
+    assert data("--database", db, "sql", "SELECT id,label FROM items ORDER BY id")["rows"] == [[1, "a"], [2, "b"]]
+    manifest.write_text(json.dumps([
+        {"op": "update", "table": "items", "values": {"label": "changed"}, "where": {"id": 1}},
+        {"op": "insert", "table": "items", "values": {"id": 3, "label": "b"}},
+        {"op": "delete", "table": "items", "all": True},
+    ]))
+    error = data("--database", db, "transaction", "run", manifest, code=1)
+    assert error["operation_index"] == 1
+    assert data("--database", db, "sql", "SELECT id,label FROM items ORDER BY id")["rows"] == [[1, "a"], [2, "b"]]
+
+
+def test_deferred_commit_failure_propagates_and_rolls_back(fixture_db):
+    db = fixture_db
+    data("--database", db, "sql", "CREATE TABLE parent(id INTEGER PRIMARY KEY)")
+    data("--database", db, "sql", "CREATE TABLE child(id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)")
+    error = data("--database", db, "sql", "INSERT INTO child VALUES(1,42)", code=1)
+    assert "FOREIGN KEY" in error["error"].upper()
+    assert data("--database", db, "sql", "SELECT * FROM child")["rows"] == []
+    data("--database", db, "sql", "INSERT INTO parent VALUES(42)")
+    data("--database", db, "sql", "INSERT INTO child VALUES(1,42)")
+    assert data("--database", db, "sql", "SELECT * FROM child")["rows"] == [[1, 42]]
+
+
+@pytest.mark.parametrize("sql,params", [
+    ("SELEC bad", "[]"),
+    ("SELECT 1; SELECT 2", "[]"),
+    ("SELECT ?", "[]"),
+    ("SELECT ?", "[9223372036854775808]"),
+    ("SELECT ?", "[NaN]"),
+])
+def test_sql_failures_are_json(fixture_db, sql, params):
+    error = data("--database", fixture_db, "sql", sql, "--params", params, code=1)
+    assert error["ok"] is False and error["database"] == str(fixture_db)
+    assert error["error"]
+
+
+def test_missing_database_and_parent_never_created(tmp_path):
+    absent = tmp_path / "absent.db"
+    assert data("--database", absent, "status", code=1)["ok"] is False
+    assert not absent.exists()
+    assert data("db", "open", absent, code=1)["ok"] is False
+    assert not absent.exists()
+    assert data("db", "create", tmp_path / "missing" / "db", code=1)["ok"] is False
+
+
+def test_json_and_csv_export_content(fixture_db, tmp_path):
+    db = fixture_db
+    values = {"id": 1, "label": 'comma, quote"\n雪', "raw": {"$blob": "00ff"}}
+    data("--database", db, "table", "insert", "items", "--values", json.dumps(values))
+    for fmt in ["json", "csv"]:
+        path = tmp_path / f"export with spaces.{fmt}"
+        exported = data("--database", db, "export", "items", "--output", path, "--format", fmt)
+        assert exported["row_count"] == 1 and not exported["truncated"]
+        assert path.stat().st_size > 0
+        if fmt == "json":
+            assert json.loads(path.read_text())["rows"] == [[1, values["label"], None, {"$blob": "00ff"}]]
+        else:
+            with path.open(newline="") as stream:
+                rows = list(csv.reader(stream))
+            assert rows == [["id", "label", "note", "raw"], ["1", values["label"], "", '{"$blob": "00ff"}']]
+        before = path.read_bytes()
+        assert data("--database", db, "export", "items", "--output", path, code=1)["ok"] is False
+        assert path.read_bytes() == before
+        print(f"\n  Native export: {path} ({path.stat().st_size} bytes)")
+
+
+def test_default_repl_selection_persistence_and_recovery(tmp_path):
+    a, b = tmp_path / "first db.db", tmp_path / "second db.db"
+    session = tmp_path / "repl selection.json"
+    commands = [
+        ["db", "create", str(a)],
+        ["sql", "CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT)"],
+        ["sql", "INSERT INTO t VALUES(?,?)", "--params", json.dumps([1, 'pipe|\n"雪'])],
+        ["sql", "bad sql"],
+        ["table", "rows", "t"],
+        ["db", "create", str(b)],
+        ["status"],
+        ["db", "open", str(a)],
+        ["table", "rows", "t"],
+        ["exit"],
+    ]
+    result = run("--session", session, input="\n".join(shlex.join(c) for c in commands) + "\n", code=1)
+    outputs = [json.loads(line) for line in result.stdout.splitlines()]
+    assert len(outputs) == 8
+    assert outputs[3]["rows"] == [[1, 'pipe|\n"雪']]
+    assert outputs[5]["database"] == str(b)
+    assert outputs[-1]["rows"] == outputs[3]["rows"]
+    assert json.loads(result.stderr)["ok"] is False
+    assert data("--session", session, "table", "rows", "t")["rows"] == outputs[-1]["rows"]
+
+
+def test_repl_success_and_usage_error(tmp_path):
+    db = tmp_path / "repl.db"
+    result = run(input=shlex.join(["db", "create", str(db)]) + '\nstatus\nexit\n')
+    assert len([json.loads(line) for line in result.stdout.splitlines()]) == 2
+    result = run(input='sql\nstatus\nexit\n', code=1)
+    assert json.loads(result.stderr)["ok"] is False
+    assert json.loads(result.stdout)["selected"] is False
+
+
+def test_native_binary_independent_readback(fixture_db):
+    path = os.environ.get("TURSODB_BIN") or shutil.which("tursodb")
+    assert path, "Install native tursodb or set TURSODB_BIN"
+    version = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=10)
+    assert version.returncode == 0 and version.stdout.strip() == "Turso 0.8.3"
+    data("--database", fixture_db, "sql", "INSERT INTO items(id,label) VALUES(7,'native')")
+    result = subprocess.run([path, "--readonly", "-q", "-m", "list", str(fixture_db),
+                             "SELECT turso_version(),id,label FROM items ORDER BY id"],
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0
+    sql_version, row_id, label = result.stdout.strip().split("|")
+    assert sql_version and (row_id, label) == ("7", "native")
+
+
+def test_held_native_lock_fails_promptly_and_recovers(fixture_db):
+    # The only holder/contender target is this test's fresh synthetic database.
+    conn = turso.connect(str(fixture_db))
+    try:
+        conn.execute("BEGIN IMMEDIATE").close()
+        start = time.monotonic()
+        error = data("--database", fixture_db, "sql", "INSERT INTO items(id,label) VALUES(1,'locked')", code=1)
+        assert time.monotonic() - start < 5
+        assert "lock" in error["error"].lower() or "busy" in error["error"].lower()
+    finally:
+        conn.rollback()
+        conn.close()
+        del conn  # SDK close alone can retain the native database owner.
+    assert data("--database", fixture_db, "table", "rows", "items")["rows"] == []
+    data("--database", fixture_db, "sql", "INSERT INTO items(id,label) VALUES(1,'released')")
+    assert data("--database", fixture_db, "sql", "SELECT label FROM items")["rows"] == [["released"]]
+
+
+def test_repl_releases_locks_after_success_and_failure(fixture_db):
+    import select
+    proc = subprocess.Popen(CLI + ["--json", "--database", str(fixture_db)],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    try:
+        for sql, error in [("SELECT 1", False), ("SELECT * FROM absent_table", True)]:
+            proc.stdin.write(shlex.join(["sql", sql]) + "\n")
+            proc.stdin.flush()
+            stream = proc.stderr if error else proc.stdout
+            assert select.select([stream], [], [], 5)[0], "REPL failed to respond within five seconds"
+            assert json.loads(stream.readline())["ok"] is not error
+            # A separate process must open the fixture while the REPL is alive.
+            assert data("--database", fixture_db, "sql", "SELECT 9")["rows"] == [[9]]
+        proc.stdin.write("exit\n")
+        proc.stdin.flush()
+        proc.communicate(timeout=5)
+        assert proc.returncode == 1
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate(timeout=5)
+
+
+def test_missing_sdk_in_separate_environment(tmp_path):
+    import click
+    import cli_anything.turso
+    import venv
+    env = tmp_path / "missing sdk environment"
+    venv.EnvBuilder(with_pip=False).create(env)
+    site = next((env / "lib").glob("python*/site-packages"))
+    # Reuse only Click plus the harness source path, deliberately no pyturso.
+    shutil.copytree(Path(click.__file__).parent, site / "click")
+    (site / "harness.pth").write_text(str(Path(cli_anything.turso.__file__).parents[2]) + "\n")
+    missing_python = env / "bin" / "python"
+    destination = tmp_path / "must not be created.db"
+    isolated_cli = [str(missing_python), CLI[0]] if len(CLI) == 1 else [
+        str(missing_python), "-m", "cli_anything.turso.turso_cli"]
+    for args in [["doctor"], ["db", "create", str(destination)]]:
+        result = subprocess.run([*isolated_cli, "--json", *args],
+                                capture_output=True, text=True, timeout=10)
+        assert result.returncode == 1 and not result.stdout
+        assert "pyturso==0.8.3" in json.loads(result.stderr)["error"]
+    assert not destination.exists()
+
+
+def test_session_lock_refusal_is_bounded(tmp_path):
+    import fcntl
+    path = tmp_path / "session.json"
+    path.write_text('{"version":1,"database":null}')
+    with path.open("r+") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        start = time.monotonic()
+        assert data("--session", path, "status", code=1)["ok"] is False
+        assert time.monotonic() - start < 5
+    assert data("--session", path, "status")["selected"] is False
+
+
+def test_named_prefixes_missing_binds_and_literal_escaping(fixture_db):
+    db = fixture_db
+    assert data("--database", db, "sql", "SELECT :x,?1", "--params", '{"x":7}')["rows"] == [[7, 7]]
+    assert data("--database", db, "sql", "SELECT :x,@x,$x,':ignored' /* ? */", "--params", '{"x":"same"}')["rows"] == [["same", "same", "same", ":ignored"]]
+    for statement, params in [("SELECT :x,:y", '{"x":1}'), ("SELECT ?,?", '[1]')]:
+        assert data("--database", db, "sql", statement, "--params", params, code=1)["ok"] is False
