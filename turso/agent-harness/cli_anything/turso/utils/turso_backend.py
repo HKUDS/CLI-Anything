@@ -79,6 +79,9 @@ class Database:
                     "row_count": min(len(rows), limit), "truncated": truncated,
                     "rows_affected": cur.rowcount if cur.rowcount >= 0 else None}
         except KeyboardInterrupt:
+            # Without this, cur.close() drains the unfinished native statement
+            # (unbounded for an endless query). Proven by
+            # test_interrupt_between_native_fetches_stops_statement_drain.
             with contextlib.suppress(Exception):
                 conn.interrupt()
             raise

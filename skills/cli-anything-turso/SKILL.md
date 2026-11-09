@@ -1,5 +1,5 @@
 ---
-name: cli-anything-turso
+name: "cli-anything-turso"
 description: Operate owned local native Turso database files with parameterized SQL, table CRUD, schema inspection, atomic CRUD transactions and bounded exports. Does not administer Turso Cloud, libSQL, AgentFS or managed database writers.
 ---
 
