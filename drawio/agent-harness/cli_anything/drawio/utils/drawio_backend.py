@@ -14,6 +14,7 @@ Requires: draw.io desktop app
 import os
 import shutil
 import subprocess
+import sys
 from typing import Optional
 
 
@@ -27,13 +28,26 @@ def find_drawio() -> str:
         if path:
             return path
 
+    if sys.platform == "win32":
+        for variable, *subdirs in (
+            ("ProgramFiles",),
+            ("ProgramW6432",),
+            ("ProgramFiles(x86)",),
+            ("LOCALAPPDATA", "Programs"),
+        ):
+            root = os.environ.get(variable)
+            if root:
+                path = os.path.join(root, *subdirs, "draw.io", "draw.io.exe")
+                if os.path.isfile(path):
+                    return path
+
     # macOS app bundle path
     mac_path = "/Applications/draw.io.app/Contents/MacOS/draw.io"
     if os.path.isfile(mac_path):
         return mac_path
 
     raise RuntimeError(
-        "draw.io desktop app is not installed. Install it with:\n"
+        "draw.io desktop app is not installed or could not be found. Install it with:\n"
         "  macOS:   brew install --cask drawio\n"
         "  Linux:   snap install drawio\n"
         "  Windows: winget install JGraph.Draw"

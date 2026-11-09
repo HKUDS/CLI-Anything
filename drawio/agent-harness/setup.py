@@ -13,7 +13,7 @@ with open("cli_anything/drawio/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-drawio",
-    version="1.0.0",
+    version="1.0.1",
     author="cli-anything contributors",
     author_email="",
     description="CLI harness for Draw.io - Diagram creation and export via draw.io CLI. Requires: draw.io desktop app (draw.io --export)",

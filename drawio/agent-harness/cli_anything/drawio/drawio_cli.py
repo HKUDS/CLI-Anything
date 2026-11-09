@@ -620,7 +620,7 @@ def repl(project_path):
         s.open_project(project_path)
 
     from cli_anything.drawio.utils.repl_skin import ReplSkin
-    skin = ReplSkin("drawio", version="1.0.0")
+    skin = ReplSkin("drawio", version="1.0.1")
     skin.print_banner()
 
     if project_path:

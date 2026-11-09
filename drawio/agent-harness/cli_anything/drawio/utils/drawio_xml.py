@@ -76,7 +76,7 @@ def create_blank_diagram(page_width: int = 850, page_height: int = 1100,
     """
     mxfile = ET.Element("mxfile")
     mxfile.set("host", "cli-anything")
-    mxfile.set("agent", "cli-anything-drawio/1.0.0")
+    mxfile.set("agent", "cli-anything-drawio/1.0.1")
     mxfile.set("version", "24.0.0")
 
     diagram = ET.SubElement(mxfile, "diagram")
