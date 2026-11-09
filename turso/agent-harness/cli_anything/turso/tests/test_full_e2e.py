@@ -556,6 +556,77 @@ def test_repl_interrupt_recovers_and_releases(fixture_db):
     assert data("--database", fixture_db, "sql", "SELECT count(*) FROM items")["rows"] == [[1]]
 
 
+INTERRUPTED_FETCH_DRIVER = r'''
+import sys, time
+from cli_anything.turso.utils.turso_backend import Database
+
+db, sql, arm = sys.argv[1:]
+real_connect = Database._connect
+
+
+class InterruptingCursor:
+    def __init__(self, cur):
+        self._cur, self._fetches = cur, 0
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+    def fetchmany(self, size):
+        rows = self._cur.fetchmany(size)
+        self._fetches += 1
+        if self._fetches == 2:
+            raise KeyboardInterrupt
+        return rows
+
+
+class Connection:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def execute(self, *args):
+        return InterruptingCursor(self._conn.execute(*args))
+
+    def interrupt(self):
+        if arm == "native":
+            self._conn.interrupt()
+
+
+Database._connect = lambda self: Connection(real_connect(self))
+start = time.monotonic()
+try:
+    Database(db).sql(sql, limit=1)
+except KeyboardInterrupt:
+    print(f"interrupted {time.monotonic() - start:.3f}", flush=True)
+'''
+
+
+def test_interrupt_between_native_fetches_stops_statement_drain(fixture_db, tmp_path):
+    import cli_anything.turso
+    data("--database", fixture_db, "sql", "INSERT INTO items (label) VALUES ('kept')")
+    driver = tmp_path / "interrupted_fetch_driver.py"
+    driver.write_text(INTERRUPTED_FETCH_DRIVER, encoding="utf-8")
+    env = os.environ.copy()
+    root = str(Path(cli_anything.turso.__file__).resolve().parents[2])
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [root, env.get("PYTHONPATH")]))
+
+    def drive(arm, timeout):
+        return subprocess.run([sys.executable, str(driver), str(fixture_db), ENDLESS_ROWS, arm],
+                              cwd=tmp_path, env=env, capture_output=True, text=True, timeout=timeout)
+
+    # Without native interrupt, Cursor.close drains the endless statement.
+    with pytest.raises(subprocess.TimeoutExpired):
+        drive("disabled", 3)
+    result = drive("native", 10)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert result.stdout.startswith("interrupted ") and "Traceback" not in result.stderr
+    data("--database", fixture_db, "sql", "INSERT INTO items (label) VALUES ('after')")
+    rows = data("--database", fixture_db, "sql", "SELECT label FROM items ORDER BY id")["rows"]
+    assert rows == [["kept"], ["after"]]
+
+
 @pytest.mark.parametrize("ending", [b"exit\n", b"\x03", b"\x04"], ids=["exit", "interrupt", "eof"])
 def test_pseudo_tty_repl_smoke(fixture_db, tmp_path, ending):
     import pty

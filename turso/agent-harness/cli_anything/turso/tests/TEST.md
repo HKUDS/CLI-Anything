@@ -2,9 +2,11 @@
 
 Written before test implementation.
 
-Latest complete qualification: **66 passed in 22.22s**, no skips or warnings,
-from the rebuilt wheel in a clean private environment. See the final section
-and [command/option proof matrix](COVERAGE.md).
+Latest complete green qualification: **66 passed in 22.22s**, no skips or
+warnings, from the rebuilt wheel in a clean private environment. The later
+interrupt-cleanup rebuild collected 70 cases: 67 passed and the 3 pseudo-TTY
+cases could not run because that environment had no free PTY devices (see the
+final section). See also the [command/option proof matrix](COVERAGE.md).
 
 ## Inventory
 
@@ -279,3 +281,26 @@ cli_anything/turso/tests/test_full_e2e.py::test_pseudo_tty_repl_smoke[eof] PASSE
 
 ============================= 66 passed in 22.22s ==============================
 ```
+
+## Interrupt-cleanup rebuilt-wheel run
+
+Four interrupt cases were added: Ctrl-C after a successful COMMIT (reported as
+`interrupted`, change durable after reopen), one-shot and REPL SIGINT during an
+endless native statement (structured `interrupted`, file released, recovery
+writes and reads back), and an A/B regression that injects KeyboardInterrupt
+between two real native fetch steps. With the backend's native
+`Connection.interrupt()` disabled, `Cursor.close()` drains the endless statement
+and the driver hits its 3s bound. With it enabled, cleanup returns at once and
+the reopened fixture accepts and reads back a new write. This proves cleanup of
+an interrupted statement, not general SQL cancellation.
+
+The wheel was rebuilt and installed into a new private environment (Python
+3.14.10, pyturso 0.8.3, pytest 9.2.0). The installed test files ran with
+`CLI_ANYTHING_FORCE_INSTALLED=1`, the installed console script, a fresh
+`--basetemp` and a private cache: **70 collected (28 unit, 42 native): 67
+passed, 3 failed.** The 3 failures are `test_pseudo_tty_repl_smoke[exit]`,
+`[interrupt]` and `[eof]`. Each raised `OSError: out of pty devices` from
+`pty.openpty()` before the CLI started. That is an external prerequisite of that
+environment, not a product result, so this run is not a green full-suite claim.
+The pseudo-TTY paths still rely on the earlier 66-case run and need to be
+re-run on a host that can allocate PTYs.

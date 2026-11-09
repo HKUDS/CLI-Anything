@@ -85,6 +85,10 @@ or OS qualification.
 | Piped usage error, continued status and sticky nonzero exit | `test_repl_success_and_usage_error` |
 | Live REPL releases native locks after success and SQL failure; independent process reopens fixture | `test_repl_releases_locks_after_success_and_failure` |
 | Actual pseudo-TTY default REPL, banner/prompt, human status/SQL, malformed SQL, help, recovery, exit/Ctrl-C/Ctrl-D | `test_pseudo_tty_repl_smoke` |
+| SIGINT during an endless one-shot native statement: `interrupted`, exit 130, file released, later write/readback | `test_one_shot_interrupt_reports_and_releases` |
+| SIGINT during an endless REPL native statement: `interrupted`, REPL continues, later write/readback, sticky exit 1 | `test_repl_interrupt_recovers_and_releases` |
+| Interrupt after a successful COMMIT reports `interrupted`, change durable after reopen (outcome uncertain to caller) | `test_interrupt_after_commit_is_reported_and_durable` |
+| Interrupt injected between real native fetch steps: A/B shows native interrupt stops the `Cursor.close` drain (disabled arm times out); reopened fixture writable | `test_interrupt_between_native_fetches_stops_statement_drain` |
 
 ## Artifact and identity proof
 
