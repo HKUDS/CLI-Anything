@@ -146,6 +146,33 @@ def test_deferred_commit_failure_propagates_and_rolls_back(fixture_db):
     assert data("--database", db, "sql", "SELECT * FROM child")["rows"] == [[1, 42]]
 
 
+
+def test_interrupt_after_commit_is_reported_and_durable(fixture_db, monkeypatch, capsys):
+    from cli_anything.turso.turso_cli import Runtime, execute
+
+    real_connect = Database._connect
+
+    class CommitThenInterrupt:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def __getattr__(self, name):
+            return getattr(self._conn, name)
+
+        def commit(self):
+            self._conn.commit()
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(Database, "_connect", lambda self: CommitThenInterrupt(real_connect(self)))
+    code = execute(["--json", "--database", str(fixture_db), "sql",
+                    "INSERT INTO items (label) VALUES ('durable')"], Runtime())
+    out = capsys.readouterr()
+    assert code == 130 and out.out == ""
+    assert _json_lines(out.err) == [{"ok": False, "database": str(fixture_db.resolve()), "error": "interrupted"}]
+    monkeypatch.setattr(Database, "_connect", real_connect)
+    assert data("--database", fixture_db, "sql", "SELECT label FROM items")["rows"] == [["durable"]]
+
+
 @pytest.mark.parametrize("sql,params", [
     ("SELEC bad", "[]"),
     ("SELECT 1; SELECT 2", "[]"),

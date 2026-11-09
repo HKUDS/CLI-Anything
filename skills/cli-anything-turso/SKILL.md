@@ -36,7 +36,7 @@ errors. Text, NULL, bool, signed 64-bit integers, finite floats and
 `{"$blob":"00ff"}` are accepted. Extended Tcl parameter names are unsupported.
 
 JSON successes go to stdout; JSON errors go to stderr with `ok:false`, `error`,
-`database`, exit 1 (usage 2; Ctrl-C/SIGINT `interrupted`, exit 130, rolled back). Transaction statement errors include zero-based
+`database`, exit 1 (usage 2; Ctrl-C/SIGINT `interrupted`, exit 130; uncommitted work rolled back, but an interrupt during/after commit may follow a durable change, so verify before retrying). Transaction statement errors include zero-based
 `operation_index`. Help/version retain text output. Results use `columns` and
 array `rows`, `row_count`, `truncated`, `rows_affected` (NULL if unavailable).
 Default output limit 100, maximum 10000. Truncation caps retained rows, not cell
