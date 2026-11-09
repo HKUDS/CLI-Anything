@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from cli_anything.drawio.core.export import render_or_save
+from cli_anything.drawio.core.session import Session
 from cli_anything.drawio.utils import drawio_backend
 
 
@@ -10,6 +12,12 @@ from cli_anything.drawio.utils import drawio_backend
 def windows_without_path(monkeypatch):
     monkeypatch.setattr(drawio_backend, "sys", SimpleNamespace(platform="win32"), raising=False)
     monkeypatch.setattr(drawio_backend.shutil, "which", lambda name: None)
+    isfile = os.path.isfile
+    monkeypatch.setattr(
+        drawio_backend.os.path,
+        "isfile",
+        lambda path: path != "/Applications/draw.io.app/Contents/MacOS/draw.io" and isfile(path),
+    )
     for name in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LOCALAPPDATA"):
         monkeypatch.delenv(name, raising=False)
 
@@ -48,3 +56,16 @@ def test_missing_local_app_data_does_not_search_working_directory(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(RuntimeError, match="winget install JGraph.Draw"):
         drawio_backend.find_drawio()
+
+
+def test_export_saves_source_when_drawio_is_missing(windows_without_path, tmp_path):
+    session = Session()
+    session.new_project()
+    output = tmp_path / "diagram.png"
+
+    result = render_or_save(session, str(output))
+
+    assert result["action"] == "export_fallback"
+    assert result["drawio_file"] == str(output.with_suffix(".drawio"))
+    assert output.with_suffix(".drawio").is_file()
+    assert not output.exists()

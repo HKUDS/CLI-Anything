@@ -47,7 +47,7 @@ def find_drawio() -> str:
         return mac_path
 
     raise RuntimeError(
-        "draw.io desktop app was not found. Install it with:\n"
+        "draw.io desktop app is not installed or could not be found. Install it with:\n"
         "  macOS:   brew install --cask drawio\n"
         "  Linux:   snap install drawio\n"
         "  Windows: winget install JGraph.Draw"
