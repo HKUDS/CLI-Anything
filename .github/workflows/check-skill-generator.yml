@@ -1,0 +1,34 @@
+name: Check Skill Generator
+
+on:
+  pull_request:
+    paths:
+      - 'cli-anything-plugin/skill_generator.py'
+      - 'cli-anything-plugin/templates/**'
+      - 'cli-anything-plugin/tests/**'
+      - '.github/workflows/check-skill-generator.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cli-anything-plugin/skill_generator.py'
+      - 'cli-anything-plugin/templates/**'
+      - 'cli-anything-plugin/tests/**'
+      - '.github/workflows/check-skill-generator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install pytest click jinja2 pyyaml
+      - run: python -m pytest cli-anything-plugin/tests -v

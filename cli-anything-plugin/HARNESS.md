@@ -1,15 +1,23 @@
-# Agent Harness: GUI-to-CLI for Open Source Software
+# Agent Harness: Software-to-CLI for Local and API Backends
 
 ## Purpose
 
 This harness provides a standard operating procedure (SOP) and toolkit for coding
 agents (Claude Code, Codex, etc.) to build powerful, stateful CLI interfaces for
-open-source GUI applications. The goal: let AI agents operate software that was
+open-source GUI applications and services with public APIs. The goal: let AI agents operate software that was
 designed for humans, without needing a display or mouse.
 
 ## General SOP: Turning Any GUI App into an Agent-Usable CLI
 
 ### Phase 1: Codebase Analysis
+
+**API-backed targets:** a vendor's public OpenAPI specification or endpoint
+documentation is the analysis source when local source is unavailable. Record
+the service, spec URL/version, authentication scopes, operation schemas,
+pagination, rate limits, and side effects. The source/binary requirements below
+apply to local backends; use the [API Backend Pattern](guides/api-backend.md)
+for closed-source/SaaS services. An API-backed harness is an interface to the
+real service, not a reimplementation of it.
 
 1. **Identify the backend engine** — Most GUI apps separate presentation from logic.
    Find the core library/framework (e.g., MLT for Shotcut, ImageMagick for GIMP).
@@ -23,6 +31,10 @@ designed for humans, without needing a display or mouse.
    command pattern. These commands are your CLI operations.
 
 ### Phase 2: CLI Architecture Design
+
+The project/file/undo examples below apply where the backend supports them.
+API harnesses use the service's resource model and must not invent local
+project files or remote rollback capabilities.
 
 1. **Choose the interaction model**:
    - **Stateful REPL** for interactive sessions (agents that maintain context)
@@ -48,11 +60,12 @@ designed for humans, without needing a display or mouse.
 
 ### Phase 3: Implementation
 
-1. **Start with the data layer** — XML/JSON manipulation of project files
+1. **Start with the data layer** — Native project files for local backends;
+   documented request/response schemas for APIs
 2. **Add probe/info commands** — Let agents inspect before they modify
 3. **Add mutation commands** — One command per logical operation
 4. **Add the backend integration** — A `utils/<software>_backend.py` module that
-   wraps the real software's CLI. This module handles:
+   wraps the real software's CLI, MCP server, or public API. For local CLI backends it handles:
    - Finding the software executable (`shutil.which()`)
    - Invoking it with proper arguments (`subprocess.run()`)
    - Error handling with clear install instructions if not found
@@ -64,9 +77,11 @@ designed for humans, without needing a display or mouse.
          subprocess.run([lo, "--headless", "--convert-to", output_format, ...])
          return {"output": final_path, "format": output_format, "method": "libreoffice-headless"}
      ```
-5. **Add rendering/export** — The export pipeline calls the backend module.
-   Generate valid intermediate files, then invoke the real software for conversion.
-6. **Add session management** — State persistence, undo/redo
+5. **Add rendering/export where supported** — The export pipeline calls the backend
+   module. For local backends, generate valid intermediate files and invoke the
+   software for conversion; for APIs, validate the real downloaded artifact.
+6. **Add session management** — Persist relevant state; expose undo/redo only
+   when the backend supports it
 
    **Session file locking** — Use exclusive file locking for session JSON saves
    to prevent concurrent write corruption. See [`guides/session-locking.md`](guides/session-locking.md)
@@ -153,7 +168,11 @@ Now write the actual test code based on the TEST.md plan:
    - Correct format (PDF magic bytes `%PDF-`, DOCX/XLSX/PPTX is valid ZIP/OOXML, etc.)
    - Content verification where possible (CSV contains expected data, etc.)
    - **Print artifact paths** so users can manually inspect: `print(f"\n  PDF: {path} ({size:,} bytes)")`
-   - **No graceful degradation** — if the software isn't installed, tests fail, not skip
+   - **No graceful degradation** — if the selected backend is unavailable,
+     tests fail, not skip. API E2E tests require real credentials and a reachable
+     service; missing credentials fail the explicitly selected E2E suite.
+     Read-only APIs verify real response schemas/resources instead of inventing
+     a file export. Unit tests remain offline.
 4. **Output verification** — **Don't trust that export works just because it exits
    successfully.** Verify outputs programmatically:
    - Magic bytes / file format validation
@@ -256,6 +275,10 @@ definition that can be loaded by Claude Code or other AI assistants.
 
 **Generation & Customization:** Use `skill_generator.py` to extract CLI metadata
 automatically, or customize via the Jinja2 template at `templates/SKILL.md.template`.
+Declare the backend in `agent-harness/harness.json`; the generator reads literal
+console-script entries and reachable Click command paths without executing the
+harness. Generated examples inspect actual command help, and prerequisites come
+from backend metadata rather than assuming a local binary or project workflow.
 See [`guides/skill-generation.md`](guides/skill-generation.md) for the full generation
 process, template customization options, and manual generation commands.
 
@@ -373,6 +396,23 @@ for the full backend wrapper pattern, session management, daemon mode, and examp
 
 **Use when:** no native CLI exists, software has an MCP server, or you need agent-native tool integration.
 
+### API Backend Pattern
+
+Use an official public REST API when the target is a SaaS service or closed-source
+application without an automatable local binary. Treat OpenAPI/vendor endpoint
+documentation as the source contract. Read credentials from named environment
+variables and make the service base URL configurable. Gate mutating operations
+behind an explicit `--allow-write` opt-in before issuing a request, including
+operations with side effects despite a read-looking HTTP method.
+
+Use bounded requests, documented pagination and job polling, and sanitized
+errors. For remote rendering, submit a job, wait for a terminal success state,
+download the artifact, and verify its format/content. Real E2E tests exercise
+the service and fail clearly without required credentials; offline tests use
+fixtures and verify the write guard without contacting the service. See
+[`guides/api-backend.md`](guides/api-backend.md) for the implementation and
+validation contract, including APIs that do not produce files.
+
 ### Filter Translation Pitfalls
 
 When translating effects between formats (e.g., MLT → ffmpeg), watch for duplicate filter
@@ -423,9 +463,10 @@ Four test layers with complementary purposes:
    `cli-anything-<software>` command via `subprocess.run` to run the full workflow
    end-to-end: create project → add content → export via real software → verify output.
 
-**No graceful degradation.** The real software MUST be installed. Tests must NOT
-skip or fake results when the software is missing — the CLI is useless without it.
-The software is a hard dependency, not optional.
+**No graceful degradation.** The selected real backend is a hard dependency:
+installed software for local harnesses, or a reachable authenticated service for
+API harnesses. The selected E2E suite must not skip or fake results when that
+dependency is missing. Keep offline unit tests separate from real-service E2E.
 
 **Example — true E2E test for LibreOffice:**
 ```python
@@ -485,11 +526,15 @@ These are non-negotiable. Every harness MUST follow all of them.
 - **The real software is a hard dependency.** The CLI MUST invoke the actual application
   (LibreOffice, Blender, GIMP, etc.) for rendering and export. Do NOT reimplement
   rendering in Python. Do NOT gracefully degrade to a fallback library. If the software
-  is not installed, error with clear install instructions.
+  is not installed, error with clear install instructions. For API-backed targets,
+  invoke the real service and report missing configuration/authentication instead;
+  no local vendor binary is required.
 - **Manipulate the native format directly** — Parse and modify the app's native project
-  files (MLT XML, ODF, SVG, etc.) as the data layer.
+  files (MLT XML, ODF, SVG, etc.) as the data layer where applicable. API harnesses
+  use the documented service schemas and resource IDs instead.
 - **Leverage existing CLI tools** — Use `libreoffice --headless`, `blender --background`,
-  `melt`, `ffmpeg`, `inkscape --actions`, `sox` as subprocesses for rendering.
+  `melt`, `ffmpeg`, `inkscape --actions`, `sox` as subprocesses for local rendering;
+  API harnesses invoke the service's documented operations.
 - **Verify rendering produces correct output** — See "The Rendering Gap" in
   Architecture Patterns & Pitfalls above.
 - **Every filter/effect in the registry MUST have a corresponding render mapping**
@@ -535,14 +580,17 @@ These are non-negotiable. Every harness MUST follow all of them.
 - **E2E tests MUST invoke the real software** and produce real output files (PDF, DOCX,
   rendered images, videos). Verify output exists, has correct format (magic bytes, ZIP
   structure), and print artifact paths for manual inspection. Never test only
-  intermediate files.
+  intermediate files. For APIs without a file-producing workflow, verify real
+  response schemas and resources; for remote exports, download and validate the
+  real artifact. Missing service credentials fail the selected API E2E suite.
 - **Every export/render function MUST be verified** with programmatic output analysis.
   "It ran without errors" is not sufficient.
 - **E2E tests MUST include subprocess tests** that invoke the installed
   `cli-anything-<software>` command via `_resolve_cli()`. Tests must work against
   the actual installed package, not just source imports.
 - **Test suites MUST include real-file E2E tests**, not just unit tests with synthetic
-  data. Format assumptions break constantly with real media.
+  data, when the backend reads or exports files. Non-file API harnesses must
+  include real-service E2E tests. Format assumptions break constantly with real media.
 
 **Documentation:**
 - **Every `cli_anything/<software>/` directory MUST contain a `README.md`** explaining
@@ -743,5 +791,6 @@ based on the software you're building a harness for.
 | [`skill-generation.md`](guides/skill-generation.md) | Generating the SKILL.md file | Phase 6.5 |
 | [`pypi-publishing.md`](guides/pypi-publishing.md) | Packaging and installing the CLI | Phase 7 |
 | [`mcp-backend.md`](guides/mcp-backend.md) | Software has an MCP server, no native CLI | Phase 3 |
+| [`api-backend.md`](guides/api-backend.md) | Public REST API / SaaS target, no local source required | Phases 0–6.5 |
 | [`filter-translation.md`](guides/filter-translation.md) | Video/audio CLI with effects that need render-time translation | Phase 3 |
 | [`timecode-precision.md`](guides/timecode-precision.md) | Video/audio CLI with non-integer frame rates (29.97fps, etc.) | Phase 3, 5 |

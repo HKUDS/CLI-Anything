@@ -1,11 +1,11 @@
 ---
 name: cli-anything
-description: Build a complete CLI-Anything harness for any GUI application (all 7 phases)
+description: Build a complete CLI-Anything harness for a GUI application or public API service (all 7 phases)
 ---
 
 # cli-anything Command
 
-Build a complete, stateful CLI harness for any GUI application.
+Build a complete, stateful CLI harness for a GUI application or public API service.
 
 **Target software**: use the path or repo URL supplied with this command.
 
@@ -41,9 +41,14 @@ Always **Read** `{PLUGIN_ROOT}/references/HARNESS.md` with an absolute path. Als
 - First argument is the **software path or repo URL** (required):
   - Local path (e.g. `/home/user/gimp`, `./blender`)
   - GitHub repository URL
-  - Software names alone (e.g. `gimp`) are NOT accepted
+  - With `--api`, an official public API documentation URL or OpenAPI spec (local file or vendor URL)
+  - Source-backed targets require a path or repository. For a named closed-source/SaaS
+    target, offer the public API route and request official documentation.
 
-If a GitHub URL is provided, clone locally first, then work on the local copy. Derive the software name from the directory name.
+For source-backed targets, clone GitHub URLs locally and derive the software name
+from the directory. `--api` selects API mode without reconfirmation: use the
+official spec/docs as the analysis source, record the service name and version,
+and create a local `<software>/agent-harness/` workspace. Do not clone API docs URLs.
 
 ## Phase Gates and Resume (hard gate)
 
@@ -81,11 +86,13 @@ Rules:
 Implements the complete cli-anything methodology. **All phases follow HARNESS.md.**
 
 ### Phase 0: Source Acquisition
-- Clone URL targets if needed; verify local source exists; derive software name
+- Select local source, MCP, or public API mode; acquire source or official API spec/docs
+- For API mode, follow `{PLUGIN_ROOT}/references/guides/api-backend.md`; no vendor source/binary is required
 - Create `agent-harness/` and initialize the progress file
 
 ### Phase 1: Codebase Analysis
 - Backend/data model, GUI-to-API map, existing CLIs, architecture notes
+- For APIs: map authentication, schemas, pagination, async jobs, downloads, and write side effects
 
 ### Phase 2: CLI Architecture Design
 - Command groups, state model, output formats, software-specific SOP (`<SOFTWARE>.md`)
@@ -107,6 +114,7 @@ Implements the complete cli-anything methodology. **All phases follow HARNESS.md
 ### Phase 7: Packaging and Installation
 - `setup.py` with namespace packages; `cli-anything-<software>` console script
 - `pip install -e .`; verify PATH; generate CLI-specific `SKILL.md` via `{PLUGIN_ROOT}/scripts/skill_generator.py`
+- Declare backend requirements in `agent-harness/harness.json`; verify generated examples match real command help
 
 ## Quality Bar Checklist (do not skip)
 

@@ -17,12 +17,20 @@ Run tests for a CLI harness and update TEST.md with results.
 - `<software-path-or-repo>` - **Required.** Either:
   - A **local path** to the software source code (e.g., `/home/user/gimp`, `./blender`)
   - A **GitHub repository URL** (e.g., `https://github.com/GNOME/gimp`, `github.com/blender/blender`)
+  - An **existing API harness directory** containing `setup.py` and
+    `cli_anything/<service>/`; no vendor source repository is required
 
   If a GitHub URL is provided, the agent clones the repo locally first, then works on the local copy.
 
   The software name is derived from the directory name. The agent locates the CLI harness at `/root/cli-anything/<software-name>/agent-harness/`.
 
 ## What This Command Does
+
+For API harnesses, use the supplied harness directory directly and follow
+`guides/api-backend.md`. Run offline unit tests separately from real-service
+E2E. Missing credentials fail an explicitly selected E2E suite; report any
+unrun E2E suite as not run. Remote writes need the documented test opt-in and
+per-command `--allow-write`. Verify actual responses or downloaded artifacts.
 
 1. **Locates the CLI** - Finds the CLI harness based on the software path
 2. **Runs pytest** - Executes tests with `-v -s --tb=short`

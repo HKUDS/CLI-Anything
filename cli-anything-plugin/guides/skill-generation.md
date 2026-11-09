@@ -46,10 +46,72 @@ skill_path = generate_skill_file(
 
 ### 2. The generator automatically extracts:
 
-- Software name and version from setup.py
-- Command groups from the CLI file (Click decorators)
-- Documentation from README.md
-- System package requirements
+- Version and literal `console_scripts` entry points from setup.py (without executing it)
+- Reachable Click groups, nested command paths, and literal `add_command` registrations,
+  including imports/re-exports inside the harness source tree
+- Documentation from the package README.md, falling back to the harness README.md
+- Backend requirements from optional `harness.json` and known local install instructions
+- Help examples for discovered commands, without assuming project, REPL, or undo support
+
+## Backend Metadata
+
+Create `agent-harness/harness.json` alongside `setup.py` when backend requirements
+cannot be derived from local installation instructions:
+
+```json
+{
+  "schema_version": 1,
+  "backend": {
+    "type": "api",
+    "base_url_env": "SERVICE_BASE_URL",
+    "auth_env": ["SERVICE_API_TOKEN"],
+    "requirements": ["An account with access to the public API"]
+  }
+}
+```
+
+`schema_version` must be integer `1`; `backend.type` is `local`, `api`, or `mcp`.
+`base_url_env` is optional, and `auth_env` and `requirements` default to empty
+lists. Environment fields accept variable **names**, never URLs or credential
+values. `requirements` contains nonempty single-line descriptions. Unknown
+fields and malformed metadata fail generation before skill files are written.
+Only declare configuration that the backend actually implements.
+
+The API variant documents service access and declared credentials instead of a
+local application install. The MCP variant documents a configured reachable
+server. The local variant preserves the application/install requirements.
+Without metadata, an extracted apt/brew instruction indicates a local backend;
+otherwise the generator directs readers to the README without guessing a
+dependency. Metadata is build-time input for skill generation, not a runtime
+configuration or credential store.
+
+## Command Discovery and Examples
+
+The generator reads the literal `entry_points={"console_scripts": [...]}` mapping
+in `setup.py` to select the executable, module, and Click root. Without a usable
+literal entry, it falls back to `<software>_cli.py`, then `cli.py`. A wrapper
+`main()` can coexist with a decorated `cli()` root. Modules are parsed as Python
+syntax; `setup.py`, imports, decorators, and command bodies are never executed.
+
+Supported forms include `@click.group`, `@group.command`, nested decorated
+groups, and module-level `group.add_command(command, name="alias")`. Imported
+groups can use relative or package-qualified imports and local re-exports.
+Registrations retain exact CLI aliases and full command paths. Hidden commands
+are omitted, cycles terminate, and unattached groups are not advertised as part
+of the root CLI. Multiple packages or ambiguous console scripts are rejected.
+
+Factory-built commands, runtime registration loops, third-party plugins, imported
+decorator aliases, and dynamically computed names/entry points require manual
+documentation. When no supported commands are found, the output reports the
+discovery gap instead of rendering an empty command table. Always review the
+generated reference against the installed CLI's `--help`.
+
+Generated examples show `<actual-command-path> --help`. They avoid guessing
+required arguments, flags, remote side effects, output paths, or an undo history.
+After inspecting help, add verified workflow examples for the particular
+harness. Both Jinja2 and the dependency-free renderer use the same backend
+prerequisites and command paths. Existing custom templates continue receiving
+the original fields, plus `entry_point`, `prerequisites`, and `backend_type`.
 
 ### 3. Customize the template (optional):
 

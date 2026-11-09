@@ -2,7 +2,7 @@
 name: >-
   {{ skill_name }}
 description: >-
-  {{ skill_description }}
+  {{ skill_description | replace('\n', '\n  ') }}
 ---
 
 # {{ skill_name }}
@@ -18,37 +18,16 @@ pip install cli-anything-{{ software_name }}
 ```
 
 **Prerequisites:**
-- Python 3.10+
-- {{ software_name }} must be installed on your system
-{% if system_package %}
-- Install {{ software_name }}: `{{ system_package }}`
-{% endif %}
+{% for prerequisite in prerequisites %}
+- {{ prerequisite }}
+{% endfor %}
 
 ## Usage
 
-### Basic Commands
+Inspect the CLI before choosing an operation:
 
 ```bash
-# Show help
-cli-anything-{{ software_name }} --help
-
-# Start interactive REPL mode
-cli-anything-{{ software_name }}
-
-# Create a new project
-cli-anything-{{ software_name }} project new -o project.json
-
-# Run with JSON output (for agent consumption)
-cli-anything-{{ software_name }} --json project info -p project.json
-```
-
-### REPL Mode
-
-When invoked without a subcommand, the CLI enters an interactive REPL session:
-
-```bash
-cli-anything-{{ software_name }}
-# Enter commands interactively with tab-completion and history
+{{ entry_point }} --help
 ```
 
 {% if command_groups %}
@@ -66,7 +45,11 @@ cli-anything-{{ software_name }}
 {% endfor %}
 
 {% endfor %}
+{% else %}
+No statically discoverable commands. Use `--help` and the package README;
+dynamic registrations require manual documentation.
 {% endif %}
+{% if examples %}
 ## Examples
 
 {% for example in examples %}
@@ -79,38 +62,16 @@ cli-anything-{{ software_name }}
 ```
 
 {% endfor %}
-## State Management
-
-The CLI maintains session state with:
-
-- **Undo/Redo**: Up to 50 levels of history
-- **Project persistence**: Save/load project state as JSON
-- **Session tracking**: Track modifications and changes
-
-## Output Formats
-
-All commands support dual output modes:
-
-- **Human-readable** (default): Tables, colors, formatted text
-- **Machine-readable** (`--json` flag): Structured JSON for agent consumption
-
-```bash
-# Human output
-cli-anything-{{ software_name }} project info -p project.json
-
-# JSON output for agents
-cli-anything-{{ software_name }} --json project info -p project.json
-```
-
+{% endif %}
 ## For AI Agents
 
-When using this CLI programmatically:
-
-1. **Always use `--json` flag** for parseable output
-2. **Check return codes** - 0 for success, non-zero for errors
-3. **Parse stderr** for error messages on failure
-4. **Use absolute paths** for all file operations
-5. **Verify outputs exist** after export operations
+1. Use the output flags shown by command help (normally `--json`) for parseable output.
+2. Check return codes: 0 for success, non-zero for errors; inspect stderr on failure.
+3. Follow command help for required arguments and mutation opt-in; run only requested writes.
+4. Use absolute paths for file operations and verify exported files, not just exit status.
+{% if backend_type == 'api' %}
+5. Keep credentials out of logs and artifacts; poll remote jobs to completion before verifying downloads.
+{% endif %}
 
 ## More Information
 

@@ -1,6 +1,6 @@
 # cli-anything Command
 
-Build a complete, stateful CLI harness for any GUI application.
+Build a complete, stateful CLI harness for a GUI application or public API service.
 
 ## CRITICAL: Read HARNESS.md First
 
@@ -10,6 +10,7 @@ Build a complete, stateful CLI harness for any GUI application.
 
 ```bash
 /cli-anything <software-path-or-repo>
+/cli-anything <official-api-docs-or-openapi-spec> --api
 ```
 
 ## Arguments
@@ -17,22 +18,37 @@ Build a complete, stateful CLI harness for any GUI application.
 - `<software-path-or-repo>` - **Required.** Either:
   - A **local path** to the software source code (e.g., `/home/user/gimp`, `./blender`)
   - A **GitHub repository URL** (e.g., `https://github.com/GNOME/gimp`, `github.com/blender/blender`)
+  - With `--api`, an **official public API documentation URL or OpenAPI spec**
+    (local JSON/YAML file or vendor URL). A closed-source/SaaS target does not
+    require a source repository or local application binary.
 
-  If a GitHub URL is provided, the agent clones the repo locally first, then works on the local copy.
+  For source-backed targets, the agent clones GitHub repositories locally first.
 
-  **Note:** Software names alone (e.g., "gimp") are NOT accepted. You must provide the actual source code path or repository URL so the agent can analyze the codebase.
+  **Note:** For source-backed targets, software names alone (e.g., "gimp") are
+  NOT sufficient. If a named target is closed-source or SaaS, offer the public
+  API route and request official API documentation instead of refusing the target.
+  An explicit `--api` request already selects that route; do not reconfirm it.
 
 ## What This Command Does
 
 This command implements the complete cli-anything methodology to build a production-ready CLI harness for any GUI application. **All phases follow the standards defined in HARNESS.md.**
 
 ### Phase 0: Source Acquisition
-- If `<software-path-or-repo>` is a GitHub URL, clone it to a local working directory
-- Verify the local path exists and contains source code
-- Derive the software name from the directory name (e.g., `/home/user/gimp` -> `gimp`)
+- First determine the backend: local source, MCP, or public REST API. Do not
+  attempt to clone API documentation URLs as repositories.
+- For source-backed targets, clone GitHub repositories if needed, verify the
+  local source path, and derive the software name from its directory
+  (e.g., `/home/user/gimp` -> `gimp`).
+- For API targets, use the official OpenAPI spec (or public endpoint docs) as
+  the analysis source. Record its URL/version and the selected service name in
+  `<SOFTWARE>.md`; create `<software>/agent-harness/` in the working directory.
+  Never require vendor source code or credentials just to analyze a public spec.
 
 ### Phase 1: Codebase Analysis
-- Analyzes the local source code
+- For API targets, follow [API Backend Pattern](../guides/api-backend.md): map
+  operations, schemas, authentication, pagination, asynchronous jobs, rate limits,
+  artifact downloads, and read/write side effects from the official contract.
+- Analyzes local source code for source-backed targets
 - Analyzes the backend engine and data model
 - Maps GUI actions to API calls
 - Identifies existing CLI tools
@@ -70,6 +86,9 @@ This command implements the complete cli-anything methodology to build a product
 - Documents test coverage and any gaps
 
 ### Phase 6.5: SKILL.md Generation
+- Declare backend requirements in `agent-harness/harness.json` (schema version 1;
+  see [skill generation](../guides/skill-generation.md)). API metadata contains
+  environment variable names, never credential values.
 - Extracts CLI metadata using `skill_generator.py`
 - Generates SKILL.md with YAML frontmatter and Markdown body
 - Includes command groups, examples, and agent-specific guidance
@@ -123,6 +142,9 @@ skills/
 
 # Build from a GitHub repo
 /cli-anything https://github.com/blender/blender
+
+# Build against a vendor's documented public API
+/cli-anything https://api.example.com/openapi.json --api
 ```
 
 ## Auto-Save + --dry-run (Required for Session-Based CLIs)

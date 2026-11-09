@@ -2,7 +2,7 @@
 name: cli-anything-generator
 description: >-
   Build, refine, test, validate, or list CLI-Anything harnesses for GUI
-  applications in Cursor. Prefer slash commands /cli-anything,
+  applications or public API services in Cursor. Prefer slash commands /cli-anything,
   /cli-anything-refine, /cli-anything-test, /cli-anything-validate, and
   /cli-anything-list when available. This skill supports natural-language
   discovery of the generator; it does not replace those commands. Discovering
@@ -20,6 +20,7 @@ The primary generator UX is the plugin slash commands.
 | Goal | Command |
 |------|---------|
 | Full 7-phase build | `/cli-anything <path-or-repo>` |
+| Public REST API / SaaS build | `/cli-anything <official-docs-or-openapi-spec> --api` |
 | Expand coverage | `/cli-anything-refine <path> [focus]` |
 | Run tests | `/cli-anything-test <path>` |
 | Validate checklist | `/cli-anything-validate <path>` |

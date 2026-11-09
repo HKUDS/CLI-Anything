@@ -24,6 +24,15 @@ Validate a CLI harness against HARNESS.md standards and best practices.
 
 ## What This Command Validates
 
+For an API-backed harness, validate the existing local harness directory and
+its recorded official API contract; vendor source code is not required. Select
+the backend from `harness.json` and the SOP. Apply the API Backend Pattern from
+`guides/api-backend.md`: environment-based auth, configurable URL, mutation
+opt-in, bounded transport/polling, and real-service E2E evidence. The local
+project/session/export module checks below apply only where those features
+exist; API resource modules and response validation satisfy their corresponding
+domain checks. Do not require fake project files, undo/redo, or a vendor binary.
+
 ### 1. Directory Structure
 - `agent-harness/cli_anything/<software>/` exists (namespace sub-package)
 - `cli_anything/` has NO `__init__.py` (PEP 420 namespace package)
