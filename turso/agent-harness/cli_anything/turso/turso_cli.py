@@ -19,6 +19,7 @@ class Runtime:
     database: str | None = None
     session: SessionStore | None = None
     as_json: bool = False
+    in_repl: bool = False
 
     def select(self, path):
         if self.session:
@@ -236,6 +237,16 @@ def export_table(state, name, output, fmt, limit):
 @click.pass_obj
 def repl(state):
     """Run the same commands with shared selection; JSON pipes emit JSON lines."""
+    if state.in_repl:
+        raise TursoError("Already in the REPL")
+    state.in_repl = True
+    try:
+        return _repl_loop(state)
+    finally:
+        state.in_repl = False
+
+
+def _repl_loop(state):
     interactive = sys.stdin.isatty() and sys.stdout.isatty() and not state.as_json
     skin = ReplSkin("turso", version=__version__, history_file="/dev/null")
     prompt = None
@@ -258,7 +269,7 @@ def repl(state):
                 if state.as_json:
                     emit(state, {"commands": list(cli.commands), "syntax": "same as CLI; quote SQL/JSON arguments"})
                 else:
-                    click.echo(cli.get_help(click.Context(cli)))
+                    click.echo(cli.get_help(click.Context(cli, info_name="cli-anything-turso")))
                 continue
             if args[0] == "repl":
                 raise TursoError("Already in the REPL")

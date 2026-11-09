@@ -169,7 +169,10 @@ CLI_ANYTHING_FORCE_INSTALLED=1 TURSODB_BIN=/absolute/path/to/tursodb \
 
 Unit tests need no native backend. Integration tests fail if the SDK or binary is
 missing. All DBs are newly owned synthetic fixtures; subprocess probes use 5–10
-second bounds. See `tests/TEST.md` for the test plan and recorded results.
+second bounds. See `tests/TEST.md` for the test plan and recorded results, and
+`tests/COVERAGE.md` for every command/option and meaningful REPL path. The Linux
+pseudo-TTY checks exercise human output, error recovery, exit, Ctrl-C and Ctrl-D
+with a controlling terminal and a raw-input readiness handshake.
 
 Sources: [official CLI getting started](https://github.com/tursodatabase/turso/blob/main/docs/sql-reference/cli/getting-started.mdx)
 and [native database manual](https://github.com/tursodatabase/turso/blob/main/docs/manual.md).

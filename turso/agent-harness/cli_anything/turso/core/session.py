@@ -19,6 +19,8 @@ def database_path(path, *, exists=True):
 class SessionStore:
     def __init__(self, path):
         self.path = Path(path).expanduser().resolve()
+        if not self.path.parent.is_dir():
+            raise TursoError(f"Session parent directory does not exist: {self.path.parent}")
 
     @staticmethod
     def _decode(text):

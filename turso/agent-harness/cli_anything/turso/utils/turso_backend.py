@@ -128,7 +128,10 @@ class Database:
         return self.sql("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name", limit=MAX_ROWS)
 
     def describe(self, table):
-        return self.sql(f"PRAGMA table_info({identifier(table)})", limit=MAX_ROWS)
+        result = self.sql(f"PRAGMA table_info({identifier(table)})", limit=MAX_ROWS)
+        if not result["rows"]:
+            raise TursoError(f"Table does not exist: {table}")
+        return result
 
     def rows(self, table, where=None, limit=100):
         row_limit(limit)

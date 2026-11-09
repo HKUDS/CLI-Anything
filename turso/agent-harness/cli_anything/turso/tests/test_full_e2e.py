@@ -47,13 +47,17 @@ def fixture_db(tmp_path):
     assert not path.exists()
     out = data("db", "create", path)
     assert out["database"] == str(path.resolve())
-    assert out["rows"][0][0] == "0.8.3"
+    assert isinstance(out["rows"][0][0], str) and out["rows"][0][0]
     data("--database", path, "sql", 'CREATE TABLE items (id INTEGER PRIMARY KEY, label TEXT UNIQUE, note TEXT, raw BLOB)')
     print(f"\n  Native Turso fixture: {path}")
     return path
 
 
 def test_help_and_native_dependency():
+    import cli_anything.turso
+    required_root = os.environ.get("CLI_ANYTHING_REQUIRE_INSTALLED_ROOT")
+    if required_root:
+        assert Path(cli_anything.turso.__file__).is_relative_to(Path(required_root))
     result = subprocess.run(CLI + ["--help"], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0 and "transaction" in result.stdout
     info = data("doctor")
@@ -283,7 +287,10 @@ def test_missing_sdk_in_separate_environment(tmp_path):
     site = next((env / "lib").glob("python*/site-packages"))
     # Reuse only Click plus the harness source path, deliberately no pyturso.
     shutil.copytree(Path(click.__file__).parent, site / "click")
-    (site / "harness.pth").write_text(str(Path(cli_anything.turso.__file__).parents[2]) + "\n")
+    namespace = site / "cli_anything"
+    namespace.mkdir()
+    shutil.copytree(Path(cli_anything.turso.__file__).parent, namespace / "turso",
+                    ignore=shutil.ignore_patterns("__pycache__", "tests"))
     missing_python = env / "bin" / "python"
     destination = tmp_path / "must not be created.db"
     isolated_cli = [str(missing_python), CLI[0]] if len(CLI) == 1 else [
@@ -314,3 +321,205 @@ def test_named_prefixes_missing_binds_and_literal_escaping(fixture_db):
     assert data("--database", db, "sql", "SELECT :x,@x,$x,':ignored' /* ? */", "--params", '{"x":"same"}')["rows"] == [["same", "same", "same", ":ignored"]]
     for statement, params in [("SELECT :x,:y", '{"x":1}'), ("SELECT ?,?", '[1]')]:
         assert data("--database", db, "sql", statement, "--params", params, code=1)["ok"] is False
+
+
+def test_all_command_help_and_version():
+    from cli_anything.turso.turso_cli import cli
+    import click
+    def visit(command, path=()):
+        for switch in ["--help"]:
+            result = subprocess.run(CLI + [*path, switch], capture_output=True, text=True, timeout=5)
+            assert result.returncode == 0 and "Usage:" in result.stdout and not result.stderr
+        if isinstance(command, click.Group):
+            for name, child in command.commands.items():
+                visit(child, (*path, name))
+    visit(cli)
+    result = subprocess.run(CLI + ["--version"], capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0 and "0.1.0" in result.stdout
+    assert data("status")["selected"] is False
+    result = subprocess.run(CLI + ["status"], capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0 and json.loads(result.stdout)["selected"] is False
+
+
+def test_session_override_collision_and_invalid_state(fixture_db, tmp_path):
+    db = fixture_db
+    session = tmp_path / "selection.json"
+    other = tmp_path / "other.db"
+    data("--session", session, "db", "open", db)
+    data("db", "create", other)
+    before = session.read_bytes()
+    assert data("--session", session, "--database", other, "status")["database"] == str(other)
+    assert session.read_bytes() == before
+    assert data("--session", session, "status")["database"] == str(db)
+    collision = tmp_path / "same-path.json"
+    assert data("--session", collision, "db", "create", collision, code=1)["ok"] is False
+    assert not collision.exists()
+    missing_parent = tmp_path / "missing" / "session.json"
+    new_db = tmp_path / "not-created.db"
+    assert data("--session", missing_parent, "db", "create", new_db, code=1)["ok"] is False
+    assert not new_db.exists()
+    session.write_text('not session JSON')
+    assert data("--session", session, "status", code=1)["ok"] is False
+    assert session.read_text() == 'not session JSON'
+    assert data("--database", db, "table", "describe", "absent", code=1)["ok"] is False
+
+
+def test_actual_all_row_crud_and_filter_validation(fixture_db):
+    db = fixture_db
+    for i in [1, 2]:
+        data("--database", db, "table", "insert", "items", "--values", json.dumps({"id": i, "label": str(i)}))
+    data("--database", db, "table", "update", "items", "--all", "--values", '{"note":"all"}')
+    assert data("--database", db, "sql", "SELECT count(*) FROM items WHERE note='all'")["rows"] == [[2]]
+    assert len(data("--database", db, "table", "rows", "items", "--where", '{"id":1,"note":"all"}')["rows"]) == 1
+    assert data("--database", db, "table", "update", "items", "--all", "--where", '{"id":1}', "--values", '{"note":"bad"}', code=1)["ok"] is False
+    for values in ['{}', '[]', '{"note":[]}']:
+        assert data("--database", db, "table", "insert", "items", "--values", values, code=1)["ok"] is False
+    data("--database", db, "table", "delete", "items", "--all")
+    assert data("--database", db, "table", "rows", "items", "--limit", 10000)["rows"] == []
+
+
+def test_transaction_commit_failure_and_validation(fixture_db, tmp_path):
+    db = fixture_db
+    data("--database", db, "sql", "CREATE TABLE p(id INTEGER PRIMARY KEY)")
+    data("--database", db, "sql", "CREATE TABLE c(id INTEGER PRIMARY KEY, p INTEGER REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED)")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps([
+        {"op": "insert", "table": "items", "values": {"id": 1, "label": "must rollback"}},
+        {"op": "insert", "table": "c", "values": {"id": 1, "p": 99}},
+    ]))
+    error = data("--database", db, "transaction", "run", manifest, code=1)
+    assert "FOREIGN KEY" in error["error"].upper()
+    assert data("--database", db, "table", "rows", "items")["rows"] == []
+    assert data("--database", db, "table", "rows", "c")["rows"] == []
+    for invalid in [[], {}, [{"op": "sql", "sql": "COMMIT"}], [{"op": "delete", "table": "items"}]]:
+        manifest.write_text(json.dumps(invalid))
+        assert data("--database", db, "transaction", "run", manifest, code=1)["ok"] is False
+    manifest.write_text('not JSON')
+    assert data("--database", db, "transaction", "run", manifest, code=1)["ok"] is False
+    assert data("--database", db, "transaction", "run", tmp_path / "missing.json", code=1)["ok"] is False
+
+
+def test_native_bind_boundaries_and_nonfinite_output(fixture_db):
+    db = fixture_db
+    assert data("--database", db, "sql", "SELECT 1", "--limit", 10000)["rows"] == [[1]]
+    values = [-(2**63), 2**63 - 1, 1.25, True, False, None, {"$blob": ""}]
+    assert data("--database", db, "sql", "SELECT ?,?,?,?,?,?,?", "--params", json.dumps(values))["rows"] == [[-(2**63), 2**63 - 1, 1.25, 1, 0, None, {"$blob": ""}]]
+    assert data("--database", db, "sql", "SELECT 1e999")["rows"] == [[{"$float": "inf"}]]
+    assert data("--database", db, "sql", "SELECT ?2,?1", "--params", '{"1":"one","2":"two","extra":"ignored"}')["rows"] == [["two", "one"]]
+    for params in ['{"$blob":"zz"}', '[{"$blob":"zz"}]', '"wrong shape"', '[-9223372036854775809]']:
+        assert data("--database", db, "sql", "SELECT ?", "--params", params, code=1)["ok"] is False
+
+
+@pytest.mark.parametrize("command,limit", [
+    ("sql", "0"), ("sql", "10001"), ("table", "0"), ("table", "10001"),
+    ("export", "0"), ("export", "10001"),
+])
+def test_invalid_output_limits(fixture_db, tmp_path, command, limit):
+    if command == "sql":
+        args = ["sql", "SELECT 1"]
+    elif command == "table":
+        args = ["table", "rows", "items"]
+    else:
+        args = ["export", "items", "--output", str(tmp_path / "never.json")]
+    assert data("--database", fixture_db, *args, "--limit", limit, code=2)["ok"] is False
+
+
+def test_export_truncation_and_invalid_output(fixture_db, tmp_path):
+    db = fixture_db
+    data("--database", db, "sql", "INSERT INTO items(id,label) VALUES(1,'a'),(2,'b'),(3,'c')")
+    for fmt in ["json", "csv"]:
+        out = tmp_path / f"capped.{fmt}"
+        result = data("--database", db, "export", "items", "--output", out, "--format", fmt, "--limit", 1)
+        assert result["truncated"] is True and result["row_count"] == 1
+        if fmt == "json":
+            assert len(json.loads(out.read_text())["rows"]) == 1
+            assert json.loads(out.read_text())["truncated"] is True
+        else:
+            with out.open(newline="") as stream:
+                assert len(list(csv.reader(stream))) == 2
+    out = tmp_path / "not-created.json"
+    complete = data("--database", db, "export", "items", "--output", tmp_path / "complete.json", "--limit", 10000)
+    assert complete["row_count"] == 3 and complete["truncated"] is False
+    assert data("--database", db, "export", "absent", "--output", out, code=1)["ok"] is False
+    assert not out.exists()
+    assert data("--database", db, "export", "items", "--output", out, "--format", "sql", code=2)["ok"] is False
+    assert not out.exists()
+    assert data("--database", db, "export", "items", "--output", tmp_path / "missing" / "out.json", code=1)["ok"] is False
+
+
+def test_repl_help_quit_eof_parse_and_nested_paths():
+    result = run("repl", input="help\nstatus\nquit\n")
+    outputs = [json.loads(line) for line in result.stdout.splitlines()]
+    assert "sql" in outputs[0]["commands"] and outputs[1]["selected"] is False
+    assert run(input="").stdout == ""
+    result = run(input='"unterminated\nrepl\n--json repl\nstatus\nexit\n', code=1)
+    errors = [json.loads(line) for line in result.stderr.splitlines()]
+    assert len(errors) == 3 and all(error["ok"] is False for error in errors)
+    assert json.loads(result.stdout)["selected"] is False
+
+
+@pytest.mark.parametrize("ending", [b"exit\n", b"\x03", b"\x04"], ids=["exit", "interrupt", "eof"])
+def test_pseudo_tty_repl_smoke(fixture_db, tmp_path, ending):
+    import pty
+    import select
+    import termios
+    master, slave = pty.openpty()
+    env = os.environ.copy()
+    env.update({"TERM": "dumb", "NO_COLOR": "1", "PROMPT_TOOLKIT_NO_CPR": "1"})
+    controlling_terminal = (
+        "import fcntl,os,sys,termios;"
+        "os.setsid();fcntl.ioctl(0,termios.TIOCSCTTY,0);"
+        "os.tcsetpgrp(0,os.getpgrp());"
+        "assert os.tcgetpgrp(0)==os.getpgrp();"
+        "os.execvpe(sys.argv[1],sys.argv[1:],os.environ)"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", controlling_terminal, *CLI,
+                             "--database", str(fixture_db)],
+                            stdin=slave, stdout=slave, stderr=slave,
+                            env=env)
+    os.close(slave)
+    transcript = bytearray()
+    pending = bytearray()
+    def until(needle):
+        deadline = time.monotonic() + 5
+        while needle not in pending:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, bytes(transcript).decode(errors="replace")
+            assert select.select([master], [], [], remaining)[0], bytes(transcript)
+            chunk = os.read(master, 65536)
+            assert chunk, bytes(transcript)
+            transcript.extend(chunk)
+            pending.extend(chunk)
+        pos = pending.index(needle) + len(needle)
+        del pending[:pos]
+    try:
+        until(b"Turso")
+        os.write(master, b'status\n')
+        until(b'"row_count"')
+        os.write(master, b'sql "SELECT 17 AS proof"\n')
+        until(b'"proof"')
+        until(b'17')
+        os.write(master, b'sql "malformed SQL"\n')
+        until(b'"ok": false')
+        os.write(master, b'help\n')
+        until(b'Commands:')
+        os.write(master, b'status\n')
+        until(b'"row_count"')
+        until("❯ ".encode())  # Synchronize with the new prompt, not echoed text.
+        # TERM=dumb prints its prompt before Application enters raw mode.
+        # A canonical Ctrl-D sent in that gap is not a raw input key event.
+        deadline = time.monotonic() + 2
+        while termios.tcgetattr(master)[3] & termios.ICANON:
+            assert time.monotonic() < deadline, "Prompt never entered raw input mode"
+            time.sleep(0.01)
+        os.write(master, ending)
+        proc.wait(timeout=5)
+        assert proc.returncode == 1  # Sticky failed-command status.
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        os.close(master)
+        path = tmp_path / "pseudo-tty-transcript.txt"
+        path.write_bytes(transcript)
+        print(f"\n  Bounded pseudo-TTY transcript: {path}")
