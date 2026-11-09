@@ -1,6 +1,6 @@
 ---
 name: cli-anything
-description: Use when the user wants Codex to build, refine, test, validate, or list CLI-Anything harnesses for GUI applications or source repositories. Adapts the full CLI-Anything methodology to Codex without changing the generated Python harness format.
+description: Use when the user wants Codex to build, refine, test, validate, or list CLI-Anything harnesses for GUI applications, source repositories, or services with a public REST API. Adapts the full CLI-Anything methodology to Codex without changing the generated Python harness format.
 ---
 
 # CLI-Anything for Codex
@@ -55,12 +55,18 @@ plugin paths against the current working directory:
 
 ## Inputs
 
-Accept either:
+Accept:
 
 - A local source path such as `./gimp` or `/path/to/software`
 - A GitHub repository URL
+- An official public API documentation URL or OpenAPI spec with `--api`
 
 Derive the software name from the local directory name after cloning if needed.
+For a closed-source/SaaS target without local source, offer the public API route
+and request official documentation. An explicit `--api` request selects that
+route without reconfirmation. Use the spec/docs as the analysis source, record
+the service name/version, and create a local harness workspace. Do not clone API
+documentation URLs. Read `references/guides/api-backend.md` for this route.
 
 ## Modes
 
@@ -127,6 +133,8 @@ Produce:
 - Copy and use the unified `ReplSkin`.
 - Add truthful preview commands for software with meaningful visual or inspection state.
 - Generate both canonical and packaged CLI-specific `SKILL.md` files.
+- For API backends, declare `harness.json` metadata, read auth from named environment
+  variables, configure the base URL, and require `--allow-write` for each mutation.
 
 ### Testing
 
@@ -136,6 +144,8 @@ Produce:
 - Verify rendered/exported output programmatically, not only process exit codes.
 - Test the installed `cli-anything-<software>` command via `_resolve_cli()`.
 - Run release validation with `CLI_ANYTHING_FORCE_INSTALLED=1`.
+- For API E2E, invoke the real service; missing required credentials fail the
+  selected E2E suite. Keep unit tests offline and report unrun E2E truthfully.
 
 ### Packaging
 

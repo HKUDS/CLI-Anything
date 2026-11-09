@@ -58,7 +58,9 @@ pip install click pytest
 
 ### `/cli-anything <software-path-or-repo>`
 
-Build a complete CLI harness for any software application. Accepts a local path to the software source code or a GitHub repository URL.
+Build a complete CLI harness for any software application. Accepts a local source
+path, a GitHub repository URL, or official API documentation/OpenAPI specs with
+`--api` for closed-source and SaaS targets.
 
 **Examples:**
 ```bash
@@ -67,6 +69,9 @@ Build a complete CLI harness for any software application. Accepts a local path 
 
 # Build from a GitHub repo
 /cli-anything https://github.com/blender/blender
+
+# Build against a public REST API without local vendor source
+/cli-anything https://api.example.com/openapi.json --api
 ```
 
 This runs all phases:
@@ -78,6 +83,12 @@ This runs all phases:
 6. Test Implementation & Documentation
 7. SKILL.md Generation
 8. PyPI Publishing and Installation
+
+API targets follow the [API Backend Pattern](guides/api-backend.md): configurable
+service URLs, environment-based credentials, explicit mutation opt-in, bounded
+job polling, and verified downloads. The skill generator reads backend metadata
+and actual Click command paths; it does not assume every service has a local
+binary, `project new`, or undo/redo. See [skill generation](guides/skill-generation.md).
 
 ### `/cli-anything:refine <software-path> [focus]`
 

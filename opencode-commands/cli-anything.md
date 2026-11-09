@@ -1,10 +1,10 @@
 ---
-description: Build a complete CLI harness for any GUI application (all 7 phases)
+description: Build a complete CLI harness for a GUI application or public API service (all 7 phases)
 subtask: true
 ---
 # cli-anything Command
 
-Build a complete, stateful CLI harness for any GUI application.
+Build a complete, stateful CLI harness for a GUI application or public API service.
 
 **Target software**: $1
 
@@ -17,22 +17,31 @@ Build a complete, stateful CLI harness for any GUI application.
 - `$1` is the **software path or repo URL**. Either:
   - A **local path** to the software source code (e.g., `/home/user/gimp`, `./blender`)
   - A **GitHub repository URL** (e.g., `https://github.com/GNOME/gimp`, `github.com/blender/blender`)
+  - With `--api`, an **official API documentation URL or OpenAPI spec** (local JSON/YAML file or vendor URL)
 
-  If a GitHub URL is provided, clone the repo locally first, then work on the local copy.
+  For source-backed targets, clone GitHub repositories locally first.
 
-  **Note:** Software names alone (e.g., "gimp") are NOT accepted. You must provide the actual source code path or repository URL so the agent can analyze the codebase.
+  **Note:** Source-backed targets require a source path or repo URL. For a named
+  closed-source/SaaS target, offer public API mode and request official docs.
+  An explicit `--api` request already selects that route; do not reconfirm it.
 
 ## What This Command Does
 
 This command implements the complete cli-anything methodology to build a production-ready CLI harness for any GUI application. **All phases follow the standards defined in HARNESS.md.**
 
 ### Phase 0: Source Acquisition
-- If `$1` is a GitHub URL, clone it to a local working directory
-- Verify the local path exists and contains source code
-- Derive the software name from the directory name (e.g., `/home/user/gimp` -> `gimp`)
+- Select local source, MCP, or API mode. For `--api`, use official OpenAPI/endpoint
+  docs as the analysis source and follow `guides/api-backend.md`. Record the
+  service name/spec version and create `<software>/agent-harness/` locally.
+  Do not clone API docs URLs or require a local vendor binary.
+- For source-backed targets, clone GitHub repositories if needed, verify the
+  local source path, and derive the software name from its directory
+  (e.g., `/home/user/gimp` -> `gimp`).
 
 ### Phase 1: Codebase Analysis
-- Analyzes the local source code
+- For API targets: map schemas, authentication, pagination, async jobs, artifacts,
+  and write effects from the official contract instead of local source.
+- Analyzes local source code for source-backed targets
 - Analyzes the backend engine and data model
 - Maps GUI actions to API calls
 - Identifies existing CLI tools
@@ -76,6 +85,8 @@ This command implements the complete cli-anything methodology to build a product
 - Configures console_scripts entry point for PATH installation
 - Tests local installation with `pip install -e .`
 - Verifies CLI is available in PATH: `which cli-anything-<software>`
+- Declare backend requirements in `agent-harness/harness.json` and generate the
+  skill with `skill_generator.py`; verify command paths against actual CLI help.
 
 ## Output Structure
 
