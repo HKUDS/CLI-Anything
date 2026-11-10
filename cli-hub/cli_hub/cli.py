@@ -127,10 +127,17 @@ def _plural(count, singular, plural=None):
 
 @main.command()
 @click.argument("name")
-def install(name):
+@click.option("--backend", default="auto", type=click.Choice(["auto", "pip", "uv"]),
+              help="Python installer: auto prefers uv for new installs and preserves existing ownership.")
+@click.option("--json", "as_json", is_flag=True, help="Output the installation result as JSON.")
+def install(name, backend, as_json):
     """Install a CLI by name."""
-    click.echo(f"Installing {name}...")
-    success, msg = install_cli(name)
+    if not as_json:
+        click.echo(f"Installing {name}...")
+    success, msg = _package_operation(install_cli, name, backend)
+    if as_json:
+        _emit_package_result(name, "install", success, msg)
+        return
     if success:
         cli = get_cli(name)
         track_install(name, cli["version"] if cli else "unknown")
@@ -147,9 +154,15 @@ def install(name):
 
 @main.command()
 @click.argument("name")
-def uninstall(name):
+@click.option("--backend", default="auto", type=click.Choice(["auto", "pip", "uv"]),
+              help="Python installer; recorded ownership takes precedence over auto detection.")
+@click.option("--json", "as_json", is_flag=True, help="Output the removal result as JSON.")
+def uninstall(name, backend, as_json):
     """Uninstall a CLI by name."""
-    success, msg = uninstall_cli(name)
+    success, msg = _package_operation(uninstall_cli, name, backend)
+    if as_json:
+        _emit_package_result(name, "uninstall", success, msg)
+        return
     if success:
         track_uninstall(name)
         click.secho(f"✓ {msg}", fg="green")
@@ -160,10 +173,17 @@ def uninstall(name):
 
 @main.command()
 @click.argument("name")
-def update(name):
+@click.option("--backend", default="auto", type=click.Choice(["auto", "pip", "uv"]),
+              help="Python installer; updates stay with the recorded backend.")
+@click.option("--json", "as_json", is_flag=True, help="Output the update result as JSON.")
+def update(name, backend, as_json):
     """Update a CLI to the latest version."""
-    click.echo(f"Updating {name}...")
-    success, msg = update_cli(name)
+    if not as_json:
+        click.echo(f"Updating {name}...")
+    success, msg = _package_operation(update_cli, name, backend)
+    if as_json:
+        _emit_package_result(name, "update", success, msg)
+        return
     if success:
         cli = get_cli(name)
         track_install(name, cli["version"] if cli else "unknown")
@@ -171,6 +191,36 @@ def update(name):
     else:
         click.secho(f"✗ {msg}", fg="red", err=True)
         raise SystemExit(1)
+
+
+def _package_operation(operation, name, backend):
+    try:
+        return operation(name, backend=backend)
+    except (OSError, ValueError) as exc:
+        return False, str(exc)
+
+
+def _emit_package_result(name, action, success, message):
+    """Keep package-manager diagnostics inside one machine-readable result."""
+    installation = None
+    if success and action != "uninstall":
+        for installed_name, entry in get_installed().items():
+            if installed_name.lower() == name.lower():
+                installation = {key: entry[key] for key in (
+                    "version", "entry_point", "source", "strategy", "python_backend", "python_package",
+                ) if key in entry}
+                break
+    if success:
+        if action == "uninstall":
+            track_uninstall(name)
+        else:
+            track_install(name, (installation or {}).get("version", "unknown"))
+    click.echo(json_mod.dumps({
+        "name": name, "action": action, "success": success,
+        "message": message, "installation": installation,
+    }, indent=2))
+    if not success:
+        raise SystemExit(EXIT_FAIL)
 
 
 @main.command("list")
@@ -812,7 +862,9 @@ def _render_dry_run(payload):
     click.echo(f"\n  {summary['to_install']} to install, {summary['to_skip']} to skip"
                + (f", {summary['unresolved']} unresolved" if summary["unresolved"] else ""))
     click.echo(f"  Run: cli-hub matrix install {matrix_item['name']}"
-               + _scope_args(payload["scope"]))
+               + _scope_args(payload["scope"])
+               + (f" --backend {payload['python_backend']}"
+                  if payload.get("python_backend", "auto") != "auto" else ""))
 
 
 def _matrix_scope_kind(capability, recipe, only):
@@ -851,7 +903,9 @@ def _scope_args(scope):
     help="Render the matrix skill (SKILL.md + references/ + scripts/) without installing member CLIs.",
 )
 @click.option("--json", "as_json", is_flag=True, help="Output the plan or result as JSON.")
-def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, as_json):
+@click.option("--backend", default="auto", type=click.Choice(["auto", "pip", "uv"]),
+              help="Installer for Python matrix members; other strategies are unchanged.")
+def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, as_json, backend):
     """Install the CLIs in a matrix (optionally scoped to a capability, recipe, or subset).
 
     Exit codes: 0 success · 3 partial failure · 1 total failure or not found ·
@@ -873,7 +927,7 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
         return
 
     if dry_run:
-        ok, payload = plan_matrix_install(name, capability=capability, recipe=recipe, only=only)
+        ok, payload = plan_matrix_install(name, capability=capability, recipe=recipe, only=only, backend=backend)
         if not ok:
             if as_json:
                 click.echo(json_mod.dumps({"error": payload["error"]}, indent=2))
@@ -888,6 +942,7 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
         )
         if as_json:
             data = {k: payload[k] for k in ("scope", "scope_label", "plan", "not_managed", "summary")}
+            data["python_backend"] = backend
             data["matrix"] = payload["matrix"]["name"]
             click.echo(json_mod.dumps(data, indent=2))
         else:
@@ -895,7 +950,7 @@ def matrix_install(name, capability, recipe, only, dry_run, resume, skill_only, 
         return
 
     success, payload = install_matrix(
-        name, capability=capability, recipe=recipe, only=only, resume=resume
+        name, capability=capability, recipe=recipe, only=only, resume=resume, backend=backend
     )
     if payload.get("error"):
         track_matrix_install(

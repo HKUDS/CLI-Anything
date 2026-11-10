@@ -82,7 +82,7 @@ Each CLI provides stateful operations, JSON output for agents, REPL mode, and in
 
 ## How It Works
 
-`cli-hub` is a lightweight wrapper around `pip`. When you run `cli-hub install gimp`, it installs a separate Python package (`cli-anything-gimp`) with its own CLI entry point (`cli-anything-gimp`). Each CLI is an independent pip package — `cli-hub` simply resolves names from the registry and tracks installs.
+`cli-hub` resolves packages from the registry and tracks their installations. For new Python harnesses, `cli-hub install gimp` prefers `uv tool install` when uv is available, otherwise it uses pip. Each harness has its own console entry point (for example, `cli-anything-gimp`). Use `--backend pip|uv` for an explicit choice; existing records keep their original backend for updates and removals. A missing or failing uv never triggers a pip fallback for an already uv-managed tool. Uninstall before switching backends.
 
 ## Preview Consumption
 
@@ -114,7 +114,7 @@ For live sessions, `cli-hub previews` reads:
 
 1. **Install cli-hub**: `pip install cli-anything-hub`
 2. **Find your tool**: `cli-hub search <keyword>` or `cli-hub list -c <category>`
-3. **Install**: `cli-hub install <name>` (installs the `cli-anything-<name>` pip package)
+3. **Install**: `cli-hub install <name>` (uses uv or pip for Python harnesses; add `--json` for a structured result)
 4. **Run**: `cli-anything-<name>` for REPL, or `cli-anything-<name> <command>` for one-shot
 5. **JSON output**: All CLIs support `--json` flag for machine-readable output
 6. **Preview-capable CLIs**: use `cli-anything-<name> preview ... --json` to publish,

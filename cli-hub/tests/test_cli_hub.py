@@ -906,6 +906,12 @@ class TestPreviewBundle:
 class TestInstaller:
     """Tests for installer.py — install, uninstall, tracking."""
 
+    @pytest.fixture(autouse=True)
+    def pip_backend(self, monkeypatch):
+        # Keep the original pip-path tests independent of the developer's PATH.
+        # uv installation and ownership are covered in test_python_tools.py.
+        monkeypatch.setattr("cli_hub.installer._find_uv", lambda: None)
+
     def test_load_installed_empty(self, tmp_path):
         with patch("cli_hub.installer.INSTALLED_FILE", tmp_path / "installed.json"):
             assert _load_installed() == {}

@@ -219,6 +219,12 @@ cli-hub info gimp
 cli-hub launch gimp
 ```
 
+For new Python harness installs, CLI-Hub prefers `uv tool install` when uv is
+available and otherwise uses pip. Use `cli-hub install <name> --backend pip|uv`
+to choose explicitly. Updates and removals preserve the recorded backend;
+existing pip installations stay on pip. Install/update/uninstall also support
+`--json`. See [Python installation backends](cli-hub/docs/python-backends.md).
+
 > Some CLIs wrap real desktop or backend software. If a selected CLI needs GIMP, Blender, LibreOffice, or another upstream tool, install that upstream application too.
 
 </details>
