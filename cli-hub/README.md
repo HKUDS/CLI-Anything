@@ -37,6 +37,42 @@ cli-hub update gimp
 cli-hub uninstall gimp
 ```
 
+## Python installation backends
+
+New Python harness installations use `uv tool install` when `uv` is on PATH,
+otherwise they use the Python interpreter running CLI-Hub with `-m pip`.
+This lets a Hub installed with `uv tool install cli-anything-hub` install other
+harnesses without needing pip inside the Hub's isolated environment.
+
+```bash
+# Automatic selection: uv if available, pip otherwise
+cli-hub install gimp
+
+# Explicit choice for a new installation
+cli-hub install gimp --backend uv
+cli-hub install blender --backend pip
+
+# Update/remove using the recorded backend
+cli-hub update gimp --json
+cli-hub uninstall gimp --json
+
+# Choose the backend for Python members of a mixed matrix
+cli-hub matrix install video-creation --backend uv --dry-run --json
+```
+
+The Hub records the backend and distribution name in `~/.cli-hub/installed.json`.
+Updates and removals keep using that backend even if uv later appears or
+disappears from PATH. Existing pip records stay on pip; uninstall before switching
+backends. A missing or failing uv does not silently trigger a pip operation in
+another environment. For pip installations, the Hub also remembers the owning
+Python interpreter.
+
+uv exposes executables in its tool binary directory. If that directory is not on
+PATH, follow uv's installation guidance (`uv tool update-shell`, then reopen the
+shell). CLI-Hub does not edit shell configuration. See
+[Python backend behavior](docs/python-backends.md) for supported registry commands,
+legacy records, upgrades, failure handling, and local verification.
+
 ## Preview Viewer
 
 `cli-hub` also includes the generic preview consumer for preview-capable

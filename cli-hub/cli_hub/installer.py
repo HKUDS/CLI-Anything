@@ -4,23 +4,29 @@ import json
 import shlex
 import shutil
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
 from cli_hub.registry import get_cli
 from cli_hub.matrix import get_matrix, resolve_install_scope, unmanaged_providers
 from cli_hub.matrix_skill import render_matrix_skill_file
+from cli_hub.python_tools import python_action, select_backend
 
 INSTALLED_FILE = Path.home() / ".cli-hub" / "installed.json"
 MATRIX_STATE_FILE = Path.home() / ".cli-hub" / "matrix_state.json"
 
 
-def _load_installed():
+def _load_installed(strict=False):
     if INSTALLED_FILE.exists():
         try:
-            return json.loads(INSTALLED_FILE.read_text())
-        except json.JSONDecodeError:
+            data = json.loads(INSTALLED_FILE.read_text())
+            if strict and (not isinstance(data, dict)
+                           or any(not isinstance(entry, dict) for entry in data.values())):
+                raise ValueError("Invalid installed.json records; restore the file before changing packages.")
+            return data
+        except json.JSONDecodeError as exc:
+            if strict:
+                raise ValueError("Cannot read installed.json; restore the file before changing packages.") from exc
             pass
     return {}
 
@@ -178,43 +184,6 @@ def _bundled_update(cli):
     return False, note
 
 
-# ── pip operations (harness CLIs) ──
-
-
-def _pip_install(cli):
-    install_cmd = cli["install_cmd"]
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install"] + install_cmd.replace("pip install ", "").split(),
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"pip install failed:\n{result.stderr}"
-
-
-def _pip_uninstall(cli):
-    pkg_name = f"cli-anything-{cli['name']}"
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "uninstall", "-y", pkg_name],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        return True, f"Uninstalled {cli['display_name']}"
-    return False, f"pip uninstall failed:\n{result.stderr}"
-
-
-def _pip_update(cli):
-    install_cmd = cli["install_cmd"]
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall"]
-        + install_cmd.replace("pip install ", "").split(),
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        return True, f"Updated {cli['display_name']} to {cli['version']}"
-    return False, f"Update failed:\n{result.stderr}"
-
-
 # ── uv operations (public CLIs) ──
 
 
@@ -298,18 +267,27 @@ def _npm_update(cli):
     return False, f"Update failed:\n{result.stderr}"
 
 
-def _perform_action(cli, action):
+def _perform_action(cli, action, backend="auto", recorded=None):
     """Dispatch install/uninstall/update based on CLI strategy."""
     strategy = _install_strategy(cli)
+    if strategy == "pip":
+        success, message, metadata = python_action(
+            cli, action, requested=backend, recorded=recorded, uv_path=_find_uv(),
+        )
+        return strategy, (success, message), metadata
+    if backend != "auto":
+        return strategy, (False, "--backend only applies to Python harness installs."), {}
+    if recorded and recorded.get("python_backend"):
+        return strategy, (False, "Registry install strategy changed since this Python installation; "
+                          "restore its Python registry entry before changing packages."), {}
     actions = {
-        "pip": {"install": _pip_install, "uninstall": _pip_uninstall, "update": _pip_update},
         "npm": {"install": _npm_install, "uninstall": _npm_uninstall, "update": _npm_update},
         "uv": {"install": _uv_install, "uninstall": _uv_uninstall, "update": _uv_update},
         "command": {"install": _generic_install, "uninstall": _generic_uninstall, "update": _generic_update},
         "bundled": {"install": _bundled_install, "uninstall": _bundled_uninstall, "update": _bundled_update},
     }
     handler = actions.get(strategy, actions["command"]).get(action)
-    return strategy, handler(cli)
+    return strategy, handler(cli), {}
 
 
 def _installed_entry(cli, source, strategy):
@@ -336,51 +314,68 @@ def _installed_entry(cli, source, strategy):
 # ── Unified interface ──
 
 
-def install_cli(name):
-    """Install a CLI by name. Dispatches to pip or npm based on source. Returns (success, message)."""
+def install_cli(name, backend="auto"):
+    """Install through the registry strategy and owning Python backend."""
     cli = get_cli(name)
     if cli is None:
         return False, f"CLI '{name}' not found in registry. Use 'cli-hub list' to see available CLIs."
 
     source = cli.get("_source", "harness")
-    strategy, (success, msg) = _perform_action(cli, "install")
+    installed = _load_installed(strict=True)
+    strategy, (success, msg), metadata = _perform_action(
+        cli, "install", backend=backend, recorded=installed.get(cli["name"]),
+    )
 
     if success:
-        installed = _load_installed()
-        installed[cli["name"]] = _installed_entry(cli, source, strategy)
+        installed = _load_installed(strict=True)
+        installed[cli["name"]] = {**_installed_entry(cli, source, strategy), **metadata}
         _save_installed(installed)
 
     return success, msg
 
 
-def uninstall_cli(name):
+def uninstall_cli(name, backend="auto"):
     """Uninstall a CLI by name. Returns (success, message)."""
     cli = get_cli(name)
     if cli is None:
         return False, f"CLI '{name}' not found in registry."
 
-    _, (success, msg) = _perform_action(cli, "uninstall")
+    installed = _load_installed(strict=True)
+    # Untracked legacy harnesses were installed using pip. An explicit uv
+    # request can adopt a tool by its exact console entry point for removal.
+    recorded = installed.get(cli["name"])
+    if recorded is None and backend == "auto" and _install_strategy(cli) == "pip":
+        recorded = {"python_backend": "pip"}
+    _, (success, msg), _ = _perform_action(cli, "uninstall", backend=backend, recorded=recorded)
 
     if success:
-        installed = _load_installed()
+        installed = _load_installed(strict=True)
         installed.pop(cli["name"], None)
         _save_installed(installed)
 
     return success, msg
 
 
-def update_cli(name):
+def update_cli(name, backend="auto"):
     """Update a CLI by reinstalling. Returns (success, message)."""
     cli = get_cli(name, force_refresh=True)
     if cli is None:
         return False, f"CLI '{name}' not found in registry."
 
     source = cli.get("_source", "harness")
-    strategy, (success, msg) = _perform_action(cli, "update")
+    installed = _load_installed(strict=True)
+    recorded = installed.get(cli["name"])
+    if recorded is None and backend == "auto" and _install_strategy(cli) == "pip":
+        recorded = {"python_backend": "pip"}
+    strategy, (success, msg), metadata = _perform_action(cli, "update", backend=backend, recorded=recorded)
 
     if success:
-        installed = _load_installed()
-        installed[cli["name"]] = _installed_entry(cli, source, strategy)
+        installed = _load_installed(strict=True)
+        entry = _installed_entry(cli, source, strategy)
+        if metadata.get("python_backend") == "uv" and recorded and recorded.get("install_cmd"):
+            # uv upgrades the requirement recorded in its tool receipt.
+            entry["install_cmd"] = recorded["install_cmd"]
+        installed[cli["name"]] = {**entry, **metadata}
         _save_installed(installed)
 
     return success, msg
@@ -403,7 +398,14 @@ def _scope_label(scope, capabilities=None):
     return "full matrix"
 
 
-def plan_matrix_install(name, capability=None, recipe=None, only=None):
+def _install_engine(cli, recorded=None, backend="auto"):
+    strategy = _install_strategy(cli)
+    if strategy == "pip":
+        return select_backend(backend, recorded, _find_uv())
+    return strategy
+
+
+def plan_matrix_install(name, capability=None, recipe=None, only=None, backend="auto"):
     """Compute what ``matrix install`` would do — no side effects (F2.1).
 
     Returns ``(ok, payload)``. ``ok`` is false only on lookup/usage errors;
@@ -417,16 +419,16 @@ def plan_matrix_install(name, capability=None, recipe=None, only=None):
     if scope.get("error"):
         return False, {"error": scope["error"], "arg_error": True, "matrix": matrix_item}
 
-    installed = set(get_installed())
+    installed = get_installed()
     plan = []
     for cli_name in scope["cli_names"]:
         cli = get_cli(cli_name)
         if cli_name in installed:
-            action, via = "skip", (_install_strategy(cli) if cli else None)
+            action, via = "skip", (_install_engine(cli, installed.get(cli_name)) if cli else None)
         elif cli is None:
             action, via = "error", None
         else:
-            action, via = "install", _install_strategy(cli)
+            action, via = "install", _install_engine(cli, backend=backend)
         plan.append({
             "name": cli_name,
             "display_name": cli["display_name"] if cli else cli_name,
@@ -451,6 +453,7 @@ def plan_matrix_install(name, capability=None, recipe=None, only=None):
     }
     payload = {
         "matrix": matrix_item,
+        "python_backend": backend,
         "scope": scope["scope"],
         "scope_label": _scope_label(scope["scope"]),
         "plan": plan,
@@ -460,7 +463,7 @@ def plan_matrix_install(name, capability=None, recipe=None, only=None):
     return True, payload
 
 
-def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
+def install_matrix(name, capability=None, recipe=None, only=None, resume=False, backend="auto"):
     """Install the CLIs in a named matrix, optionally scoped (F2.2) or resumed (F2.3).
 
     Returns ``(success, payload)``. ``payload['arg_error']`` marks usage errors.
@@ -482,6 +485,11 @@ def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
             return False, {"error": f"No previous install of '{name}' to resume. "
                                     f"Run 'cli-hub matrix install {name}' first.",
                            "arg_error": True, "matrix": matrix_item}
+        if backend == "auto":
+            backend = prior.get("python_backend", "auto")
+        if backend not in {"auto", "pip", "uv"}:
+            return False, {"error": "Invalid Python backend in saved matrix state.",
+                           "arg_error": True, "matrix": matrix_item}
         target_names = [r["name"] for r in prior.get("results", []) if r.get("status") == "failed"]
         scope = prior.get("scope", {"type": "all"})
         if not target_names:
@@ -496,13 +504,14 @@ def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
         target_names = scope_info["cli_names"]
         scope = scope_info["scope"]
 
-    installed = set(get_installed())
+    installed_state = get_installed()
+    installed = set(installed_state)
     results = []
 
     for cli_name in target_names:
         cli = get_cli(cli_name)
         display_name = cli["display_name"] if cli else cli_name
-        via = _install_strategy(cli) if cli else None
+        via = _install_engine(cli, installed_state.get(cli_name)) if cli else None
 
         if cli_name in installed:
             results.append({"name": cli_name, "display_name": display_name,
@@ -514,7 +523,12 @@ def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
                             "status": "failed", "via": via, "message": "CLI not found in registry"})
             continue
 
-        success, msg = install_cli(cli_name)
+        requested = backend if _install_strategy(cli) == "pip" else "auto"
+        via = _install_engine(cli, backend=requested)
+        try:
+            success, msg = install_cli(cli_name) if requested == "auto" else install_cli(cli_name, backend=requested)
+        except (OSError, ValueError) as exc:
+            success, msg = False, str(exc)
         results.append({"name": cli_name, "display_name": display_name,
                         "status": "installed" if success else "failed", "via": via, "message": msg})
         if success:
@@ -529,6 +543,7 @@ def install_matrix(name, capability=None, recipe=None, only=None, resume=False):
 
     state[name] = {
         "last_run": datetime.now().isoformat(timespec="seconds"),
+        "python_backend": backend,
         "scope": scope,
         "results": results,
     }
