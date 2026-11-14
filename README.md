@@ -1329,6 +1329,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 244</td>
 </tr>
 <tr>
+<td align="center"><strong>🖨️ <a href="orcaslicer/agent-harness/">OrcaSlicer</a></strong></td>
+<td>3D Printing / Slicing</td>
+<td><code>cli-anything-orcaslicer</code></td>
+<td>OrcaSlicer headless CLI (<code>--slice</code>, <code>--load-settings</code>) — real G-code, 3MF and previews</td>
+<td align="center">✅ 309</td>
+</tr>
+<tr>
 <td align="center"><strong>🐞 <a href="lldb/agent-harness/">LLDB</a></strong></td>
 <td>Native Debugging</td>
 <td><code>cli-anything-lldb</code></td>
@@ -1437,8 +1444,9 @@ unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
 3mf            50 passed  ✅   (50 unit)
 joplin        134 passed  ✅   (107 unit + 27 e2e, 1 skipped on Windows)
+orcaslicer    309 passed  ✅   (232 unit + 77 e2e)
 ──────────────────────────────────────────────────────────────────────────────
-TOTAL        2,464 passed  ✅   100% pass rate
+TOTAL        2,773 passed  ✅   100% pass rate
 ```
 
 ---
