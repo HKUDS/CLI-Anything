@@ -94,6 +94,36 @@ cli-anything-orcaslicer profile list --kind process --source system | grep "A1M"
 The result is genuine A1 mini G-code (180×180 bed, Bambu `M970` calibration start sequence). The harness only
 slices and exports — it does not talk to the printer.
 
+### Worked example: 3DBenchy on a Bambu Lab A1 mini
+
+Everything below was produced with the CLI (no GUI), then opened in OrcaSlicer to confirm the result.
+
+```bash
+O=cli-anything-orcaslicer
+$O project new -o benchy.orca-cli.json -n benchy \
+    --machine "Bambu Lab A1 mini 0.4 nozzle" --process "0.20mm Standard @BBL A1M" \
+    --filament "Bambu PLA Basic @BBL A1M" --model 3DBenchy.stl
+$O --json --project benchy.orca-cli.json model inspect                 # 60 x 31 x 48 mm, 225k facets, manifold
+$O --json --project benchy.orca-cli.json slice run -o out --export-3mf out/benchy.3mf
+$O --json --project benchy.orca-cli.json slice stats                   # per-feature time / filament
+```
+
+Result: **240 layers, 38 min 31 s, 11.4 g**, in about 3 seconds. The exported 3MF opens in OrcaSlicer with the
+printer, filament and process presets already applied (Prepare tab), and the G-code preview reports the same
+per-feature numbers the CLI returned — e.g. outer wall 8 m 51 s (`slice stats`: 531 s) and inner wall 6 m 49 s (409 s):
+
+<p align="center">
+  <img src="../../../../assets/demos/orcaslicer-benchy-prepare.png" alt="The harness's exported 3MF opened in OrcaSlicer: Bambu Lab A1 mini, PLA Basic, 0.20mm Standard @BBL A1M, Benchy on the plate" width="860" />
+</p>
+<p align="center"><sub>Prepare tab — the 3MF exported by <code>slice run --export-3mf</code>, presets carried over from the project.</sub></p>
+
+<p align="center">
+  <img src="../../../../assets/demos/orcaslicer-benchy-preview.png" alt="OrcaSlicer G-code preview of the harness's Benchy slice with the line-type time and filament breakdown" width="860" />
+</p>
+<p align="center"><sub>Preview tab — G-code written by <code>slice run</code>, with OrcaSlicer's line-type breakdown (matches <code>slice stats</code>).</sub></p>
+
+<sub>3DBenchy by <a href="https://www.3dbenchy.com">Creative Tools</a>.</sub>
+
 ### Things the harness handles for you (found while testing against OrcaSlicer 2.5.0)
 
 * **Scale / tilt clipping** — OrcaSlicer pivots around the object centre and silently clips whatever
