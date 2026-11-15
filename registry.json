@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "orcaslicer",
+      "display_name": "OrcaSlicer",
+      "version": "1.0.0",
+      "description": "3D-print slicing, G-code/3MF/STL export and previews via OrcaSlicer's headless CLI",
+      "requires": "OrcaSlicer >= 2.5 (brew install --cask orcaslicer)",
+      "homepage": "https://github.com/OrcaSlicer/OrcaSlicer",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=orcaslicer/agent-harness",
+      "entry_point": "cli-anything-orcaslicer",
+      "skill_md": "skills/cli-anything-orcaslicer/SKILL.md",
+      "category": "3d",
+      "contributors": [
+        {
+          "name": "JJJau03",
+          "url": "https://github.com/JJJau03"
+        }
+      ]
     }
   ]
 }

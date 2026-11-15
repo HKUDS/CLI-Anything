@@ -90,6 +90,7 @@
 !/QGIS/
 !/n8n/
 !/obsidian/
+!/orcaslicer/
 !/joplin/
 !/unrealinsights/
 !/firefly-iii/
@@ -194,6 +195,8 @@
 /n8n/.*
 /obsidian/*
 /obsidian/.*
+/orcaslicer/*
+/orcaslicer/.*
 /joplin/*
 /joplin/.*
 /unrealinsights/*
@@ -276,6 +279,7 @@
 !/QGIS/agent-harness/
 !/n8n/agent-harness/
 !/obsidian/agent-harness/
+!/orcaslicer/agent-harness/
 !/joplin/agent-harness/
 !/calibre/agent-harness/
 !/safari/
