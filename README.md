@@ -244,6 +244,21 @@ Then prompt:
 Find appropriate CLI software in CLI-Hub and complete the task: ...
 ```
 
+<details>
+<summary><strong>Syok Code</strong> <sup><code>Community</code></sup></summary>
+
+[Syok Code](https://syok-ai.com/syok-code/) is a terminal coding agent that reads `SKILL.md` files. Install the CLI with CLI-Hub, add its skill straight from this repository, then run it:
+
+```bash
+cli-hub install libreoffice
+syok skill add HKUDS/CLI-Anything/skills/cli-anything-libreoffice
+syok skill cli-anything-libreoffice "Make a one-page report and export it as report.pdf"
+```
+
+Replace `libreoffice` with any CLI that has a folder under [`skills/`](skills/). Needs Syok Code 0.13.1 or newer. Tested with the LibreOffice CLI on Linux.
+
+</details>
+
 </details>
 
 <details open>
