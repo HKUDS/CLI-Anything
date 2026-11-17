@@ -664,6 +664,8 @@ On Windows PowerShell, use:
 
 This installs the skill to `$HERMES_HOME/skills/cli-anything-hermes` (or `~/.hermes/skills/cli-anything-hermes` if `HERMES_HOME` is unset).
 
+The installer vendors `HARNESS.md`, the command specifications, the guides, the templates and the helper modules into the installed skill, so the installed copy is self-contained. Use `--force` to reinstall over an existing copy, `--dry-run` to preview the destination, and `--profile <name>` to install into a named profile's skill tree.
+
 Restart [Hermes Agent](https://github.com/NousResearch/hermes-agent) after installation so it is discovered.
 
 **Step 2: Use CLI-Anything from Hermes**
@@ -680,6 +682,16 @@ The Hermes skill adapts the same methodology used by the Claude Code plugin and
 Codex skill, binding Hermes's `terminal`, `execute_code`, `delegate_task`, and
 `read_file` / `write_file` / `patch` tools to the 7-phase harness workflow while
 keeping the generated Python harness format unchanged.
+
+Every build can be checked against the harness contract with the bundled verifier,
+which reports the namespace layout, entry point, `--json` and REPL surface, vendored
+`repl_skin.py`, SOP doc, test suites, `TEST.md` and both skill mirrors:
+
+```bash
+python3 ~/.hermes/skills/cli-anything-hermes/scripts/verify_harness.py <software-dir> --json
+```
+
+`--all` audits every harness in a checkout, and `--strict` promotes warnings to errors.
 </details>
 
 <details>
