@@ -76,6 +76,16 @@ def read(path):
         return ""
 
 
+def slugify(name):
+    """Canonical CLI id: package and skill names are lowercase for every target.
+
+    Software directories keep their upstream display name (`QGIS`, `3MF`) while the
+    console script and skill mirror are `cli-anything-qgis` and
+    `skills/cli-anything-qgis/`, so path derivation must not reuse the directory name.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
 def python_sources(root):
     return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
 
@@ -123,15 +133,15 @@ def check_layout(harness, software):
     return checks, module
 
 
-def check_setup(harness, software, module):
+def check_setup(harness, slug, module):
     setup_py = harness / "setup.py"
     if not setup_py.is_file():
         return [Check("setup-py", FAIL, "missing setup.py")]
 
     text = read(setup_py)
     checks = [Check("setup-py", PASS, "setup.py present")]
-    entry = "cli-anything-%s" % software
-    entry_pattern = re.compile(r"cli-anything-%s\s*=\s*[\w.]+\s*:" % re.escape(software))
+    entry = "cli-anything-%s" % slug
+    entry_pattern = re.compile(r"cli-anything-%s\s*=\s*[\w.]+\s*:" % re.escape(slug))
     if "console_scripts" in text and entry_pattern.search(text):
         checks.append(Check("console-script", PASS, "console_scripts exposes %s" % entry))
     else:
@@ -195,7 +205,7 @@ def check_cli_surface(module, repo_root):
     return checks
 
 
-def check_docs_and_tests(harness, software, module, repo_root):
+def check_docs_and_tests(harness, software, slug, module, repo_root):
     checks = []
 
     sop = None
@@ -234,7 +244,7 @@ def check_docs_and_tests(harness, software, module, repo_root):
             severity="warn",
         ))
 
-    root_skill = repo_root / "skills" / ("cli-anything-%s" % software) / "SKILL.md" if repo_root else None
+    root_skill = repo_root / "skills" / ("cli-anything-%s" % slug) / "SKILL.md" if repo_root else None
     if root_skill is None:
         checks.append(Check("root-skill", WARN, "repo root not resolvable", severity="warn"))
     elif root_skill.is_file():
@@ -243,7 +253,7 @@ def check_docs_and_tests(harness, software, module, repo_root):
         checks.append(Check(
             "root-skill",
             FAIL,
-            "missing skills/cli-anything-%s/SKILL.md mirror" % software,
+            "missing skills/cli-anything-%s/SKILL.md mirror" % slug,
         ))
 
     packaged = module / "skills" / "SKILL.md" if module else None
@@ -291,10 +301,10 @@ def parse_frontmatter(text):
     return values
 
 
-def check_skill_frontmatter(repo_root, software):
+def check_skill_frontmatter(repo_root, slug):
     if repo_root is None:
         return []
-    skill = repo_root / "skills" / ("cli-anything-%s" % software) / "SKILL.md"
+    skill = repo_root / "skills" / ("cli-anything-%s" % slug) / "SKILL.md"
     if not skill.is_file():
         return []
     frontmatter = parse_frontmatter(read(skill))
@@ -315,13 +325,14 @@ def check_skill_frontmatter(repo_root, software):
 def verify(path, strict=False):
     harness = resolve_harness(path)
     software = harness.parent.name if harness.name == "agent-harness" else harness.name
+    slug = slugify(software)
     repo_root = find_repo_root(harness)
 
     checks, module = check_layout(harness, software)
-    checks += check_setup(harness, software, module)
+    checks += check_setup(harness, slug, module)
     checks += check_cli_surface(module, repo_root)
-    checks += check_docs_and_tests(harness, software, module, repo_root)
-    checks += check_skill_frontmatter(repo_root, software)
+    checks += check_docs_and_tests(harness, software, slug, module, repo_root)
+    checks += check_skill_frontmatter(repo_root, slug)
 
     errors = [c for c in checks if c.status == FAIL and c.severity == "error"]
     warnings = [c for c in checks if c.status in (FAIL, WARN) and c.severity == "warn"]
@@ -329,6 +340,7 @@ def verify(path, strict=False):
     return {
         "ok": ok,
         "name": software,
+        "slug": slug,
         "path": str(harness),
         "checks": [c.as_dict() for c in checks],
         "summary": {"errors": len(errors), "warnings": len(warnings)},

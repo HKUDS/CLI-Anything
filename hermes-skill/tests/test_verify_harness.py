@@ -147,6 +147,43 @@ class VerifyHarnessTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("namespace-package", {c["id"] for c in result["checks"] if c["status"] == "fail"})
 
+    def test_uppercase_directory_name_uses_lowercase_cli_id(self):
+        """QGIS/3MF keep their display name but ship cli-anything-qgis / -3mf."""
+        upper = self.root / "QGIS"
+        harness = upper / "agent-harness"
+        write(harness / "QGIS.md", "# QGIS architecture\n")
+        write(
+            harness / "setup.py",
+            "from setuptools import find_namespace_packages, setup\n"
+            "setup(name='cli-anything-qgis',\n"
+            "      packages=find_namespace_packages(include=['cli_anything.*']),\n"
+            "      entry_points={'console_scripts': ['cli-anything-qgis=cli_anything.qgis.qgis_cli:cli']})\n",
+        )
+        package = harness / "cli_anything" / "qgis"
+        write(package / "__main__.py", "from .qgis_cli import cli\n")
+        write(
+            package / "qgis_cli.py",
+            "import click\n"
+            "@click.group(invoke_without_command=True)\n"
+            "@click.option('--json', 'as_json', is_flag=True)\n"
+            "@click.option('--dry-run', is_flag=True)\n"
+            "def cli(as_json, dry_run):\n"
+            "    pass\n",
+        )
+        write(package / "utils" / "repl_skin.py", "CANONICAL = True\n")
+        write(package / "skills" / "SKILL.md", "---\nname: cli-anything-qgis\ndescription: Do qgis things.\n---\n")
+        write(package / "tests" / "test_core.py", "def test_ok():\n    assert True\n")
+        write(package / "tests" / "test_full_e2e.py", "def test_e2e():\n    assert True\n")
+        write(harness / "TEST.md", "# Test plan\n\n## Results\n\n3 passed\n")
+        write(
+            self.root / "skills" / "cli-anything-qgis" / "SKILL.md",
+            "---\nname: cli-anything-qgis\ndescription: Do qgis things with a stateful CLI.\n---\n\n# qgis\n",
+        )
+
+        result = self.module.verify(harness)
+        self.assertEqual(result["slug"], "qgis")
+        self.assertTrue(result["ok"], [c for c in result["checks"] if c["status"] == "fail"])
+
 
 class CommandLineTests(unittest.TestCase):
     def setUp(self):
