@@ -537,6 +537,314 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "wirecat-telegram",
+      "display_name": "WireCat Telegram CLI",
+      "version": "latest",
+      "description": "Read, search and send in your personal Telegram account from the terminal or an MCP server. Chats sync to a local store, so search works offline",
+      "category": "communication",
+      "requires": "Node.js >= 22.19, a Telegram account",
+      "homepage": "https://telegram.org",
+      "source_url": "https://github.com/WireCatLabs/tg-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/tg-cli",
+      "install_cmd": "npm install -g @wirecat/tg-cli",
+      "npx_cmd": "npx @wirecat/tg-cli",
+      "skill_md": "https://github.com/WireCatLabs/tg-cli/blob/main/skills/tg-cli/SKILL.md",
+      "entry_point": "tg",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-max",
+      "display_name": "WireCat MAX CLI",
+      "version": "latest",
+      "description": "Read and send in MAX Messenger from the terminal, through the official Bot API or your personal account. Local search and an MCP server",
+      "category": "communication",
+      "requires": "Node.js >= 22.16, a MAX account or a MAX bot token",
+      "homepage": "https://max.ru",
+      "source_url": "https://github.com/WireCatLabs/max-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/max-cli",
+      "install_cmd": "npm install -g @wirecat/max-cli",
+      "npx_cmd": "npx @wirecat/max-cli",
+      "skill_md": "https://github.com/WireCatLabs/max-cli/blob/main/skills/max-cli/SKILL.md",
+      "entry_point": "max",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-whatsapp",
+      "display_name": "WireCat WhatsApp CLI",
+      "version": "latest",
+      "description": "Read, search and send in your personal WhatsApp account from the terminal, linked as a device. Local search and an MCP server",
+      "category": "communication",
+      "requires": "Node.js >= 22.16, a WhatsApp account linked as a device",
+      "homepage": "https://www.whatsapp.com",
+      "source_url": "https://github.com/WireCatLabs/whatsapp-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/whatsapp-cli",
+      "install_cmd": "npm install -g @wirecat/whatsapp-cli",
+      "npx_cmd": "npx @wirecat/whatsapp-cli",
+      "skill_md": "https://github.com/WireCatLabs/whatsapp-cli/blob/main/skills/whatsapp-cli/SKILL.md",
+      "entry_point": "wa",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-zoom",
+      "display_name": "WireCat Zoom CLI",
+      "version": "latest",
+      "description": "Keep your Zoom cloud recordings and transcripts in a local archive, search them and schedule meetings from the terminal or an MCP server",
+      "category": "communication",
+      "requires": "Node.js >= 22.16, a Zoom account",
+      "homepage": "https://zoom.us",
+      "source_url": "https://github.com/WireCatLabs/zoom-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/zoom-cli",
+      "install_cmd": "npm install -g @wirecat/zoom-cli",
+      "npx_cmd": "npx @wirecat/zoom-cli",
+      "skill_md": "https://github.com/WireCatLabs/zoom-cli/blob/main/skills/zoom-cli/SKILL.md",
+      "entry_point": "zm",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-mail",
+      "display_name": "WireCat Mail CLI",
+      "version": "latest",
+      "description": "Sync an IMAP mailbox to a local store and search it offline, sort mail on the server with undo, and write, send and reply over SMTP. The password stays in the OS keyring",
+      "category": "communication",
+      "requires": "Node.js >= 22.16, an IMAP mailbox",
+      "homepage": "https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol",
+      "source_url": "https://github.com/WireCatLabs/mail-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/mail-cli",
+      "install_cmd": "npm install -g @wirecat/mail-cli",
+      "npx_cmd": "npx @wirecat/mail-cli",
+      "skill_md": "https://github.com/WireCatLabs/mail-cli/blob/main/skills/mail-cli/SKILL.md",
+      "entry_point": "mail",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-google-drive",
+      "display_name": "WireCat Google Drive CLI",
+      "version": "latest",
+      "description": "Search and read the Google Drive folders you choose offline, with Docs, Sheets, PDF and docx as local text, from the terminal or an MCP server",
+      "category": "productivity",
+      "requires": "Node.js >= 22.16, a Google account",
+      "homepage": "https://drive.google.com",
+      "source_url": "https://github.com/WireCatLabs/drive-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/drive-cli",
+      "install_cmd": "npm install -g @wirecat/drive-cli",
+      "npx_cmd": "npx @wirecat/drive-cli",
+      "skill_md": "https://github.com/WireCatLabs/drive-cli/blob/main/skills/drive-cli/SKILL.md",
+      "entry_point": "drive",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-google-calendar",
+      "display_name": "WireCat Google Calendar CLI",
+      "version": "latest",
+      "description": "Sync, search and change Google Calendar events and check free/busy time from the terminal or an MCP server",
+      "category": "productivity",
+      "requires": "Node.js >= 22.16, a Google account",
+      "homepage": "https://calendar.google.com",
+      "source_url": "https://github.com/WireCatLabs/gcal-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/gcal-cli",
+      "install_cmd": "npm install -g @wirecat/gcal-cli",
+      "npx_cmd": "npx @wirecat/gcal-cli",
+      "skill_md": "https://github.com/WireCatLabs/gcal-cli/blob/main/skills/gcal-cli/SKILL.md",
+      "entry_point": "gcal",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-notion",
+      "display_name": "WireCat Notion CLI",
+      "version": "latest",
+      "description": "Search a synced copy of your Notion pages offline, read a page as Markdown live and list databases, with your own token, from the terminal or an MCP server",
+      "category": "productivity",
+      "requires": "Node.js >= 22.16, a Notion account",
+      "homepage": "https://www.notion.com",
+      "source_url": "https://github.com/WireCatLabs/notion-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/notion-cli",
+      "install_cmd": "npm install -g @wirecat/notion-cli",
+      "npx_cmd": "npx @wirecat/notion-cli",
+      "skill_md": "https://github.com/WireCatLabs/notion-cli/blob/main/skills/notion-cli/SKILL.md",
+      "entry_point": "notion",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-yandex-disk",
+      "display_name": "WireCat Yandex Disk CLI",
+      "version": "latest",
+      "description": "Search and read your Yandex Disk files, and download, upload, move or share them, from the terminal or an MCP server",
+      "category": "productivity",
+      "requires": "Node.js >= 22.16, a Yandex account",
+      "homepage": "https://disk.yandex.com",
+      "source_url": "https://github.com/WireCatLabs/ydisk-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/yandex-disk-cli",
+      "install_cmd": "npm install -g @wirecat/yandex-disk-cli",
+      "npx_cmd": "npx @wirecat/yandex-disk-cli",
+      "skill_md": "https://github.com/WireCatLabs/ydisk-cli/blob/main/skills/yandex-disk-cli/SKILL.md",
+      "entry_point": "ydisk",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-memo",
+      "display_name": "WireCat Memo CLI",
+      "version": "latest",
+      "description": "Context about a person across your messengers, notes and mail, from one local store. Ask who someone is and what you talked about",
+      "category": "productivity",
+      "requires": "Node.js >= 22.16, at least one other WireCat CLI synced",
+      "homepage": "https://wirecat.dev",
+      "source_url": "https://github.com/WireCatLabs/cli-memo",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/cli-memo",
+      "install_cmd": "npm install -g @wirecat/cli-memo",
+      "npx_cmd": "npx @wirecat/cli-memo",
+      "skill_md": "https://github.com/WireCatLabs/cli-memo/blob/main/skills/cli-memo/SKILL.md",
+      "entry_point": "memo",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-hubspot",
+      "display_name": "WireCat HubSpot CLI",
+      "version": "latest",
+      "description": "Keep a local copy of HubSpot deals, contacts and companies, change deals and contacts, and call any HubSpot CRM API operation from the terminal or an MCP server",
+      "category": "productivity",
+      "requires": "Node.js >= 22.16, a HubSpot account",
+      "homepage": "https://www.hubspot.com",
+      "source_url": "https://github.com/WireCatLabs/hubspot-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/hubspot-cli",
+      "install_cmd": "npm install -g @wirecat/hubspot-cli",
+      "npx_cmd": "npx @wirecat/hubspot-cli",
+      "skill_md": "https://github.com/WireCatLabs/hubspot-cli/blob/main/skills/hubspot-cli/SKILL.md",
+      "entry_point": "hubspot",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-bitrix24",
+      "display_name": "WireCat Bitrix24 CLI",
+      "version": "latest",
+      "description": "Read and change Bitrix24 CRM deals, leads, contacts and companies from the terminal or an MCP server, with a local copy for search",
+      "category": "productivity",
+      "requires": "Node.js >= 22.16, a Bitrix24 portal",
+      "homepage": "https://www.bitrix24.com",
+      "source_url": "https://github.com/WireCatLabs/bitrix24-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/bitrix24-cli",
+      "install_cmd": "npm install -g @wirecat/bitrix24-cli",
+      "npx_cmd": "npx @wirecat/bitrix24-cli",
+      "skill_md": "https://github.com/WireCatLabs/bitrix24-cli/blob/main/skills/bitrix24-cli/SKILL.md",
+      "entry_point": "b24",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-asterisk",
+      "display_name": "WireCat Asterisk CLI",
+      "version": "latest",
+      "description": "Turn Asterisk PBX calls and recordings into searchable meetings, transcribed on your own computer. Read-only",
+      "category": "audio",
+      "requires": "Node.js >= 22.16, an Asterisk PBX with CDR (Master.csv, MySQL or PostgreSQL)",
+      "homepage": "https://www.asterisk.org",
+      "source_url": "https://github.com/WireCatLabs/asterisk-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/asterisk-cli",
+      "install_cmd": "npm install -g @wirecat/asterisk-cli",
+      "npx_cmd": "npx @wirecat/asterisk-cli",
+      "skill_md": "https://github.com/WireCatLabs/asterisk-cli/blob/main/skills/asterisk-cli/SKILL.md",
+      "entry_point": "pbx",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
+    },
+    {
+      "name": "wirecat-beeline",
+      "display_name": "WireCat Beeline Cloud PBX CLI",
+      "version": "latest",
+      "description": "Sync Beeline Cloud PBX call records, transcribe the calls on your own computer, then search and export them",
+      "category": "audio",
+      "requires": "Node.js >= 22.16, a Beeline Cloud PBX account",
+      "homepage": "https://moskva.beeline.ru/business/",
+      "source_url": "https://github.com/WireCatLabs/beeline-cli",
+      "package_manager": "npm",
+      "npm_package": "@wirecat/beeline-cli",
+      "install_cmd": "npm install -g @wirecat/beeline-cli",
+      "npx_cmd": "npx @wirecat/beeline-cli",
+      "skill_md": "https://github.com/WireCatLabs/beeline-cli/blob/main/skills/beeline-cli/SKILL.md",
+      "entry_point": "beeline",
+      "contributors": [
+        {
+          "name": "WireCatLabs",
+          "url": "https://github.com/WireCatLabs"
+        }
+      ]
     }
   ]
 }
