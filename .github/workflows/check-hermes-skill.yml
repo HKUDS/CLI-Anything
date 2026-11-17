@@ -1,0 +1,63 @@
+name: Check Hermes Skill
+
+on:
+  pull_request:
+    paths:
+      - 'hermes-skill/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-hermes-skill.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'hermes-skill/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-hermes-skill.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-installer:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Test Hermes skill installer
+        run: bash hermes-skill/tests/test_install.sh
+
+  test-verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Test the harness verifier
+        run: python3 -m unittest discover -s hermes-skill/tests -p 'test_*.py' -v
+
+      - name: Audit the harness tree (advisory)
+        continue-on-error: true
+        run: |
+          python3 hermes-skill/scripts/verify_harness.py --all --json > audit.json || true
+          python3 hermes-skill/scripts/verify_harness.py --all --summary || true
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-audit
+          path: audit.json
+          if-no-files-found: ignore
