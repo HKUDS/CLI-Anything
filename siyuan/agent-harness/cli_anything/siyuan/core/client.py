@@ -17,17 +17,20 @@ class SiYuanConfig:
     host: str = "127.0.0.1"
     port: int = 6806
     token: str = ""
+    scheme: str = "http"
 
     @property
     def base_url(self) -> str:
-        return f"http://{self.host}:{self.port}"
+        if self.scheme == "https" and self.port == 443:
+            return f"https://{self.host}"
+        return f"{self.scheme}://{self.host}:{self.port}"
 
 
 def load_config(config_path: str | None = None) -> SiYuanConfig:
     """Load SiYuan connection config from file or environment.
 
     Priority: explicit path -> env vars -> defaults.
-    Config file is JSON: {"host": "...", "port": 6806, "token": "..."}
+    Config file is JSON: {"host": "...", "port": 6806, "token": "...", "scheme": "http"}
     """
     if config_path:
         config_file = Path(config_path)
@@ -46,12 +49,14 @@ def load_config(config_path: str | None = None) -> SiYuanConfig:
                 host=os.environ.get("SIYUAN_HOST", data.get("host", "127.0.0.1")),
                 port=int(os.environ.get("SIYUAN_PORT", data.get("port", 6806))),
                 token=os.environ.get("SIYUAN_TOKEN", data.get("token", "")),
+                scheme=os.environ.get("SIYUAN_SCHEME", data.get("scheme", "http")),
             )
 
     return SiYuanConfig(
         host=os.environ.get("SIYUAN_HOST", "127.0.0.1"),
         port=int(os.environ.get("SIYUAN_PORT", "6806")),
         token=os.environ.get("SIYUAN_TOKEN", ""),
+        scheme=os.environ.get("SIYUAN_SCHEME", "http"),
     )
 
 

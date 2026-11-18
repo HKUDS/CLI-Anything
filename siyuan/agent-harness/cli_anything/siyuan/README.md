@@ -113,12 +113,15 @@ siyuan ❯ quit
 | `doc tree <notebook-id>` | Show document tree |
 | `doc get <id>` | Get document path by ID |
 | `doc rename <id> <title>` | Rename a document |
+| `doc move <id>... --to <target>` | Move documents under a doc or notebook root |
+| `doc move-path -f <path>... --to-notebook <nb>` | Move documents by human path |
 | `doc remove <id>` | Delete a document |
 | `block insert <data>` | Insert a block (use `-` or omit for stdin pipe) |
 | `block update <id> <data>` | Update block content (use `-` or omit for stdin pipe) |
 | `block delete <id>` | Delete a block |
 | `block get <id>` | Get block kramdown source |
 | `block children <id>` | Get child blocks |
+| `block move <id> [--parent <pid> / --previous <sibling>]` | Move a block |
 | `sql <stmt>` | Execute SQL query |
 | `search <query>` | Full-text search |
 | `export md <doc-id>` | Export as Markdown |
