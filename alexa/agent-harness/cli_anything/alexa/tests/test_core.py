@@ -25,7 +25,7 @@ RAW_DEVICES = [
     {"accountName": "Bedroom Echo", "serialNumber": "G0933", "deviceType": "A3S5BH2HU6VAYF",
      "deviceFamily": "ECHO", "online": False, "capabilities": ["VOLUME_SETTING"]},
     {"accountName": "This Device", "serialNumber": "APP1", "deviceType": "A2IVLV5VM2W81",
-     "deviceFamily": "VOX", "online": True, "capabilities": []},
+     "deviceFamily": "VOX", "online": True, "capabilities": ["MICROPHONE", "AUDIO_PLAYER"]},
 ]
 
 

@@ -15,6 +15,9 @@ from typing import Any
 # "devices", speaker groups' virtual entries) is hidden unless --all is used.
 SPEAKER_FAMILIES = {"ECHO", "KNIGHT", "ROOK", "TABLET", "WHA", "FIRE_TV", "THIRD_PARTY_AVS_SONOS_BOOTLEG"}
 SPEAKER_CAPABILITIES = {"VOLUME_SETTING", "MICROPHONE", "AUDIO_PLAYER"}
+# Alexa apps on phones/PCs ("This Device") report audio capabilities but are
+# not speakers you can target.
+NON_SPEAKER_FAMILIES = {"VOX"}
 
 
 class DeviceNotFound(LookupError):
@@ -45,6 +48,8 @@ def normalize(raw: dict[str, Any]) -> dict[str, Any]:
 
 def is_speaker(family: str, capabilities: list[str]) -> bool:
     """True if the device can speak (TTS, announcements, commands)."""
+    if family in NON_SPEAKER_FAMILIES:
+        return False
     if family in SPEAKER_FAMILIES:
         return True
     return bool(SPEAKER_CAPABILITIES.intersection(capabilities or []))
