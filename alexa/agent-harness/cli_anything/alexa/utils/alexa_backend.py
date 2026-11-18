@@ -1,0 +1,292 @@
+"""Alexa backend — the only module that talks to Amazon.
+
+Wraps the `alexapy` library (the engine behind Home Assistant's Alexa Media
+Player) to control real Echo devices through Amazon's Alexa web API.
+
+Authentication
+--------------
+Amazon has no public API for controlling your own Echo devices, so login uses
+alexapy's capture proxy: a local web server on 127.0.0.1 forwards your browser
+to Amazon's real sign-in page (captcha, 2FA and passkeys all work), captures
+the resulting OAuth tokens, and registers this CLI as a device on your account.
+Your password is typed into Amazon's page only; it is never stored.
+
+Only the refresh token, device registration and session cookies are kept, in
+``~/.cli-anything-alexa`` (override with ``ALEXA_CLI_HOME``), with owner-only
+permissions.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import time
+import uuid as uuidlib
+from pathlib import Path
+from typing import Any, Awaitable, Callable
+
+INSTALL_HINT = "alexapy is required: pip install 'alexapy>=1.36'"
+DEFAULT_LOCALE = "en-US"
+
+
+# ── Storage ──────────────────────────────────────────────────────────
+
+def config_dir() -> Path:
+    path = Path(os.environ.get("ALEXA_CLI_HOME") or Path.home() / ".cli-anything-alexa")
+    (path / ".storage").mkdir(parents=True, exist_ok=True)
+    try:
+        path.chmod(0o700)
+        (path / ".storage").chmod(0o700)
+    except OSError:
+        pass
+    return path
+
+
+def account_file() -> Path:
+    return config_dir() / "account.json"
+
+
+def load_account() -> dict[str, Any] | None:
+    f = account_file()
+    if not f.exists():
+        return None
+    with open(f, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def save_account(account: dict[str, Any]) -> None:
+    f = account_file()
+    tmp = f.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(account, fh, indent=2)
+    os.replace(tmp, f)
+
+
+def delete_account() -> bool:
+    """Remove stored tokens and cookies. Returns True if anything was removed."""
+    removed = False
+    d = config_dir()
+    for p in [d / "account.json", *(d / ".storage").glob("*")]:
+        if p.is_file():
+            p.unlink()
+            removed = True
+    return removed
+
+
+def _outputpath(name: str) -> str:
+    return str(config_dir() / name)
+
+
+# ── alexapy plumbing ─────────────────────────────────────────────────
+
+def _alexapy():
+    try:
+        import alexapy  # noqa: F401
+    except ImportError as exc:  # pragma: no cover - exercised via CLI error path
+        raise RuntimeError(INSTALL_HINT) from exc
+    return alexapy
+
+
+class NotLoggedIn(RuntimeError):
+    """No usable Amazon session; run `auth login`."""
+
+
+def run(coro_factory: Callable[[], Awaitable[Any]]) -> Any:
+    """Run an async backend call from synchronous CLI code."""
+    return asyncio.run(coro_factory())
+
+
+def _oauth_from(login) -> dict[str, Any]:
+    return {
+        "access_token": login.access_token,
+        "refresh_token": login.refresh_token,
+        "mac_dms": login.mac_dms,
+        "expires_in": login.expires_in,
+    }
+
+
+async def _open_session():
+    """Return a logged-in AlexaLogin built from the stored account."""
+    alexapy = _alexapy()
+    account = load_account()
+    if not account or not (account.get("oauth") or {}).get("refresh_token"):
+        raise NotLoggedIn("Not logged in to Amazon. Run: cli-anything-alexa auth login --email you@example.com")
+    login = alexapy.AlexaLogin(
+        url=account["domain"],
+        email=account["email"],
+        password="",
+        outputpath=_outputpath,
+        oauth=account["oauth"],
+        uuid=account.get("uuid"),
+    )
+    await login.login(cookies=await login.load_cookie())
+    if not await login.test_loggedin(rebuild_session=False):
+        await login.close()
+        raise NotLoggedIn("Amazon session expired or was revoked. Run: cli-anything-alexa auth login")
+    # Tokens may rotate; persist the latest ones.
+    account["oauth"] = _oauth_from(login)
+    account["customer_id"] = login.customer_id or account.get("customer_id")
+    save_account(account)
+    await login.save_cookiefile()
+    return login, account
+
+
+async def _with_session(fn: Callable[[Any, dict[str, Any]], Awaitable[Any]]) -> Any:
+    login, account = await _open_session()
+    try:
+        return await fn(login, account)
+    finally:
+        await login.close()
+
+
+# ── Login (capture proxy) ────────────────────────────────────────────
+
+async def _login_via_proxy(email: str, domain: str, port: int, timeout: int,
+                           on_url: Callable[[str], None]) -> dict[str, Any]:
+    alexapy = _alexapy()
+    device_uuid = uuidlib.uuid4().hex.upper()
+    login = alexapy.AlexaLogin(url=domain, email=email, password="", outputpath=_outputpath, uuid=device_uuid)
+    proxy = alexapy.AlexaProxy(login, f"http://127.0.0.1:{port}")
+    await proxy.start_proxy(host="127.0.0.1")
+    login.proxy_url = str(proxy.access_url())
+    try:
+        on_url(str(proxy.access_url()))
+        deadline = time.monotonic() + timeout
+        while not (getattr(login, "access_token", None) or getattr(login, "authorization_code", None)):
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"No Amazon sign-in completed within {timeout}s.")
+            await asyncio.sleep(1)
+        # Register this CLI as a device and convert tokens into web cookies.
+        if not await login.test_loggedin():
+            raise NotLoggedIn("Amazon sign-in finished but the session could not be verified.")
+        await login.finalize_login()
+        account = {
+            "email": email,
+            "domain": domain,
+            "uuid": login.uuid,
+            "oauth": _oauth_from(login),
+            "customer_id": login.customer_id,
+            "locale": DEFAULT_LOCALE,
+            "logged_in_at": int(time.time()),
+        }
+        save_account(account)
+        return {"email": email, "domain": domain, "customer_id": login.customer_id}
+    finally:
+        await proxy.stop_proxy()
+        await login.close()
+
+
+def login(email: str, domain: str = "amazon.com", port: int = 8765, timeout: int = 600,
+          on_url: Callable[[str], None] = print) -> dict[str, Any]:
+    return run(lambda: _login_via_proxy(email, domain, port, timeout, on_url))
+
+
+def verify() -> dict[str, Any]:
+    """Confirm the stored session works against Amazon."""
+    async def _go(login, account):
+        return {"email": account["email"], "domain": account["domain"],
+                "customer_id": login.customer_id, "logged_in": True}
+    return run(lambda: _with_session(_go))
+
+
+# ── Devices ──────────────────────────────────────────────────────────
+
+def fetch_devices() -> list[dict[str, Any]]:
+    """Raw device records from Amazon."""
+    alexapy = _alexapy()
+
+    async def _go(login, account):
+        return await alexapy.AlexaAPI.get_devices(login) or []
+    return run(lambda: _with_session(_go))
+
+
+def fetch_routines() -> list[dict[str, Any]]:
+    alexapy = _alexapy()
+
+    async def _go(login, account):
+        return await alexapy.AlexaAPI.get_automations(login) or []
+    return run(lambda: _with_session(_go))
+
+
+def fetch_network() -> Any:
+    alexapy = _alexapy()
+
+    async def _go(login, account):
+        return await alexapy.AlexaAPI.get_network_details(login) or []
+    return run(lambda: _with_session(_go))
+
+
+def cache_devices(devices: list[dict[str, Any]]) -> None:
+    f = config_dir() / "devices.json"
+    with open(f, "w", encoding="utf-8") as fh:
+        json.dump(devices, fh, indent=2)
+
+
+def cached_devices() -> list[dict[str, Any]]:
+    f = config_dir() / "devices.json"
+    if not f.exists():
+        return []
+    with open(f, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+class _DeviceAdapter:
+    """The attributes AlexaAPI reads from a device object."""
+
+    def __init__(self, device: dict[str, Any], locale: str):
+        self.device_serial_number = device["serial"]
+        self._device_type = device["type"]
+        self._device_family = device.get("family")
+        self._cluster_members = device.get("cluster_members") or []
+        self._locale = locale
+
+
+# ── Execution ────────────────────────────────────────────────────────
+
+async def _execute(login, account, action: dict[str, Any]) -> dict[str, Any]:
+    alexapy = _alexapy()
+    op = action["op"]
+    locale = account.get("locale") or DEFAULT_LOCALE
+
+    if op == "light":
+        result = await alexapy.AlexaAPI.set_light_state(
+            login, action["entity_id"], power_on=action["on"],
+            brightness=action.get("brightness"), color_name=action.get("color"))
+        return {"sent": True, "response": result}
+
+    if op == "announce":
+        first = action["devices"][0]
+        api = alexapy.AlexaAPI(_DeviceAdapter(first, locale), login)
+        await api.send_announcement(action["text"], title=action["title"],
+                                    targets=[d["serial"] for d in action["devices"]], queue_delay=0)
+        return {"sent": True}
+
+    api = alexapy.AlexaAPI(_DeviceAdapter(action["device"], locale), login)
+    if op == "speak":
+        await api.send_tts(action["text"], queue_delay=0)
+    elif op == "command":
+        await api.run_custom(action["text"], queue_delay=0)
+    elif op == "routine":
+        await api.run_routine(action["utterance"], queue_delay=0)
+    elif op == "sequence":
+        await api.send_sequence(action["sequence"], queue_delay=0)
+    elif op == "music":
+        await api.play_music(action["provider"], action["query"], timer=action.get("timer"), queue_delay=0)
+    elif op == "volume":
+        await api.set_volume(action["level"] / 100.0, queue_delay=0)
+    elif op == "media":
+        mop = action["media_op"]
+        if mop == "stop":
+            await api.stop(queue_delay=0)
+        else:
+            await getattr(api, mop)()
+    else:
+        raise ValueError(f"Unknown action op: {op}")
+    return {"sent": True}
+
+
+def execute(action: dict[str, Any]) -> dict[str, Any]:
+    """Send an action (from core.actions) to Amazon."""
+    return run(lambda: _with_session(lambda login, account: _execute(login, account, action)))

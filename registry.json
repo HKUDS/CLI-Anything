@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "alexa",
+      "display_name": "Alexa",
+      "version": "1.0.0",
+      "description": "Control Amazon Echo devices: speak, announce, voice commands, routines, music, volume, smart-home lights",
+      "requires": "Amazon account with Echo devices (one-time browser sign-in)",
+      "homepage": "https://alexa.amazon.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=alexa/agent-harness",
+      "entry_point": "cli-anything-alexa",
+      "skill_md": "skills/cli-anything-alexa/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "bigishbalan27-star",
+          "url": "https://github.com/bigishbalan27-star"
+        }
+      ]
     }
   ]
 }
