@@ -147,7 +147,8 @@ def auth():
 @click.option("--email", required=True, help="Amazon account email.")
 @click.option("--domain", default="amazon.com", show_default=True,
               help="Amazon domain of your account, e.g. amazon.co.uk, amazon.de, amazon.in.")
-@click.option("--port", default=8765, show_default=True, help="Local port for the sign-in proxy.")
+@click.option("--port", type=click.IntRange(1, 65535), default=None,
+              help="Local port for the sign-in page (default: a free port).")
 @click.option("--timeout", default=600, show_default=True, help="Seconds to wait for sign-in.")
 @_guard
 def auth_login(email, domain, port, timeout):

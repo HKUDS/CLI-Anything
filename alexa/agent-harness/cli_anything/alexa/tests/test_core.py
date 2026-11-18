@@ -302,3 +302,58 @@ def test_execute_light(monkeypatch):
     monkeypatch.setattr(backend, "_alexapy", lambda: _FakeAlexapy)
     asyncio.run(backend._execute(object(), {}, act.light("ent-1", False, 30)))
     assert _FakeAPI.calls[0][0] == "set_light_state" and _FakeAPI.calls[0][3]["power_on"] is False
+
+
+# ── login robustness: busy ports and missing CA certificates ──────────
+
+def test_choose_port_picks_free_port_by_default():
+    port = backend.choose_port(None)
+    assert 1024 <= port <= 65535 and not backend.port_in_use(port)
+
+
+def test_choose_port_rejects_port_used_by_another_app():
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        busy = s.getsockname()[1]
+        with pytest.raises(RuntimeError, match="already used by another app"):
+            backend.choose_port(busy)
+
+
+def test_certifi_bundle_used_when_unset(monkeypatch):
+    import certifi
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    backend.use_certifi_bundle()
+    assert os.environ["SSL_CERT_FILE"] == certifi.where()
+
+
+def test_certifi_bundle_respects_user_setting(monkeypatch):
+    monkeypatch.setenv("SSL_CERT_FILE", "/custom/ca.pem")
+    backend.use_certifi_bundle()
+    assert os.environ["SSL_CERT_FILE"] == "/custom/ca.pem"
+
+
+def test_cert_error_becomes_actionable_message():
+    import ssl
+
+    async def boom():
+        try:
+            raise ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer")
+        except ssl.SSLCertVerificationError as inner:
+            raise ConnectionError("Cannot connect to host api.amazon.com:443") from inner
+
+    with pytest.raises(RuntimeError, match="Install Certificates.command"):
+        backend.run(boom)
+
+
+def test_cli_login_busy_port_is_clean_json_error(home):
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        busy = s.getsockname()[1]
+        result = CliRunner().invoke(alexa_cli.cli, ["--json", "auth", "login", "--email", "a@b.c",
+                                                    "--port", str(busy)])
+    data = json.loads(result.output)
+    assert result.exit_code == 1 and data["error"] == "runtime_error" and "already used" in data["message"]

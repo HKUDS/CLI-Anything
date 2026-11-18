@@ -85,14 +85,21 @@ class TestCLISubprocess:
         print(f"\n  dry-run action: {data['action']}")
 
     def test_login_proxy_serves_http(self, iso_env):
-        """The sign-in proxy must listen locally and answer the browser."""
+        """auth login picks a free port, prints it, and the proxy answers there."""
+        import re
         env, _ = iso_env
-        port = 8791
-        proc = subprocess.Popen(CLI + ["auth", "login", "--email", "e2e@example.com",
-                                       "--port", str(port), "--timeout", "20"],
+        proc = subprocess.Popen(CLI + ["auth", "login", "--email", "e2e@example.com", "--timeout", "20"],
                                 env=dict(env, BROWSER="true"), stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True)
         try:
+            port = None
+            for _ in range(20):
+                line = proc.stderr.readline()
+                m = re.search(r"http://127\.0\.0\.1:(\d+)", line or "")
+                if m:
+                    port = int(m.group(1))
+                    break
+            assert port, "auth login did not print its local sign-in URL"
             status = None
             for _ in range(40):
                 try:
@@ -102,7 +109,7 @@ class TestCLISubprocess:
                 except Exception:
                     time.sleep(0.5)
             assert status == 200, "login proxy did not answer on 127.0.0.1"
-            print(f"\n  login proxy answered HTTP {status} on port {port}")
+            print(f"\n  login proxy answered HTTP {status} on auto-selected port {port}")
         finally:
             proc.terminate()
             proc.wait(timeout=10)

@@ -81,12 +81,86 @@ def _outputpath(name: str) -> str:
 
 # ── alexapy plumbing ─────────────────────────────────────────────────
 
+def use_certifi_bundle() -> None:
+    """Make every HTTPS connection trust certifi's CA bundle.
+
+    alexapy builds some aiohttp sessions with Python's default trust store.
+    The python.org macOS installer ships without one (until the user runs
+    "Install Certificates.command"), which breaks login with
+    CERTIFICATE_VERIFY_FAILED. certifi is already an alexapy dependency, so
+    point OpenSSL at it unless the user chose a bundle themselves.
+    """
+    if os.environ.get("SSL_CERT_FILE"):
+        return
+    try:
+        import certifi
+    except ImportError:  # pragma: no cover - certifi ships with alexapy
+        return
+    os.environ["SSL_CERT_FILE"] = certifi.where()
+
+
 def _alexapy():
+    use_certifi_bundle()
     try:
         import alexapy  # noqa: F401
     except ImportError as exc:  # pragma: no cover - exercised via CLI error path
         raise RuntimeError(INSTALL_HINT) from exc
     return alexapy
+
+
+CERT_HINT = (
+    "Python could not verify Amazon's HTTPS certificate. On macOS with Python from python.org, run "
+    "'/Applications/Python 3.x/Install Certificates.command' (use your version), or set "
+    "SSL_CERT_FILE to a CA bundle, then retry."
+)
+
+
+def is_cert_error(exc: BaseException) -> bool:
+    """True if exc (or anything it wraps) is a TLS certificate failure."""
+    import ssl
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(exc):
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+# ── Local port helpers (login proxy) ─────────────────────────────────
+
+def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """True if something already accepts connections on host:port.
+
+    Checked by connecting, not binding: on macOS another app listening on
+    0.0.0.0 does not stop a 127.0.0.1 bind, yet the browser reaches that app.
+    """
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+
+def free_port(host: str = "127.0.0.1") -> int:
+    import socket
+    for _ in range(20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((host, 0))
+            port = s.getsockname()[1]
+        if not port_in_use(port, host):
+            return port
+    raise RuntimeError("Could not find a free local port for the sign-in page.")
+
+
+def choose_port(requested: int | None) -> int:
+    if requested is None:
+        return free_port()
+    if port_in_use(requested):
+        raise RuntimeError(
+            f"Port {requested} is already used by another app on this computer. "
+            "Run auth login without --port to pick a free one automatically, or choose another port."
+        )
+    return requested
 
 
 class NotLoggedIn(RuntimeError):
@@ -95,7 +169,12 @@ class NotLoggedIn(RuntimeError):
 
 def run(coro_factory: Callable[[], Awaitable[Any]]) -> Any:
     """Run an async backend call from synchronous CLI code."""
-    return asyncio.run(coro_factory())
+    try:
+        return asyncio.run(coro_factory())
+    except Exception as exc:
+        if is_cert_error(exc):
+            raise RuntimeError(CERT_HINT) from exc
+        raise
 
 
 def _oauth_from(login) -> dict[str, Any]:
@@ -178,8 +257,9 @@ async def _login_via_proxy(email: str, domain: str, port: int, timeout: int,
         await login.close()
 
 
-def login(email: str, domain: str = "amazon.com", port: int = 8765, timeout: int = 600,
+def login(email: str, domain: str = "amazon.com", port: int | None = None, timeout: int = 600,
           on_url: Callable[[str], None] = print) -> dict[str, Any]:
+    port = choose_port(port)
     return run(lambda: _login_via_proxy(email, domain, port, timeout, on_url))
 
 

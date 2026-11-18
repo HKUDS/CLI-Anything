@@ -43,8 +43,8 @@ pip install -e .
 cli-anything-alexa auth login --email you@example.com
 ```
 
-This starts a small proxy on `http://127.0.0.1:8765` and opens it in your
-browser. Sign in on Amazon's real page (captcha and two-step verification
+This starts a small proxy on a free local port (e.g. `http://127.0.0.1:53712`;
+the exact address is printed) and opens it in your browser. Sign in on Amazon's real page (captcha and two-step verification
 work). When the page says you are logged in, the CLI saves a refresh token and
 registers itself as a device on your Amazon account. Your password is never
 stored.
@@ -99,6 +99,17 @@ Tests against your real account are opt-in:
 ALEXA_E2E=1 pytest cli_anything/alexa/tests/test_full_e2e.py -v -s
 ALEXA_E2E=1 ALEXA_E2E_SPEAK=1 ALEXA_E2E_DEVICE="Kitchen" pytest cli_anything/alexa/tests/test_full_e2e.py -v -s
 ```
+
+## Troubleshooting
+
+- **The browser shows another app instead of Amazon:** another program uses that
+  port. Run `auth login` without `--port` so a free port is picked, and open the
+  exact address printed in the terminal.
+- **`CERTIFICATE_VERIFY_FAILED`:** the CLI already trusts the certifi bundle that
+  ships with alexapy. If you still see it (or you set `SSL_CERT_FILE` yourself), run
+  `/Applications/Python 3.x/Install Certificates.command` on macOS.
+- **Terminal keeps waiting after you signed in:** you finished on amazon.com
+  instead of the local page. Use a private window and stay on the `127.0.0.1` page.
 
 ## Limits
 
