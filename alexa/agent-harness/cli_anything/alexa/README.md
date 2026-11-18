@@ -50,8 +50,9 @@ registers itself as a device on your Amazon account. Your password is never
 stored.
 
 Outside the US, pass your Amazon domain, e.g. `--domain amazon.co.uk`,
-`amazon.de`, `amazon.in`, `amazon.ca`, `amazon.com.au`. Set the speech
-language with `cli-anything-alexa auth locale en-GB`.
+`amazon.de`, `amazon.in`, `amazon.ca`, `amazon.com.au`; the speech language is
+set to match (en-GB for amazon.co.uk, de-DE for amazon.de, ...). Change it
+with `cli-anything-alexa auth locale <locale>`.
 
 Tokens and cookies live in `~/.cli-anything-alexa/` (owner-only permissions;
 override with `ALEXA_CLI_HOME`). `auth logout` deletes them. To revoke access
@@ -108,6 +109,8 @@ ALEXA_E2E=1 ALEXA_E2E_SPEAK=1 ALEXA_E2E_DEVICE="Kitchen" pytest cli_anything/ale
 - **`CERTIFICATE_VERIFY_FAILED`:** the CLI already trusts the certifi bundle that
   ships with alexapy. If you still see it (or you set `SSL_CERT_FILE` yourself), run
   `/Applications/Python 3.x/Install Certificates.command` on macOS.
+- **"Your Amazon account is on amazon.co.uk, but you signed in with amazon.com":**
+  run the `auth logout` and `auth login --domain ...` command the warning prints.
 - **Terminal keeps waiting after you signed in:** you finished on amazon.com
   instead of the local page. Use a private window and stay on the `127.0.0.1` page.
 

@@ -35,10 +35,23 @@ _dry_run = False
 
 # ── Output helpers ───────────────────────────────────────────────────
 
+def _domain_warning() -> str | None:
+    try:
+        account = backend.load_account()
+    except Exception:
+        return None
+    return backend.domain_warning(account) if account else None
+
+
 def output(data: Any, message: str = "") -> None:
+    warning = _domain_warning()
     if _json_output:
+        if warning and isinstance(data, dict) and "warning" not in data:
+            data = {**data, "warning": warning}
         click.echo(json.dumps(data, indent=2, default=str))
         return
+    if warning:
+        click.echo(f"Warning: {warning}", err=True)
     if message:
         click.echo(message)
     if isinstance(data, list):
@@ -167,7 +180,7 @@ def auth_login(email, domain, port, timeout):
         click.echo("Waiting for sign-in to finish...", err=True)
 
     result = backend.login(email, domain, port, timeout, on_url=show)
-    output({"ok": True, **result}, f"Logged in as {email} ({domain}).")
+    output({"ok": True, **result}, f"Logged in as {email} ({domain}), speech language {result['locale']}.")
 
 
 @auth.command("status")

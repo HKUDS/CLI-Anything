@@ -29,6 +29,35 @@ from typing import Any, Awaitable, Callable
 INSTALL_HINT = "alexapy is required: pip install 'alexapy>=1.36'"
 DEFAULT_LOCALE = "en-US"
 
+# Speech language to use for each Amazon site unless the user picks one.
+DOMAIN_LOCALES = {
+    "amazon.com": "en-US", "amazon.ca": "en-CA", "amazon.co.uk": "en-GB", "amazon.com.au": "en-AU",
+    "amazon.in": "en-IN", "amazon.de": "de-DE", "amazon.fr": "fr-FR", "amazon.it": "it-IT",
+    "amazon.es": "es-ES", "amazon.com.mx": "es-MX", "amazon.com.br": "pt-BR", "amazon.co.jp": "ja-JP",
+    "amazon.nl": "nl-NL",
+}
+
+
+def locale_for(domain: str) -> str:
+    return DOMAIN_LOCALES.get((domain or "").lower(), DEFAULT_LOCALE)
+
+
+def domain_warning(account: dict[str, Any]) -> str | None:
+    """Actionable message when the account lives on another Amazon site."""
+    reported = account.get("reported_domain")
+    if reported and reported.lower() != (account.get("domain") or "").lower():
+        return (f"Your Amazon account is on {reported}, but you signed in with {account['domain']}. "
+                f"Some commands may fail. Fix: cli-anything-alexa auth logout && "
+                f"cli-anything-alexa auth login --email {account['email']} --domain {reported}")
+    return None
+
+
+def _quiet_alexapy_logs() -> None:
+    """alexapy repeats some warnings on every request; we report them once ourselves."""
+    import logging
+    if not os.environ.get("ALEXA_CLI_DEBUG"):
+        logging.getLogger("alexapy").setLevel(logging.ERROR)
+
 
 # ── Storage ──────────────────────────────────────────────────────────
 
@@ -101,6 +130,7 @@ def use_certifi_bundle() -> None:
 
 def _alexapy():
     use_certifi_bundle()
+    _quiet_alexapy_logs()
     try:
         import alexapy  # noqa: F401
     except ImportError as exc:  # pragma: no cover - exercised via CLI error path
@@ -207,6 +237,8 @@ async def _open_session():
     # Tokens may rotate; persist the latest ones.
     account["oauth"] = _oauth_from(login)
     account["customer_id"] = login.customer_id or account.get("customer_id")
+    if getattr(login, "reported_account_domain", None):
+        account["reported_domain"] = login.reported_account_domain
     save_account(account)
     await login.save_cookiefile()
     return login, account
@@ -247,11 +279,17 @@ async def _login_via_proxy(email: str, domain: str, port: int, timeout: int,
             "uuid": login.uuid,
             "oauth": _oauth_from(login),
             "customer_id": login.customer_id,
-            "locale": DEFAULT_LOCALE,
+            "locale": locale_for(domain),
+            "reported_domain": getattr(login, "reported_account_domain", None),
             "logged_in_at": int(time.time()),
         }
         save_account(account)
-        return {"email": email, "domain": domain, "customer_id": login.customer_id}
+        result = {"email": email, "domain": domain, "customer_id": login.customer_id,
+                  "locale": account["locale"]}
+        warning = domain_warning(account)
+        if warning:
+            result["warning"] = warning
+        return result
     finally:
         await proxy.stop_proxy()
         await login.close()

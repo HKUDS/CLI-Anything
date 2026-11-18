@@ -357,3 +357,29 @@ def test_cli_login_busy_port_is_clean_json_error(home):
                                                     "--port", str(busy)])
     data = json.loads(result.output)
     assert result.exit_code == 1 and data["error"] == "runtime_error" and "already used" in data["message"]
+
+
+# ── Amazon site (domain) handling ────────────────────────────────────
+
+@pytest.mark.parametrize("domain,locale", [("amazon.co.uk", "en-GB"), ("amazon.de", "de-DE"),
+                                           ("amazon.in", "en-IN"), ("amazon.com", "en-US"),
+                                           ("amazon.example", "en-US")])
+def test_locale_for_domain(domain, locale):
+    assert backend.locale_for(domain) == locale
+
+
+def test_domain_warning_only_on_mismatch():
+    base = {"email": "a@b.c", "domain": "amazon.com"}
+    assert backend.domain_warning(base) is None
+    assert backend.domain_warning({**base, "reported_domain": "amazon.com"}) is None
+    msg = backend.domain_warning({**base, "reported_domain": "amazon.co.uk"})
+    assert "--domain amazon.co.uk" in msg and "auth logout" in msg
+
+
+def test_cli_surfaces_domain_warning(fake_backend):
+    account = backend.load_account()
+    backend.save_account({**account, "reported_domain": "amazon.co.uk"})
+    result, data = run("speak", "kitchen", "hi")
+    assert data["ok"] is True and "--domain amazon.co.uk" in data["warning"]
+    human = CliRunner().invoke(alexa_cli.cli, ["speak", "kitchen", "hi"])
+    assert "Warning: Your Amazon account is on amazon.co.uk" in human.output
