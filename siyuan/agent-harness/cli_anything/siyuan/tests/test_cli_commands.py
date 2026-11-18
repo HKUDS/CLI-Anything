@@ -406,3 +406,65 @@ class TestDocTreeRecursiveCommand:
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert data[0]["id"] == "doc1"
+
+
+# ── Move commands (doc move / block move) ──────────────────────────────
+
+
+class TestDocMoveCommand:
+    def test_doc_move_by_id_calls_api(self, runner, mock_ctx):
+        """doc move forwards every ID to moveDocsByID with the target."""
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["doc", "move", "d1", "d2", "--to", "target"])
+            assert result.exit_code == 0
+            mock_ctx.client.move_docs_by_id.assert_called_once_with(["d1", "d2"], "target")
+            assert "Moved 2 doc(s)" in result.output
+
+    def test_doc_move_json_output(self, runner, mock_ctx):
+        mock_ctx.json_output = True
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["--json", "doc", "move", "d1", "--to", "target"])
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert data == {"moved": ["d1"], "to": "target"}
+
+    def test_doc_move_requires_target(self, runner, mock_ctx):
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["doc", "move", "d1"])
+            assert result.exit_code != 0
+            assert "--to" in result.output
+
+    def test_doc_move_requires_source(self, runner, mock_ctx):
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["doc", "move", "--to", "target"])
+            assert result.exit_code != 0
+
+    def test_doc_move_path_calls_move_docs(self, runner, mock_ctx):
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, [
+                "doc", "move-path", "-f", "/Inbox/A", "-f", "/Inbox/B",
+                "--to-notebook", "nb1", "--to-path", "/Archive",
+            ])
+            assert result.exit_code == 0
+            mock_ctx.client.move_docs.assert_called_once_with(
+                ["/Inbox/A", "/Inbox/B"], "nb1", "/Archive")
+
+
+class TestBlockMoveCommand:
+    def test_block_move_with_parent(self, runner, mock_ctx):
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["block", "move", "b1", "--parent", "p1"])
+            assert result.exit_code == 0
+            mock_ctx.client.move_block.assert_called_once_with("b1", previous_id="", parent_id="p1")
+
+    def test_block_move_with_previous(self, runner, mock_ctx):
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["block", "move", "b1", "--previous", "s1"])
+            assert result.exit_code == 0
+            mock_ctx.client.move_block.assert_called_once_with("b1", previous_id="s1", parent_id="")
+
+    def test_block_move_requires_anchor(self, runner, mock_ctx):
+        with patch("cli_anything.siyuan.siyuan_cli.SiYuanContext", return_value=mock_ctx):
+            result = runner.invoke(cli, ["block", "move", "b1"])
+            assert result.exit_code != 0
+            assert "anchor" in result.output.lower()

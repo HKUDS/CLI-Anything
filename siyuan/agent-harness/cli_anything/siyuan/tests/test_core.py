@@ -202,3 +202,34 @@ class TestUncappedListings:
         body = call_kwargs["json"]
         assert "maxListCount" in body
         assert body["maxListCount"] == 0
+
+
+class TestSchemeConfig:
+    """Tests for the scheme (http/https) base URL support."""
+
+    def test_default_scheme_is_http(self):
+        assert SiYuanConfig().base_url == "http://127.0.0.1:6806"
+
+    def test_https_with_default_port_omits_port(self):
+        cfg = SiYuanConfig(host="notes.example.org", scheme="https", port=443)
+        assert cfg.base_url == "https://notes.example.org"
+
+    def test_https_with_custom_port_keeps_port(self):
+        cfg = SiYuanConfig(host="notes.example.org", scheme="https", port=8443)
+        assert cfg.base_url == "https://notes.example.org:8443"
+
+    def test_config_file_scheme_is_loaded(self, tmp_path, monkeypatch):
+        import cli_anything.siyuan.core.client as client_mod
+
+        cfg_file = tmp_path / "cfg.json"
+        cfg_file.write_text(
+            json.dumps({"host": "notes.example.org", "port": 443,
+                        "scheme": "https", "token": "t"}),
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("SIYUAN_SCHEME", raising=False)
+        monkeypatch.delenv("SIYUAN_HOST", raising=False)
+        monkeypatch.delenv("SIYUAN_PORT", raising=False)
+        cfg = client_mod.load_config(str(cfg_file))
+        assert cfg.scheme == "https"
+        assert cfg.base_url == "https://notes.example.org"

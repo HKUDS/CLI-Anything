@@ -37,6 +37,8 @@ documents, blocks, search, and export.
 | `tree <notebook> [--path / --depth]` | Show doc tree |
 | `get <id>` | Get document path by ID |
 | `rename <id> <title>` | Rename a document |
+| `move <id>... --to <target>` | Move documents under another doc (or a notebook root) |
+| `move-path -f <path>... --to-notebook <nb> [--to-path /x]` | Move documents by human path |
 | `remove <id>` | Delete a document |
 
 ### block — Block operations
@@ -47,6 +49,7 @@ documents, blocks, search, and export.
 | `delete <id>` | Delete a block |
 | `get <id>` | Get block kramdown source |
 | `children <id>` | Get child blocks |
+| `move <id> [--parent <pid> / --previous <sibling>]` | Move a block under a parent or after a sibling |
 
 ### Other commands
 | Command | Description |
@@ -66,6 +69,8 @@ documents, blocks, search, and export.
 - Document IDs look like `20210817205410-2kvfpfn` (timestamp-based)
 - API token can be found in SiYuan Settings → About
 - Connection defaults: `http://127.0.0.1:6806`
+- Remote/TLS instances: pass `--scheme https --port 443` (or set `scheme` in
+  `~/.siyuan-cli.json` / `SIYUAN_SCHEME`) when SiYuan sits behind a reverse proxy
 
 ## Examples
 

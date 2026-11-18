@@ -65,11 +65,12 @@ class _CatchErrors(click.Group):
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--host", default="", help="SiYuan host (default: 127.0.0.1)")
 @click.option("--port", default=0, type=int, help="SiYuan port (default: 6806)")
+@click.option("--scheme", default="", help="URL scheme: http (default) or https")
 @click.option("--token", default="", help="SiYuan API token")
 @click.option("--config", "config_path", default="", help="Config file path")
 @click.pass_context
 def cli(ctx: click.Context, json_output: bool, host: str, port: int,
-        token: str, config_path: str):
+        scheme: str, token: str, config_path: str):
     # Force UTF-8 output to handle CJK characters on Windows
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, 'reconfigure'):
@@ -81,16 +82,19 @@ def cli(ctx: click.Context, json_output: bool, host: str, port: int,
     Default: http://127.0.0.1:6806
 
     Configure connection via ~/.siyuan-cli.json, env vars
-    (SIYUAN_HOST, SIYUAN_PORT, SIYUAN_TOKEN), or CLI flags.
+    (SIYUAN_HOST, SIYUAN_PORT, SIYUAN_SCHEME, SIYUAN_TOKEN), or CLI flags.
     """
     session = SessionManager()
     session.load()
+    if scheme and scheme not in ("http", "https"):
+        raise click.UsageError("--scheme must be 'http' or 'https'")
     cfg = load_config(config_path or None)
-    if host or port or token:
+    if host or port or token or scheme:
         cfg = SiYuanConfig(
             host=host or cfg.host,
             port=port or cfg.port,
             token=token or cfg.token,
+            scheme=scheme or cfg.scheme,
         )
     client = SiYuanClient(cfg)
     ctx.obj = SiYuanContext(client=client, session=session, json_output=json_output)
@@ -131,8 +135,13 @@ def _build_repl_commands() -> dict[str, str]:
         "doc list <notebook> <path>": "List documents at path",
         "doc tree <notebook>": "List full document tree",
         "doc get <id>": "Get document info by ID",
+        "doc rename <id> <title>": "Rename a document",
+        "doc move <id> --to <target>": "Move documents under a doc or notebook",
+        "doc move-path -f <path> --to-notebook <nb>": "Move documents by human path",
+        "doc remove <id>": "Remove a document",
         "block insert <parent> <data>": "Insert a block (use '-' for stdin)",
         "block update <id> <data>": "Update a block (use '-' for stdin)",
+        "block move <id> --parent <pid>": "Move a block under a parent or after a sibling",
         "block delete <id>": "Delete a block",
         "block get <id>": "Get block kramdown source",
         "sql <stmt>": "Execute SQL query",
@@ -321,6 +330,37 @@ def _handle_doc_repl(skin: Any, client: SiYuanClient,
     elif sub == "rename" and len(parts) >= 4:
         client.rename_doc_by_id(parts[2], " ".join(parts[3:]))
         skin.success("Renamed")
+    elif sub == "move" and "--to" in parts:
+        idx = parts.index("--to")
+        ids = [p for p in parts[2:idx]]
+        target = parts[idx + 1] if idx + 1 < len(parts) else ""
+        if not ids or not target:
+            skin.error("Usage: doc move <id>... --to <target-id>")
+            return
+        client.move_docs_by_id(ids, target)
+        skin.success(f"Moved {len(ids)} doc(s) to {target}")
+    elif sub == "move-path":
+        froms: list[str] = []
+        to_nb = ""
+        to_path = "/"
+        i = 2
+        while i < len(parts):
+            if parts[i] in ("-f", "--from-path") and i + 1 < len(parts):
+                froms.append(parts[i + 1])
+                i += 2
+            elif parts[i] == "--to-notebook" and i + 1 < len(parts):
+                to_nb = parts[i + 1]
+                i += 2
+            elif parts[i] == "--to-path" and i + 1 < len(parts):
+                to_path = parts[i + 1]
+                i += 2
+            else:
+                i += 1
+        if not froms or not to_nb:
+            skin.error("Usage: doc move-path -f <path> --to-notebook <nb> [--to-path /x]")
+            return
+        client.move_docs(froms, to_nb, to_path)
+        skin.success(f"Moved {len(froms)} doc(s) to {to_nb}:{to_path}")
     elif sub == "remove" and len(parts) >= 3:
         client.remove_doc_by_id(parts[2])
         skin.success("Removed")
@@ -374,6 +414,24 @@ def _handle_block_repl(skin: Any, client: SiYuanClient,
     elif sub == "delete" and len(parts) >= 3:
         client.delete_block(parts[2])
         skin.success("Block deleted")
+    elif sub == "move" and len(parts) >= 3:
+        parent = ""
+        previous = ""
+        i = 3
+        while i < len(parts):
+            if parts[i] == "--parent" and i + 1 < len(parts):
+                parent = parts[i + 1]
+                i += 2
+            elif parts[i] == "--previous" and i + 1 < len(parts):
+                previous = parts[i + 1]
+                i += 2
+            else:
+                i += 1
+        if not parent and not previous:
+            skin.error("Usage: block move <id> [--parent <pid> | --previous <bid>]")
+            return
+        client.move_block(parts[2], previous_id=previous, parent_id=parent)
+        skin.success(f"Moved block: {parts[2]}")
     elif sub == "get" and len(parts) >= 3:
         kramdown = client.get_block_kramdown(parts[2])
         if json_mode:
@@ -597,6 +655,40 @@ def doc_remove(ctx: SiYuanContext, doc_id: str):
     click.echo(f"Removed: {doc_id}")
 
 
+@doc.command("move")
+@click.argument("doc_ids", nargs=-1, required=True)
+@click.option("--to", "to_id", required=True,
+              help="Target ID: a document ID (nest under it) or a notebook ID (move to its root)")
+@click.pass_obj
+def doc_move(ctx: SiYuanContext, doc_ids: tuple[str, ...], to_id: str):
+    """Move one or more documents under another document or notebook root.
+
+    Example: sy doc move 20240101120000-abc123 --to 20240101120000-def456
+    """
+    ctx.client.move_docs_by_id(list(doc_ids), to_id)
+    if ctx.json_output:
+        click.echo(json.dumps({"moved": list(doc_ids), "to": to_id}, ensure_ascii=False))
+    else:
+        click.echo(f"Moved {len(doc_ids)} doc(s) to: {to_id}")
+
+
+@doc.command("move-path")
+@click.option("-f", "--from-path", "from_paths", multiple=True, required=True,
+              help="Source hpath, e.g. /Inbox/Note (repeatable)")
+@click.option("--to-notebook", "to_notebook", required=True, help="Target notebook ID")
+@click.option("--to-path", "to_path", default="/", help="Target hpath (default: /)")
+@click.pass_obj
+def doc_move_path(ctx: SiYuanContext, from_paths: tuple[str, ...], to_notebook: str, to_path: str):
+    """Move documents by human path instead of ID."""
+    ctx.client.move_docs(list(from_paths), to_notebook, to_path)
+    if ctx.json_output:
+        click.echo(json.dumps({
+            "moved": list(from_paths), "to_notebook": to_notebook, "to_path": to_path,
+        }, ensure_ascii=False))
+    else:
+        click.echo(f"Moved {len(from_paths)} doc(s) to {to_notebook}:{to_path}")
+
+
 # ── Block commands ─────────────────────────────────────────────────────
 
 @cli.group()
@@ -669,6 +761,24 @@ def block_children(ctx: SiYuanContext, block_id: str):
     else:
         for c in children:
             click.echo(f"{c.get('id', ''):<30} {c.get('type', ''):<8} {c.get('subType', '')}")
+
+
+@block.command("move")
+@click.argument("block_id")
+@click.option("--parent", default="", help="New parent block ID")
+@click.option("--previous", default="", help="Insert after this block ID")
+@click.pass_obj
+def block_move(ctx: SiYuanContext, block_id: str, parent: str, previous: str):
+    """Move a block under a new parent or after a sibling."""
+    if not parent and not previous:
+        raise click.UsageError("An anchor is required: --parent or --previous")
+    ctx.client.move_block(block_id, previous_id=previous, parent_id=parent)
+    if ctx.json_output:
+        click.echo(json.dumps({
+            "moved": block_id, "parent": parent, "previous": previous,
+        }, ensure_ascii=False))
+    else:
+        click.echo(f"Moved block: {block_id}")
 
 
 # ── SQL command ────────────────────────────────────────────────────────
