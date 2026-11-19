@@ -24,6 +24,18 @@ import numpy as np
 NS_CORE = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 NS_BAMBU = "http://schemas.bambulab.com/package/2021"
 
+# The geometry API and CLI use millimeters. Keep the archive's unit for
+# serialization so component/build translations and extension data retain
+# their original coordinate system.
+_MM_PER_UNIT = {
+    "micron": 0.001,
+    "millimeter": 1.0,
+    "centimeter": 10.0,
+    "inch": 25.4,
+    "foot": 304.8,
+    "meter": 1000.0,
+}
+
 # Common namespace prefixes found in 3MF files -- we register them so that
 # ElementTree preserves them when serialising instead of inventing ``ns0``
 # etc.
@@ -42,6 +54,14 @@ def _tag(local: str, ns: str = NS_CORE) -> str:
     return f"{{{ns}}}{local}"
 
 
+def _unit_scale(unit: str) -> float:
+    """Return millimeters per model unit, rejecting unsupported units."""
+    try:
+        return _MM_PER_UNIT[unit]
+    except KeyError:
+        raise ValueError(f"Unsupported 3MF unit: {unit!r}") from None
+
+
 # ---------------------------------------------------------------------------
 # Data classes (frozen / immutable)
 # ---------------------------------------------------------------------------
@@ -53,7 +73,7 @@ class MeshData:
     Attributes:
         object_id: The ``id`` attribute of the ``<object>`` element.
         name:      The ``name`` attribute (may be empty).
-        vertices:  (N, 3) float64 array of vertex coordinates.
+        vertices:  (N, 3) float64 array of vertex coordinates in millimeters.
         triangles: (M, 3) int32 array of triangle vertex-indices.
         triangle_attributes: Per-triangle XML attributes other than
                     ``v1``, ``v2``, and ``v3``. This preserves 3MF
@@ -93,7 +113,9 @@ class ThreeMFData:
 
     Attributes:
         meshes:      Tuple of :class:`MeshData` objects.
-        unit:        Model unit string (``millimeter``, ``inch``, etc.).
+        unit:        Archive unit (``millimeter``, ``inch``, etc.). MeshData
+                     coordinates are always in millimeters, independently
+                     of this serialization unit.
         model_path:  ZIP-internal path of the model XML file.
         metadata:    ``{name: value}`` dict of ``<metadata>`` elements.
         raw_entries: ``{zip_path: bytes}`` of every non-model ZIP member,
@@ -135,6 +157,7 @@ def _find_model_path(zf: zipfile.ZipFile) -> str:
 def _parse_mesh_element(
     obj_elem: ET.Element,
     ns: str,
+    unit_scale: float = 1.0,
 ) -> MeshData | None:
     """Extract mesh arrays from an ``<object>`` element.
 
@@ -163,7 +186,7 @@ def _parse_mesh_element(
     if not vert_list:
         return None
 
-    vertices = np.array(vert_list, dtype=np.float64)
+    vertices = np.array(vert_list, dtype=np.float64) * unit_scale
 
     # -- triangles ---------------------------------------------------------
     tris_elem = mesh_elem.find(_tag("triangles", ns))
@@ -218,7 +241,7 @@ def parse_3mf(path: str) -> ThreeMFData:
     1. Open the file as a :class:`zipfile.ZipFile`.
     2. Locate the primary model XML (usually ``3D/3dmodel.model``).
     3. Parse the XML; detect the 3MF core namespace.
-    4. Extract ``<object>`` elements with ``<mesh>`` children.
+    4. Extract ``<object>`` meshes and convert their coordinates to millimeters.
     5. Collect ``<metadata>`` key/value pairs.
     6. Store every *non-model* ZIP member as raw bytes so that a subsequent
        :func:`write_3mf` call can preserve slicer settings, thumbnails,
@@ -263,6 +286,7 @@ def parse_3mf(path: str) -> ThreeMFData:
 
     # Unit
     unit = root.get("unit", "millimeter")
+    unit_scale = _unit_scale(unit)
 
     # Metadata
     metadata: dict[str, str] = {}
@@ -277,7 +301,7 @@ def parse_3mf(path: str) -> ThreeMFData:
     resources = root.find(_tag("resources", ns))
     if resources is not None:
         for obj in resources.iterfind(_tag("object", ns)):
-            mesh_data = _parse_mesh_element(obj, ns)
+            mesh_data = _parse_mesh_element(obj, ns, unit_scale)
             if mesh_data is not None:
                 meshes.append(mesh_data)
 
@@ -328,6 +352,7 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
     if original_bytes is not None:
         root = ET.fromstring(original_bytes)
         ns = _detect_namespace(root)
+        unit_scale = _unit_scale(root.get("unit", "millimeter"))
 
         resources = root.find(_tag("resources", ns))
         if resources is not None:
@@ -343,7 +368,7 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
                     obj.remove(old_mesh)
 
                 # Build new mesh element
-                new_mesh = _build_mesh_element(md, ns)
+                new_mesh = _build_mesh_element(md, ns, unit_scale)
                 obj.append(new_mesh)
     else:
         # Build from scratch
@@ -360,13 +385,15 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
     return buf.getvalue()
 
 
-def _build_mesh_element(md: MeshData, ns: str) -> ET.Element:
-    """Create a ``<mesh>`` XML element from vertex/triangle arrays."""
+def _build_mesh_element(
+    md: MeshData, ns: str, unit_scale: float = 1.0,
+) -> ET.Element:
+    """Create a mesh, converting millimeter coordinates back to model units."""
     mesh_el = ET.Element(_tag("mesh", ns))
 
     # Vertices
     verts_el = ET.SubElement(mesh_el, _tag("vertices", ns))
-    for row in md.vertices:
+    for row in md.vertices / unit_scale:
         ET.SubElement(
             verts_el,
             _tag("vertex", ns),
@@ -401,6 +428,7 @@ def _build_mesh_element(md: MeshData, ns: str) -> ET.Element:
 
 def _build_model_from_scratch(data: ThreeMFData) -> ET.Element:
     """Generate a minimal ``<model>`` tree when no original XML exists."""
+    unit_scale = _unit_scale(data.unit)
     root = ET.Element(
         _tag("model", NS_CORE),
         unit=data.unit,
@@ -425,7 +453,7 @@ def _build_model_from_scratch(data: ThreeMFData) -> ET.Element:
         if md.name:
             obj.set("name", md.name)
 
-        mesh_el = _build_mesh_element(md, NS_CORE)
+        mesh_el = _build_mesh_element(md, NS_CORE, unit_scale)
         obj.append(mesh_el)
 
         ET.SubElement(build, _tag("item", NS_CORE), objectid=md.object_id)
