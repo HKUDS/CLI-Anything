@@ -455,7 +455,7 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
     output_path:
         Destination filesystem path.  Parent directories are created if
         they do not exist. The destination directory must be writable for the
-        temporary archive and atomic replacement. Existing file permissions
+        temporary archive and atomic replacement. Existing permission mode bits
         and the target of a symbolic-link destination are preserved.
     """
     output_path = os.path.realpath(os.path.abspath(output_path))
