@@ -11,7 +11,7 @@ documents with a JSON project format for state tracking.
 pip install click pillow
 
 # No Inkscape installation required for SVG editing.
-# Inkscape is only needed for PDF export and advanced rendering.
+# Inkscape is needed for PNG and PDF export.
 ```
 
 ## Quick Start
@@ -150,7 +150,7 @@ gradient list       - List all gradients
 
 ### Export
 ```
-export png     - Render to PNG (via Pillow)
+export png     - Render to PNG (via Inkscape, with SVG transforms and gradients)
 export svg     - Export as SVG
 export pdf     - Export as PDF (needs Inkscape)
 export presets - List export presets
@@ -199,7 +199,7 @@ cli/
 │   ├── layers.py          # Layer/group management
 │   ├── paths.py           # Path boolean operations (union, diff, etc.)
 │   ├── gradients.py       # Gradient management (linear, radial)
-│   ├── export.py          # Export (PNG via Pillow, SVG, PDF)
+│   ├── export.py          # Export (PNG via Inkscape, SVG, PDF)
 │   └── session.py         # Stateful session with undo/redo
 ├── utils/
 │   ├── __init__.py
