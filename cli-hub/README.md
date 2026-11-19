@@ -118,4 +118,4 @@ export CLI_HUB_NO_ANALYTICS=1
 
 - **Web Hub**: [clianything.cc](https://clianything.cc)
 - **Repository**: [github.com/HKUDS/CLI-Anything](https://github.com/HKUDS/CLI-Anything)
-- **Live Catalog**: [SKILL.md](https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md)
+- **Live Catalog**: [SKILL.md](https://hkuds.github.io/CLI-Anything/SKILL.md)

@@ -59,7 +59,7 @@ and audit an install with `cli-hub matrix doctor <name>`.
 
 ## Live Catalog
 
-**URL**: [`https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md`](https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md)
+**URL**: [`https://hkuds.github.io/CLI-Anything/SKILL.md`](https://hkuds.github.io/CLI-Anything/SKILL.md)
 
 The catalog is auto-updated and provides:
 - Full list of available CLIs organized by category
@@ -110,6 +110,6 @@ cli-anything-kdenlive --json project create --name my-project
 
 ## More Info
 
-- Live Catalog: https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md
+- Live Catalog: https://hkuds.github.io/CLI-Anything/SKILL.md
 - Web Hub: https://clianything.cc
 - Repository: https://github.com/HKUDS/CLI-Anything
