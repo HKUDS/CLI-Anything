@@ -455,8 +455,9 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
     output_path:
         Destination filesystem path.  Parent directories are created if
         they do not exist. The destination directory must be writable for the
-        temporary archive and atomic replacement. Existing permission mode bits
-        and the target of a symbolic-link destination are preserved.
+        temporary archive and atomic replacement. Existing permission mode bits,
+        POSIX ownership, and the target of a symbolic-link destination are
+        preserved. If restoring that metadata fails, the destination is unchanged.
     """
     output_path = os.path.realpath(os.path.abspath(output_path))
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -464,12 +465,12 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
     model_xml_bytes = _rebuild_model_xml(data)
 
     try:
-        destination_mode = os.stat(output_path).st_mode
+        destination_stat = os.stat(output_path)
     except FileNotFoundError:
-        destination_mode = None
+        destination_stat = None
 
-    if destination_mode is not None:
-        if not stat.S_ISREG(destination_mode):
+    if destination_stat is not None:
+        if not stat.S_ISREG(destination_stat.st_mode):
             raise ValueError("3MF output must be a regular file")
         # Keep the existing write-permission check without truncating the file.
         descriptor = os.open(output_path, os.O_WRONLY)
@@ -488,6 +489,9 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
 
             zf.writestr(data.model_path, model_xml_bytes)
 
-        if destination_mode is not None:
-            os.chmod(staging_path, stat.S_IMODE(destination_mode))
+        if destination_stat is not None:
+            if os.name == "posix":
+                # Restore ownership before mode: chown can clear set-ID bits.
+                os.chown(staging_path, destination_stat.st_uid, destination_stat.st_gid)
+            os.chmod(staging_path, stat.S_IMODE(destination_stat.st_mode))
         os.replace(staging_path, output_path)
