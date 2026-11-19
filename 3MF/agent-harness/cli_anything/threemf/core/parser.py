@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import io
 import os
+import stat
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from xml.etree import ElementTree as ET
@@ -444,6 +446,7 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
     2. Copy all ``raw_entries`` (thumbnails, Bambu profiles, OPC
        relationships, ...) into the new ZIP archive.
     3. Write the rebuilt model XML at its original ``model_path``.
+    4. Replace the destination only after the complete ZIP closes successfully.
 
     Parameters
     ----------
@@ -451,17 +454,40 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
         The model data to write.
     output_path:
         Destination filesystem path.  Parent directories are created if
-        they do not exist.
+        they do not exist. The destination directory must be writable for the
+        temporary archive and atomic replacement. Existing file permissions
+        and the target of a symbolic-link destination are preserved.
     """
-    output_path = os.path.abspath(output_path)
+    output_path = os.path.realpath(os.path.abspath(output_path))
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     model_xml_bytes = _rebuild_model_xml(data)
 
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Write raw (non-model) entries first
-        for entry_path, entry_bytes in data.raw_entries.items():
-            zf.writestr(entry_path, entry_bytes)
+    try:
+        destination_mode = os.stat(output_path).st_mode
+    except FileNotFoundError:
+        destination_mode = None
 
-        # Write the model XML
-        zf.writestr(data.model_path, model_xml_bytes)
+    if destination_mode is not None:
+        if not stat.S_ISREG(destination_mode):
+            raise ValueError("3MF output must be a regular file")
+        # Keep the existing write-permission check without truncating the file.
+        descriptor = os.open(output_path, os.O_WRONLY)
+        os.close(descriptor)
+
+    # Keep the staging file on the destination filesystem so replacement is
+    # atomic. TemporaryDirectory also cleans up failed ZIP writes and closes.
+    with tempfile.TemporaryDirectory(
+        prefix=".cli-anything-3mf-", dir=os.path.dirname(output_path),
+    ) as staging_directory:
+        staging_path = os.path.join(staging_directory, "model.3mf")
+        with zipfile.ZipFile(staging_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Write raw (non-model) entries first.
+            for entry_path, entry_bytes in data.raw_entries.items():
+                zf.writestr(entry_path, entry_bytes)
+
+            zf.writestr(data.model_path, model_xml_bytes)
+
+        if destination_mode is not None:
+            os.chmod(staging_path, stat.S_IMODE(destination_mode))
+        os.replace(staging_path, output_path)
