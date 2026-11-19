@@ -42,6 +42,7 @@ setup(
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
+            "Pillow>=9.0.0",
         ],
     },
     entry_points={

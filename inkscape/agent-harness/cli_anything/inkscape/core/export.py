@@ -7,6 +7,7 @@ Uses the Inkscape CLI to render generated SVG for PNG and PDF output.
 import os
 import shutil
 import struct
+import subprocess
 import tempfile
 from typing import Dict, Any, List, Optional
 
@@ -80,9 +81,14 @@ def render_to_png(
         svg_path = os.path.join(directory, "export.svg")
         png_path = os.path.join(directory, "export.png")
         save_svg(export_project, svg_path)
-        result = export_svg_to_png(
-            svg_path, png_path, width=width, height=height, dpi=dpi,
-        )
+        try:
+            result = export_svg_to_png(
+                svg_path, png_path, width=width, height=height, dpi=dpi,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Inkscape PNG export timed out after {exc.timeout} seconds"
+            ) from exc
         # Read actual dimensions, including DPI/unit conversion and aspect ratios.
         with open(png_path, "rb") as image:
             header = image.read(24)
@@ -125,7 +131,6 @@ def export_pdf(
 
     # Try to use Inkscape if available
     if shutil.which("inkscape"):
-        import subprocess
         try:
             subprocess.run(
                 ["inkscape", svg_path, f"--export-filename={output_path}"],

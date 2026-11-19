@@ -335,6 +335,44 @@ class TestDocumentLifecycle:
 # ── Export Tests ────────────────────────────────────────────────
 
 class TestExport:
+    @pytest.mark.parametrize("stage", ["render", "version"])
+    @pytest.mark.parametrize("use_json", [False, True])
+    def test_png_timeout_is_handled_and_preserves_destination(
+        self, tmp_path, monkeypatch, stage, use_json,
+    ):
+        from click.testing import CliRunner
+        from cli_anything.inkscape import inkscape_cli
+        from cli_anything.inkscape.utils import inkscape_backend
+
+        run = subprocess.run
+
+        def timeout_at_stage(command, **kwargs):
+            is_version = "--version" in command
+            if is_version == (stage == "version"):
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return run(command, **kwargs)
+
+        monkeypatch.setattr(inkscape_backend.subprocess, "run", timeout_at_stage)
+        project_path = tmp_path / "project.json"
+        save_document(create_document(width=20, height=20), str(project_path))
+        output = tmp_path / "existing.png"
+        output.write_bytes(b"existing output")
+        arguments = ["--project", str(project_path), "export", "png", str(output), "--overwrite"]
+        if use_json:
+            arguments.insert(0, "--json")
+
+        result = CliRunner().invoke(inkscape_cli.cli, arguments)
+
+        assert result.exit_code == 1
+        if use_json:
+            error = json.loads(result.stdout)
+            assert error["type"] == "RuntimeError"
+            assert "timed out" in error["error"]
+        else:
+            assert "Error: Inkscape PNG export timed out" in result.stderr
+        assert output.read_bytes() == b"existing output"
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["existing.png", "project.json"]
+
     @pytest.mark.parametrize("filename", ["image", "image.dat"])
     def test_png_export_uses_requested_format_without_png_suffix(self, tmp_dir, filename):
         from PIL import Image
