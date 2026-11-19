@@ -838,6 +838,33 @@ class TestInkscapeBackend:
 class TestInkscapeExportE2E:
     """True E2E tests: create SVG → Inkscape export → verify output."""
 
+    @pytest.mark.parametrize("shape_type", ["polygon", "polyline"])
+    @pytest.mark.parametrize("points", [
+        "20 20 100 30 70 100",
+        "20, 20 100, 30 70, 100",
+    ])
+    def test_point_shape_conversion_preserves_pixels(self, tmp_dir, shape_type, points):
+        from PIL import Image
+        from cli_anything.inkscape.utils.inkscape_backend import export_svg_to_png
+
+        proj = create_document(width=128, height=128)
+        obj = add_polygon(proj, points=points, style="fill:#ff0000;stroke:#000000;stroke-width:3")
+        obj["type"] = shape_type
+        original_svg = os.path.join(tmp_dir, "original.svg")
+        converted_svg = os.path.join(tmp_dir, "converted.svg")
+        original_png = os.path.join(tmp_dir, "original.png")
+        converted_png = os.path.join(tmp_dir, "converted.png")
+        save_svg(proj, original_svg)
+        convert_to_path(proj, 0)
+        save_svg(proj, converted_svg)
+
+        export_svg_to_png(original_svg, original_png)
+        export_svg_to_png(converted_svg, converted_png)
+
+        with Image.open(original_png) as original, Image.open(converted_png) as converted:
+            assert original.size == converted.size
+            assert original.convert("RGBA").tobytes() == converted.convert("RGBA").tobytes()
+
     def test_svg_to_png(self):
         """Export SVG to PNG using Inkscape."""
         from cli_anything.inkscape.utils.inkscape_backend import export_svg_to_png

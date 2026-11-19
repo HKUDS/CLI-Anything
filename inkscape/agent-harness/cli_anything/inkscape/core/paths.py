@@ -268,16 +268,12 @@ def _shape_to_path_data(obj: Dict[str, Any]) -> Optional[str]:
         y2 = float(obj.get("y2", 100))
         return f"M {x1},{y1} L {x2},{y2}"
 
-    elif obj_type == "polygon":
+    elif obj_type in ("polygon", "polyline"):
         points_str = obj.get("points", "")
         if not points_str:
             return None
-        return "M " + " L ".join(points_str.strip().split()) + " Z"
-
-    elif obj_type == "polyline":
-        points_str = obj.get("points", "")
-        if not points_str:
-            return None
-        return "M " + " L ".join(points_str.strip().split())
+        # SVG moveto treats subsequent coordinate pairs as implicit lineto
+        # commands, preserving every valid comma/whitespace points separator.
+        return "M " + points_str.strip() + (" Z" if obj_type == "polygon" else "")
 
     return None
