@@ -221,6 +221,9 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
         _bounds_tree(shell_bounds[:, 0], shell_bounds[:, 1], np.arange(len(closed_shells)))
         if closed_shells else None
     )
+    # Reuse each immutable shell's triangle hierarchy across containment
+    # pairs. This cache belongs only to this invocation of normal repair.
+    boundaries = [None] * len(closed_shells)
     fixed_triangles = np.array(tm.faces)
     for index, (indices, shell) in enumerate(closed_shells):
         depth = 0
@@ -229,10 +232,12 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
             # A point classifies the whole connected shell only when the
             # boundaries are disjoint. Crossing a concave wall or touching
             # it must not turn an overlapping solid into a cavity.
-            if (
-                _encloses_point(enclosing.triangles, shell.triangles[0, 0])
-                and not _shell_boundaries_intersect(enclosing.triangles, shell.triangles)
-            ):
+            if not _encloses_point(enclosing.triangles, shell.triangles[0, 0]):
+                continue
+            for shell_index in (other_index, index):
+                if boundaries[shell_index] is None:
+                    boundaries[shell_index] = _triangle_boundary(closed_shells[shell_index][1].triangles)
+            if not _shell_boundaries_intersect(boundaries[other_index], boundaries[index]):
                 depth += 1
 
         if (shell.volume < 0) != (depth % 2 == 1):
@@ -270,36 +275,36 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
 # ---------------------------------------------------------------------------
 
 
-def _shell_boundaries_intersect(first: np.ndarray, second: np.ndarray) -> bool:
+def _shell_boundaries_intersect(
+    first: np.ndarray | _TriangleBoundary, second: np.ndarray | _TriangleBoundary,
+) -> bool:
     """Conservatively detect triangle intersection or contact between shells.
 
-    Normalize each pair of shells to a common scale, then traverse their
-    triangle-bound hierarchies together. Disjoint subtrees are discarded
-    without comparing every pair of faces. Overlapping leaves use the same
+    Traverse cached triangle-bound hierarchies in a common scale. Bounds
+    stay in their original coordinates so a shell can be reused with
+    different enclosing shells without changing the cache. Disjoint subtrees
+    are discarded without comparing every pair of faces. Overlapping leaves use the same
     separating-axis test, with near-contact counted as intersection. This
     only classifies containment; it does not alter geometry.
     """
-    low = np.minimum(first.min(axis=(0, 1)), second.min(axis=(0, 1)))
-    high = np.maximum(first.max(axis=(0, 1)), second.max(axis=(0, 1)))
+    if not isinstance(first, _TriangleBoundary):
+        first = _triangle_boundary(first)
+    if not isinstance(second, _TriangleBoundary):
+        second = _triangle_boundary(second)
+    low = np.minimum(first.tree.low, second.tree.low)
+    high = np.maximum(first.tree.high, second.tree.high)
     scale = float(np.max(high - low))
     if not np.isfinite(scale) or scale <= 0:
         return True
-    first = (first - low) / scale
-    second = (second - low) / scale
-    if len(first) > len(second):
+    if len(first.triangles) > len(second.triangles):
         first, second = second, first
     tolerance = 64 * np.finfo(float).eps
-    first_low = first.min(axis=1)
-    first_high = first.max(axis=1)
-    second_low = second.min(axis=1)
-    second_high = second.max(axis=1)
-    pending = [(
-        _bounds_tree(first_low, first_high, np.arange(len(first))),
-        _bounds_tree(second_low, second_high, np.arange(len(second))),
-    )]
+    pending = [(first.tree, second.tree)]
     while pending:
         left, right = pending.pop()
-        if np.any(left.high < right.low - tolerance) or np.any(right.high < left.low - tolerance):
+        left_low, left_high = (left.low - low) / scale, (left.high - low) / scale
+        right_low, right_high = (right.low - low) / scale, (right.high - low) / scale
+        if np.any(left_high < right_low - tolerance) or np.any(right_high < left_low - tolerance):
             continue
         if left.children or right.children:
             # Split the larger non-leaf; tree depth is logarithmic even
@@ -310,11 +315,17 @@ def _shell_boundaries_intersect(first: np.ndarray, second: np.ndarray) -> bool:
                 pending.extend((child, right) for child in left.children)
             continue
         for index in left.indices:
+            first_low = (first.low[index] - low) / scale
+            first_high = (first.high[index] - low) / scale
             candidates = right.indices[
-                np.all(second_high[right.indices] >= first_low[index] - tolerance, axis=1)
-                & np.all(second_low[right.indices] <= first_high[index] + tolerance, axis=1)
+                np.all((second.high[right.indices] - low) / scale >= first_low - tolerance, axis=1)
+                & np.all((second.low[right.indices] - low) / scale <= first_high + tolerance, axis=1)
             ]
-            if len(candidates) and _triangles_intersect(first[index], second[candidates], tolerance):
+            if len(candidates) and _triangles_intersect(
+                (first.triangles[index] - low) / scale,
+                (second.triangles[candidates] - low) / scale,
+                tolerance,
+            ):
                 return True
     return False
 
@@ -326,6 +337,21 @@ class _BoundsNode:
     count: int
     indices: np.ndarray | None = None
     children: tuple[_BoundsNode, ...] = ()
+
+
+@dataclass
+class _TriangleBoundary:
+    triangles: np.ndarray
+    low: np.ndarray
+    high: np.ndarray
+    tree: _BoundsNode
+
+
+def _triangle_boundary(triangles: np.ndarray) -> _TriangleBoundary:
+    low, high = triangles.min(axis=1), triangles.max(axis=1)
+    return _TriangleBoundary(
+        triangles, low, high, _bounds_tree(low, high, np.arange(len(triangles))),
+    )
 
 
 def _bounds_tree(low: np.ndarray, high: np.ndarray, indices: np.ndarray) -> _BoundsNode:
@@ -380,6 +406,30 @@ def _triangles_intersect(triangle: np.ndarray, candidates: np.ndarray, tolerance
         np.broadcast_to(np.cross(normal, edges), (len(candidates), 3, 3)),
         np.cross(other_normals[:, None, :], other_edges),
     ], axis=1)
+    degenerate = (
+        ~np.any(other_normals, axis=1) if not np.any(normal)
+        else np.zeros(len(candidates), dtype=bool)
+    )
+    if np.any(degenerate):
+        # Two zero-area triangles are segments or points. Face-derived
+        # axes can all vanish, so include their lower-dimensional SAT axes.
+        direction = edges[np.argmax(np.linalg.norm(edges, axis=1))]
+        other_directions = other_edges[
+            np.arange(len(candidates)), np.argmax(np.linalg.norm(other_edges, axis=2), axis=1),
+        ]
+        pair_normals = np.cross(direction, other_directions)
+        extra = np.concatenate([
+            np.broadcast_to(direction, (len(candidates), 1, 3)),
+            other_directions[:, None, :],
+            pair_normals[:, None, :],
+            np.cross(pair_normals, direction)[:, None, :],
+            np.cross(pair_normals, other_directions)[:, None, :],
+            np.broadcast_to(np.cross(direction, np.eye(3)), (len(candidates), 3, 3)),
+            np.cross(other_directions[:, None, :], np.eye(3)),
+            np.broadcast_to(np.eye(3), (len(candidates), 3, 3)),
+        ], axis=1)
+        extra[~degenerate] = 0
+        axes = np.concatenate([axes, extra], axis=1)
     # These cross products have different dimensions (length squared or
     # cubed), so a contact-distance tolerance cannot decide whether they
     # are valid axes. Scale every nonzero axis before taking its norm to

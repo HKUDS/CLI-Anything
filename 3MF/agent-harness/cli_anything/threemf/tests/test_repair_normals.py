@@ -306,6 +306,94 @@ def test_high_resolution_nested_shells_preserve_geometry_and_cavity():
     np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
 
 
+def _tetrahedron_with_collinear_edge_face(vertices):
+    vertices = np.array(vertices, dtype=float)
+    vertices = np.vstack([vertices, (vertices[0] + vertices[1]) * 0.5])
+    # Subdivide one side of edge 0--1. The zero-area triangle closes the
+    # resulting three topological edges without changing the solid.
+    faces = [[0, 2, 4], [4, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3], [0, 4, 1]]
+    shell = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    if shell.volume < 0:
+        shell.invert()
+    assert shell.is_watertight and shell.is_winding_consistent
+    assert np.count_nonzero(shell.area_faces == 0) == 1
+    return shell
+
+
+@pytest.mark.parametrize("first,second,intersects", [
+    ([[0, 0, 0], [8, 8, 8]], [[2, 2, 1], [4, 4, 3]], False),
+    ([[0, 0, 0], [2, 2, 2]], [[1, 1, 1], [3, 3, 3]], True),
+    ([[0, 0, 0], [2, 2, 2]], [[2, 2, 2], [3, 3, 3]], True),
+    ([[0, 0, 0], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], False),
+    ([[0, 0, 0], [2, 2, 0]], [[0, 1.5, 0], [0.5, 1, 0]], False),
+    ([[0, 0, 0], [2, 2, 0]], [[0, 2, 0], [2, 0, 0]], True),
+    ([[0, 0, 0], [2, 2, 0]], [[0, 2, 0.1], [2, 0, 0.1]], False),
+    ([[1, 1, 1], [1, 1, 1]], [[0, 0, 0], [2, 2, 2]], True),
+    ([[1, 1, 0], [1, 1, 0]], [[0, 0, 0], [2, 2, 2]], False),
+    ([[1, 1, 1], [1, 1, 1]], [[1, 1, 1], [1, 1, 1]], True),
+    ([[1, 1, 1], [1, 1, 1]], [[1, 1, 2], [1, 1, 2]], False),
+])
+def test_zero_area_triangles_respect_segment_and_point_contact(first, second, intersects):
+    def triangle(endpoints):
+        # Repeated first points also exercise selection of a nonzero edge.
+        return np.array([endpoints[0], endpoints[0], endpoints[1]], dtype=float)
+
+    first, second = triangle(first), triangle(second)
+    tolerance = 64 * np.finfo(float).eps
+    assert repair._triangles_intersect(first, second[None], tolerance) is intersects
+    assert repair._triangles_intersect(second, first[None], tolerance) is intersects
+
+
+def _nested_tetrahedra_with_collinear_faces():
+    outer = _tetrahedron_with_collinear_edge_face(
+        [[0, 0, 0], [8, 8, 8], [8, 0, 0], [0, 8, 0]],
+    )
+    cavity = _tetrahedron_with_collinear_edge_face(
+        [[2, 2, 1], [4, 4, 3], [3, 2, 1], [2, 3, 1]],
+    )
+    cavity.invert()
+    return outer, cavity
+
+
+@pytest.mark.parametrize("scale", [1, 1000])
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_collinear_edge_faces_do_not_fill_disjoint_cavity(scale, reverse_order):
+    outer, cavity = _nested_tetrahedra_with_collinear_faces()
+    for shell in (outer, cavity):
+        shell.apply_scale(scale)
+        if reverse_order:
+            shell.faces = shell.faces[::-1]
+    mesh = _mesh(trimesh.util.concatenate([outer, cavity]))
+
+    fixed, report = repair.repair_mesh(mesh)
+
+    assert report["faces_reoriented"] == 0
+    assert report["degenerate_faces_removed"] == 0
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+    assert mesh_to_trimesh(fixed).is_watertight
+    assert mesh_to_trimesh(fixed).volume == pytest.approx(85 * scale ** 3)
+
+
+def test_public_repair_keeps_cavity_with_collinear_edge_faces(tmp_path):
+    source = tmp_path / "tetrahedra.3mf"
+    destination = tmp_path / "repaired.3mf"
+    outer, cavity = _nested_tetrahedra_with_collinear_faces()
+    mesh = _mesh(trimesh.util.concatenate([outer, cavity]))
+    _write(source, mesh)
+
+    result = CliRunner().invoke(cli, [
+        "--json", "repair", str(source), "--output", str(destination),
+    ])
+
+    assert result.exit_code == 0, result.output
+    fixed = parser.parse_3mf(str(destination)).meshes[0]
+    assert mesh_to_trimesh(fixed).volume == pytest.approx(85)
+    assert json.loads(result.output)["repairs"]["faces_reoriented"] == 0
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+
+
 def _box_with_small_triangular_pocket():
     # A closed 2x2x2 cube with a triangular pocket cut from z=1 to z=0.
     # Explicit topology avoids a Boolean-engine dependency in this fixture.
