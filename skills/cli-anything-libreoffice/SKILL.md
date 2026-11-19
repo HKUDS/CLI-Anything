@@ -54,7 +54,7 @@ cli-anything-libreoffice
 
 ### Document
 
-Document management commands.
+Document management commands. Writer table imports preserve empty rows and their positions, including tables whose cells are all empty.
 
 | Command | Description |
 |---------|-------------|
@@ -227,4 +227,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.0
+1.0.2

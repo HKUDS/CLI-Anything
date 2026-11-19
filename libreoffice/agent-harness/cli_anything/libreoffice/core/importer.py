@@ -229,7 +229,7 @@ def _parse_writer_table(table_elem: ET.Element) -> Optional[Dict[str, Any]]:
     max_cols = 0
     for row_elem in _children_by_local(table_elem, "table-row"):
         row_values = _parse_table_row_values(row_elem)
-        if any(value != "" for value in row_values):
+        if row_values:
             rows.append(row_values)
             max_cols = max(max_cols, len(row_values))
 
