@@ -10,6 +10,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import os
+import stat
 import sys
 from functools import lru_cache
 
@@ -59,9 +60,12 @@ def make_staging_private(path: str) -> None:
     if sys.platform.startswith("linux"):
         # A parent's default ACL can remove owner write/traverse bits even
         # from mkdir(0700). chmod restores them while keeping the ACL mask
-        # and all other-user access at zero.
-        if os.stat(path).st_mode & 0o7777 != 0o700:
-            os.chmod(path, 0o700)
+        # and all other-user access at zero. Retain setgid so a shared parent
+        # still supplies the archive's group without requiring a later change.
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        private_mode = 0o700 | (mode & stat.S_ISGID)
+        if mode != private_mode:
+            os.chmod(path, private_mode)
     elif sys.platform == "darwin":
         # macOS inherited allow entries can grant access despite mode 0700.
         _set_darwin_acl(path, None)

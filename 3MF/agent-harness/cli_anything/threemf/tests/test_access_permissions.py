@@ -85,6 +85,37 @@ def test_linux_new_export_inherits_actual_parent_acl(tmp_path):
 
 
 @linux
+def test_linux_private_staging_retains_shared_parent_group(tmp_path, monkeypatch):
+    groups = sorted(set(os.getgroups()) - {tmp_path.stat().st_gid})
+    if not groups:
+        pytest.skip("requires a supplementary group different from the default group")
+    group = groups[0]
+    os.chown(tmp_path, -1, group)
+    tmp_path.chmod(0o2770)
+    os.setxattr(tmp_path, "system.posix_acl_default", linux_acl(0, 0))
+    control = tmp_path / "control"
+    control.write_bytes(b"")
+    expected_acl = os.getxattr(control, "system.posix_acl_access")
+    assert control.stat().st_gid == group
+    control.unlink()
+    make_private = access_permissions.make_staging_private
+
+    def keep_shared_group(path):
+        assert os.stat(path).st_mode & stat.S_ISGID
+        make_private(path)
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o2700
+        assert os.stat(path).st_gid == group
+
+    monkeypatch.setattr(access_permissions, "make_staging_private", keep_shared_group)
+    output = tmp_path / "new.3mf"
+    parser.write_3mf(model_data(), str(output))
+    assert output.stat().st_gid == group
+    assert os.getxattr(output, "system.posix_acl_access") == expected_acl
+    assert parser.parse_3mf(str(output)).meshes[0].name == "tetrahedron"
+    assert list(tmp_path.iterdir()) == [output]
+
+
+@linux
 @pytest.mark.parametrize("failure", ["error", "ignored"])
 def test_linux_acl_restore_failure_keeps_original(tmp_path, monkeypatch, failure):
     output = tmp_path / "output.3mf"
