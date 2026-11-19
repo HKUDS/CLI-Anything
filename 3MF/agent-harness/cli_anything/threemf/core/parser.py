@@ -13,11 +13,14 @@ import io
 import os
 import stat
 import tempfile
+import uuid
 import zipfile
 from dataclasses import dataclass
 from xml.etree import ElementTree as ET
 
 import numpy as np
+
+from cli_anything.threemf.core import access_permissions
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -456,8 +459,9 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
         Destination filesystem path.  Parent directories are created if
         they do not exist. The destination directory must be writable for the
         temporary archive and atomic replacement. Existing permission mode bits,
-        POSIX ownership, and the target of a symbolic-link destination are
-        preserved. If restoring that metadata fails, the destination is unchanged.
+        ownership, native access ACLs on Linux/macOS/Windows, and the target of a
+        symbolic-link destination are preserved. Unsupported ACLs or failed
+        permission restoration leave the destination unchanged.
     """
     output_path = os.path.realpath(os.path.abspath(output_path))
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -469,18 +473,37 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
     except FileNotFoundError:
         destination_stat = None
 
+    destination_acl = None
     if destination_stat is not None:
         if not stat.S_ISREG(destination_stat.st_mode):
             raise ValueError("3MF output must be a regular file")
         # Keep the existing write-permission check without truncating the file.
         descriptor = os.open(output_path, os.O_WRONLY)
-        os.close(descriptor)
+        try:
+            destination_stat = os.fstat(descriptor)
+            destination_acl = access_permissions.read_access_acl(output_path, descriptor)
+        finally:
+            os.close(descriptor)
 
     # Keep the staging file on the destination filesystem so replacement is
     # atomic. TemporaryDirectory also cleans up failed ZIP writes and closes.
     with tempfile.TemporaryDirectory(
         prefix=".cli-anything-3mf-", dir=os.path.dirname(output_path),
     ) as staging_directory:
+        if destination_stat is None:
+            # Capture normal creation permissions in the actual parent before
+            # making staging private. The probe never contains model data.
+            probe = os.path.join(
+                os.path.dirname(output_path), f".cli-anything-3mf-permissions-{uuid.uuid4().hex}",
+            )
+            descriptor = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+            try:
+                destination_stat = os.fstat(descriptor)
+                destination_acl = access_permissions.read_access_acl(probe, descriptor)
+            finally:
+                os.close(descriptor)
+                os.unlink(probe)
+        access_permissions.make_staging_private(staging_directory)
         staging_path = os.path.join(staging_directory, "model.3mf")
         with zipfile.ZipFile(staging_path, "w", zipfile.ZIP_DEFLATED) as zf:
             # Write raw (non-model) entries first.
@@ -494,4 +517,7 @@ def write_3mf(data: ThreeMFData, output_path: str) -> None:
                 # Restore ownership before mode: chown can clear set-ID bits.
                 os.chown(staging_path, destination_stat.st_uid, destination_stat.st_gid)
             os.chmod(staging_path, stat.S_IMODE(destination_stat.st_mode))
+            access_permissions.restore_access_acl(staging_path, destination_acl)
+            if stat.S_IMODE(os.stat(staging_path).st_mode) != stat.S_IMODE(destination_stat.st_mode):
+                raise OSError("Restored access ACL changed destination permission mode bits")
         os.replace(staging_path, output_path)
