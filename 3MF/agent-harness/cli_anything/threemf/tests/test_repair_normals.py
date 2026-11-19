@@ -166,6 +166,83 @@ def test_solid_in_a_ring_hole_is_not_mistaken_for_an_internal_cavity():
     assert report["faces_reoriented"] == 12
 
 
+def _ring_with_intersecting_box(shape, reverse_order=False):
+    ring = trimesh.creation.annulus(r_min=4, r_max=20, height=10, sections=64)
+    if shape == "bridge":
+        # Every vertex is in the washer material, but its long edges and
+        # faces cross the bore. Vertex-only containment is insufficient.
+        box = trimesh.creation.box(extents=(10, 2, 2))
+        assert np.all(np.linalg.norm(box.vertices[:, :2], axis=1) > 4)
+    else:
+        center = (4, 0, 0) if shape == "straddling" else (5, 0, 0)
+        box = _box(2, center=center)
+    if reverse_order:
+        box.faces = box.faces[::-1]
+    return ring, box
+
+
+@pytest.mark.parametrize("shape", ["straddling", "bridge", "touching"])
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_intersecting_or_touching_shells_are_not_inverted_as_cavities(shape, reverse_order):
+    ring, box = _ring_with_intersecting_box(shape, reverse_order)
+    mesh = _mesh(trimesh.util.concatenate([ring, box]))
+    attributes = tuple({"pid": "7", "p1": "0", "p2": "1", "p3": "2"} for _ in mesh.triangles)
+    mesh = replace(mesh, triangle_attributes=attributes)
+
+    fixed, report = repair.repair_mesh(mesh)
+
+    assert _component_volumes(fixed) == pytest.approx([box.volume, ring.volume])
+    assert report["faces_reoriented"] == 0
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+    assert fixed.triangle_attributes == attributes
+
+
+def test_disjoint_shell_inside_ring_material_is_still_a_cavity():
+    ring = trimesh.creation.annulus(r_min=4, r_max=20, height=10, sections=64)
+    mesh = _mesh(trimesh.util.concatenate([ring, _box(2, center=(8, 0, 0))]))
+
+    fixed, report = repair.repair_mesh(mesh)
+
+    assert _component_volumes(fixed) == pytest.approx([-8, ring.volume])
+    assert report["faces_reoriented"] == 12
+
+
+@pytest.mark.parametrize("scale", [1e-6, 1.0, 1e6])
+@pytest.mark.parametrize("other, intersects", [
+    ([[1.25, 1.25, 0], [2, 1.25, 0], [1.25, 2, 0]], False),
+    ([[0, 2, 0], [2, 0, 0], [2, 2, 0]], True),
+    ([[0.5, 0.5, -1], [0.5, 0.5, 1], [1.5, 0.5, 0]], True),
+])
+def test_boundary_intersection_handles_coplanar_and_crossing_triangles(scale, other, intersects):
+    # The disjoint coplanar pair has overlapping AABBs. Separating only
+    # along face normals and edge-cross-edge axes would report contact.
+    first = np.array([[[0, 0, 0], [2, 0, 0], [0, 2, 0]]], dtype=float)
+    second = np.array([other], dtype=float)
+    translation = np.array([100, -50, 25]) * scale
+    first = first * scale + translation
+    second = second * scale + translation
+
+    assert repair._shell_boundaries_intersect(first, second) is intersects
+    assert repair._shell_boundaries_intersect(second, first) is intersects
+
+
+def test_public_repair_preserves_an_intersecting_solid(tmp_path):
+    source = tmp_path / "intersecting.3mf"
+    destination = tmp_path / "repaired.3mf"
+    ring, box = _ring_with_intersecting_box("straddling", reverse_order=True)
+    _write(source, _mesh(trimesh.util.concatenate([ring, box])))
+
+    result = CliRunner().invoke(cli, [
+        "--json", "repair", str(source), "--output", str(destination),
+    ])
+
+    assert result.exit_code == 0, result.output
+    fixed = parser.parse_3mf(str(destination)).meshes[0]
+    assert _component_volumes(fixed) == pytest.approx([8, ring.volume])
+    assert json.loads(result.output)["repairs"]["faces_reoriented"] == 0
+
+
 def test_open_surface_does_not_prevent_closed_solid_normal_repair():
     box = _box(2, inverted=True)
     surface = trimesh.Trimesh(

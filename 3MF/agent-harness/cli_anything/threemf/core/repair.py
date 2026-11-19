@@ -219,12 +219,14 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
         for other_index, (_, enclosing) in enumerate(closed_shells):
             if index == other_index:
                 continue
-            # Containment of disjoint closed shells requires nested bounds.
-            # The solid-angle test also excludes solids in a ring's open hole.
+            # A point classifies the whole connected shell only when the
+            # boundaries are disjoint. Crossing a concave wall or touching
+            # it must not turn an overlapping solid into a cavity.
             if (
                 np.all(enclosing.bounds[0] < shell.bounds[0])
                 and np.all(shell.bounds[1] < enclosing.bounds[1])
                 and _encloses_point(enclosing.triangles, shell.triangles[0, 0])
+                and not _shell_boundaries_intersect(enclosing.triangles, shell.triangles)
             ):
                 depth += 1
 
@@ -261,6 +263,67 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _shell_boundaries_intersect(first: np.ndarray, second: np.ndarray) -> bool:
+    """Conservatively detect triangle intersection or contact between shells.
+
+    Normalize each pair of shells to a common scale. AABB filtering limits
+    the separating-axis tests; both stages use bounded temporary batches.
+    Near-contact counts as intersection, so it cannot authorize cavity
+    inversion. This only classifies containment; it does not alter geometry.
+    """
+    low = np.minimum(first.min(axis=(0, 1)), second.min(axis=(0, 1)))
+    high = np.maximum(first.max(axis=(0, 1)), second.max(axis=(0, 1)))
+    scale = float(np.max(high - low))
+    if not np.isfinite(scale) or scale <= 0:
+        return True
+    first = (first - low) / scale
+    second = (second - low) / scale
+    if len(first) > len(second):
+        first, second = second, first
+    tolerance = 64 * np.finfo(float).eps
+    second_low = second.min(axis=1)
+    second_high = second.max(axis=1)
+    for triangle in first:
+        triangle_low = triangle.min(axis=0)
+        triangle_high = triangle.max(axis=0)
+        for start in range(0, len(second), 4096):
+            stop = start + 4096
+            candidates = second[start:stop][
+                np.all(second_high[start:stop] >= triangle_low - tolerance, axis=1)
+                & np.all(second_low[start:stop] <= triangle_high + tolerance, axis=1)
+            ]
+            for offset in range(0, len(candidates), 256):
+                if _triangles_intersect(triangle, candidates[offset:offset + 256], tolerance):
+                    return True
+    return False
+
+
+def _triangles_intersect(triangle: np.ndarray, candidates: np.ndarray, tolerance: float) -> bool:
+    """Test one triangle against a batch, including coplanar contact."""
+    edges = np.roll(triangle, -1, axis=0) - triangle
+    other_edges = np.roll(candidates, -1, axis=1) - candidates
+    normal = np.cross(edges[0], edges[1])
+    other_normals = np.cross(other_edges[:, 0], other_edges[:, 1])
+    axes = np.concatenate([
+        np.broadcast_to(normal, (len(candidates), 1, 3)),
+        other_normals[:, None, :],
+        np.cross(edges[None, :, None, :], other_edges[:, None, :, :]).reshape(-1, 9, 3),
+        # Face normals and edge-cross-edge axes alone cannot separate
+        # disjoint coplanar triangles: include their in-plane edge normals.
+        np.broadcast_to(np.cross(normal, edges), (len(candidates), 3, 3)),
+        np.cross(other_normals[:, None, :], other_edges),
+    ], axis=1)
+    lengths = np.linalg.norm(axes, axis=2, keepdims=True)
+    axes = np.divide(axes, lengths, out=np.zeros_like(axes), where=lengths > tolerance)
+    projected = np.einsum("td,nad->nat", triangle, axes)
+    other_projected = np.einsum("ntd,nad->nat", candidates, axes)
+    separated = (
+        (projected.max(axis=2) < other_projected.min(axis=2) - tolerance)
+        | (other_projected.max(axis=2) < projected.min(axis=2) - tolerance)
+    )
+    return bool(np.any(~np.any(separated, axis=1)))
 
 
 def _encloses_point(triangles: np.ndarray, point: np.ndarray) -> bool:
