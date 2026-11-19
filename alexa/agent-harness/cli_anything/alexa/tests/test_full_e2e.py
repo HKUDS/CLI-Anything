@@ -147,3 +147,17 @@ class TestLiveAmazon:
         assert device, "set ALEXA_E2E_DEVICE to an Echo name"
         r = _run(["--json", "speak", device, "CLI Anything end to end test"], check=True)
         assert json.loads(r.stdout)["sent"] is True
+
+
+class TestUsageErrorsSubprocess:
+    def test_usage_error_is_json_with_json_flag(self, iso_env):
+        env, _ = iso_env
+        r = _run(["--json", "volume", "kitchen", "150"], env=env)
+        assert r.returncode == 2
+        data = json.loads(r.stdout)
+        assert data["ok"] is False and data["error"] == "usage_error"
+
+    def test_usage_error_is_text_without_json(self, iso_env):
+        env, _ = iso_env
+        r = _run(["volume", "kitchen", "150"], env=env)
+        assert r.returncode == 2 and "Usage:" in r.stderr

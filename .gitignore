@@ -135,6 +135,8 @@
 /anygen/.*
 /zoom/*
 /zoom/.*
+/alexa/*
+/alexa/.*
 /sketch/*
 /sketch/.*
 /drawio/*
@@ -242,6 +244,7 @@
 !/shotcut/agent-harness/
 !/anygen/agent-harness/
 !/zoom/agent-harness/
+!/alexa/agent-harness/
 !/sketch/agent-harness/
 !/drawio/agent-harness/
 !/godot/agent-harness/

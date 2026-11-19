@@ -383,3 +383,78 @@ def test_cli_surfaces_domain_warning(fake_backend):
     assert data["ok"] is True and "--domain amazon.co.uk" in data["warning"]
     human = CliRunner().invoke(alexa_cli.cli, ["speak", "kitchen", "hi"])
     assert "Warning: Your Amazon account is on amazon.co.uk" in human.output
+
+
+# ── fixes from the Codex review of HKUDS/CLI-Anything#649 ─────────────
+
+GROUP = {"accountName": "Downstairs Speakers", "serialNumber": "GRP1", "deviceType": "A3C9PE6TNYLTCH",
+         "deviceFamily": "WHA", "online": True, "capabilities": ["VOLUME_SETTING", "AUDIO_PLAYER"]}
+
+
+@pytest.fixture
+def fake_backend_with_group(fake_backend, monkeypatch):
+    monkeypatch.setattr(backend, "fetch_devices", lambda: RAW_DEVICES + [GROUP])
+    return fake_backend
+
+
+def test_group_is_listed_but_not_a_speaker():
+    g = dev.normalize(GROUP)
+    assert g["is_group"] is True and g["is_speaker"] is False
+    assert dev.filter_devices([g]) == [g]
+
+
+def test_announce_default_skips_groups(fake_backend_with_group):
+    result, data = run("announce", "hi")
+    assert "GRP1" not in [d["serial"] for d in data["action"]["devices"]]
+
+
+def test_music_can_target_group(fake_backend_with_group):
+    result, data = run("music", "play", "downstairs", "jazz")
+    assert data["ok"] is True and fake_backend_with_group[0]["device"]["serial"] == "GRP1"
+
+
+def test_actions_ignore_alexa_apps(fake_backend):
+    # "this device" only matches the Alexa app, which is not a valid target.
+    result, data = run("speak", "this device", "hi")
+    assert result.exit_code == 1 and data["error"] == "device_not_found"
+    result, data = run("device", "info", "this device")
+    assert data["family"] == "VOX"  # still inspectable
+
+
+def test_cached_without_cache_does_not_call_amazon(home, monkeypatch):
+    backend.save_account({"email": "a@b.c", "domain": "amazon.com", "oauth": {"refresh_token": "x"}})
+    monkeypatch.setattr(backend, "fetch_devices", lambda: pytest.fail("--cached must not fetch"))
+    result, data = run("device", "list", "--cached")
+    assert result.exit_code == 1 and data["error"] == "device_not_found" and "--cached" in data["message"]
+
+
+def test_unexpected_backend_error_is_json(fake_backend, monkeypatch):
+    def boom(action):
+        raise ConnectionResetError("connection reset by peer")
+    monkeypatch.setattr(backend, "execute", boom)
+    result, data = run("speak", "kitchen", "hi")
+    assert result.exit_code == 1 and data["error"] == "backend_error" and "ConnectionResetError" in data["message"]
+
+
+def test_logout_dry_run_keeps_credentials(fake_backend, home):
+    result, data = run("--dry-run", "auth", "logout")
+    assert data["dry_run"] is True and data["would_remove"] is True
+    assert (home / "account.json").exists()
+
+
+def test_login_dry_run_starts_nothing(home, monkeypatch):
+    monkeypatch.setattr(backend, "login", lambda *a, **k: pytest.fail("login must not run in dry run"))
+    result, data = run("--dry-run", "auth", "login", "--email", "a@b.c", "--domain", "amazon.de")
+    assert data["dry_run"] is True and data["locale"] == "de-DE"
+
+
+def test_repl_keeps_dry_run_and_json(fake_backend, monkeypatch):
+    run("device", "list")  # cache for dry run
+    from cli_anything.alexa.utils import repl_skin
+
+    lines = iter(["speak kitchen hello", "quit"])
+    monkeypatch.setattr(repl_skin.ReplSkin, "create_prompt_session", lambda self: None)
+    monkeypatch.setattr(repl_skin.ReplSkin, "get_input", lambda self, *a, **k: next(lines))
+    result = CliRunner().invoke(alexa_cli.cli, ["--json", "--dry-run", "repl"])
+    assert '"dry_run": true' in result.output
+    assert fake_backend == []  # nothing sent to Amazon from the REPL

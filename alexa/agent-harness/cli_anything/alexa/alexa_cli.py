@@ -99,8 +99,12 @@ def _guard(fn):
             fail(str(exc), "invalid_input")
         except TimeoutError as exc:
             fail(str(exc), "timeout")
+        except click.ClickException:
+            raise
         except RuntimeError as exc:
             fail(str(exc), "runtime_error")
+        except Exception as exc:  # alexapy / aiohttp transport and API errors
+            fail(f"{type(exc).__name__}: {exc}", "backend_error")
     return wrapper
 
 
@@ -110,15 +114,16 @@ def _devices(refresh: bool = True) -> list[dict[str, Any]]:
         cached = backend.cached_devices()
         if cached:
             return cached
-        if _dry_run:
-            raise dev.DeviceNotFound("Dry run needs a cached device list. Run `device list` once while logged in.")
+        why = "Dry run" if _dry_run else "--cached"
+        raise dev.DeviceNotFound(f"{why} needs a cached device list. Run `device list` once while logged in.")
     devices = [dev.normalize(d) for d in backend.fetch_devices()]
     backend.cache_devices(devices)
     return devices
 
 
 def _resolve(name: str) -> dict[str, Any]:
-    return dev.resolve(_devices(), name)
+    """Resolve an action target among speakers and speaker groups (not apps)."""
+    return dev.resolve(dev.filter_devices(_devices()), name)
 
 
 def _send(action: dict[str, Any], message: str) -> None:
@@ -179,6 +184,11 @@ def auth_login(email, domain, port, timeout):
             pass
         click.echo("Waiting for sign-in to finish...", err=True)
 
+    if _dry_run:
+        output({"ok": True, "dry_run": True, "would": "start local sign-in page and store tokens",
+                "email": email, "domain": domain, "port": port or "auto",
+                "locale": backend.locale_for(domain)}, "[dry-run] Would start Amazon sign-in.")
+        return
     result = backend.login(email, domain, port, timeout, on_url=show)
     output({"ok": True, **result}, f"Logged in as {email} ({domain}), speech language {result['locale']}.")
 
@@ -204,6 +214,10 @@ def auth_status(verify):
 @_guard
 def auth_logout():
     """Delete stored tokens and cookies on this machine."""
+    if _dry_run:
+        output({"ok": True, "dry_run": True, "would_remove": backend.load_account() is not None},
+               "[dry-run] Would delete stored tokens and cookies.")
+        return
     removed = backend.delete_account()
     output({"ok": True, "removed": removed},
            "Logged out." if removed else "Nothing to remove.")
@@ -247,7 +261,7 @@ def device_list(include_all, cached):
 @_guard
 def device_info(name):
     """Show one device, matched by name, partial name or serial."""
-    output(_resolve(name))
+    output(dev.resolve(_devices(), name))
 
 
 # ── voice actions ────────────────────────────────────────────────────
@@ -270,8 +284,8 @@ def speak(device_name, text):
 def announce(text, names, title):
     """Announce TEXT (with chime) on one, several or all Echos."""
     all_devices = _devices()
-    targets = [dev.resolve(all_devices, n) for n in names] if names else \
-        [d for d in dev.filter_devices(all_devices) if d.get("online")]
+    targets = [dev.resolve(dev.filter_devices(all_devices), n) for n in names] if names else \
+        [d for d in dev.filter_devices(all_devices) if d.get("online") and d.get("is_speaker")]
     _send(act.announce(targets, text, title), f"Announcing on {len(targets)} device(s): {text}")
 
 
@@ -403,6 +417,7 @@ def repl():
     """Start the interactive REPL."""
     from cli_anything.alexa.utils.repl_skin import ReplSkin
 
+    repl_json, repl_dry = _json_output, _dry_run  # keep root flags for every REPL line
     skin = ReplSkin("alexa", version=__version__)
     skin.print_banner()
     session = skin.create_prompt_session()
@@ -443,8 +458,9 @@ def repl():
             args = shlex.split(line)
         except ValueError:
             args = line.split()
+        flags = (["--json"] if repl_json else []) + (["--dry-run"] if repl_dry else [])
         try:
-            cli.main(args, standalone_mode=False)
+            cli.main(flags + args, standalone_mode=False)
         except SystemExit:
             pass
         except click.ClickException as exc:
@@ -453,7 +469,19 @@ def repl():
 
 
 def main() -> None:
-    cli()
+    """Entry point; reports Click usage errors as JSON when --json is given."""
+    argv = sys.argv[1:]
+    try:
+        cli.main(args=argv, standalone_mode=False)
+    except click.ClickException as exc:
+        if "--json" in argv:
+            click.echo(json.dumps({"ok": False, "error": "usage_error", "message": exc.format_message()}, indent=2))
+        else:
+            exc.show()
+        raise SystemExit(exc.exit_code)
+    except click.exceptions.Abort:
+        click.echo("Aborted.", err=True)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

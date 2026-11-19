@@ -13,7 +13,10 @@ from typing import Any
 # Device families that are real speakers able to run TTS / announcements /
 # custom commands. Everything else (apps, phones, smart plugs exposed as
 # "devices", speaker groups' virtual entries) is hidden unless --all is used.
-SPEAKER_FAMILIES = {"ECHO", "KNIGHT", "ROOK", "TABLET", "WHA", "FIRE_TV", "THIRD_PARTY_AVS_SONOS_BOOTLEG"}
+SPEAKER_FAMILIES = {"ECHO", "KNIGHT", "ROOK", "TABLET", "FIRE_TV", "THIRD_PARTY_AVS_SONOS_BOOTLEG"}
+# Multi-room speaker groups: targetable for music/volume, but not counted as a
+# speaker (announcing to a group plus its members would play twice).
+GROUP_FAMILIES = {"WHA"}
 SPEAKER_CAPABILITIES = {"VOLUME_SETTING", "MICROPHONE", "AUDIO_PLAYER"}
 # Alexa apps on phones/PCs ("This Device") report audio capabilities but are
 # not speakers you can target.
@@ -42,13 +45,14 @@ def normalize(raw: dict[str, Any]) -> dict[str, Any]:
         "software_version": raw.get("softwareVersion") or "",
         "cluster_members": list(raw.get("clusterMembers") or []),
         "is_speaker": is_speaker(family, caps),
+        "is_group": family in GROUP_FAMILIES,
         "capabilities": caps,
     }
 
 
 def is_speaker(family: str, capabilities: list[str]) -> bool:
     """True if the device can speak (TTS, announcements, commands)."""
-    if family in NON_SPEAKER_FAMILIES:
+    if family in NON_SPEAKER_FAMILIES or family in GROUP_FAMILIES:
         return False
     if family in SPEAKER_FAMILIES:
         return True
@@ -56,8 +60,8 @@ def is_speaker(family: str, capabilities: list[str]) -> bool:
 
 
 def filter_devices(devices: list[dict[str, Any]], include_all: bool = False) -> list[dict[str, Any]]:
-    """Keep only speakers unless ``include_all`` is set; sort by name."""
-    out = devices if include_all else [d for d in devices if d.get("is_speaker")]
+    """Keep speakers and speaker groups unless ``include_all`` is set; sort by name."""
+    out = devices if include_all else [d for d in devices if d.get("is_speaker") or d.get("is_group")]
     return sorted(out, key=lambda d: d.get("name", "").lower())
 
 
