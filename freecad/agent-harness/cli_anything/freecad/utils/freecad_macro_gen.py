@@ -565,10 +565,20 @@ def _gen_export(
     lines.append("doc.recompute()")
     lines.append("")
 
-    # Collect all visible shape objects for export
-    lines.append("# Collect all shape objects for export")
+    # Skip parts that operations marked hidden (e.g. boolean inputs):
+    # their shapes are already represented by the visible result, so
+    # exporting them too would duplicate solids in the output file.
+    hidden = sorted(
+        _safe_name(part.get("name", ""))
+        for part in project.get("parts", [])
+        if part.get("visible") is False and part.get("name")
+    )
+    lines.append("# Collect all visible shape objects for export")
+    lines.append(f"hidden_names = {hidden!r}")
     lines.append("export_objects = []")
     lines.append("for obj in doc.Objects:")
+    lines.append("    if obj.Name in hidden_names:")
+    lines.append("        continue")
     lines.append("    if hasattr(obj, 'Shape') and obj.Shape.isValid():")
     lines.append("        export_objects.append(obj)")
     lines.append("")

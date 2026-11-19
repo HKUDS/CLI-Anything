@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 import os
 import struct
 import subprocess
@@ -340,6 +341,38 @@ class TestIntermediateFiles:
         assert "Unknown part type 'cut'" not in macro
         assert "Skipping placement for unsupported part 'CutResult'" not in macro
 
+    def test_hidden_boolean_inputs_are_not_exported(self, tmp_path):
+        """Hidden boolean inputs must be excluded from the export object list."""
+        proj = create_document(name="HiddenExport")
+        add_part(proj, "box", name="Plate")
+        add_part(proj, "cylinder", name="Hole")
+        boolean_op(proj, "cut", 0, 1, name="PlateWithHole")
+
+        macro = generate_macro(proj, str(tmp_path / "plate.step"), "step")
+
+        # boolean_op marks both inputs visible=False; the macro must skip them
+        assert "hidden_names = ['Hole', 'Plate']" in macro
+        assert "if obj.Name in hidden_names:" in macro
+
+        # Execute the generated export loop against stub document objects to
+        # verify only the boolean result is collected for export.
+        class _Shape:
+            def isValid(self):
+                return True
+
+        class _Obj:
+            def __init__(self, name):
+                self.Name = name
+                self.Shape = _Shape()
+
+        class _Doc:
+            Objects = [_Obj("Plate"), _Obj("Hole"), _Obj("PlateWithHole")]
+
+        loop_src = macro[macro.index("hidden_names ="):macro.index("Part.export(")]
+        namespace = {"doc": _Doc()}
+        exec(loop_src, namespace)
+        assert [obj.Name for obj in namespace["export_objects"]] == ["PlateWithHole"]
+
     def test_macro_generation_body_primitives_and_patterns(self, tmp_path):
         """Generate a macro containing body primitive placements and pattern features."""
         proj = create_document(name="MacroBodyTower")
@@ -595,6 +628,40 @@ class TestFreeCADBackend:
         )
 
         print(f"\n  STEP: {output} ({size:,} bytes)")
+
+    def test_export_boolean_cut_step_single_solid(self, tmp_path):
+        """A boolean STEP export holds only the result: one solid, cut volume."""
+        from cli_anything.freecad.utils.freecad_backend import run_macro_content
+
+        proj = create_document(name="PilotPlate")
+        add_part(proj, "box", name="Plate",
+                 params={"length": 60, "width": 40, "height": 5})
+        add_part(proj, "cylinder", name="Hole",
+                 params={"radius": 5, "height": 7}, position=[30, 20, -1])
+        boolean_op(proj, "cut", 0, 1, name="PlateWithHole")
+
+        output = str(tmp_path / "plate.step")
+        export_project(proj, output, preset="step")
+        assert os.path.isfile(output)
+
+        # Geometry assertion: read the STEP back and verify exactly one solid
+        # whose volume matches 60*40*5 - pi*5^2*5 = 11,607.30 mm^3.
+        check = run_macro_content(
+            "import Part\n"
+            "shape = Part.Shape()\n"
+            f"shape.read({output!r})\n"
+            "print('SOLIDS:', len(shape.Solids))\n"
+            "print('VOLUME:', shape.Volume)\n"
+        )
+        assert check["returncode"] == 0, check["stderr"]
+        values = dict(
+            line.split(": ", 1)
+            for line in check["stdout"].splitlines()
+            if line.startswith(("SOLIDS: ", "VOLUME: "))
+        )
+        expected = 60 * 40 * 5 - math.pi * 5**2 * 5
+        assert int(values["SOLIDS"]) == 1, values
+        assert abs(float(values["VOLUME"]) - expected) < expected * 0.001, values
 
     def test_export_multi_part_stl(self, tmp_path):
         """Export multiple parts to STL, validate format."""
