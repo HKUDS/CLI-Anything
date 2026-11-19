@@ -344,6 +344,75 @@ def test_zero_area_triangles_respect_segment_and_point_contact(first, second, in
     assert repair._triangles_intersect(second, first[None], tolerance) is intersects
 
 
+@pytest.mark.parametrize("scale", [2 ** -20, 1.0, 2 ** 10])
+@pytest.mark.parametrize("reverse_order", [False, True])
+@pytest.mark.parametrize("offset,intersects", [(-2, False), (0, True), (2, True)])
+def test_segment_triangle_pairs_keep_in_plane_separators(scale, reverse_order, offset, intersects):
+    segment = np.array([[-20, 10 + offset, 0], [0, offset, 0], [20, -10 + offset, 0]], dtype=float)
+    triangle = np.array([[0, 0, 0], [10, 0, 0], [0, 10, 0]], dtype=float)
+    segment, triangle = segment * scale, triangle * scale
+    first, second = (triangle, segment) if reverse_order else (segment, triangle)
+
+    assert repair._triangles_intersect(first, second[None], 64 * np.finfo(float).eps) is intersects
+
+
+def _cavity_inside_shell_with_collinear_face():
+    vertices = np.array([[-20, 8, 0], [20, -12, 0], [0, 60, 40], [60, 0, -40]], dtype=float)
+    outer = _tetrahedron_with_collinear_edge_face(vertices)
+    cavity = trimesh.Trimesh(
+        vertices=[[0, 0, 0], [10, 0, 0], [0, 10, 0], [2, 2, 1]],
+        faces=[[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]], process=False,
+    )
+    if cavity.volume > 0:
+        cavity.invert()
+    # Positive barycentric weights prove strict containment in the convex
+    # outer tetrahedron independently of the boundary predicate under test.
+    weights = np.linalg.solve((vertices[1:] - vertices[0]).T, (cavity.vertices - vertices[0]).T).T
+    assert np.all(weights > 0) and np.all(weights.sum(axis=1) < 1)
+    assert cavity.is_watertight and cavity.is_winding_consistent
+    assert np.all(cavity.area_faces > 0)
+    return outer, cavity
+
+
+@pytest.mark.parametrize("scale", [1.0, 1000.0])
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_single_collinear_shell_face_preserves_regular_cavity(scale, reverse_order):
+    outer, cavity = _cavity_inside_shell_with_collinear_face()
+    for shell in (outer, cavity):
+        shell.apply_scale(scale)
+        if reverse_order:
+            shell.faces = shell.faces[::-1]
+    mesh = _mesh(trimesh.util.concatenate([outer, cavity]))
+
+    fixed, report = repair.repair_mesh(mesh)
+
+    assert report["faces_reoriented"] == 0
+    assert report["degenerate_faces_removed"] == 0
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+    assert mesh_to_trimesh(fixed).is_watertight
+    assert _component_volumes(fixed) == pytest.approx([cavity.volume, outer.volume], rel=1e-10, abs=0)
+
+
+def test_public_repair_keeps_regular_cavity_inside_collinear_shell(tmp_path):
+    source = tmp_path / "single-collinear-shell.3mf"
+    destination = tmp_path / "repaired.3mf"
+    outer, cavity = _cavity_inside_shell_with_collinear_face()
+    mesh = _mesh(trimesh.util.concatenate([outer, cavity]))
+    _write(source, mesh)
+
+    result = CliRunner().invoke(cli, [
+        "--json", "repair", str(source), "--output", str(destination),
+    ])
+
+    assert result.exit_code == 0, result.output
+    fixed = parser.parse_3mf(str(destination)).meshes[0]
+    assert json.loads(result.output)["repairs"]["faces_reoriented"] == 0
+    assert _component_volumes(fixed) == pytest.approx([cavity.volume, outer.volume])
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+
+
 def _nested_tetrahedra_with_collinear_faces():
     outer = _tetrahedron_with_collinear_edge_face(
         [[0, 0, 0], [8, 8, 8], [8, 0, 0], [0, 8, 0]],

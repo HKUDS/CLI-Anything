@@ -406,8 +406,20 @@ def _triangles_intersect(triangle: np.ndarray, candidates: np.ndarray, tolerance
         np.broadcast_to(np.cross(normal, edges), (len(candidates), 3, 3)),
         np.cross(other_normals[:, None, :], other_edges),
     ], axis=1)
+    normal_degenerate = not np.any(normal)
+    candidate_degenerate = ~np.any(other_normals, axis=1)
+    single_degenerate = candidate_degenerate ^ normal_degenerate
+    if np.any(single_degenerate):
+        # A coplanar segment also needs an in-plane normal to its own
+        # edges, derived from the other face's nonzero normal.
+        extra = np.zeros((len(candidates), 3, 3), dtype=axes.dtype)
+        if normal_degenerate:
+            extra[single_degenerate] = np.cross(other_normals[single_degenerate, None, :], edges)
+        else:
+            extra[single_degenerate] = np.cross(normal, other_edges[single_degenerate])
+        axes = np.concatenate([axes, extra], axis=1)
     degenerate = (
-        ~np.any(other_normals, axis=1) if not np.any(normal)
+        candidate_degenerate if normal_degenerate
         else np.zeros(len(candidates), dtype=bool)
     )
     if np.any(degenerate):
