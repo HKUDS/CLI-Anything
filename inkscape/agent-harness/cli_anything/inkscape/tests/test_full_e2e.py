@@ -335,6 +335,81 @@ class TestDocumentLifecycle:
 # ── Export Tests ────────────────────────────────────────────────
 
 class TestExport:
+    @pytest.mark.parametrize("filename", ["image", "image.dat"])
+    def test_png_export_uses_requested_format_without_png_suffix(self, tmp_dir, filename):
+        from PIL import Image
+
+        proj = create_document(width=20, height=20)
+        out = os.path.join(tmp_dir, filename)
+
+        result = render_to_png(proj, out)
+
+        with Image.open(out) as image:
+            assert image.format == "PNG"
+            assert image.size == (20, 20)
+        assert result["format"] == "png"
+
+    def test_png_export_renders_transforms_and_gradients(self, tmp_dir):
+        from PIL import Image
+
+        proj = create_document(width=100, height=60, background="#ffffff")
+        add_rect(proj, x=0, y=0, width=30, height=30, style="stroke:none")
+        add_linear_gradient(proj, stops=[
+            {"offset": 0, "color": "#ff0000"},
+            {"offset": 1, "color": "#0000ff"},
+        ])
+        apply_gradient(proj, 0, 0)
+        translate(proj, 0, 40, 10)
+
+        out = os.path.join(tmp_dir, "gradient.png")
+        result = render_to_png(proj, out)
+
+        with Image.open(out) as image:
+            pixels = image.convert("RGB")
+            assert pixels.getpixel((10, 10)) == (255, 255, 255)
+            red = pixels.getpixel((45, 20))
+            blue = pixels.getpixel((65, 20))
+            assert red[0] > red[2]
+            assert blue[2] > blue[0]
+        assert result["width"] == 100
+        assert result["height"] == 60
+
+    def test_png_export_respects_document_units_and_dpi(self, tmp_dir):
+        from PIL import Image
+
+        proj = create_document(width=1, height=0.5, units="in")
+        out = os.path.join(tmp_dir, "print.png")
+
+        result = render_to_png(proj, out, dpi=192)
+
+        with Image.open(out) as image:
+            assert image.size == (192, 96)
+        assert (result["width"], result["height"]) == (192, 96)
+
+    def test_png_export_preserves_aspect_ratio_with_one_dimension(self, tmp_dir):
+        from PIL import Image
+
+        proj = create_document(width=100, height=50)
+        out = os.path.join(tmp_dir, "wide.png")
+
+        result = render_to_png(proj, out, width=200)
+
+        with Image.open(out) as image:
+            assert image.size == (200, 100)
+        assert (result["width"], result["height"]) == (200, 100)
+
+    def test_png_background_override_does_not_modify_project(self, tmp_dir):
+        from PIL import Image
+
+        proj = create_document(width=20, height=20, background="#ffffff")
+        out = os.path.join(tmp_dir, "transparent.png")
+
+        render_to_png(proj, out, background="transparent")
+
+        with Image.open(out) as image:
+            assert image.convert("RGBA").getpixel((0, 0))[3] == 0
+        assert proj["document"]["background"] == "#ffffff"
+
     def test_export_svg(self, tmp_dir):
         proj = create_document()
         add_rect(proj, x=10, y=10, width=100, height=50)

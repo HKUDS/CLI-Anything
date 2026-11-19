@@ -1004,6 +1004,20 @@ class TestGradients:
 # ── Export Tests ────────────────────────────────────────────────
 
 class TestExport:
+    def test_png_export_surfaces_missing_inkscape(self, tmp_path, monkeypatch):
+        from cli_anything.inkscape.core.export import render_to_png
+        from cli_anything.inkscape.utils import inkscape_backend
+
+        def unavailable():
+            raise RuntimeError("Inkscape is not installed")
+
+        monkeypatch.setattr(inkscape_backend, "find_inkscape", unavailable)
+        output = tmp_path / "result.png"
+
+        with pytest.raises(RuntimeError, match="Inkscape is not installed"):
+            render_to_png(create_document(), str(output))
+        assert not output.exists()
+
     def test_list_presets(self):
         presets = list_presets()
         assert len(presets) > 0

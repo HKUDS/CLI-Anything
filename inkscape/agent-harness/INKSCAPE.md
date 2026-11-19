@@ -40,9 +40,9 @@ Inkscape's SVG format is plain XML. Our strategy:
 
 1. **xml.etree.ElementTree** -- Python's standard XML library for SVG parsing
    and generation. This is our primary engine.
-2. **Pillow** -- For PNG rasterization of basic shapes (rect, circle, text, etc.)
-3. **Inkscape CLI** -- If available, use `inkscape --actions` for advanced
-   operations (PDF export, path boolean ops, text-to-path conversion).
+2. **Inkscape CLI** -- Render the generated SVG for PNG and PDF export.
+   PNG export requires Inkscape so transforms, gradients, opacity, units, and
+   requested dimensions use the same rendering semantics as the SVG document.
 
 ### Why SVG is Ideal for CLI Manipulation
 
@@ -158,18 +158,14 @@ We maintain a JSON project file alongside SVG for state tracking:
 4. Add shape/text/path elements inside their layer groups
 5. Apply style attributes, transforms, gradient references
 
-### PNG Rendering (Pillow)
-1. Create blank image at document dimensions
-2. For each visible layer (bottom to top):
-   - For each object in layer:
-     - Parse style (fill, stroke, stroke-width)
-     - Draw shape using Pillow's ImageDraw
-3. Save as PNG
+### PNG Rendering (Inkscape)
+1. Generate the project SVG in a temporary directory.
+2. Render it with Inkscape, forwarding requested dimensions and DPI.
+3. Read the actual PNG dimensions for the response and remove the temporary SVG.
 
 ### Rendering Gap Assessment: **Low**
 - SVG is the native format, so SVG export is exact
-- PNG rendering via Pillow handles basic shapes (rect, circle, ellipse, line, text)
-- Complex SVG features (filters, clip paths, masks) need Inkscape for rendering
+- PNG rendering uses Inkscape for all features represented by the generated SVG.
 - Path boolean operations are stored as metadata; Inkscape needed for actual computation
 
 ## Export Formats
@@ -177,7 +173,7 @@ We maintain a JSON project file alongside SVG for state tracking:
 | Format | Method | Fidelity |
 |--------|--------|----------|
 | SVG | Direct XML generation | Exact |
-| PNG | Pillow (basic) / Inkscape (full) | Basic shapes / Full |
+| PNG | Inkscape CLI | Full generated SVG |
 | PDF | Inkscape CLI | Full |
 | EPS | Inkscape CLI | Full |
 

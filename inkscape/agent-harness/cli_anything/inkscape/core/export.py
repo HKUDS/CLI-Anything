@@ -1,17 +1,17 @@
 """Inkscape CLI - Export module.
 
 Handles rendering SVG to PNG, exporting to PDF, and saving SVG files.
-Uses Pillow for basic PNG rendering and the project's SVG generation
-for SVG/PDF output.
+Uses the Inkscape CLI to render generated SVG for PNG and PDF output.
 """
 
 import os
 import shutil
+import struct
+import tempfile
 from typing import Dict, Any, List, Optional
 
-from cli_anything.inkscape.core.document import project_to_svg, save_svg
-from cli_anything.inkscape.core.text import layout_text_lines, text_anchor_x
-from cli_anything.inkscape.utils.svg_utils import serialize_svg
+from cli_anything.inkscape.core.document import save_svg
+from cli_anything.inkscape.utils.inkscape_backend import export_svg_to_png
 
 # Export presets
 EXPORT_PRESETS = {
@@ -59,60 +59,37 @@ def render_to_png(
     background: Optional[str] = None,
     overwrite: bool = False,
 ) -> Dict[str, Any]:
-    """Render the SVG document to a PNG file using Pillow.
-
-    This renders basic shapes (rect, circle, ellipse, line, text, polygon)
-    using Pillow's drawing API. For complex SVG features (filters, gradients,
-    clip paths), Inkscape's CLI would be needed.
-    """
+    """Render the generated SVG with Inkscape, preserving SVG semantics."""
     if os.path.exists(output_path) and not overwrite:
         raise FileExistsError(f"Output file already exists: {output_path}")
+    if dpi <= 0 or any(value is not None and value <= 0 for value in (width, height)):
+        raise ValueError("PNG dimensions and DPI must be positive")
 
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-
-    doc = project.get("document", {})
-    doc_width = int(doc.get("width", 1920))
-    doc_height = int(doc.get("height", 1080))
-
-    # Use specified dimensions or document dimensions
-    img_width = width or doc_width
-    img_height = height or doc_height
-    bg = background or doc.get("background", "#ffffff")
-
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-    except ImportError:
-        # If Pillow is not available, generate an SVG + Inkscape command
-        svg_path = output_path.rsplit(".", 1)[0] + ".svg"
-        save_svg(project, svg_path)
-        inkscape_cmd = f"inkscape {svg_path} --export-filename={output_path} --export-dpi={dpi}"
-        return {
-            "status": "svg_generated",
-            "svg_path": svg_path,
-            "inkscape_command": inkscape_cmd,
-            "message": "Pillow not available. Use Inkscape to render.",
+    export_project = project
+    if background is not None:
+        export_project = {
+            **project,
+            "document": {**project.get("document", {}), "background": background},
         }
 
-    # Create image
-    img = Image.new("RGBA", (img_width, img_height), bg)
-    draw = ImageDraw.Draw(img)
-
-    # Scale factor if rendering at different size
-    sx = img_width / doc_width if doc_width else 1
-    sy = img_height / doc_height if doc_height else 1
-
-    # Render visible objects from bottom layer to top
-    for layer in project.get("layers", []):
-        if not layer.get("visible", True):
-            continue
-
-        layer_obj_ids = set(layer.get("objects", []))
-        for obj in project.get("objects", []):
-            if obj.get("id") in layer_obj_ids or obj.get("layer") == layer.get("id"):
-                _render_object(draw, obj, sx, sy)
-
-    # Save
-    img.save(output_path, "PNG")
+    output_directory = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(output_directory, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="cli-anything-inkscape-", dir=output_directory,
+    ) as directory:
+        svg_path = os.path.join(directory, "export.svg")
+        png_path = os.path.join(directory, "export.png")
+        save_svg(export_project, svg_path)
+        result = export_svg_to_png(
+            svg_path, png_path, width=width, height=height, dpi=dpi,
+        )
+        # Read actual dimensions, including DPI/unit conversion and aspect ratios.
+        with open(png_path, "rb") as image:
+            header = image.read(24)
+        if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+            raise RuntimeError("Inkscape did not produce a valid PNG header")
+        img_width, img_height = struct.unpack(">II", header[16:24])
+        os.replace(png_path, output_path)
 
     return {
         "output": output_path,
@@ -120,7 +97,8 @@ def render_to_png(
         "width": img_width,
         "height": img_height,
         "dpi": dpi,
-        "size_bytes": os.path.getsize(output_path),
+        "size_bytes": result["file_size"],
+        "rendered_by": "inkscape",
     }
 
 
@@ -198,154 +176,3 @@ def list_presets() -> List[Dict[str, Any]]:
             "description": preset["description"],
         })
     return result
-
-
-# ── Internal Rendering ──────────────────────────────────────────
-
-def _parse_color(color_str: str) -> Optional[str]:
-    """Parse a CSS color string to a Pillow-compatible color string."""
-    if not color_str or color_str.lower() in ("none", "transparent"):
-        return None
-    return color_str
-
-
-def _get_style_val(obj: Dict[str, Any], key: str, default: str = "") -> str:
-    """Get a style value from an object's style string."""
-    from cli_anything.inkscape.utils.svg_utils import parse_style
-    style = parse_style(obj.get("style", ""))
-    return style.get(key, default)
-
-
-def _render_object(draw, obj: Dict[str, Any], sx: float, sy: float) -> None:
-    """Render a single object onto a Pillow ImageDraw canvas."""
-    obj_type = obj.get("type", "")
-    fill = _parse_color(_get_style_val(obj, "fill", "#0000ff"))
-    stroke = _parse_color(_get_style_val(obj, "stroke", "none"))
-    stroke_w = _get_style_val(obj, "stroke-width", "1")
-    try:
-        stroke_w = max(1, int(float(stroke_w)))
-    except (ValueError, TypeError):
-        stroke_w = 1
-
-    if obj_type == "rect":
-        x = float(obj.get("x", 0)) * sx
-        y = float(obj.get("y", 0)) * sy
-        w = float(obj.get("width", 100)) * sx
-        h = float(obj.get("height", 100)) * sy
-        draw.rectangle([x, y, x + w, y + h], fill=fill, outline=stroke, width=stroke_w)
-
-    elif obj_type == "circle":
-        cx = float(obj.get("cx", 50)) * sx
-        cy = float(obj.get("cy", 50)) * sy
-        r = float(obj.get("r", 50)) * sx
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r],
-                     fill=fill, outline=stroke, width=stroke_w)
-
-    elif obj_type == "ellipse":
-        cx = float(obj.get("cx", 50)) * sx
-        cy = float(obj.get("cy", 50)) * sy
-        rx = float(obj.get("rx", 75)) * sx
-        ry = float(obj.get("ry", 50)) * sy
-        draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry],
-                     fill=fill, outline=stroke, width=stroke_w)
-
-    elif obj_type == "line":
-        x1 = float(obj.get("x1", 0)) * sx
-        y1 = float(obj.get("y1", 0)) * sy
-        x2 = float(obj.get("x2", 100)) * sx
-        y2 = float(obj.get("y2", 100)) * sy
-        line_color = stroke or fill or "#000000"
-        draw.line([x1, y1, x2, y2], fill=line_color, width=stroke_w)
-
-    elif obj_type == "polygon":
-        points_str = obj.get("points", "")
-        if points_str:
-            points = _parse_svg_points(points_str, sx, sy)
-            if len(points) >= 2:
-                draw.polygon(points, fill=fill, outline=stroke, width=stroke_w)
-
-    elif obj_type == "text":
-        anchor_x = text_anchor_x(obj) * sx
-        y = float(obj.get("y", 50)) * sy
-        text_fill = fill or "#000000"
-        font_size = int(float(obj.get("font_size", 24)) * sy)
-        line_height = float(obj.get("line_height", 1.2) or 1.2)
-        try:
-            from PIL import ImageFont
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                                       font_size)
-        except (ImportError, OSError):
-            font = None
-        for idx, line in enumerate(layout_text_lines(obj)):
-            x = _resolve_text_line_x(draw, line, anchor_x, obj, font, sx)
-            line_y = y + (idx * font_size * line_height)
-            draw.text((x, line_y), line, fill=text_fill, font=font)
-
-    elif obj_type == "star" and "d" in obj:
-        # Render star as polygon from path data
-        _render_path_as_polygon(draw, obj.get("d", ""), fill, stroke, stroke_w, sx, sy)
-
-    elif obj_type == "path":
-        # Basic path rendering
-        _render_path_as_polygon(draw, obj.get("d", ""), fill, stroke, stroke_w, sx, sy)
-
-
-def _parse_svg_points(points_str: str, sx: float = 1, sy: float = 1) -> list:
-    """Parse SVG points string to list of (x, y) tuples."""
-    import re
-    result = []
-    for pair in points_str.strip().split():
-        parts = pair.split(",")
-        if len(parts) == 2:
-            try:
-                result.append((float(parts[0]) * sx, float(parts[1]) * sy))
-            except ValueError:
-                pass
-    return result
-
-
-def _render_path_as_polygon(draw, d: str, fill, stroke, stroke_w: int,
-                             sx: float, sy: float) -> None:
-    """Render a simple SVG path as a Pillow polygon (handles M, L, Z only)."""
-    import re
-    points = []
-    parts = re.split(r'[MLZmlz]', d)
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        coords = re.split(r'[,\s]+', part)
-        i = 0
-        while i + 1 < len(coords):
-            try:
-                x = float(coords[i]) * sx
-                y = float(coords[i + 1]) * sy
-                points.append((x, y))
-                i += 2
-            except ValueError:
-                i += 1
-
-    if len(points) >= 3:
-        draw.polygon(points, fill=fill, outline=stroke, width=stroke_w)
-    elif len(points) == 2:
-        line_color = stroke or fill or "#000000"
-        draw.line([points[0], points[1]], fill=line_color, width=stroke_w)
-
-
-def _resolve_text_line_x(draw, line: str, anchor_x: float, obj: Dict[str, Any], font, sx: float) -> float:
-    """Resolve actual line x-position for Pillow drawing."""
-    anchor = obj.get("text_anchor", "start")
-    if anchor == "start":
-        return anchor_x
-
-    try:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        width = bbox[2] - bbox[0]
-    except Exception:
-        width = len(line) * max(1.0, float(obj.get("font_size", 24)) * 0.58 * sx)
-
-    if anchor == "middle":
-        return anchor_x - (width / 2.0)
-    if anchor == "end":
-        return anchor_x - width
-    return anchor_x

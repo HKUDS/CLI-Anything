@@ -182,7 +182,7 @@ Export/render commands.
 
 | Command | Description |
 |---------|-------------|
-| `png` | Render the document to PNG |
+| `png` | Render the document to PNG with Inkscape |
 | `svg` | Export the document as SVG |
 | `pdf` | Export the document as PDF (requires Inkscape) |
 | `presets` | List export presets |
@@ -299,4 +299,4 @@ When using this CLI programmatically:
 
 ## Version
 
-1.0.1
+1.0.2
