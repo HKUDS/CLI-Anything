@@ -227,6 +227,54 @@ def test_boundary_intersection_handles_coplanar_and_crossing_triangles(scale, ot
     assert repair._shell_boundaries_intersect(second, first) is intersects
 
 
+@pytest.mark.parametrize("scale", [1e-6, 1.0, 1e6])
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_boundary_hierarchy_matches_exhaustive_triangle_pairs(scale, seed):
+    rng = np.random.default_rng(seed)
+    first = rng.uniform(-3, 3, (37, 1, 3)) + rng.normal(0, 0.2, (37, 3, 3))
+    second = rng.uniform(-3, 3, (71, 1, 3)) + rng.normal(0, 0.2, (71, 3, 3))
+    if seed == 0:
+        second += 20
+    elif seed == 1:
+        # Coincident faces still count as contact when assigned to leaves.
+        second[52] = first[13]
+    else:
+        # A long face reaches the first shell even though its center is far
+        # away: partition centers must never replace full triangle bounds.
+        first[7] = [[0, 0, 0], [2, 0, 0], [0, 2, 0]]
+        second[63] = [[1, 1, -100], [1, 1, 100], [1, 100, 0]]
+    translation = np.array([100, -50, 25]) * scale
+    first = first * scale + translation
+    second = second * scale + translation
+    low = np.minimum(first.min(axis=(0, 1)), second.min(axis=(0, 1)))
+    high = np.maximum(first.max(axis=(0, 1)), second.max(axis=(0, 1)))
+    span = np.max(high - low)
+    tolerance = 64 * np.finfo(float).eps
+    # Bypass every bounding-box filter for the reference. The production
+    # broad phase must reach every pair accepted by the unchanged SAT test.
+    expected = any(
+        repair._triangles_intersect(triangle, (second - low) / span, tolerance)
+        for triangle in (first - low) / span
+    )
+    assert expected is (seed != 0)
+    assert repair._shell_boundaries_intersect(first, second) is expected
+    assert repair._shell_boundaries_intersect(second[::-1], first[::-1]) is expected
+
+
+def test_high_resolution_nested_shells_preserve_geometry_and_cavity():
+    outer = trimesh.creation.icosphere(subdivisions=4, radius=2)
+    cavity = trimesh.creation.icosphere(subdivisions=4, radius=1)
+    cavity.invert()
+    mesh = _mesh(trimesh.util.concatenate([outer, cavity]))
+
+    fixed, report = repair.repair_mesh(mesh)
+
+    assert report["faces_reoriented"] == 0
+    assert mesh_to_trimesh(fixed).volume == pytest.approx(outer.volume + cavity.volume)
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+
+
 def test_public_repair_preserves_an_intersecting_solid(tmp_path):
     source = tmp_path / "intersecting.3mf"
     destination = tmp_path / "repaired.3mf"

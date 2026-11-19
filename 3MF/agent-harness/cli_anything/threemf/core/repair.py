@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -268,10 +268,11 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
 def _shell_boundaries_intersect(first: np.ndarray, second: np.ndarray) -> bool:
     """Conservatively detect triangle intersection or contact between shells.
 
-    Normalize each pair of shells to a common scale. AABB filtering limits
-    the separating-axis tests; both stages use bounded temporary batches.
-    Near-contact counts as intersection, so it cannot authorize cavity
-    inversion. This only classifies containment; it does not alter geometry.
+    Normalize each pair of shells to a common scale, then traverse their
+    triangle-bound hierarchies together. Disjoint subtrees are discarded
+    without comparing every pair of faces. Overlapping leaves use the same
+    separating-axis test, with near-contact counted as intersection. This
+    only classifies containment; it does not alter geometry.
     """
     low = np.minimum(first.min(axis=(0, 1)), second.min(axis=(0, 1)))
     high = np.maximum(first.max(axis=(0, 1)), second.max(axis=(0, 1)))
@@ -283,21 +284,60 @@ def _shell_boundaries_intersect(first: np.ndarray, second: np.ndarray) -> bool:
     if len(first) > len(second):
         first, second = second, first
     tolerance = 64 * np.finfo(float).eps
+    first_low = first.min(axis=1)
+    first_high = first.max(axis=1)
     second_low = second.min(axis=1)
     second_high = second.max(axis=1)
-    for triangle in first:
-        triangle_low = triangle.min(axis=0)
-        triangle_high = triangle.max(axis=0)
-        for start in range(0, len(second), 4096):
-            stop = start + 4096
-            candidates = second[start:stop][
-                np.all(second_high[start:stop] >= triangle_low - tolerance, axis=1)
-                & np.all(second_low[start:stop] <= triangle_high + tolerance, axis=1)
+    pending = [(
+        _triangle_bounds_tree(first_low, first_high, np.arange(len(first))),
+        _triangle_bounds_tree(second_low, second_high, np.arange(len(second))),
+    )]
+    while pending:
+        left, right = pending.pop()
+        if np.any(left.high < right.low - tolerance) or np.any(right.high < left.low - tolerance):
+            continue
+        if left.children or right.children:
+            # Split the larger non-leaf; tree depth is logarithmic even
+            # when many triangle centers coincide.
+            if right.children and (not left.children or right.count >= left.count):
+                pending.extend((left, child) for child in right.children)
+            else:
+                pending.extend((child, right) for child in left.children)
+            continue
+        for index in left.indices:
+            candidates = right.indices[
+                np.all(second_high[right.indices] >= first_low[index] - tolerance, axis=1)
+                & np.all(second_low[right.indices] <= first_high[index] + tolerance, axis=1)
             ]
-            for offset in range(0, len(candidates), 256):
-                if _triangles_intersect(triangle, candidates[offset:offset + 256], tolerance):
-                    return True
+            if len(candidates) and _triangles_intersect(first[index], second[candidates], tolerance):
+                return True
     return False
+
+
+@dataclass
+class _TriangleBoundsNode:
+    low: np.ndarray
+    high: np.ndarray
+    count: int
+    indices: np.ndarray | None = None
+    children: tuple[_TriangleBoundsNode, ...] = ()
+
+
+def _triangle_bounds_tree(low: np.ndarray, high: np.ndarray, indices: np.ndarray) -> _TriangleBoundsNode:
+    """Partition triangle indices; every node encloses all of its faces."""
+    node = _TriangleBoundsNode(low[indices].min(axis=0), high[indices].max(axis=0), len(indices))
+    if len(indices) <= 16:
+        node.indices = indices
+        return node
+    centers = (low[indices] + high[indices]) * 0.5
+    axis = int(np.argmax(np.ptp(centers, axis=0)))
+    middle = len(indices) // 2
+    indices = indices[np.argpartition(centers[:, axis], middle)]
+    node.children = (
+        _triangle_bounds_tree(low, high, indices[:middle]),
+        _triangle_bounds_tree(low, high, indices[middle:]),
+    )
+    return node
 
 
 def _triangles_intersect(triangle: np.ndarray, candidates: np.ndarray, tolerance: float) -> bool:
