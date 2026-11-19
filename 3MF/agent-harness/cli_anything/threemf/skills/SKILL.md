@@ -10,7 +10,8 @@ description: "3MF mesh geometry editor — detect and resize cylindrical holes, 
 
 `repair` corrects inconsistent face winding and inverted normals as well as
 duplicate vertices and degenerate faces. Its report includes `faces_reoriented`;
-the same normal repair also runs after `resize`.
+the same normal repair also runs after `resize`. Separate closed solids are
+oriented independently, while nested cavity shells retain inward normals.
 
 ## Installation
 

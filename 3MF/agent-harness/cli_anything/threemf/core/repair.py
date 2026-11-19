@@ -172,9 +172,10 @@ def remove_unreferenced_vertices(
 
 
 def fix_normals(mesh_data: MeshData) -> MeshData:
-    """Fix face winding for consistent outward-pointing normals using trimesh.
+    """Fix winding and orient closed shells at the material boundary.
 
     Returns a **new** ``MeshData`` with corrected triangle winding order.
+    Separate solids point outward; nested cavity shells point inward.
     """
 
     _validate_mesh(mesh_data)
@@ -195,9 +196,41 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
         faces=mesh_data.triangles.copy(),
         process=False,
     )
-    trimesh.repair.fix_normals(tm)
+    trimesh.repair.fix_winding(tm)
+
+    # An aggregate volume cannot distinguish inverted solids from cavities.
+    # Find closed shells without changing face order or discarding open faces.
+    groups = trimesh.graph.connected_components(
+        tm.face_adjacency, nodes=np.arange(len(tm.faces)), engine="networkx",
+    )
+    closed_shells = []
+    for indices in groups:
+        if len(indices) < 4:
+            continue
+        shell = trimesh.Trimesh(
+            vertices=tm.vertices, faces=tm.faces[indices], process=False,
+        )
+        if shell.is_watertight and shell.is_winding_consistent and shell.volume != 0:
+            closed_shells.append((indices, shell))
 
     fixed_triangles = np.array(tm.faces)
+    for index, (indices, shell) in enumerate(closed_shells):
+        depth = 0
+        for other_index, (_, enclosing) in enumerate(closed_shells):
+            if index == other_index:
+                continue
+            # Containment of disjoint closed shells requires nested bounds.
+            # The solid-angle test also excludes solids in a ring's open hole.
+            if (
+                np.all(enclosing.bounds[0] < shell.bounds[0])
+                and np.all(shell.bounds[1] < enclosing.bounds[1])
+                and _encloses_point(enclosing.triangles, shell.triangles[0, 0])
+            ):
+                depth += 1
+
+        if (shell.volume < 0) != (depth % 2 == 1):
+            fixed_triangles[indices] = fixed_triangles[indices, ::-1]
+
     # Keep the original first vertex when expressing the corrected winding.
     # This also keeps the implicit object-level property fallback for p1;
     # reversing a face then only swaps its second and third properties.
@@ -228,6 +261,31 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _encloses_point(triangles: np.ndarray, point: np.ndarray) -> bool:
+    """Test a point against a closed shell without depending on its winding.
+
+    The signed solid angles sum to +/-4*pi inside and zero outside. Work in
+    chunks to bound temporary arrays for large meshes and normalize vectors
+    before evaluating the angle to avoid products of cubed model dimensions.
+    """
+    angle = 0.0
+    for start in range(0, len(triangles), 4096):
+        vectors = triangles[start:start + 4096] - point
+        lengths = np.linalg.norm(vectors, axis=2)
+        if np.any(lengths == 0):
+            return False
+        directions = vectors / lengths[:, :, None]
+        a, b, c = directions[:, 0], directions[:, 1], directions[:, 2]
+        numerator = np.einsum("ij,ij->i", a, np.cross(b, c))
+        denominator = (
+            1.0 + np.einsum("ij,ij->i", a, b)
+            + np.einsum("ij,ij->i", b, c)
+            + np.einsum("ij,ij->i", c, a)
+        )
+        angle += float(np.sum(2.0 * np.arctan2(numerator, denominator)))
+    return abs(angle) > 2.0 * np.pi
 
 
 def _reorient_triangle_properties(attrs: dict[str, str]) -> dict[str, str]:
