@@ -192,6 +192,9 @@ def _windows_api():
         "GetSecurityDescriptorControl": (
             [pointer, ctypes.POINTER(ctypes.c_uint16), ctypes.POINTER(dword)], boolean,
         ),
+        "SetSecurityDescriptorControl": (
+            [pointer, ctypes.c_uint16, ctypes.c_uint16], boolean,
+        ),
         "GetSecurityDescriptorOwner": (
             [pointer, ctypes.POINTER(pointer), ctypes.POINTER(boolean)], boolean,
         ),
@@ -294,6 +297,12 @@ def _restore_windows_permissions(path: str, contents: bytes) -> None:
     if current[4] != expected[4]:
         information |= 2
     buffer = ctypes.create_string_buffer(contents)
+    if expected[1] & 0x400:
+        # AUTO_INHERITED is read-only state: restoring it also requires the
+        # corresponding AUTO_INHERIT_REQ command in the input descriptor.
+        # SetNamedSecurityInfo would recompute inherited ACEs from the private
+        # staging directory instead of preserving the destination's entries.
+        _windows_checked(advapi.SetSecurityDescriptorControl(buffer, 0x100, 0x100))
     _windows_checked(advapi.SetFileSecurityW(path, information, buffer))
     if _windows_acl_signature(_read_windows_permissions(path)) != expected:
         raise OSError(errno.EPERM, "Restored Windows access permissions differ")
