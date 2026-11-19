@@ -28,7 +28,7 @@ CLI-Anything: Die Brücke zwischen KI-Agenten und der Software der Welt</strong>
 <a href="https://github.com/HKUDS/.github/blob/main/profile/README.md"><img src="https://img.shields.io/badge/WeChat-Group-C5EAB4?style=flat&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
-**Ein Befehl**: Mache jede Software agent-bereit für Pi, OpenClaw, nanobot, Cursor, Claude Code usw.&nbsp;&nbsp;[**English**](README.md) | [**中文文档**](README_CN.md) | [**日本語ドキュメント**](README_JA.md)
+**Ein Befehl**: Mache jede Software agent-bereit für Pi, OpenClaw, nanobot, Cursor, Claude Code usw.&nbsp;&nbsp;[**English**](README.md) | [**中文文档**](README_CN.md) | [**日本語ドキュメント**](README_JA.md) | [**Tiếng Việt**](README_VI.md)
 
 <p align="center">
   <img src="assets/cli-typing.gif" alt="CLI-Anything Tipp-Demo" width="800">
