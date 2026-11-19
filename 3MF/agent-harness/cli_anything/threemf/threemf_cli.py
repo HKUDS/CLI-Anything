@@ -237,7 +237,8 @@ def resize(file, hole_ids, diameter, output_path, planes, min_diameter, min_conf
     # Auto-repair after resize
     target_mesh = new_data.meshes[mesh]
     repaired, report = repair_mod.repair_mesh(target_mesh)
-    total_fixes = report["vertices_merged"] + report["degenerate_faces_removed"] + report["unreferenced_vertices_removed"]
+    total_fixes = (report["vertices_merged"] + report["degenerate_faces_removed"]
+                   + report["unreferenced_vertices_removed"] + report["faces_reoriented"])
     if total_fixes > 0:
         meshes_list = list(new_data.meshes)
         meshes_list[mesh] = repaired
@@ -311,11 +312,13 @@ def repair(file, output_path, mesh, overwrite):
     }
 
     if not _json_output:
-        total = report['vertices_merged'] + report['degenerate_faces_removed'] + report['unreferenced_vertices_removed']
+        total = (report['vertices_merged'] + report['degenerate_faces_removed']
+                 + report['unreferenced_vertices_removed'] + report['faces_reoriented'])
         click.echo(f"Repaired: {os.path.basename(file)}")
         click.echo(f"  Duplicates merged:    {report['vertices_merged']}")
         click.echo(f"  Degenerates removed:  {report['degenerate_faces_removed']}")
         click.echo(f"  Unreferenced removed: {report['unreferenced_vertices_removed']}")
+        click.echo(f"  Faces reoriented:     {report['faces_reoriented']}")
         click.echo(f"  Total fixes:          {total}")
         click.echo(f"Saved: {output_path}")
     else:

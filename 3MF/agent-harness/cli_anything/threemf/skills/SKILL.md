@@ -1,11 +1,17 @@
 ---
 name: "cli-anything-3mf"
+version: "1.0.1"
 description: "3MF mesh geometry editor — detect and resize cylindrical holes, repair meshes, compare 3D printing files. Works with BambuStudio and PrusaSlicer 3MF files."
 ---
 
 # cli-anything-3mf
 
 3MF mesh geometry editor for 3D printing files.
+
+`repair` corrects inconsistent face winding and inverted normals as well as
+duplicate vertices and degenerate faces. Its report includes `faces_reoriented`;
+the same normal repair also runs after `resize`. Separate closed solids are
+oriented independently, while nested cavity shells retain inward normals.
 
 ## Installation
 
