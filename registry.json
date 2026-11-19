@@ -1531,7 +1531,10 @@
           "name": "sharriffajar",
           "url": "https://github.com/sharriffajar"
         }
-      ]
+      ],
+      "install_strategy": "command",
+      "update_cmd": "cargo install --git https://github.com/sharriffajar/rustren.git --locked --force",
+      "uninstall_cmd": "cargo uninstall rustren"
     }
   ]
 }
