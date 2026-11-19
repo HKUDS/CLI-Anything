@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "caelaralabs",
+      "display_name": "Caelara Labs",
+      "version": "1.0.0",
+      "description": "Agent-native CLI harness for the Caelara Labs APIs — 10 suites and 100 endpoints (web intelligence, social analytics, compliance, SEO, on-chain data, media and more) with --json output, a REPL, a zero-spend --dry-run, API-key auth and optional capped x402 USDC payment on Base",
+      "requires": "Python 3.10+; CAELARA_API_KEY (free 50-call trial key at https://caelaralabs.com) or, optionally, CAELARA_PRIVATE_KEY for x402 payment (pip install \"cli-anything-caelaralabs[x402]\")",
+      "homepage": "https://caelaralabs.com",
+      "source_url": "https://github.com/kingefman1-cmyk/cli-anything-caelaralabs",
+      "install_cmd": "pip install git+https://github.com/kingefman1-cmyk/cli-anything-caelaralabs.git",
+      "entry_point": "cli-anything-caelaralabs",
+      "skill_md": "https://github.com/kingefman1-cmyk/cli-anything-caelaralabs/blob/main/skills/cli-anything-caelaralabs/SKILL.md",
+      "category": "web",
+      "contributors": [
+        {
+          "name": "kingefman1-cmyk",
+          "url": "https://github.com/kingefman1-cmyk"
+        }
+      ]
     }
   ]
 }
