@@ -61,7 +61,8 @@ across planes to detect consistent cylindrical holes.
 ### Hole Resizing
 Wall vertices are identified by their radial distance from the hole axis.
 Vertices are then scaled radially to achieve the target diameter while preserving
-mesh topology and angular position.
+mesh topology and angular position. The target diameter must be finite and positive;
+NaN and infinite values are rejected before geometry or output files change.
 
 ### Slicer Compatibility
 All non-mesh content (slicer settings, thumbnails, plate configurations) is

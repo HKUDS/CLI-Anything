@@ -1258,3 +1258,51 @@ class TestModifier:
         assert changes and changes[0]["vertices_moved"] > 0
         # the modified mesh is a genuinely new object (resize actually happened)
         assert new_data.meshes[0] is not data.meshes[0]
+
+
+@pytest.mark.parametrize("diameter", [float("nan"), float("inf"), -float("inf")])
+def test_resize_single_hole_rejects_nonfinite_diameter(diameter) -> None:
+    mesh = _make_washer_mesh()
+    original = mesh.vertices.copy()
+    hole = _make_fake_hole(diameter=8.0, axis=2)
+    with pytest.raises(ValueError, match="finite and positive"):
+        resize_single_hole(mesh, hole, diameter)
+    np.testing.assert_array_equal(mesh.vertices, original)
+
+
+@pytest.mark.parametrize("diameter", [float("nan"), float("inf"), -float("inf")])
+def test_resize_holes_rejects_nonfinite_diameter(diameter) -> None:
+    data = _make_threemf_data(_make_washer_mesh())
+    original = data.meshes[0].vertices.copy()
+    with pytest.raises(ValueError, match="finite and positive"):
+        resize_holes(data, [0], diameter, params=InspectParams(axis=2))
+    np.testing.assert_array_equal(data.meshes[0].vertices, original)
+
+
+@pytest.mark.parametrize("diameter", ["nan", "inf", "-inf"])
+def test_resize_cli_rejects_nonfinite_diameter_without_replacing_output(
+    tmp_path, diameter
+) -> None:
+    import json
+
+    from click.testing import CliRunner
+    from cli_anything.threemf.threemf_cli import cli
+
+    source = tmp_path / "source.3mf"
+    destination = tmp_path / "existing.3mf"
+    parser_mod.write_3mf(_make_threemf_data(_make_washer_mesh()), str(source))
+    original = source.read_bytes()
+    destination.write_bytes(original)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json", "resize", str(source), "--hole", "0", "--axis", "2",
+            "--diameter", diameter, "--output", str(destination), "--overwrite",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.output)["error"] == "Diameter must be finite and positive"
+    assert source.read_bytes() == original
+    assert destination.read_bytes() == original
