@@ -98,16 +98,13 @@ def merge_duplicate_vertices(
         structured, return_index=True, return_inverse=True,
     )
 
-    unique_vertices = vertices[np.sort(canonical_idx)]
-
-    # Build old-index -> new-index mapping (preserving sorted order of canonical)
-    sorted_canonical = np.sort(canonical_idx)
-    new_idx_map = np.full(vertices.shape[0], -1, dtype=np.intp)
-    for new_i, old_i in enumerate(sorted_canonical):
-        new_idx_map[old_i] = new_i
-
-    # Remap each original index through inverse -> canonical -> new_sorted
-    remap = new_idx_map[canonical_idx[inverse]]
+    # np.unique orders coordinate groups; retain first-occurrence order in
+    # the output and map those groups directly to their new vertex indices.
+    order = np.argsort(canonical_idx)
+    unique_vertices = vertices[canonical_idx[order]]
+    group_to_vertex = np.empty(canonical_idx.shape[0], dtype=np.intp)
+    group_to_vertex[order] = np.arange(canonical_idx.shape[0], dtype=np.intp)
+    remap = group_to_vertex[inverse]
 
     remapped_triangles = remap[triangles] if triangles.shape[0] > 0 else triangles
 
