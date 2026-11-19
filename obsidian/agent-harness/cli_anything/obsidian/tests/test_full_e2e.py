@@ -80,6 +80,27 @@ class TestVaultE2E:
         # Cleanup
         runner.invoke(cli, ["--api-key", API_KEY, "vault", "delete", TEST_NOTE])
 
+    @pytest.mark.parametrize("suffix", ["#draft", "%2F"])
+    def test_vault_reserved_characters(self, runner, suffix):
+        import json
+        from uuid import uuid4
+
+        path = f"_cli_anything_test_{uuid4().hex}{suffix}.md"
+        try:
+            result = runner.invoke(cli, [
+                "--json", "--api-key", API_KEY, "vault", "create",
+                path, "--content", TEST_CONTENT,
+            ])
+            assert result.exit_code == 0, result.output
+
+            result = runner.invoke(cli, [
+                "--json", "--api-key", API_KEY, "vault", "read", path,
+            ])
+            assert result.exit_code == 0, result.output
+            assert json.loads(result.output)["content"] == TEST_CONTENT
+        finally:
+            runner.invoke(cli, ["--api-key", API_KEY, "vault", "delete", path])
+
 
 class TestSearchE2E:
     def test_search_simple(self, runner):

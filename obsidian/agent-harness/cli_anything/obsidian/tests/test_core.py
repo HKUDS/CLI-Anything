@@ -236,6 +236,48 @@ class TestVaultModule:
         )
 
 
+class TestVaultPathEncoding:
+    @pytest.mark.parametrize("path, encoded", [
+        ("/folder/note#draft?.md", "folder/note%23draft%3F.md"),
+        ("folder/100% done.md", "folder/100%25%20done.md"),
+        ("folder/literal%2Fname.md", "folder/literal%252Fname.md"),
+        ("notes/caf\u00e9.md", "notes/caf%C3%A9.md"),
+    ])
+    @pytest.mark.parametrize("operation", [
+        "read_note", "create_note", "update_note", "delete_note", "append_note",
+    ])
+    def test_note_paths_survive_request_preparation(self, path, encoded, operation):
+        from requests import Response
+        from cli_anything.obsidian.core import vault
+
+        response = Response()
+        response.status_code = 200
+        response._content = b"existing text"
+        response.headers["content-type"] = "text/markdown"
+        args = ["https://localhost:27124", "test-key", path]
+        if operation in {"create_note", "update_note", "append_note"}:
+            args.append("new text")
+
+        with patch("requests.Session.send", return_value=response) as send:
+            getattr(vault, operation)(*args)
+
+        assert send.call_count == (2 if operation == "append_note" else 1)
+        for call in send.call_args_list:
+            request = call.args[0]
+            assert request.url == f"https://localhost:27124/vault/{encoded}"
+            assert request.path_url == f"/vault/{encoded}"
+
+    def test_folder_paths_are_encoded_without_losing_separators(self):
+        from cli_anything.obsidian.core.vault import list_files
+
+        with patch("cli_anything.obsidian.core.vault.api_get") as get:
+            list_files("https://localhost:27124", "test-key", "/work/drafts#1%/")
+
+        get.assert_called_once_with(
+            "https://localhost:27124", "/vault/work/drafts%231%25/", "test-key"
+        )
+
+
 class TestSearchModule:
     @patch("cli_anything.obsidian.core.search.api_post_raw")
     def test_search_query_default_dql(self, mock_api):
