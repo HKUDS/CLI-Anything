@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "rustren",
+      "display_name": "Rustren",
+      "version": "0.3.0",
+      "description": "Browserless 2D video render engine in Rust — render declarative HTML/JSON scenes into MP4 videos with validate, snapshot, layout, diff, beats, and MCP support.",
+      "requires": "Rust toolchain (Cargo) and ffmpeg (plus ffprobe for video layers)",
+      "homepage": "https://github.com/sharriffajar/rustren",
+      "source_url": "https://github.com/sharriffajar/rustren",
+      "install_cmd": "cargo install --git https://github.com/sharriffajar/rustren.git --locked",
+      "entry_point": "rustren",
+      "skill_md": "https://raw.githubusercontent.com/sharriffajar/rustren/main/SKILL.md",
+      "category": "video",
+      "contributors": [
+        {
+          "name": "sharriffajar",
+          "url": "https://github.com/sharriffajar"
+        }
+      ]
     }
   ]
 }
