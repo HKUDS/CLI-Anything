@@ -25,7 +25,8 @@ def repair_mesh(mesh_data: MeshData) -> tuple[MeshData, dict]:
     2. Remap triangle indices to canonical vertices.
     3. Remove degenerate triangles (two or more identical indices).
     4. Remove unreferenced vertices and compact indices.
-    5. Return the repaired mesh and a report dict.
+    5. Fix inconsistent winding and inward-pointing normals.
+    6. Return the repaired mesh and a report dict.
     """
 
     _validate_mesh(mesh_data)
@@ -70,7 +71,11 @@ def repair_mesh(mesh_data: MeshData) -> tuple[MeshData, dict]:
         triangles=triangles,
         triangle_attributes=triangle_attributes,
     )
-    return repaired, report
+    fixed = fix_normals(repaired)
+    report["faces_reoriented"] = int(np.count_nonzero(
+        np.any(fixed.triangles != repaired.triangles, axis=1),
+    ))
+    return fixed, report
 
 
 def merge_duplicate_vertices(
@@ -193,8 +198,21 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
     trimesh.repair.fix_normals(tm)
 
     fixed_triangles = np.array(tm.faces)
+    # Keep the original first vertex when expressing the corrected winding.
+    # This also keeps the implicit object-level property fallback for p1;
+    # reversing a face then only swaps its second and third properties.
+    first_positions = np.argmax(
+        fixed_triangles == mesh_data.triangles[:, :1], axis=1,
+    )
+    fixed_triangles = np.take_along_axis(
+        fixed_triangles, (first_positions[:, None] + np.arange(3)) % 3, axis=1,
+    )
+    flipped = fixed_triangles[:, 1] != mesh_data.triangles[:, 1]
     triangle_attributes = (
-        mesh_data.triangle_attributes
+        tuple(
+            _reorient_triangle_properties(attrs) if flip else dict(attrs)
+            for attrs, flip in zip(mesh_data.triangle_attributes, flipped)
+        )
         if len(mesh_data.triangle_attributes) == fixed_triangles.shape[0]
         else ()
     )
@@ -210,6 +228,17 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _reorient_triangle_properties(attrs: dict[str, str]) -> dict[str, str]:
+    """Swap per-vertex properties with v2/v3, preserving omitted defaults."""
+    result = dict(attrs)
+    for old, new in (("p2", "p3"), ("p3", "p2")):
+        if old in attrs:
+            result[new] = attrs[old]
+        else:
+            result.pop(new, None)
+    return result
 
 
 def _validate_mesh(mesh_data: MeshData) -> None:
@@ -252,6 +281,7 @@ def _empty_report() -> dict:
         "vertices_merged": 0,
         "degenerate_faces_removed": 0,
         "unreferenced_vertices_removed": 0,
+        "faces_reoriented": 0,
         "final_vertex_count": 0,
         "final_triangle_count": 0,
     }
