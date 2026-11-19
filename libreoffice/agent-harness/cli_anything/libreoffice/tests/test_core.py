@@ -207,6 +207,9 @@ class TestImport:
         assert formula == "=A1+A2"
         assert 'table:formula="of:=A1+A2"' in content_xml
         assert "of:of:=" not in content_xml
+        # Regression: the "of:" formula-grammar prefix must be declared on the
+        # root, or LibreOffice can't resolve it and reports Err:510 (#652).
+        assert 'xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2"' in content_xml
 
     def test_import_impress_odp(self):
         proj = create_document(doc_type="impress", name="import_impress")

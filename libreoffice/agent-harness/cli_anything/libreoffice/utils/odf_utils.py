@@ -34,6 +34,7 @@ ODF_NS = {
     "manifest": "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0",
     "number": "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0",
     "xlink": "http://www.w3.org/1999/xlink",
+    "of": "urn:oasis:names:tc:opendocument:xmlns:of:1.2",
 }
 
 # MIME types for ODF document types
@@ -74,6 +75,11 @@ def create_content_xml(doc_type: str, project: Dict[str, Any]) -> str:
     # Root element
     root = ET.Element(_ns("office", "document-content"))
     root.set(_nsattr("office", "version"), "1.2")
+    # "of:" (formula grammar) is only ever used inside an attribute *value*
+    # (table:formula="of:=SUM(...)"), never as an element/attribute name, so
+    # ET.register_namespace never emits its xmlns declaration. Without it,
+    # LibreOffice can't resolve the formula grammar and reports Err:510.
+    root.set("xmlns:of", ODF_NS["of"])
 
     # Automatic styles
     auto_styles = ET.SubElement(root, _ns("office", "automatic-styles"))
