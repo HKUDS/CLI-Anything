@@ -207,25 +207,30 @@ def fix_normals(mesh_data: MeshData) -> MeshData:
     for indices in groups:
         if len(indices) < 4:
             continue
+        # Classification shells need only their own vertices. Keeping the
+        # full model in each shell also makes cached bounds needlessly large.
+        vertex_indices, local_faces = np.unique(tm.faces[indices], return_inverse=True)
         shell = trimesh.Trimesh(
-            vertices=tm.vertices, faces=tm.faces[indices], process=False,
+            vertices=tm.vertices[vertex_indices], faces=local_faces.reshape(-1, 3), process=False,
         )
         if shell.is_watertight and shell.is_winding_consistent and shell.volume != 0:
             closed_shells.append((indices, shell))
 
+    shell_bounds = np.array([shell.bounds for _, shell in closed_shells])
+    shell_tree = (
+        _bounds_tree(shell_bounds[:, 0], shell_bounds[:, 1], np.arange(len(closed_shells)))
+        if closed_shells else None
+    )
     fixed_triangles = np.array(tm.faces)
     for index, (indices, shell) in enumerate(closed_shells):
         depth = 0
-        for other_index, (_, enclosing) in enumerate(closed_shells):
-            if index == other_index:
-                continue
+        for other_index in _enclosing_shell_indices(shell_bounds, shell_tree, index):
+            _, enclosing = closed_shells[other_index]
             # A point classifies the whole connected shell only when the
             # boundaries are disjoint. Crossing a concave wall or touching
             # it must not turn an overlapping solid into a cavity.
             if (
-                np.all(enclosing.bounds[0] < shell.bounds[0])
-                and np.all(shell.bounds[1] < enclosing.bounds[1])
-                and _encloses_point(enclosing.triangles, shell.triangles[0, 0])
+                _encloses_point(enclosing.triangles, shell.triangles[0, 0])
                 and not _shell_boundaries_intersect(enclosing.triangles, shell.triangles)
             ):
                 depth += 1
@@ -289,8 +294,8 @@ def _shell_boundaries_intersect(first: np.ndarray, second: np.ndarray) -> bool:
     second_low = second.min(axis=1)
     second_high = second.max(axis=1)
     pending = [(
-        _triangle_bounds_tree(first_low, first_high, np.arange(len(first))),
-        _triangle_bounds_tree(second_low, second_high, np.arange(len(second))),
+        _bounds_tree(first_low, first_high, np.arange(len(first))),
+        _bounds_tree(second_low, second_high, np.arange(len(second))),
     )]
     while pending:
         left, right = pending.pop()
@@ -315,17 +320,17 @@ def _shell_boundaries_intersect(first: np.ndarray, second: np.ndarray) -> bool:
 
 
 @dataclass
-class _TriangleBoundsNode:
+class _BoundsNode:
     low: np.ndarray
     high: np.ndarray
     count: int
     indices: np.ndarray | None = None
-    children: tuple[_TriangleBoundsNode, ...] = ()
+    children: tuple[_BoundsNode, ...] = ()
 
 
-def _triangle_bounds_tree(low: np.ndarray, high: np.ndarray, indices: np.ndarray) -> _TriangleBoundsNode:
-    """Partition triangle indices; every node encloses all of its faces."""
-    node = _TriangleBoundsNode(low[indices].min(axis=0), high[indices].max(axis=0), len(indices))
+def _bounds_tree(low: np.ndarray, high: np.ndarray, indices: np.ndarray) -> _BoundsNode:
+    """Partition bounds; every node encloses every object below it."""
+    node = _BoundsNode(low[indices].min(axis=0), high[indices].max(axis=0), len(indices))
     if len(indices) <= 16:
         node.indices = indices
         return node
@@ -334,10 +339,30 @@ def _triangle_bounds_tree(low: np.ndarray, high: np.ndarray, indices: np.ndarray
     middle = len(indices) // 2
     indices = indices[np.argpartition(centers[:, axis], middle)]
     node.children = (
-        _triangle_bounds_tree(low, high, indices[:middle]),
-        _triangle_bounds_tree(low, high, indices[middle:]),
+        _bounds_tree(low, high, indices[:middle]),
+        _bounds_tree(low, high, indices[middle:]),
     )
     return node
+
+
+def _enclosing_shell_indices(bounds: np.ndarray, tree: _BoundsNode, index: int):
+    """Yield only shells whose bounds strictly contain the queried shell."""
+    low, high = bounds[index]
+    pending = [tree]
+    while pending:
+        node = pending.pop()
+        # If even the union cannot enclose the query, no individual shell
+        # in this subtree can do so. Test actual shell bounds at leaves.
+        if np.any(node.low >= low) or np.any(node.high <= high):
+            continue
+        if node.children:
+            pending.extend(node.children)
+        else:
+            candidates = node.indices[
+                np.all(bounds[node.indices, 0] < low, axis=1)
+                & np.all(high < bounds[node.indices, 1], axis=1)
+            ]
+            yield from candidates
 
 
 def _triangles_intersect(triangle: np.ndarray, candidates: np.ndarray, tolerance: float) -> bool:
@@ -355,8 +380,14 @@ def _triangles_intersect(triangle: np.ndarray, candidates: np.ndarray, tolerance
         np.broadcast_to(np.cross(normal, edges), (len(candidates), 3, 3)),
         np.cross(other_normals[:, None, :], other_edges),
     ], axis=1)
+    # These cross products have different dimensions (length squared or
+    # cubed), so a contact-distance tolerance cannot decide whether they
+    # are valid axes. Scale every nonzero axis before taking its norm to
+    # retain separators from small facets without squaring tiny values.
+    magnitudes = np.max(np.abs(axes), axis=2, keepdims=True)
+    axes = np.divide(axes, magnitudes, out=np.zeros_like(axes), where=magnitudes > 0)
     lengths = np.linalg.norm(axes, axis=2, keepdims=True)
-    axes = np.divide(axes, lengths, out=np.zeros_like(axes), where=lengths > tolerance)
+    axes = np.divide(axes, lengths, out=np.zeros_like(axes), where=lengths > 0)
     projected = np.einsum("td,nad->nat", triangle, axes)
     other_projected = np.einsum("ntd,nad->nat", candidates, axes)
     separated = (

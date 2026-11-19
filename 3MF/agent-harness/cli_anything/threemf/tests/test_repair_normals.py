@@ -156,6 +156,37 @@ def test_nested_island_and_separate_solid_keep_material_void_parity():
     assert report["faces_reoriented"] == 24
 
 
+def test_shell_bounds_candidates_match_strict_containment():
+    rng = np.random.default_rng(42)
+    low = rng.uniform(-20, 20, (130, 3))
+    high = low + rng.uniform(0.1, 8, (130, 3))
+    # Include large and nested bounds, coincident bounds, and contact.
+    low[:5] = [[-30, -30, -30], [-2, -2, -2], [-1, -1, -1], [-1, -1, -1], [-2, -1, -1]]
+    high[:5] = [[30, 30, 30], [2, 2, 2], [1, 1, 1], [1, 1, 1], [1, 1, 1]]
+    bounds = np.stack([low, high], axis=1)
+    tree = repair._bounds_tree(low, high, np.arange(len(bounds)))
+
+    for index in range(len(bounds)):
+        expected = {
+            other for other in range(len(bounds))
+            if np.all(low[other] < low[index]) and np.all(high[index] < high[other])
+        }
+        assert set(repair._enclosing_shell_indices(bounds, tree, index)) == expected
+
+
+def test_many_disjoint_solids_keep_orientation_and_nested_material_parity():
+    solids = [_box(1, center=(index * 3 + 10, 0, 0), inverted=index % 2 == 1) for index in range(100)]
+    mesh = _mesh(trimesh.util.concatenate([_box(6), _box(4), _box(2), *solids]))
+    original = mesh.triangles.copy()
+
+    fixed, report = repair.repair_mesh(mesh)
+
+    assert _component_volumes(fixed) == pytest.approx([-64, *([1] * 100), 8, 216])
+    assert report["faces_reoriented"] == (1 + 50) * 12
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(np.sort(fixed.triangles, axis=1), np.sort(original, axis=1))
+
+
 def test_solid_in_a_ring_hole_is_not_mistaken_for_an_internal_cavity():
     ring = trimesh.creation.annulus(r_min=4, r_max=20, height=10, sections=64)
     mesh = _mesh(trimesh.util.concatenate([ring, _box(2, inverted=True)]))
@@ -273,6 +304,71 @@ def test_high_resolution_nested_shells_preserve_geometry_and_cavity():
     assert mesh_to_trimesh(fixed).volume == pytest.approx(outer.volume + cavity.volume)
     np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
     np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+
+
+def _box_with_small_triangular_pocket():
+    # A closed 2x2x2 cube with a triangular pocket cut from z=1 to z=0.
+    # Explicit topology avoids a Boolean-engine dependency in this fixture.
+    detail = 2e-5
+    vertices = [
+        [-1, -1, -1], [-1, -1, 1], [-1, 1, -1], [-1, 1, 1],
+        [1, -1, -1], [1, -1, 1], [1, 1, -1],
+        [0, 0, 0], [0, detail, 0], [detail, 0, 0],
+        [0, 0, 1], [0, detail, 1], [detail, 0, 1], [1, 1, 1],
+    ]
+    faces = [
+        [0, 4, 1], [0, 2, 4], [0, 1, 3], [0, 3, 2],
+        [1, 10, 3], [3, 10, 11], [2, 3, 13], [4, 6, 5],
+        [1, 4, 5], [1, 5, 10], [5, 12, 10], [2, 6, 4],
+        [2, 13, 6], [13, 11, 12], [3, 11, 13], [5, 6, 13],
+        [5, 13, 12], [7, 9, 8], [7, 8, 11], [8, 9, 12],
+        [7, 10, 9], [7, 11, 10], [8, 12, 11], [9, 10, 12],
+    ]
+    return trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+
+
+@pytest.mark.parametrize("scale", [1.0, 1e3])
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_small_coplanar_pocket_preserves_valid_cavity(scale, reverse_order):
+    outer = _box_with_small_triangular_pocket()
+    cavity = trimesh.creation.box(extents=(2e-6, 2e-6, 0.2))
+    cavity.apply_translation((1.5e-5, 1.5e-5, -0.1))
+    cavity.invert()
+    # The cavity's top is coplanar with the pocket bottom and their AABBs
+    # overlap, but the cavity is beyond the pocket's diagonal x+y=2e-5.
+    assert np.min(cavity.vertices[:, 0] + cavity.vertices[:, 1]) > 2e-5
+    assert outer.is_watertight and outer.is_winding_consistent
+    for shell in (outer, cavity):
+        shell.apply_scale(scale)
+        if reverse_order:
+            shell.faces = shell.faces[::-1]
+    mesh = _mesh(trimesh.util.concatenate([outer, cavity]))
+
+    fixed, report = repair.repair_mesh(mesh)
+
+    assert report["faces_reoriented"] == 0
+    np.testing.assert_array_equal(fixed.vertices, mesh.vertices)
+    np.testing.assert_array_equal(fixed.triangles, mesh.triangles)
+    assert _component_volumes(fixed)[0] == pytest.approx(cavity.volume, rel=1e-10, abs=0)
+
+
+def test_public_repair_keeps_cavity_beside_small_coplanar_pocket(tmp_path):
+    source = tmp_path / "small-pocket.3mf"
+    destination = tmp_path / "repaired.3mf"
+    outer = _box_with_small_triangular_pocket()
+    cavity = trimesh.creation.box(extents=(2e-6, 2e-6, 0.2))
+    cavity.apply_translation((1.5e-5, 1.5e-5, -0.1))
+    cavity.invert()
+    _write(source, _mesh(trimesh.util.concatenate([outer, cavity])))
+
+    result = CliRunner().invoke(cli, [
+        "--json", "repair", str(source), "--output", str(destination),
+    ])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["repairs"]["faces_reoriented"] == 0
+    fixed = parser.parse_3mf(str(destination)).meshes[0]
+    assert _component_volumes(fixed)[0] == pytest.approx(cavity.volume, rel=1e-10, abs=0)
 
 
 def test_public_repair_preserves_an_intersecting_solid(tmp_path):
