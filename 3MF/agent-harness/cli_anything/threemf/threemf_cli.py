@@ -369,7 +369,7 @@ def repl():
     _repl_mode = True
 
     from cli_anything.threemf.utils.repl_skin import ReplSkin
-    skin = ReplSkin("3mf", version="1.0.0")
+    skin = ReplSkin("3mf", version="1.0.1")
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()
