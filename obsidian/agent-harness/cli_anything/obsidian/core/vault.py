@@ -1,5 +1,7 @@
 """Obsidian vault operations — list, read, create, update, delete, append."""
 
+from urllib.parse import quote
+
 from cli_anything.obsidian.utils.obsidian_backend import (
     api_get, api_put, api_delete,
 )
@@ -7,31 +9,31 @@ from cli_anything.obsidian.utils.obsidian_backend import (
 
 def list_files(base_url: str, api_key: str, path: str = "/") -> dict:
     """List files and folders in the vault."""
-    endpoint = f"/vault/{path.strip('/')}/" if path != "/" else "/vault/"
+    endpoint = f"/vault/{quote(path.strip('/'), safe='/')}/" if path != "/" else "/vault/"
     return api_get(base_url, endpoint, api_key)
 
 
 def read_note(base_url: str, api_key: str, path: str) -> dict:
     """Read a note's content."""
-    endpoint = f"/vault/{path.lstrip('/')}"
+    endpoint = f"/vault/{quote(path.lstrip('/'), safe='/')}"
     return api_get(base_url, endpoint, api_key)
 
 
 def create_note(base_url: str, api_key: str, path: str, content: str) -> dict:
     """Create a new note in the vault."""
-    endpoint = f"/vault/{path.lstrip('/')}"
+    endpoint = f"/vault/{quote(path.lstrip('/'), safe='/')}"
     return api_put(base_url, endpoint, api_key, content=content)
 
 
 def update_note(base_url: str, api_key: str, path: str, content: str) -> dict:
     """Update an existing note's content (overwrites)."""
-    endpoint = f"/vault/{path.lstrip('/')}"
+    endpoint = f"/vault/{quote(path.lstrip('/'), safe='/')}"
     return api_put(base_url, endpoint, api_key, content=content)
 
 
 def delete_note(base_url: str, api_key: str, path: str) -> dict:
     """Delete a note from the vault."""
-    endpoint = f"/vault/{path.lstrip('/')}"
+    endpoint = f"/vault/{quote(path.lstrip('/'), safe='/')}"
     return api_delete(base_url, endpoint, api_key)
 
 

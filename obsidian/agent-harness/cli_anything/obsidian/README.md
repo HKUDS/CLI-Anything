@@ -64,6 +64,10 @@ vault delete <path>                         # Delete a note
 vault append <path> --content "..."        # Append content to a note
 ```
 
+Pass vault paths as literal file names, for example `"Notes/draft#1.md"`.
+The CLI URL-encodes reserved characters and preserves folder separators;
+do not percent-encode paths yourself.
+
 ### Search
 
 ```bash
