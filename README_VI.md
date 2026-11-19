@@ -146,7 +146,7 @@ CLI-Anything: Thu hẹp khoảng cách giữa AI Agent và phần mềm trên to
 
 - **2026-03-17** 🌐 Ra mắt **[CLI-Hub](https://hkuds.github.io/CLI-Anything/)** — một registry trung tâm nơi bạn có thể duyệt, tìm kiếm và cài đặt bất kỳ CLI nào chỉ với một lệnh `pip`.
 
-- **2026-03-16** 🤖 Thêm tính năng sinh **SKILL.md** (Phase 6.5) — mọi CLI được sinh ra nay đều đi kèm định nghĩa skill mà AI có thể khám phá.
+- **2026-03-16** 🤖 Thêm tính năng sinh **SKILL.md** (Giai đoạn 6.5) — mọi CLI được sinh ra nay đều đi kèm định nghĩa skill mà AI có thể khám phá.
 
 - **2026-03-15** 🐾 Hỗ trợ **OpenClaw** từ cộng đồng! Đã merge guard `cygpath` trên Windows để hỗ trợ đa nền tảng.
 
@@ -1103,7 +1103,7 @@ Mỗi ứng dụng đều có giao diện CLI hoàn chỉnh, sẵn sàng cho pro
 </tr>
 <tr>
 <td align="center"><strong>WaveTone</strong></td>
-<td>Chuyển âm thanh thành bản nhạc</td>
+<td>Phiên âm âm thanh</td>
 <td><code>cli-anything-wavetone</code></td>
 <td>JSON manifest + khởi chạy WaveTone thật</td>
 <td align="center"><a href="wavetone/agent-harness/">New</a></td>
@@ -1730,20 +1730,20 @@ Chúng tôi hoan nghênh mọi đóng góp! CLI-Anything được thiết kế �
 
 - **Phần mềm mục tiêu mới** — Dùng plugin để tạo CLI cho bất kỳ phần mềm nào có codebase, rồi gửi harness của bạn theo hướng dẫn trong [`cli-anything-plugin/PUBLISHING.md`](cli-anything-plugin/PUBLISHING.md).
 - **Cải thiện phương pháp luận** — PR vào `HARNESS.md` để đúc kết những bài học mới
-- **Nâng cấp plugin** — Command mới, cải tiến các phase, validation tốt hơn
+- **Nâng cấp plugin** — Command mới, cải tiến các giai đoạn, validation tốt hơn
 - **Độ phủ kiểm thử** — Thêm kịch bản E2E, edge case, workflow test
 
 ### Hạn chế
 
 - **Cần foundation model mạnh** — CLI-Anything dựa vào các model thuộc hàng frontier (ví dụ: Claude Opus 4.6, Claude Sonnet 4.6, GPT-5.4) để tạo harness đáng tin cậy. Các model yếu hơn hoặc nhỏ hơn có thể tạo ra CLI chưa đầy đủ hoặc sai, và phải sửa tay khá nhiều.
-- **Phụ thuộc vào source code có sẵn** — Pipeline 7 phase phân tích và tạo harness từ source code. Nếu phần mềm đích chỉ cung cấp binary đã biên dịch và phải decompile, chất lượng và độ phủ của harness sẽ giảm đáng kể.
+- **Phụ thuộc vào source code có sẵn** — Pipeline 7 giai đoạn phân tích và tạo harness từ source code. Nếu phần mềm đích chỉ cung cấp binary đã biên dịch và phải decompile, chất lượng và độ phủ của harness sẽ giảm đáng kể.
 - **Có thể cần tinh chỉnh lặp lại** — Một lần chạy `/cli-anything` có thể chưa bao phủ hết mọi khả năng. Thường phải chạy `/refine` một hoặc nhiều lần để đưa hiệu năng và độ phủ của CLI lên mức production.
 
 ### Lộ trình
 
 - [ ] Hỗ trợ thêm nhiều nhóm ứng dụng (CAD, DAW, IDE, EDA, công cụ khoa học)
 - [ ] Bộ benchmark đo tỷ lệ hoàn thành tác vụ của agent
-- [ ] Community đóng góp CLI harness cho phần mềm nội bộ/tùy chỉnh
+- [ ] Cộng đồng đóng góp CLI harness cho phần mềm nội bộ/tùy chỉnh
 - [ ] Tích hợp thêm các agent framework ngoài Claude Code
 - [ ] Hỗ trợ đóng gói API của phần mềm closed-source và web service thành CLI
 - [x] Tạo SKILL.md cùng với CLI để agent khám phá và điều phối skill
