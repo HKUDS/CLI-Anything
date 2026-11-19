@@ -209,7 +209,7 @@ def windows_sid():
     return sid
 
 
-def windows_acl(path, sddl=None):
+def windows_acl(path, sddl=None, *, automatic_inheritance=False):
     """Use native SDDL independently of the production ACE comparison."""
     api = ctypes.WinDLL("advapi32", use_last_error=True)
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -220,6 +220,15 @@ def windows_acl(path, sddl=None):
     api.ConvertStringSecurityDescriptorToSecurityDescriptorW.restype = ctypes.c_int32
     api.SetFileSecurityW.argtypes = [ctypes.c_wchar_p, dword, pointer]
     api.SetFileSecurityW.restype = ctypes.c_int32
+    api.GetSecurityDescriptorDacl.argtypes = [
+        pointer, ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(pointer),
+        ctypes.POINTER(ctypes.c_int32),
+    ]
+    api.GetSecurityDescriptorDacl.restype = ctypes.c_int32
+    api.SetNamedSecurityInfoW.argtypes = [
+        ctypes.c_wchar_p, ctypes.c_int, dword, pointer, pointer, pointer, pointer,
+    ]
+    api.SetNamedSecurityInfoW.restype = dword
     api.GetFileSecurityW.argtypes = [ctypes.c_wchar_p, dword, pointer, dword, ctypes.POINTER(dword)]
     api.GetFileSecurityW.restype = ctypes.c_int32
     api.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
@@ -235,7 +244,25 @@ def windows_acl(path, sddl=None):
         ), ctypes.WinError(ctypes.get_last_error())
         try:
             flags = 4 | (0x80000000 if sddl.startswith("D:P") else 0x20000000)
-            assert api.SetFileSecurityW(str(path), flags, descriptor), ctypes.WinError(ctypes.get_last_error())
+            if automatic_inheritance:
+                # The legacy setter does not opt a directory into automatic
+                # inheritance. Use the documented propagating API to exercise
+                # real INHERITED_ACE entries on its newly created children.
+                present, defaulted = ctypes.c_int32(), ctypes.c_int32()
+                acl = pointer()
+                assert api.GetSecurityDescriptorDacl(
+                    descriptor, ctypes.byref(present), ctypes.byref(acl),
+                    ctypes.byref(defaulted),
+                )
+                assert present.value
+                error = api.SetNamedSecurityInfoW(
+                    str(path), 1, flags, None, None, acl, None,
+                )
+                assert error == 0, ctypes.WinError(error)
+            else:
+                assert api.SetFileSecurityW(
+                    str(path), flags, descriptor,
+                ), ctypes.WinError(ctypes.get_last_error())
         finally:
             kernel.LocalFree(descriptor)
     needed = dword()
@@ -293,7 +320,10 @@ def test_windows_named_acl_survives_export(tmp_path, deny, protected):
 @pytest.mark.parametrize("existing", [False, True])
 def test_windows_export_preserves_parent_inherited_acl(tmp_path, existing):
     sid = windows_sid()
-    windows_acl(tmp_path, f"D:P(D;OICI;0x20;;;{sid})(A;OICI;FA;;;{sid})")
+    windows_acl(
+        tmp_path, f"D:P(D;OICI;0x20;;;{sid})(A;OICI;FA;;;{sid})",
+        automatic_inheritance=True,
+    )
     control = tmp_path / "control"
     control.write_bytes(b"")
     expected = windows_acl(control)

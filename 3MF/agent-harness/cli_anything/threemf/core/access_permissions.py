@@ -56,7 +56,13 @@ def restore_access_acl(path: str, access_acl: bytes | None) -> None:
 
 def make_staging_private(path: str) -> None:
     """Keep archive contents private before their final permissions are set."""
-    if sys.platform == "darwin":
+    if sys.platform.startswith("linux"):
+        # A parent's default ACL can remove owner write/traverse bits even
+        # from mkdir(0700). chmod restores them while keeping the ACL mask
+        # and all other-user access at zero.
+        if os.stat(path).st_mode & 0o7777 != 0o700:
+            os.chmod(path, 0o700)
+    elif sys.platform == "darwin":
         # macOS inherited allow entries can grant access despite mode 0700.
         _set_darwin_acl(path, None)
         if _read_darwin_acl(path) is not None:
