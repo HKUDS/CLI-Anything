@@ -426,7 +426,7 @@
     {
       "name": "libreoffice",
       "display_name": "LibreOffice",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Create and manipulate ODF documents, export to PDF/DOCX/XLSX/PPTX via headless mode",
       "requires": "libreoffice",
       "homepage": "https://www.libreoffice.org",
@@ -443,6 +443,10 @@
         {
           "name": "Mubashirrrr",
           "url": "https://github.com/Mubashirrrr"
+        },
+        {
+          "name": "Afloat16",
+          "url": "https://github.com/Afloat16"
         }
       ]
     },

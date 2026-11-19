@@ -9,6 +9,7 @@ import sys
 import tempfile
 import shutil
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import pytest
 
@@ -188,6 +189,51 @@ class TestImport:
         assert imported["sheets"][0]["cells"]["A1"]["value"] == "Name"
         assert imported["sheets"][0]["cells"]["B1"]["value"] == 42.0
         assert imported["sheets"][0]["cells"]["B1"]["type"] == "float"
+
+    @pytest.mark.parametrize("rows", [
+        [["", ""], ["Name", "Value"]],
+        [["Before", "1"], ["", ""], ["After", "2"]],
+        [["Name", "Value"], ["", ""]],
+        [["", ""], ["", ""]],
+    ], ids=["leading", "middle", "trailing", "all-empty"])
+    def test_import_writer_preserves_empty_table_rows(self, tmp_path, rows):
+        project = create_document(doc_type="writer")
+        add_table(project, rows=len(rows), cols=2, data=rows)
+        source = str(tmp_path / "blank-rows.odt")
+        to_odt(project, source)
+
+        imported = importer_mod.import_document(source)
+
+        assert imported["content"] == [{
+            "type": "table", "rows": len(rows), "cols": 2, "data": rows,
+        }]
+        roundtrip = str(tmp_path / "roundtrip.odt")
+        to_odt(imported, roundtrip)
+        assert importer_mod.import_document(roundtrip)["content"] == imported["content"]
+
+    def test_import_writer_empty_row_retains_table_width(self, tmp_path):
+        project = create_document(doc_type="writer")
+        add_table(project, rows=2, cols=3, data=[["value", "", ""], ["", "", ""]])
+        source = str(tmp_path / "source.odt")
+        to_odt(project, source)
+        with zipfile.ZipFile(source) as archive:
+            content = archive.read("content.xml").decode()
+        root = ET.fromstring(content)
+        table_ns = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
+        first_row = root.find(f".//{table_ns}table-row")
+        for cell in list(first_row)[1:]:
+            first_row.remove(cell)
+        edited = str(tmp_path / "uneven.odt")
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(edited, "w") as output:
+            for entry in original.infolist():
+                data = ET.tostring(root) if entry.filename == "content.xml" else original.read(entry.filename)
+                output.writestr(entry, data)
+
+        table = importer_mod.import_document(edited)["content"][0]
+
+        assert table["rows"] == 2
+        assert table["cols"] == 3
+        assert table["data"] == [["value", "", ""], ["", "", ""]]
 
     def test_import_calc_formula_normalizes_odf_prefix(self):
         proj = create_document(doc_type="calc", name="formula_calc")

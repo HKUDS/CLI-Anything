@@ -612,6 +612,32 @@ class TestCLISubprocess:
         assert "Existing Heading" in parsed["content_xml"]
         assert "Added after import" in parsed["content_xml"]
 
+    @pytest.mark.parametrize("input_format", ["odt", "docx"])
+    def test_import_export_preserves_empty_writer_table_rows(self, tmp_dir, input_format):
+        rows = [["", ""], ["Before", "1"], ["", ""], ["After", "2"], ["", ""]]
+        project = create_document(doc_type="writer")
+        add_table(project, rows=len(rows), cols=2, data=rows)
+        source = os.path.join(tmp_dir, "source." + input_format)
+        export(project, source, preset=input_format)
+        if input_format == "docx":
+            with zipfile.ZipFile(source) as archive:
+                document = ET.fromstring(archive.read("word/document.xml"))
+            word_ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            assert len(document.findall(".//w:tbl/w:tr", word_ns)) == len(rows)
+        imported_path = os.path.join(tmp_dir, "imported.json")
+        self._run(["--json", "document", "import", source, "-o", imported_path])
+        with open(imported_path) as handle:
+            imported = json.load(handle)
+        tables = [item for item in imported["content"] if item["type"] == "table"]
+        assert tables == [{"type": "table", "rows": len(rows), "cols": 2, "data": rows}]
+
+        result = os.path.join(tmp_dir, "roundtrip.odt")
+        self._run(["--project", imported_path, "export", "render", result, "-p", "odt"])
+        content = ET.fromstring(parse_odf(result)["content_xml"])
+        table_ns = {"table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0"}
+        assert len(content.findall(".//table:table/table:table-row", table_ns)) == len(rows)
+        assert importer_mod.import_document(result)["content"][0]["data"] == rows
+
     def test_full_workflow(self, tmp_dir):
         proj_path = os.path.join(tmp_dir, "workflow.json")
         odt_path = os.path.join(tmp_dir, "output.odt")
