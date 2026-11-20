@@ -208,6 +208,22 @@ class TestImport:
         assert 'table:formula="of:=A1+A2"' in content_xml
         assert "of:of:=" not in content_xml
 
+    def test_calc_ods_roundtrip_preserves_boolean_cells(self, tmp_path):
+        project = create_document(doc_type="calc", name="boolean_cells")
+        set_cell(project, "A1", True, cell_type="boolean")
+        set_cell(project, "A2", False, cell_type="boolean")
+        set_cell(project, "A3", "TRUE")
+        path = tmp_path / "boolean_cells.ods"
+
+        to_ods(project, str(path))
+        imported = importer_mod.import_document(str(path))
+
+        assert imported["sheets"][0]["cells"] == {
+            "A1": {"value": True, "type": "boolean"},
+            "A2": {"value": False, "type": "boolean"},
+            "A3": {"value": "TRUE", "type": "string"},
+        }
+
     def test_import_impress_odp(self):
         proj = create_document(doc_type="impress", name="import_impress")
         add_slide(proj, title="Intro", content="Welcome")
