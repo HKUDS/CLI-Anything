@@ -904,10 +904,13 @@ def grep(
     # cwd and produce wrong-scope matches.
     if path_abs:
         anchor_cmd = _anchor_path_cmd(translated_path)
+    else:
+        anchor_cmd = f"cd {_q(translated_path)}"
+
+    if path_abs and session is not None:
         restore_cmd = _restore_cwd_cmd(session)
     else:
         translated_prev, prev_abs = _translate_path(prev)
-        anchor_cmd = f"cd {_q(translated_path)}"
         if prev_abs:
             restore_cmd = _anchor_path_cmd(translated_prev)
         else:
@@ -922,10 +925,20 @@ def grep(
         return _parse_execute_result(anchor, "grep")
     # `-r` preserves the pre-migration recursive default (see unrooted
     # branch above for the full rationale).
-    op = asyncio.run(_call_execute(
-        f"grep -r {_q(pattern)}", use_daemon, session=session,
-    ))
-    asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+    op_failed = False
+    try:
+        op = asyncio.run(_call_execute(
+            f"grep -r {_q(pattern)}", use_daemon, session=session,
+        ))
+    except BaseException:
+        op_failed = True
+        raise
+    finally:
+        try:
+            asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+        except BaseException:
+            if not op_failed:
+                raise
     return _parse_execute_result(op, "grep")
 
 

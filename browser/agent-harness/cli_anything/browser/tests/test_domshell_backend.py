@@ -744,6 +744,65 @@ def test_grep_root_anchor_failure_short_circuits(mock_call):
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize(
+    ("prev", "restore"),
+    [
+        ("/main", "cd %here%/main"),
+        ("main", "cd main"),
+        ("", "cd %here%"),
+        ("/main area", "cd '%here%/main area'"),
+    ],
+)
+def test_grep_daemon_root_without_session_restores_prev(mock_call, prev, restore):
+    mock_call.return_value = _make_result("")
+
+    result = backend.grep("Login", path="/", prev=prev, use_daemon=True)
+
+    assert mock_call.call_args_list == [
+        call("cd %here%", True, session=None),
+        call("grep -r Login", True, session=None),
+        call(restore, True, session=None),
+    ]
+    assert result["matches"] == []
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize("path", ["/", "/main", "main"])
+@pytest.mark.parametrize("restore_fails", [False, True])
+def test_grep_exception_restores_cwd_and_preserves_error(mock_call, path, restore_fails):
+    error = RuntimeError("grep failed")
+    mock_call.side_effect = [
+        _make_result(""),
+        error,
+        RuntimeError("restore failed") if restore_fails else _make_result(""),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    with pytest.raises(RuntimeError, match="grep failed") as exc_info:
+        backend.grep("Login", path=path, prev="/main", session=sess)
+
+    assert exc_info.value is error
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[1:] == [
+        call("grep -r Login", False, session=sess),
+        call("cd %here%/main", False, session=sess),
+    ]
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_restore_exception_propagates_after_success(mock_call):
+    error = RuntimeError("restore failed")
+    mock_call.side_effect = [_make_result(""), _make_result(""), error]
+    sess = _make_session(working_dir="/main")
+
+    with pytest.raises(RuntimeError, match="restore failed") as exc_info:
+        backend.grep("Login", path="/", session=sess)
+
+    assert exc_info.value is error
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
 def test_grep_root_requires_session_without_daemon(mock_call):
     with pytest.raises(ValueError, match="a session argument is required"):
         backend.grep("Login", path="/")
