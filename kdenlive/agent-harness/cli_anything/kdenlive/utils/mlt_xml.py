@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 import xml.etree.ElementTree as ET
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from cli_anything.kdenlive.core.filters import FILTER_REGISTRY
 
@@ -74,9 +74,19 @@ def _add_prop(parent: ET.Element, name: str, value) -> ET.Element:
     return prop
 
 
-def _compute_track_duration(track: dict, fps_num: int, fps_den: int) -> int:
+def _compute_track_duration(track: dict, fps_num: int, fps_den: int,
+                            valid_ids: Optional[set] = None) -> int:
+    """Track duration in frames, as the inclusive final frame index.
+
+    ``valid_ids`` restricts the calculation to entries whose clip is still in
+    the bin. `bin remove` leaves the track entry behind and the playlist build
+    below skips it, so counting it here would stretch the tractor past
+    anything that actually gets written — melt then encodes the gap as black.
+    """
     max_end = 0.0
     for clip_entry in track.get("clips", []):
+        if valid_ids is not None and clip_entry.get("clip_id") not in valid_ids:
+            continue
         clip_end = clip_entry.get("position", 0.0) + (
             clip_entry.get("out", 0) - clip_entry.get("in", 0)
         )
@@ -158,7 +168,7 @@ def build_mlt_xml(project: Dict[str, Any]) -> str:
     max_dur = 0
     track_durs = {}
     for track in tracks:
-        td = _compute_track_duration(track, fps_num, fps_den)
+        td = _compute_track_duration(track, fps_num, fps_den, set(clip_data_by_id))
         track_durs[track["id"]] = td
         max_dur = max(max_dur, td)
     if max_dur == 0:

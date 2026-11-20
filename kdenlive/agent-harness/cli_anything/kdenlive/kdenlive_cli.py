@@ -18,6 +18,7 @@ import sys
 import os
 import json
 import shlex
+import subprocess
 import click
 from typing import Optional
 
@@ -94,6 +95,17 @@ def handle_error(func):
                 click.echo(json.dumps({"error": str(e), "type": "file_not_found"}))
             else:
                 click.echo(f"Error: {e}", err=True)
+            if not _repl_mode:
+                sys.exit(1)
+        except subprocess.TimeoutExpired as e:
+            # melt exceeding --timeout must follow the CLI's error contract
+            # rather than escaping as a traceback with no --json payload.
+            msg = (f"Render timed out after {e.timeout}s. "
+                   f"Raise --timeout to allow longer renders.")
+            if _json_output:
+                click.echo(json.dumps({"error": msg, "type": "TimeoutExpired"}))
+            else:
+                click.echo(f"Error: {msg}", err=True)
             if not _repl_mode:
                 sys.exit(1)
         except (ValueError, IndexError, RuntimeError) as e:
@@ -626,6 +638,23 @@ def export_xml(output):
         globals()["output"]({"path": output, "size": len(xml)}, f"XML written to: {output}")
     else:
         click.echo(xml)
+
+
+@export.command("render")
+@click.argument("output_path")
+@click.option("--preset", "-p", type=str, default="h264_hq", help="Render preset")
+@click.option("--overwrite", is_flag=True, help="Overwrite existing file")
+@click.option("--timeout", type=int, default=300, help="Max seconds to wait for melt")
+@click.option("--keep-mlt", type=str, default=None, help="Also write the MLT XML here")
+@handle_error
+def export_render(output_path, preset, overwrite, timeout, keep_mlt):
+    """Render the project to a video file with melt."""
+    sess = get_session()
+    result = export_mod.render_project(
+        sess.get_project(), output_path,
+        preset=preset, overwrite=overwrite, timeout=timeout, keep_mlt=keep_mlt,
+    )
+    output(result, f"Rendered: {result['output']}")
 
 
 @export.command("presets")
