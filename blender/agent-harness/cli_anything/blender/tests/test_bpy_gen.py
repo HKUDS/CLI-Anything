@@ -4,6 +4,7 @@ Tests verify that generated scripts are syntactically valid Python,
 especially with Windows-style paths that could trigger escape errors.
 """
 
+import ast
 from typing import Any, Dict
 
 import pytest
@@ -118,3 +119,27 @@ def _excerpt(err: SyntaxError, script: str) -> str:
         marker = " >>> " if i == lineno else "     "
         result += f"{marker}{i}: {line}\n"
     return result
+
+
+def test_colliding_material_names_keep_their_object_assignments() -> None:
+    project = _minimal_project()
+    names = ["Surface A", "Surface-A", "Surface.A", "1", "_1"]
+    project["materials"] = [
+        {"id": index, "name": name} for index, name in enumerate(names)
+    ]
+    order = [2, 0, 4, 3, 1, 2]
+    project["objects"] = [{"material": index} for index in order]
+
+    script = ast.parse(generate_full_script(project, "/tmp/render.png"))
+    materials = {}
+    assignments = []
+    for statement in script.body:
+        if isinstance(statement, ast.Assign) and isinstance(statement.value, ast.Call):
+            if ast.unparse(statement.value.func) == "bpy.data.materials.new":
+                name = next(kw.value for kw in statement.value.keywords if kw.arg == "name")
+                materials[ast.unparse(statement.targets[0])] = ast.literal_eval(name)
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+            if ast.unparse(statement.value.func) == "obj.data.materials.append":
+                assignments.append(materials[ast.unparse(statement.value.args[0])])
+
+    assert assignments == [names[index] for index in order]

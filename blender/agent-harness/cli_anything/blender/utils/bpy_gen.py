@@ -160,7 +160,7 @@ def _gen_materials(project: Dict[str, Any]) -> List[str]:
 
     lines = ["# ── Materials ───────────────────────────────────────────────"]
 
-    for mat in materials:
+    for index, mat in enumerate(materials):
         name = mat.get("name", "Material")
         color = mat.get("color", [0.8, 0.8, 0.8, 1.0])
         metallic = mat.get("metallic", 0.0)
@@ -170,22 +170,21 @@ def _gen_materials(project: Dict[str, Any]) -> List[str]:
         emission_strength = mat.get("emission_strength", 0.0)
         alpha = mat.get("alpha", 1.0)
 
-        var_name = _safe_var_name(name)
         lines.extend([
-            f"mat_{var_name} = bpy.data.materials.new(name='{name}')",
-            f"mat_{var_name}.use_nodes = True",
-            f"bsdf_{var_name} = mat_{var_name}.node_tree.nodes.get('Principled BSDF')",
-            f"if bsdf_{var_name}:",
-            f"    bsdf_{var_name}.inputs['Base Color'].default_value = ({color[0]}, {color[1]}, {color[2]}, {color[3]})",
-            f"    bsdf_{var_name}.inputs['Metallic'].default_value = {metallic}",
-            f"    bsdf_{var_name}.inputs['Roughness'].default_value = {roughness}",
-            f"    bsdf_{var_name}.inputs['Specular IOR Level'].default_value = {specular}",
-            f"    bsdf_{var_name}.inputs['Alpha'].default_value = {alpha}",
+            f"mat_{index} = bpy.data.materials.new(name={name!r})",
+            f"mat_{index}.use_nodes = True",
+            f"bsdf_{index} = mat_{index}.node_tree.nodes.get('Principled BSDF')",
+            f"if bsdf_{index}:",
+            f"    bsdf_{index}.inputs['Base Color'].default_value = ({color[0]}, {color[1]}, {color[2]}, {color[3]})",
+            f"    bsdf_{index}.inputs['Metallic'].default_value = {metallic}",
+            f"    bsdf_{index}.inputs['Roughness'].default_value = {roughness}",
+            f"    bsdf_{index}.inputs['Specular IOR Level'].default_value = {specular}",
+            f"    bsdf_{index}.inputs['Alpha'].default_value = {alpha}",
         ])
         if emission_strength > 0:
             lines.extend([
-                f"    bsdf_{var_name}.inputs['Emission Color'].default_value = ({emission[0]}, {emission[1]}, {emission[2]}, {emission[3]})",
-                f"    bsdf_{var_name}.inputs['Emission Strength'].default_value = {emission_strength}",
+                f"    bsdf_{index}.inputs['Emission Color'].default_value = ({emission[0]}, {emission[1]}, {emission[2]}, {emission[3]})",
+                f"    bsdf_{index}.inputs['Emission Strength'].default_value = {emission_strength}",
             ])
         lines.append("")
 
@@ -200,7 +199,7 @@ def _gen_objects(project: Dict[str, Any]) -> List[str]:
 
     lines = ["# ── Objects ─────────────────────────────────────────────────"]
     materials = project.get("materials", [])
-    mat_id_to_name = {m["id"]: m["name"] for m in materials}
+    mat_indices = {mat["id"]: index for index, mat in enumerate(materials)}
 
     for i, obj in enumerate(objects):
         mesh_type = obj.get("mesh_type", "cube")
@@ -260,11 +259,8 @@ def _gen_objects(project: Dict[str, Any]) -> List[str]:
 
         # Assign material
         mat_id = obj.get("material")
-        if mat_id is not None and mat_id in mat_id_to_name:
-            mat_name = mat_id_to_name[mat_id]
-            var_name = _safe_var_name(mat_name)
-            lines.append(f"if 'mat_{var_name}' in dir():")
-            lines.append(f"    obj.data.materials.append(mat_{var_name})")
+        if mat_id is not None and mat_id in mat_indices:
+            lines.append(f"obj.data.materials.append(mat_{mat_indices[mat_id]})")
 
         # Add modifiers
         for mod in obj.get("modifiers", []):
@@ -566,12 +562,3 @@ def _engine_to_bpy(engine: str) -> str:
         "WORKBENCH": "BLENDER_WORKBENCH",
     }
     return mapping.get(engine, "CYCLES")
-
-
-def _safe_var_name(name: str) -> str:
-    """Convert a name to a safe Python variable name."""
-    result = name.replace(" ", "_").replace(".", "_").replace("-", "_")
-    result = "".join(c for c in result if c.isalnum() or c == "_")
-    if result and result[0].isdigit():
-        result = "_" + result
-    return result or "unnamed"
