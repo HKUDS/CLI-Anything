@@ -1345,9 +1345,9 @@
     {
       "name": "3mf",
       "display_name": "3MF",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Mesh geometry editor for 3D printing files — detect and resize cylindrical holes, repair meshes, compare 3MF files",
-      "requires": "Python 3.10+; numpy, scipy, trimesh",
+      "requires": "Python 3.10+; numpy, scipy, trimesh, networkx",
       "homepage": "https://3mf.io",
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=3MF/agent-harness",

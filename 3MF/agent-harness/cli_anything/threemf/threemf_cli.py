@@ -75,7 +75,7 @@ def handle_error(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except (RuntimeError, FileNotFoundError, FileExistsError) as e:
+        except (RuntimeError, FileNotFoundError, FileExistsError, ImportError) as e:
             if _json_output:
                 click.echo(json.dumps({"error": str(e), "type": type(e).__name__}))
             else:
@@ -369,7 +369,7 @@ def repl():
     _repl_mode = True
 
     from cli_anything.threemf.utils.repl_skin import ReplSkin
-    skin = ReplSkin("3mf", version="1.0.0")
+    skin = ReplSkin("3mf", version="1.0.1")
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()

@@ -306,6 +306,8 @@ def cross_section_circles(
 
         try:
             section = tm.section(plane_origin=origin, plane_normal=normal)
+        except ImportError:
+            raise
         except Exception:
             continue
 
@@ -315,6 +317,8 @@ def cross_section_circles(
         # section is a Path3D; extract discrete points from each entity
         try:
             discrete = section.discrete
+        except ImportError:
+            raise
         except Exception:
             continue
 
