@@ -11,14 +11,15 @@ class TestIntelwatchCli(unittest.TestCase):
         runner = CliRunner()
         
         with patch('cli_anything.intelwatch.intelwatch_cli.subprocess.call') as mock_call, \
-             patch('cli_anything.intelwatch.intelwatch_cli.sys.exit') as mock_exit:
+             patch('cli_anything.intelwatch.intelwatch_cli.sys.exit') as mock_exit, \
+             patch('cli_anything.intelwatch.intelwatch_cli.shutil.which', return_value='C:/Program Files/nodejs/npx.CMD'):
             
             mock_call.return_value = 0
             
             # Use standalone_mode=False to avoid click's internal sys.exit() catching
             result = runner.invoke(intelwatch_cli.main, ['--query', 'recognity', '--format', 'json'], standalone_mode=False)
             
-            mock_call.assert_called_once_with(['npx', 'intelwatch', '--query', 'recognity', '--format', 'json'])
+            mock_call.assert_called_once_with(['C:/Program Files/nodejs/npx.CMD', 'intelwatch', '--query', 'recognity', '--format', 'json'])
             mock_exit.assert_called_once_with(0)
 
     def test_exit_code_propagation(self):

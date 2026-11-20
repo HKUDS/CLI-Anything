@@ -15,7 +15,8 @@ class TestE2E(unittest.TestCase):
         runner = CliRunner()
         
         with patch('cli_anything.intelwatch.intelwatch_cli.subprocess.call') as mock_call, \
-             patch('cli_anything.intelwatch.intelwatch_cli.sys.exit') as mock_exit:
+             patch('cli_anything.intelwatch.intelwatch_cli.sys.exit') as mock_exit, \
+             patch('cli_anything.intelwatch.intelwatch_cli.shutil.which', return_value='C:/Program Files/nodejs/npx.CMD'):
             
             # Simulate a successful call
             mock_call.return_value = 0
@@ -24,7 +25,7 @@ class TestE2E(unittest.TestCase):
             result = runner.invoke(intelwatch_cli.main, ['--domain', 'recognity.fr', '--format', 'json'], standalone_mode=False)
             
             # Verify the integration points
-            mock_call.assert_called_once_with(['npx', 'intelwatch', '--domain', 'recognity.fr', '--format', 'json'])
+            mock_call.assert_called_once_with(['C:/Program Files/nodejs/npx.CMD', 'intelwatch', '--domain', 'recognity.fr', '--format', 'json'])
             mock_exit.assert_called_once_with(0)
 
 if __name__ == '__main__':

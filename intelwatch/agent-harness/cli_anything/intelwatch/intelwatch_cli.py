@@ -2,6 +2,7 @@
 
 import sys
 import subprocess
+import shutil
 import click
 
 @click.command(context_settings=dict(
@@ -14,8 +15,9 @@ def main(ctx):
     
     Zero friction. Full context. Competitive intelligence, M&A due diligence, and OSINT.
     """
-    # Simply forward everything to `npx intelwatch`
-    cmd = ["npx", "intelwatch"] + ctx.args
+    # Resolve the Windows .cmd shim as well as native npx executables.
+    npx = shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+    cmd = [npx, "intelwatch"] + ctx.args
     
     try:
         # We use subprocess.call to forward stdin/stdout/stderr automatically
