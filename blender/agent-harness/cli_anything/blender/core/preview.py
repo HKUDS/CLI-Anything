@@ -6,11 +6,14 @@ import copy
 import json
 import os
 import re
+import shutil
+import tempfile
 import signal
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from ..utils import blender_backend
 from ..utils.preview_bundle import (
@@ -36,6 +39,7 @@ LIVE_PROTOCOL_VERSION = "preview-live/v1"
 DEFAULT_REFRESH_HINT_MS = 1500
 DEFAULT_SOURCE_POLL_MS = 500
 MIN_SOURCE_POLL_MS = 250
+CURRENT_COPY_MARKER = ".cli-anything-current-copy"
 
 RECIPES: Dict[str, Dict[str, Any]] = {
     "quick": {
@@ -213,13 +217,93 @@ def _write_live_session_updates(session_dir: Path, updates: Dict[str, Any]) -> D
 
 def _update_current_symlink(session_dir: Path, bundle_dir: str) -> Path:
     current_link = session_dir / "current"
-    if current_link.is_symlink() or current_link.exists():
-        if current_link.is_dir() and not current_link.is_symlink():
+    if current_link.is_dir() and not current_link.is_symlink():
+        marker = current_link / CURRENT_COPY_MARKER
+        if not marker.is_file() or marker.read_text(encoding="utf-8") != session_dir.name:
             raise RuntimeError(f"Live preview current path is unexpectedly a directory: {current_link}")
+        return _copy_current_bundle(session_dir, bundle_dir)
+    elif current_link.is_symlink() or current_link.exists():
         current_link.unlink()
-    target = os.path.relpath(Path(bundle_dir).resolve(), session_dir)
-    os.symlink(target, current_link, target_is_directory=True)
+
+    target_path = Path(bundle_dir).resolve()
+    target = os.path.relpath(target_path, session_dir)
+    try:
+        os.symlink(target, current_link, target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 1314:
+            raise
+        return _copy_current_bundle(session_dir, bundle_dir)
     return current_link
+
+
+def _copy_current_bundle(session_dir: Path, bundle_dir: str) -> Path:
+    # Each published copy remains immutable while the viewer may still read it.
+    staged = Path(tempfile.mkdtemp(prefix="current-", dir=session_dir))
+    shutil.copytree(Path(bundle_dir).resolve(), staged, dirs_exist_ok=True)
+    return staged
+
+
+def _prune_obsolete_current_copies(
+    session_dir: Path,
+    current_bundle: Path,
+    previous_current_link: Optional[str],
+) -> None:
+    # Keep the current and immediately previous copies for active viewer reads.
+    keep = {current_bundle.name}
+    previous = Path(previous_current_link) if previous_current_link else None
+    if previous is not None and previous.parent == Path(".") and previous.name.startswith("current-"):
+        keep.add(previous.name)
+
+    for candidate in session_dir.glob("current-*"):
+        if (
+            candidate.name in keep
+            or candidate.is_symlink()
+            or not candidate.is_dir()
+            or not (candidate / "manifest.json").is_file()
+            or not (candidate / "summary.json").is_file()
+        ):
+            continue
+        try:
+            shutil.rmtree(candidate)
+        except PermissionError:
+            # A viewer may still have a file open; retry this copy on a later publish.
+            continue
+
+
+@contextmanager
+def _live_publish_lock(session_dir: Path) -> Iterator[None]:
+    """Serialize live-session updates and pruning across publisher processes."""
+    with (session_dir / ".publish.lock").open("a+b") as lock_file:
+        if os.name == "nt":
+            import errno
+            import msvcrt
+
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            while True:
+                lock_file.seek(0)
+                try:
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                        raise
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _history_item(bundle_manifest: Dict[str, Any]) -> Dict[str, Any]:
@@ -467,9 +551,38 @@ def _publish_live_session(
     publish_reason: str = "manual",
     command: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Publish a live bundle while serializing session metadata and pruning."""
     session_dir = _live_session_dir(session, recipe, root_dir=root_dir)
     session_dir.mkdir(parents=True, exist_ok=True)
-    _update_current_symlink(session_dir, bundle_manifest["_bundle_dir"])
+    with _live_publish_lock(session_dir):
+        return _publish_live_session_locked(
+            session,
+            bundle_manifest,
+            session_dir=session_dir,
+            recipe=recipe,
+            root_dir=root_dir,
+            refresh_hint_ms=refresh_hint_ms,
+            live_mode=live_mode,
+            source_poll_ms=source_poll_ms,
+            publish_reason=publish_reason,
+            command=command,
+        )
+
+
+def _publish_live_session_locked(
+    session: Session,
+    bundle_manifest: Dict[str, Any],
+    *,
+    session_dir: Path,
+    recipe: str,
+    root_dir: Optional[str] = None,
+    refresh_hint_ms: int = DEFAULT_REFRESH_HINT_MS,
+    live_mode: Optional[str] = None,
+    source_poll_ms: int = DEFAULT_SOURCE_POLL_MS,
+    publish_reason: str = "manual",
+    command: Optional[str] = None,
+) -> Dict[str, Any]:
+    current_bundle = _update_current_symlink(session_dir, bundle_manifest["_bundle_dir"])
 
     existing = _load_existing_live_session(session_dir)
     now = _now_iso()
@@ -532,7 +645,7 @@ def _publish_live_session(
         "refresh_hint_ms": current_refresh_hint_ms,
         "source_poll_ms": current_source_poll_ms,
         "preview_root_dir": root_dir,
-        "current_link": "current",
+        "current_link": os.path.relpath(current_bundle, session_dir),
         "current_bundle_id": bundle_manifest.get("bundle_id"),
         "current_bundle_dir": bundle_manifest.get("_bundle_dir"),
         "current_manifest_path": bundle_manifest.get("_manifest_path"),
@@ -565,6 +678,7 @@ def _publish_live_session(
         ),
     }
     _write_json(session_dir / "session.json", payload)
+    _prune_obsolete_current_copies(session_dir, current_bundle, existing.get("current_link"))
     return _with_live_refs(session_dir, payload)
 
 
