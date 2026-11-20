@@ -1016,6 +1016,25 @@
       ]
     },
     {
+      "name": "parallel",
+      "display_name": "Parallel Search",
+      "version": "1.0.0",
+      "description": "Web search and page extraction through Parallel's free Search MCP",
+      "requires": "Python 3.11+ and internet access; no API key",
+      "homepage": "https://parallel.ai",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=parallel/agent-harness",
+      "entry_point": "cli-anything-parallel",
+      "skill_md": "skills/cli-anything-parallel/SKILL.md",
+      "category": "search",
+      "contributors": [
+        {
+          "name": "georgeatparallel",
+          "url": "https://github.com/georgeatparallel"
+        }
+      ]
+    },
+    {
       "name": "exa",
       "display_name": "Exa",
       "version": "1.0.0",

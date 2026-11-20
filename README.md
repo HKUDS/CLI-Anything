@@ -1343,6 +1343,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 51</td>
 </tr>
 <tr>
+<td align="center"><strong>🔎 <a href="parallel/agent-harness/">Parallel Search</a></strong></td>
+<td>Web Search &amp; Page Extraction</td>
+<td><code>cli-anything-parallel</code></td>
+<td>Free Search MCP (Python SDK)</td>
+<td align="center">Core + MCP E2E tests</td>
+</tr>
+<tr>
 <td align="center"><strong>🔍 <a href="exa/agent-harness/">Exa</a></strong></td>
 <td>AI-Native Web Search</td>
 <td><code>cli-anything-exa</code></td>
