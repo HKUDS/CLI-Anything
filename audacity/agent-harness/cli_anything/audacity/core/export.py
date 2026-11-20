@@ -8,6 +8,7 @@ Effects are applied in the audio domain using the audio_utils module.
 """
 
 import os
+import tempfile
 import wave
 import math
 import struct
@@ -66,25 +67,25 @@ EXPORT_PRESETS = {
         "format": "MP3",
         "ext": ".mp3",
         "params": {"bitrate": 192},
-        "description": "MP3 (requires pydub/ffmpeg)",
+        "description": "MP3 192 kbps (requires SoX)",
     },
     "flac": {
         "format": "FLAC",
         "ext": ".flac",
         "params": {},
-        "description": "FLAC lossless (requires pydub/ffmpeg)",
+        "description": "FLAC lossless (requires SoX)",
     },
     "ogg": {
         "format": "OGG",
         "ext": ".ogg",
         "params": {"quality": 5},
-        "description": "OGG Vorbis (requires pydub/ffmpeg)",
+        "description": "OGG Vorbis quality 5 (requires SoX)",
     },
     "aiff": {
         "format": "AIFF",
         "ext": ".aiff",
         "params": {},
-        "description": "AIFF (requires pydub/ffmpeg)",
+        "description": "AIFF (requires SoX)",
     },
 }
 
@@ -125,6 +126,7 @@ def render_mix(
     preset: str = "wav",
     overwrite: bool = False,
     channels_override: Optional[int] = None,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Render the project: mix all tracks, apply effects, export.
 
@@ -201,12 +203,63 @@ def render_mix(
     mixed = clamp_samples(mixed)
 
     # Export
+    export_method = "python-wave"
+    rate_clamped = False
+    output_sample_rate = sample_rate
     if fmt == "WAV":
         write_wav(output_path, mixed, sample_rate, out_channels, bit_depth)
     else:
-        # For non-WAV formats, write a WAV first and note that conversion
-        # requires external tools
-        write_wav(output_path, mixed, sample_rate, out_channels, bit_depth)
+        # Non-WAV formats: render a WAV, then convert it with the real SoX.
+        # Writing WAV bytes under an .mp3/.flac/.ogg/.aiff name produces a
+        # silently corrupt file, so the conversion is mandatory, not optional.
+        from cli_anything.audacity.utils import sox_backend
+
+        # Both temp files are created inside the try: if creating the second
+        # one fails — an unwritable parent, a regular file where a directory
+        # is expected — the first must still be cleaned up rather than left
+        # behind in the system temp directory on every failed export.
+        tmp_wav = tmp_out = None
+        try:
+            tmp_fd, tmp_wav = tempfile.mkstemp(suffix=".wav", prefix="audacity_export_")
+            os.close(tmp_fd)
+            # Encode into a sibling temp file and move it into place only on
+            # success: a timeout or SoX error would otherwise leave a truncated
+            # file at output_path, which a retry without --overwrite refuses.
+            out_dir = os.path.dirname(os.path.abspath(output_path)) or "."
+            os.makedirs(out_dir, exist_ok=True)
+            tmp_out_fd, tmp_out = tempfile.mkstemp(
+                suffix=p["ext"], prefix=".audacity_export_", dir=out_dir,
+            )
+            os.close(tmp_out_fd)
+            os.unlink(tmp_out)  # SoX chooses the encoder from the extension
+            write_wav(tmp_wav, mixed, sample_rate, out_channels, bit_depth)
+            # SoX's own default is a flat 30s, which a long or expensive
+            # encode can exceed even though render_mix accepts projects of
+            # any length. Scale with duration unless the caller says otherwise.
+            conv_timeout = timeout if timeout is not None else max(
+                60, int((len(mixed) / out_channels) / sample_rate) * 4
+            )
+            # Honour the preset's advertised encoding settings; without -C
+            # SoX ignores them and applies its own defaults.
+            params = p.get("params", {})
+            compression = params.get("bitrate", params.get("quality"))
+            conv = sox_backend.convert_format(
+                tmp_wav, tmp_out,
+                sample_rate=sample_rate, channels=out_channels,
+                timeout=conv_timeout, compression=compression,
+            )
+            os.replace(conv["output"], output_path)
+            export_method = conv["method"]
+            # Report the rate the encoder actually used. MP3 caps at 48 kHz,
+            # so a 96 kHz project must not be reported back as 96 kHz while
+            # the file on disk is 48 kHz.
+            if conv.get("sample_rate"):
+                output_sample_rate = conv["sample_rate"]
+            rate_clamped = bool(conv.get("sample_rate_clamped"))
+        finally:
+            for leftover in (tmp_wav, tmp_out):
+                if leftover and os.path.exists(leftover):
+                    os.unlink(leftover)
 
     # Verify output
     file_size = os.path.getsize(output_path)
@@ -215,7 +268,8 @@ def render_mix(
     result = {
         "output": os.path.abspath(output_path),
         "format": fmt,
-        "sample_rate": sample_rate,
+        "sample_rate": output_sample_rate,
+        "project_sample_rate": sample_rate,
         "channels": out_channels,
         "bit_depth": bit_depth,
         "duration": round(duration, 3),
@@ -223,6 +277,8 @@ def render_mix(
         "file_size": file_size,
         "file_size_human": _human_size(file_size),
         "preset": preset,
+        "method": export_method,
+        "sample_rate_clamped": rate_clamped,
         "tracks_rendered": len(rendered_tracks),
         "peak_level": round(get_peak(mixed), 4),
         "rms_level": round(get_rms(mixed), 4),

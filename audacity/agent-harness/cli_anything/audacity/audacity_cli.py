@@ -20,6 +20,7 @@ import sys
 import os
 import json
 import shlex
+import subprocess
 import click
 from typing import Optional
 
@@ -105,6 +106,18 @@ def handle_error(func):
                 click.echo(json.dumps({"error": str(e), "type": "file_not_found"}))
             else:
                 click.echo(f"Error: {e}", err=True)
+            if not _repl_mode:
+                sys.exit(1)
+        except subprocess.TimeoutExpired as e:
+            # SoX exceeding the conversion deadline must follow the CLI's
+            # error contract rather than escaping as a traceback with no
+            # --json payload.
+            msg = (f"Export timed out after {e.timeout}s. "
+                   f"Raise --timeout to allow longer conversions.")
+            if _json_output:
+                click.echo(json.dumps({"error": msg, "type": "TimeoutExpired"}))
+            else:
+                click.echo(f"Error: {msg}", err=True)
             if not _repl_mode:
                 sys.exit(1)
         except (ValueError, IndexError, RuntimeError) as e:
@@ -665,14 +678,16 @@ def export_preset_info(name):
 @click.option("--preset", "-p", default="wav", help="Export preset")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
 @click.option("--channels", "-ch", type=int, default=None, help="Channel override (1 or 2)")
+@click.option("--timeout", type=int, default=None,
+              help="Max seconds for SoX conversion (default: scales with duration)")
 @handle_error
-def export_render(output_path, preset, overwrite, channels):
+def export_render(output_path, preset, overwrite, channels, timeout):
     """Render the project to an audio file."""
     sess = get_session()
     result = export_mod.render_mix(
         sess.get_project(), output_path,
         preset=preset, overwrite=overwrite,
-        channels_override=channels,
+        channels_override=channels, timeout=timeout,
     )
     output(result, f"Rendered to: {output_path}")
 
