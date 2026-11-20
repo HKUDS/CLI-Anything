@@ -14,6 +14,9 @@
     "agent-native",
     "generator"
   ],
+  "skills": [
+    "./skills/"
+  ],
   "interface": {
     "displayName": "CLI-Anything",
     "shortDescription": "Build, refine, test, and validate CLI harnesses for GUI apps",
