@@ -249,3 +249,87 @@ def test_native_windows_new_output_handle_lifecycle(monkeypatch, tmp_path, mask,
     finally:
         os.umask(previous)
         if output.exists(): os.chmod(output, 0o666)
+
+
+@pytest.mark.parametrize("close_fails", [False, True])
+def test_windows_initial_inspection_failure_closes_owned_descriptor(
+    windows_handles, monkeypatch, tmp_path, close_fails
+):
+    handles, _, _ = windows_handles
+    path = tmp_path / ".mermaid-stage"
+    original_error = OSError("initial stage inspection failed")
+    real_fstat, real_close = os.fstat, os.close
+    inspected = []
+
+    def fail_initial_inspection(fd):
+        if not inspected and any(
+            entry["fd"] == fd for entry in handles.values()
+        ):
+            inspected.append(fd)
+            raise original_error
+        return real_fstat(fd)
+
+    def close_with_failure(fd):
+        real_close(fd)
+        raise OSError("cleanup close failed")
+
+    monkeypatch.setattr(os, "fstat", fail_initial_inspection)
+    if close_fails:
+        monkeypatch.setattr(os, "close", close_with_failure)
+    try:
+        with pytest.raises(OSError) as caught:
+            mermaid_backend._open_staging_file(str(path), 0o666)
+        assert caught.value is original_error
+        assert len(inspected) == 1
+        # Inspection failed before inode identity could be established. Keep the
+        # name untouched rather than risk unlinking a substituted entry.
+        assert path.exists() and path.read_bytes() == b""
+        assert all(entry["closed"] for entry in handles.values())
+        with pytest.raises(OSError):
+            real_fstat(inspected[0])
+    finally:
+        # The failure-before probe must not leave its intentionally leaked fd.
+        for entry in handles.values():
+            if not entry["closed"]:
+                real_close(entry["fd"])
+        path.unlink(missing_ok=True)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows CRT handles")
+def test_native_windows_initial_inspection_failure_closes_owned_descriptor(
+    monkeypatch, tmp_path
+):
+    path = tmp_path / ".mermaid-stage"
+    real_open, real_fstat = os.open, os.fstat
+    descriptors = []
+    inspected = []
+    original_error = OSError("initial stage inspection failed")
+
+    def record_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        descriptors.append(fd)
+        return fd
+
+    def fail_initial_inspection(fd):
+        if not inspected and fd in descriptors:
+            inspected.append(fd)
+            raise original_error
+        return real_fstat(fd)
+
+    monkeypatch.setattr(os, "open", record_open)
+    monkeypatch.setattr(os, "fstat", fail_initial_inspection)
+    try:
+        with pytest.raises(OSError) as caught:
+            mermaid_backend._open_staging_file(str(path), 0o666)
+        assert caught.value is original_error
+        assert path.exists()
+        for fd in descriptors:
+            with pytest.raises(OSError):
+                real_fstat(fd)
+    finally:
+        for fd in descriptors:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        path.unlink(missing_ok=True)

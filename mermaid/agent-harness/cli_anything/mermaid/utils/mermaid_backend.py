@@ -289,11 +289,12 @@ def _open_staging_file(path: str, mode: int) -> int:
     close.argtypes = [ctypes.c_void_p]
     close.restype = ctypes.c_int
     initial_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
-    original = os.fstat(initial_fd)
-    readonly = not bool(original.st_mode & stat.S_IWRITE)
+    original = None
     handle = None
     adopted_fd = None
     try:
+        original = os.fstat(initial_fd)
+        readonly = not bool(original.st_mode & stat.S_IWRITE)
         if readonly:
             _windows_set_readonly(initial_fd, False)
         # Do not request DELETE while the initial CRT handle still denies it.
@@ -310,19 +311,23 @@ def _open_staging_file(path: str, mode: int) -> int:
             _windows_set_readonly(adopted_fd, True)
         return adopted_fd
     except BaseException:
-        # Reopening/adoption/restoration failed before the caller owned the
-        # stage. Close the original delete-denying descriptor first; compare
+        # Stage setup failed before the caller owned it. Close the original
+        # delete-denying descriptor first; compare
         # inode identity before best-effort named cleanup. A reopened handle,
         # when present, still pins that inode until cleanup has finished.
         if initial_fd is not None:
-            os.close(initial_fd)
+            try:
+                os.close(initial_fd)
+            except OSError:
+                pass  # Cleanup must not mask the original setup failure.
         try:
             if adopted_fd is not None:
                 _windows_set_readonly(adopted_fd, False)
-            named = os.lstat(path)
-            if (stat.S_ISREG(named.st_mode)
-                    and (named.st_dev, named.st_ino) == (original.st_dev, original.st_ino)):
-                os.unlink(path)
+            if original is not None:
+                named = os.lstat(path)
+                if (stat.S_ISREG(named.st_mode)
+                        and (named.st_dev, named.st_ino) == (original.st_dev, original.st_ino)):
+                    os.unlink(path)
         except OSError:
             pass
         finally:
