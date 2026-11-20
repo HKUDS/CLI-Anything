@@ -36,6 +36,10 @@ ODF_NS = {
     "xlink": "http://www.w3.org/1999/xlink",
 }
 
+# OpenFormula namespace. Calc formulas are written as ``of:=...``; the ``of``
+# prefix lives inside an attribute value, so ElementTree never declares it.
+OF_NS = "urn:oasis:names:tc:opendocument:xmlns:of:1.2"
+
 # MIME types for ODF document types
 ODF_MIMETYPES = {
     "writer": "application/vnd.oasis.opendocument.text",
@@ -74,6 +78,9 @@ def create_content_xml(doc_type: str, project: Dict[str, Any]) -> str:
     # Root element
     root = ET.Element(_ns("office", "document-content"))
     root.set(_nsattr("office", "version"), "1.2")
+    # Without this declaration LibreOffice can't resolve ``of:`` and every
+    # formula cell evaluates to Err:510.
+    root.set("xmlns:of", OF_NS)
 
     # Automatic styles
     auto_styles = ET.SubElement(root, _ns("office", "automatic-styles"))
