@@ -340,9 +340,13 @@ def _read_json(path: Path) -> Dict[str, Any]:
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
+    # Write-then-rename: the live poller process and CLI commands read this
+    # file concurrently, and a plain open("w") exposes it truncated.
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2, ensure_ascii=False, default=str)
         fh.write("\n")
+    os.replace(tmp, path)
     return path
 
 

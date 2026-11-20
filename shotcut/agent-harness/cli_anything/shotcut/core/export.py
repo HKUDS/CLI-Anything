@@ -1,5 +1,6 @@
 """Export/render operations: encode projects to video files."""
 
+import math
 import os
 import subprocess
 import shutil
@@ -210,12 +211,29 @@ def _render_with_melt(session: Session, output_path: str,
     tractor_id = tractor.get("id", "tractor0") if tractor is not None else "tractor0"
     root.set("producer", tractor_id)
 
+    # A size override goes into the temp file's <profile>, not onto the melt
+    # consumer: with width=/height= as consumer properties melt 7.43 never
+    # detects the end of the project and renders forever.
+    profile = root.find("profile") if width and height else None
+    old_profile = dict(profile.attrib) if profile is not None else None
+    if profile is not None:
+        g = math.gcd(width, height)
+        profile.attrib.update(
+            width=str(width), height=str(height),
+            sample_aspect_num="1", sample_aspect_den="1",
+            display_aspect_num=str(width // g),
+            display_aspect_den=str(height // g),
+        )
+
     try:
         with tempfile.NamedTemporaryFile(suffix=".mlt", delete=False, mode="w") as f:
             temp_mlt = f.name
             mlt_xml.write_mlt(root, temp_mlt)
     finally:
         root.set("producer", old_producer)
+        if profile is not None:
+            profile.attrib.clear()
+            profile.attrib.update(old_profile)
 
     try:
         cmd = [melt_path, temp_mlt, "-consumer"]
@@ -239,9 +257,6 @@ def _render_with_melt(session: Session, output_path: str,
             cmd.extend(["ab=" + preset["ab"]])
         if preset.get("ar"):
             cmd.extend(["ar=" + preset["ar"]])
-
-        if width and height:
-            cmd.extend([f"width={width}", f"height={height}"])
 
         if extra_args:
             cmd.extend(extra_args)
