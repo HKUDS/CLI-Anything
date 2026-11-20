@@ -196,3 +196,20 @@ class TestReview:
         )
         assert result == str(output_path)
         assert "-vf" in mock_run.call_args[0][0]
+
+    def test_cli_module_imports(self):
+        # Regression for #234: importing the CLI used to fail with
+        # ModuleNotFoundError because core/review.py was never committed.
+        from cli_anything.videocaptioner import videocaptioner_cli
+        assert "review" in videocaptioner_cli.cli.commands
+
+    def test_review_subtitles_cli(self, tmp_path):
+        from click.testing import CliRunner
+        from cli_anything.videocaptioner.videocaptioner_cli import cli
+        subtitle_path = tmp_path / "ok.srt"
+        script_path = tmp_path / "ok.txt"
+        subtitle_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nhello world\n", encoding="utf-8")
+        script_path.write_text("hello world", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["--json", "review", str(subtitle_path), "--script", str(script_path)])
+        assert result.exit_code == 0, result.output
+        assert '"status": "pass"' in result.output
