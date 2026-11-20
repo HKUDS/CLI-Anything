@@ -362,6 +362,29 @@ class TestSession:
 
 
 class TestPreview:
+    def test_session_json_never_read_half_written(self, tmp_path):
+        """Regression: `preview live stop` read session.json while the poller
+        process was rewriting it and crashed on the truncated file."""
+        import threading
+
+        path = tmp_path / "session.json"
+        payload = {"items": ["x" * 64] * 2000}
+        preview_mod._write_json(path, payload)
+        stop = threading.Event()
+
+        def writer():
+            while not stop.is_set():
+                preview_mod._write_json(path, payload)
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        try:
+            for _ in range(300):
+                assert preview_mod._read_json(path) == payload
+        finally:
+            stop.set()
+            thread.join()
+
     @staticmethod
     def _fake_bundle(tmp_path, bundle_id):
         bundle_dir = tmp_path / bundle_id

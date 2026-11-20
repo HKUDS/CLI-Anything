@@ -795,6 +795,37 @@ class TestCLISubprocess:
         assert r.returncode == 0
         assert os.path.basename(video) in r.stdout
 
+    def test_export_render_size_override(self, preview_video):
+        """Regression: --width/--height must finish and set the output size.
+
+        Passing width/height as melt consumer properties made melt 7.43 render
+        past the end of the project forever.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_path = os.path.join(tmp_dir, "sized.mlt")
+            output = os.path.join(tmp_dir, "sized.mp4")
+
+            session = Session()
+            proj_mod.new_project(session, "hd1080p30")
+            tl_mod.add_track(session, "video", "V1")
+            clip_id = media_mod.import_media(session, preview_video)["clip_id"]
+            tl_mod.add_clip(session, clip_id, 1,
+                            in_point="00:00:00.000", out_point="00:00:02.000")
+            proj_mod.save_project(session, project_path)
+
+            r = self._run("--project", project_path, "export", "render", output,
+                          "--width", "640", "--height", "480", timeout=60)
+            assert r.returncode == 0, r.stderr
+
+            stream = media_mod.probe_media(output)["video_streams"][0]
+            assert (stream["width"], stream["height"]) == (640, 480)
+
+            # The override must not leak into the saved project's profile.
+            saved = Session()
+            proj_mod.open_project(saved, project_path)
+            profile = saved.root.find("profile")
+            assert (profile.get("width"), profile.get("height")) == ("1920", "1080")
+
     def test_preview_capture_json(self, preview_video):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_path = os.path.join(tmp_dir, "preview_source.mlt")
@@ -802,9 +833,10 @@ class TestCLISubprocess:
             session = Session()
             proj_mod.new_project(session, "hd1080p30")
             tl_mod.add_track(session, "video", "Preview")
+            clip_id = media_mod.import_media(session, preview_video)["clip_id"]
             tl_mod.add_clip(
                 session,
-                preview_video,
+                clip_id,
                 1,
                 in_point="00:00:00.000",
                 out_point="00:00:03.000",
@@ -837,7 +869,7 @@ class TestCLISubprocess:
             assert manifest["status"] in ("ok", "partial")
             clip_path = _artifact_path(manifest, "clip")
             hero_path = _artifact_path(manifest, "frame_03")
-            assert manifest["artifacts"][0]["render_method"] == "ffmpeg-filtergraph"
+            assert manifest["artifacts"][0]["render_method"] == "melt"
             assert os.path.isfile(clip_path)
             _assert_png(hero_path)
             assert _luma_yavg(hero_path) > 10.0
@@ -868,16 +900,19 @@ class TestCLISubprocess:
             r = self._run("project", "new", "--profile", "hd1080p30", "-o", project_path, timeout=60)
             assert r.returncode == 0, r.stderr
 
-            r = self._run("-s", "--project", project_path, "timeline", "add-track", "--type", "video", "--name", "Preview", timeout=60)
+            r = self._run("--project", project_path, "timeline", "add-track", "--type", "video", "--name", "Preview", timeout=60)
             assert r.returncode == 0, r.stderr
 
+            r = self._run("--project", project_path, "media", "import", preview_video, json_mode=True, timeout=60)
+            assert r.returncode == 0, r.stderr
+            clip_id = json.loads(r.stdout)["clip_id"]
+
             r = self._run(
-                "-s",
                 "--project",
                 project_path,
                 "timeline",
                 "add-clip",
-                preview_video,
+                clip_id,
                 "--track",
                 "1",
                 "--in",
@@ -917,7 +952,6 @@ class TestCLISubprocess:
 
             try:
                 changed = self._run(
-                    "-s",
                     "--project",
                     project_path,
                     "filter",
@@ -958,9 +992,10 @@ class TestCLISubprocess:
 class TestPreviewE2E:
     def test_capture_preview_bundle(self, session, preview_video):
         tl_mod.add_track(session, "video", "Preview")
+        clip_id = media_mod.import_media(session, preview_video)["clip_id"]
         tl_mod.add_clip(
             session,
-            preview_video,
+            clip_id,
             1,
             in_point="00:00:00.000",
             out_point="00:00:04.000",
@@ -990,7 +1025,7 @@ class TestPreviewE2E:
 
             assert os.path.isfile(clip_path)
             assert os.path.getsize(clip_path) > 0
-            assert manifest["artifacts"][0]["render_method"] == "ffmpeg-filtergraph"
+            assert manifest["artifacts"][0]["render_method"] == "melt"
             assert int(video_stream.get("width") or 0) == 640
             assert int(video_stream.get("height") or 0) == 360
             _assert_png(hero_path)
