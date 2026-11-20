@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "davinci-resolve",
+      "display_name": "DaVinci Resolve",
+      "version": "1.0.0",
+      "description": "Drive DaVinci Resolve Studio via its scripting API: projects, media pool, timelines, markers, color, Fusion, render queue, plus the full ~500-method API via api search/describe/call. JSON output for agents",
+      "requires": "DaVinci Resolve Studio (running, External scripting = Local), Python 3.10-3.13",
+      "homepage": "https://www.blackmagicdesign.com/products/davinciresolve",
+      "source_url": "https://github.com/Fob-io/davinci-resolve-cli",
+      "install_cmd": "pip install git+https://github.com/Fob-io/davinci-resolve-cli.git",
+      "entry_point": "cli-anything-davinci-resolve",
+      "skill_md": "https://github.com/Fob-io/davinci-resolve-cli/blob/main/cli_anything/davinci_resolve/skills/SKILL.md",
+      "category": "video",
+      "contributors": [
+        {
+          "name": "Fob-io",
+          "url": "https://github.com/Fob-io"
+        }
+      ]
     }
   ]
 }
