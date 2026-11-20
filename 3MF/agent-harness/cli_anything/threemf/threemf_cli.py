@@ -17,6 +17,7 @@ Usage:
 import sys
 import os
 import json
+import math
 import shlex
 import click
 from typing import Optional
@@ -220,8 +221,8 @@ def resize(file, hole_ids, diameter, output_path, planes, min_diameter, min_conf
     """
     if os.path.exists(output_path) and not overwrite:
         raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite to replace.")
-    if diameter <= 0:
-        raise ValueError("Diameter must be positive")
+    if not math.isfinite(diameter) or diameter <= 0:
+        raise ValueError("Diameter must be finite and positive")
 
     data = parser.parse_3mf(file)
     params = inspector.InspectParams(
@@ -369,7 +370,7 @@ def repl():
     _repl_mode = True
 
     from cli_anything.threemf.utils.repl_skin import ReplSkin
-    skin = ReplSkin("3mf", version="1.0.0")
+    skin = ReplSkin("3mf", version="1.0.1")
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()
