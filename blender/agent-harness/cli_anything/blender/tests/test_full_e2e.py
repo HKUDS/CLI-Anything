@@ -366,7 +366,7 @@ class TestBPYScriptGeneration:
         proj = create_scene()
         add_object(proj, name="Cube")
         output_path = os.path.join(tmp_dir, "render.png")
-        result = render_scene(proj, output_path, overwrite=True)
+        result = render_scene(proj, output_path, overwrite=True, execute=False)
         assert os.path.exists(result["script_path"])
         with open(result["script_path"]) as f:
             content = f.read()
@@ -426,7 +426,7 @@ class TestWorkflows:
 
         # Generate script
         output_path = os.path.join(tmp_dir, "product.png")
-        result = render_scene(proj, output_path, overwrite=True)
+        result = render_scene(proj, output_path, overwrite=True, execute=False)
         assert os.path.exists(result["script_path"])
         assert result["engine"] == "CYCLES"
 
@@ -455,7 +455,7 @@ class TestWorkflows:
 
         # Generate animation render
         output_path = os.path.join(tmp_dir, "frame_")
-        result = render_scene(proj, output_path, animation=True, overwrite=True)
+        result = render_scene(proj, output_path, animation=True, overwrite=True, execute=False)
         assert result["animation"] is True
         assert "1-120" in result["frame_range"]
 

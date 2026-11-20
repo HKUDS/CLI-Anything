@@ -6,6 +6,7 @@ for actual Blender rendering.
 
 import os
 import json
+import tempfile
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -59,6 +60,22 @@ RENDER_PRESETS = {
 # Valid render settings
 VALID_ENGINES = ["CYCLES", "EEVEE", "WORKBENCH"]
 VALID_OUTPUT_FORMATS = ["PNG", "JPEG", "BMP", "TIFF", "OPEN_EXR", "HDR", "FFMPEG"]
+
+# Extension Blender appends when the output path has none and
+# use_file_extension is on (the default).
+FORMAT_EXTENSIONS = {
+    "PNG": ".png",
+    "JPEG": ".jpg",
+    "BMP": ".bmp",
+    "TIFF": ".tif",
+    "OPEN_EXR": ".exr",
+    "HDR": ".hdr",
+    "FFMPEG": ".mp4",
+}
+
+# Formats that emit a single movie file rather than a numbered frame
+# sequence, even when a frame range is rendered.
+MOVIE_FORMATS = {"FFMPEG"}
 
 
 def set_render_settings(
@@ -185,11 +202,14 @@ def render_scene(
     frame: Optional[int] = None,
     animation: bool = False,
     overwrite: bool = False,
+    execute: bool = True,
+    timeout: int = 300,
 ) -> Dict[str, Any]:
-    """Render the scene by generating a bpy script.
+    """Render the scene with Blender headless.
 
-    Since we cannot call Blender directly in all environments, this generates
-    a Python script that can be run with `blender --background --python script.py`.
+    Generates a bpy script, then invokes the real Blender to render it and
+    verifies an output file was actually produced. Pass execute=False to stop
+    after writing the script (useful for inspecting the generated bpy source).
 
     Args:
         project: The scene dict
@@ -197,21 +217,57 @@ def render_scene(
         frame: Specific frame to render (None = current frame)
         animation: If True, render the full animation range
         overwrite: Allow overwriting existing files
+        execute: If True, invoke Blender; if False, only write the script
+        timeout: Maximum seconds to wait for Blender
 
     Returns:
-        Dict with render info and script path
+        Dict with render info, script path, and (when executed) the real output
     """
-    if os.path.exists(output_path) and not overwrite and not animation:
-        raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite.")
-
     render_settings = project.get("render", {})
     scene_settings = project.get("scene", {})
+    expected_ext = FORMAT_EXTENSIONS.get(render_settings.get("output_format", "PNG"))
+
+    # Guard the files Blender will actually write, not the path as typed.
+    # `render execute result` with PNG output writes result.png, and an
+    # animation writes a whole frame sequence; checking only `output_path`
+    # let both clobber existing files without --overwrite.
+    # Only when the render will actually run: --no-execute writes a uniquely
+    # named script and touches no artifact, so refusing it over unrelated
+    # existing output would block harmless script inspection.
+    if execute and not overwrite:
+        from cli_anything.blender.utils import blender_backend as _bb
+
+        if animation:
+            # Only frames this render will actually write count as a
+            # collision: reusing a prefix for a different range should not be
+            # refused because frame_0250.png from an earlier one is present.
+            this_range = (
+                scene_settings.get("frame_start", 1),
+                scene_settings.get("frame_end", 250),
+            )
+            existing = sorted(
+                _bb._frame_files(output_path, expected_ext, frame_range=this_range)
+            )
+            if existing:
+                raise FileExistsError(
+                    f"{len(existing)} frame(s) in range {this_range[0]}-{this_range[1]} "
+                    f"already exist (e.g. {existing[0]}). Use --overwrite."
+                )
+        else:
+            clash = _bb.resolve_output(output_path, expected_ext)
+            if clash:
+                raise FileExistsError(f"Output file exists: {clash}. Use --overwrite.")
 
     # Determine output directory for the script
     script_dir = os.path.dirname(os.path.abspath(output_path))
     os.makedirs(script_dir, exist_ok=True)
 
-    script_path = os.path.join(script_dir, "_render_script.py")
+    # Unique per invocation: two concurrent renders into the same directory
+    # would otherwise overwrite each other's script before Blender read it.
+    script_fd, script_path = tempfile.mkstemp(
+        prefix="_render_script_", suffix=".py", dir=script_dir,
+    )
+    os.close(script_fd)
     # Ensure output_path is absolute before passing it to the script generator
     # as Blender's background process may have a different CWD.
     abs_output_path = os.path.abspath(output_path)
@@ -235,6 +291,21 @@ def render_scene(
         result["frame_range"] = f"{scene_settings.get('frame_start', 1)}-{scene_settings.get('frame_end', 250)}"
     else:
         result["frame"] = frame or scene_settings.get("frame_current", 1)
+
+    if not execute:
+        result["executed"] = False
+        return result
+
+    from cli_anything.blender.utils import blender_backend
+
+    render_result = blender_backend.render_script_file(
+        script_path, abs_output_path, timeout=timeout, animation=animation,
+        expected_ext=expected_ext,
+        movie=render_settings.get("output_format") in MOVIE_FORMATS,
+    )
+    result.update(render_result)
+    result["executed"] = True
+    result["script_path"] = os.path.abspath(script_path)
 
     return result
 
