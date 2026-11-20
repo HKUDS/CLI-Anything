@@ -357,7 +357,6 @@ class TestFsModule:
                 "Login", path="/main", prev="/", use_daemon=False, session=sess
             )
 
-
     @pytest.mark.parametrize(
         ("path", "anchor"),
         [("/", "cd %here%"), ("", "cd %here%/main")],
