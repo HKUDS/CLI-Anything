@@ -21,6 +21,10 @@
 !/.pi-extension/
 /.pi-extension/cli-anything/node_modules
 !/.claude-plugin/
+!/.agents/
+!/.agents/**
+!/.codex-plugin/
+!/.codex-plugin/**
 !/.cursor-plugin/
 !/.github/
 /.github/*

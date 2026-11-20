@@ -592,9 +592,14 @@ See [`cursor-plugin/README.md`](cursor-plugin/README.md) for troubleshooting loc
 
 <summary><h4 id="-codex">⚡ Codex <sup><code>Experimental</code></sup> <sup><code>Community</code></sup></h4></summary>
 
-**Step 1: Install the Skill**
+**Step 1: Install via marketplace (recommended) or skill installer**
 
-Run the bundled installer:
+```bash
+codex plugin marketplace add HKUDS/CLI-Anything
+# enable cli-anything@cli-anything (generator) and/or cli-anything-skills@cli-anything (tool skills)
+```
+
+Or run the bundled skill installer:
 
 ```bash
 # Clone the repo
@@ -1660,6 +1665,33 @@ The playbook distills key insights from successfully building all 18 diverse, pr
 ---
 
 ## 📦 Installation & Usage
+
+### Agents plugin marketplace
+
+This repo ships an agent-agnostic plugin marketplace at [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json):
+
+| Plugin | What you get |
+|--------|----------------|
+| `cli-anything` | Harness generator (`cli-anything-plugin/`) |
+| `cli-anything-skills` | Root `skills/` (100+ tool skills) plus `codex-skill/` |
+
+**Generic:** clone the repo (or point your agent at `HKUDS/CLI-Anything`), add the marketplace, then install the plugin(s) you need.
+
+**Claude Code:**
+
+```bash
+/plugin marketplace add HKUDS/CLI-Anything
+/plugin install cli-anything
+```
+
+**Codex:**
+
+```bash
+codex plugin marketplace add HKUDS/CLI-Anything
+# then enable cli-anything@cli-anything and/or cli-anything-skills@cli-anything
+```
+
+Local checkout: `codex plugin marketplace add /path/to/CLI-Anything`.
 
 ### For CLI-Hub Users
 

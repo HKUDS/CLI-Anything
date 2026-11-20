@@ -1,0 +1,29 @@
+{
+  "name": "cli-anything-skills",
+  "version": "1.0.0",
+  "description": "CLI-Anything agent skills: harness skills for every supported tool plus the Codex generator skill, without duplicating skill files.",
+  "author": {
+    "name": "cli-anything contributors"
+  },
+  "homepage": "https://github.com/HKUDS/CLI-Anything",
+  "repository": "https://github.com/HKUDS/CLI-Anything",
+  "license": "Apache-2.0",
+  "keywords": [
+    "cli-anything",
+    "skills",
+    "agent-native",
+    "harness"
+  ],
+  "skills": [
+    "./skills/",
+    "./codex-skill"
+  ],
+  "interface": {
+    "displayName": "CLI-Anything Skills",
+    "shortDescription": "Installable skills for CLI-Anything tools and the harness generator",
+    "category": "Coding",
+    "developerName": "cli-anything contributors",
+    "websiteUrl": "https://github.com/HKUDS/CLI-Anything",
+    "logo": "./assets/icon.png"
+  }
+}
