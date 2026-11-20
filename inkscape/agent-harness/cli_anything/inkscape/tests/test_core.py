@@ -901,6 +901,34 @@ class TestPaths:
         assert result["type"] == "path"
         assert "Z" in result["d"]
 
+    @pytest.mark.parametrize("shape_type", ["polygon", "polyline"])
+    @pytest.mark.parametrize("points", [
+        "50 0 100 100 0 100",
+        "50, 0 100, 100 0, 100",
+        "50,0,100,100,0,100",
+        "50\t0\n100 100\r0 100",
+    ])
+    def test_convert_point_shapes_with_svg_separators(self, shape_type, points):
+        proj = create_document()
+        obj = add_polygon(proj, points=points)
+        obj["type"] = shape_type
+
+        result = convert_to_path(proj, 0)
+
+        expected = "M " + points
+        if shape_type == "polygon":
+            expected += " Z"
+        assert result["d"] == expected
+        assert result["original_type"] == shape_type
+
+    def test_convert_points_with_signed_scientific_coordinates(self):
+        proj = create_document()
+        add_polygon(proj, points="1e2-2.5e1 0.5,4. 30,40")
+
+        result = convert_to_path(proj, 0)
+
+        assert result["d"] == "M 1e2-2.5e1 0.5,4. 30,40 Z"
+
 
 # ── Gradient Tests ──────────────────────────────────────────────
 
