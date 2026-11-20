@@ -1,0 +1,24 @@
+{
+  "name": "cli-anything",
+  "version": "1.0.0",
+  "description": "Build powerful, stateful CLI interfaces for any GUI application using the cli-anything harness methodology.",
+  "author": {
+    "name": "cli-anything contributors"
+  },
+  "homepage": "https://github.com/HKUDS/CLI-Anything",
+  "repository": "https://github.com/HKUDS/CLI-Anything",
+  "license": "Apache-2.0",
+  "keywords": [
+    "cli-anything",
+    "harness",
+    "agent-native",
+    "generator"
+  ],
+  "interface": {
+    "displayName": "CLI-Anything",
+    "shortDescription": "Build, refine, test, and validate CLI harnesses for GUI apps",
+    "category": "Coding",
+    "developerName": "cli-anything contributors",
+    "websiteUrl": "https://github.com/HKUDS/CLI-Anything"
+  }
+}
