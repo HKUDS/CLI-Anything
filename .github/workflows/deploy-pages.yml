@@ -46,19 +46,21 @@ jobs:
       - name: Generate meta-skill
         run: python3 .github/scripts/generate_meta_skill.py
 
-      - name: Install AWS CLI
-        run: pip install awscli
-
-      - name: Upload SKILL.md to DO Spaces
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+      - name: Pin meta-skill digest in agent-skills index
         run: |
-          aws s3 cp cli-hub-skill/SKILL.md \
-            s3://${{ secrets.DO_SPACES_BUCKET }}/SKILL.md \
-            --endpoint-url ${{ secrets.DO_SPACES_ENDPOINT }} \
-            --acl public-read \
-            --content-type text/markdown
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          digest = "sha256:" + hashlib.sha256(pathlib.Path("cli-hub-skill/SKILL.md").read_bytes()).hexdigest()
+          index_path = pathlib.Path("docs/hub/.well-known/agent-skills/index.json")
+          index = json.loads(index_path.read_text())
+          entries = [skill for skill in index["skills"] if skill["name"] == "cli-anything-hub"]
+          if not entries:
+              raise SystemExit("cli-anything-hub entry missing from agent-skills index")
+          for entry in entries:
+              entry["digest"] = digest
+          index_path.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n")
+          print(f"Pinned cli-anything-hub to {digest}")
+          PY
 
       - name: Copy registries to hub for cli-hub access
         run: |
@@ -83,6 +85,9 @@ jobs:
           sudo mkdir -p docs/_site/matrix
           sudo rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' \
             cli-hub-matrix/ docs/_site/matrix/
+
+      - name: Publish meta-skill on Pages
+        run: sudo cp cli-hub-skill/SKILL.md docs/_site/SKILL.md
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

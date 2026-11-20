@@ -85,7 +85,7 @@ cli-hub search <query> --json
 - A2A agent card: https://clianything.cc/.well-known/agent-card.json
 - OpenAI plugin-style manifest: https://clianything.cc/.well-known/ai-plugin.json
 - Agent Skills index: https://clianything.cc/.well-known/agent-skills/index.json
-- Agent Skills artifact: https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md
+- Agent Skills artifact: https://hkuds.github.io/CLI-Anything/SKILL.md
 
 ## Registry Files
 

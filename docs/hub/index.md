@@ -44,7 +44,7 @@ cli-hub launch <name> [args...]
 - `https://clianything.cc/.well-known/agent-card.json`
 - `https://clianything.cc/.well-known/ai-plugin.json`
 - `https://clianything.cc/.well-known/agent-skills/index.json`
-- `https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md`
+- `https://hkuds.github.io/CLI-Anything/SKILL.md`
 
 ## Copyright
 
