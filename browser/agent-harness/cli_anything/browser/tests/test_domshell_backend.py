@@ -712,6 +712,56 @@ def test_grep_rooted_emits_three_call_sequence(mock_call):
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize("matches", ["/button[0]", ""])
+def test_grep_root_anchors_and_restores_cwd(mock_call, matches):
+    mock_call.side_effect = [
+        _make_result("[lane: 1]"),
+        _make_result(matches),
+        _make_result("[lane: 1]"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", prev="/main", session=sess)
+
+    assert mock_call.call_args_list == [
+        call("cd %here%", False, session=sess),
+        call("grep -r Login", False, session=sess),
+        call("cd %here%/main", False, session=sess),
+    ]
+    assert result["matches"] == ([matches] if matches else [])
+    assert sess.working_dir == "/main"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_root_anchor_failure_short_circuits(mock_call):
+    mock_call.return_value = _make_result("Error: tab root unavailable")
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", prev="/main", session=sess)
+
+    assert mock_call.call_args_list == [call("cd %here%", False, session=sess)]
+    assert "error" in result
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_root_requires_session_without_daemon(mock_call):
+    with pytest.raises(ValueError, match="a session argument is required"):
+        backend.grep("Login", path="/")
+    mock_call.assert_not_called()
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_omitted_path_with_session_stays_unrooted(mock_call):
+    mock_call.return_value = _make_result("")
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", session=sess)
+
+    assert mock_call.call_args_list == [call("grep -r Login", False, session=sess)]
+    assert result["matches"] == []
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
 def test_grep_rooted_quotes_path_with_spaces(mock_call):
     """Absolute paths with whitespace are quoted as `cd '%here%/path with spaces'`.
 

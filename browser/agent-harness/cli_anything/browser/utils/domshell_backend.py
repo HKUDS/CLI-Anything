@@ -824,7 +824,7 @@ def grep(
 ) -> dict:
     """Search for pattern in the accessibility tree.
 
-    When ``path`` is provided and is not ``/``, the search is rooted at that
+    When ``path`` is provided, including ``/``, the search is rooted at that
     path via a split-and-check sequence: an anchor ``cd``, then ``grep``,
     and finally a restore ``cd``. Each step is a separate ``domshell_execute``
     call but they all share the same MCP session (and therefore DOMShell lane/cwd).
@@ -836,8 +836,8 @@ def grep(
 
     Args:
         pattern: Text pattern to search for
-        path: Optional path to root the search at. If empty or "/", searches
-            from the server-side current working directory.
+        path: Optional path to root the search at. If empty, searches from
+            the server-side current working directory. "/" targets the tab root.
         prev: Path to restore as cwd after the search. Used only when
             ``path`` is provided. Defaults to "/".
         use_daemon: Use persistent daemon connection if available
@@ -873,7 +873,7 @@ def grep(
             f"wait for the upstream fix."
         )
     translated_path, path_abs = _translate_path(path)
-    if not translated_path:
+    if not path_abs and not translated_path:
         # Unrooted grep — operate on lane cwd, no cd, no restore.
         # `-r` preserves the pre-migration semantic: the old
         # `domshell_grep` tool defaulted to recursive=True (walk all
