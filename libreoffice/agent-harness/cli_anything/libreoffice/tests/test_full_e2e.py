@@ -876,6 +876,25 @@ class TestCalcToXLSX:
                 f"No sheet found in XLSX. Files: {names}"
         print(f"\n  XLSX output: {result['output']} ({result['file_size']:,} bytes)")
 
+    def test_calc_boolean_cells_to_xlsx(self, tmp_dir):
+        project = create_document(doc_type="calc", name="Boolean cells")
+        set_cell(project, "A1", True, cell_type="boolean")
+        set_cell(project, "A2", False, cell_type="boolean")
+        set_cell(project, "A3", "TRUE")
+        path = os.path.join(tmp_dir, "boolean_cells.xlsx")
+
+        export(project, path, preset="xlsx")
+
+        ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        with zipfile.ZipFile(path) as archive:
+            sheet = ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+        cells = {cell.get("r"): cell for cell in sheet.findall(".//s:c", ns)}
+        assert cells["A1"].get("t") == "b"
+        assert cells["A1"].findtext("s:v", namespaces=ns) == "1"
+        assert cells["A2"].get("t") == "b"
+        assert cells["A2"].findtext("s:v", namespaces=ns) == "0"
+        assert cells["A3"].get("t") in {"s", "inlineStr"}
+
     def test_calc_to_csv(self, tmp_dir):
         proj = create_document(doc_type="calc", name="CSV Test")
         set_cell(proj, "A1", "Name")

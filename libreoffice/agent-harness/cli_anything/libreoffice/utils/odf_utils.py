@@ -317,6 +317,7 @@ def _build_calc_content(root: ET.Element, auto_styles: ET.Element,
     """Build Calc content.xml body."""
     body = ET.SubElement(root, _ns("office", "body"))
     spreadsheet = ET.SubElement(body, _ns("office", "spreadsheet"))
+    boolean_style_added = False
 
     sheets = project.get("sheets", [])
     for sheet_data in sheets:
@@ -341,6 +342,8 @@ def _build_calc_content(root: ET.Element, auto_styles: ET.Element,
 
                 if cell_ref in cells:
                     cell_data = cells[cell_ref]
+                    value = cell_data.get("value", "")
+                    display_value = str(value)
                     if "formula" in cell_data:
                         cell_elem.set(_nsattr("table", "formula"),
                                       f"of:{cell_data['formula']}")
@@ -349,11 +352,34 @@ def _build_calc_content(root: ET.Element, auto_styles: ET.Element,
                         cell_elem.set(_nsattr("office", "value-type"), "float")
                         cell_elem.set(_nsattr("office", "value"),
                                       str(cell_data.get("value", 0)))
+                    elif (
+                        cell_data.get("type") == "boolean" and isinstance(value, bool)
+                    ):
+                        if not boolean_style_added:
+                            # LibreOffice uses the data style to retain booleans
+                            # instead of converting them to 1 and 0 during XLSX export.
+                            boolean_format = ET.SubElement(
+                                auto_styles, _ns("number", "boolean-style")
+                            )
+                            boolean_format.set(_nsattr("style", "name"), "BooleanValue")
+                            ET.SubElement(boolean_format, _ns("number", "boolean"))
+                            boolean_style = ET.SubElement(auto_styles, _ns("style", "style"))
+                            boolean_style.set(_nsattr("style", "name"), "BooleanCell")
+                            boolean_style.set(_nsattr("style", "family"), "table-cell")
+                            boolean_style.set(
+                                _nsattr("style", "data-style-name"), "BooleanValue"
+                            )
+                            boolean_style_added = True
+                        boolean_value = "true" if value else "false"
+                        cell_elem.set(_nsattr("office", "value-type"), "boolean")
+                        cell_elem.set(_nsattr("office", "boolean-value"), boolean_value)
+                        cell_elem.set(_nsattr("table", "style-name"), "BooleanCell")
+                        display_value = boolean_value.upper()
                     else:
                         cell_elem.set(_nsattr("office", "value-type"), "string")
 
                     para = ET.SubElement(cell_elem, _ns("text", "p"))
-                    para.text = str(cell_data.get("value", ""))
+                    para.text = display_value
 
 
 def _build_impress_content(root: ET.Element, auto_styles: ET.Element,
