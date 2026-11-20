@@ -38,6 +38,14 @@ DOMAIN_LOCALES = {
 }
 
 
+_AMAZON_DOMAIN = __import__("re").compile(r"^amazon\.(?:[a-z]{2,3}|co\.[a-z]{2}|com\.[a-z]{2})$")
+
+
+def valid_domain(domain: str) -> bool:
+    """True for Amazon retail domains (amazon.com, amazon.co.uk, amazon.com.au, ...)."""
+    return bool(_AMAZON_DOMAIN.match((domain or "").strip().lower()))
+
+
 def locale_for(domain: str) -> str:
     return DOMAIN_LOCALES.get((domain or "").lower(), DEFAULT_LOCALE)
 

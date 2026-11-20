@@ -161,9 +161,16 @@ def auth():
     """Amazon account login, status and logout."""
 
 
+def _check_domain(ctx, param, value):
+    value = (value or "").strip().lower()
+    if not backend.valid_domain(value):
+        raise click.BadParameter(f"'{value}' is not an Amazon domain (e.g. amazon.com, amazon.co.uk, amazon.de).")
+    return value
+
+
 @auth.command("login")
 @click.option("--email", required=True, help="Amazon account email.")
-@click.option("--domain", default="amazon.com", show_default=True,
+@click.option("--domain", default="amazon.com", show_default=True, callback=_check_domain,
               help="Amazon domain of your account, e.g. amazon.co.uk, amazon.de, amazon.in.")
 @click.option("--port", type=click.IntRange(1, 65535), default=None,
               help="Local port for the sign-in page (default: a free port).")
@@ -205,7 +212,9 @@ def auth_status(verify):
     data = {"logged_in": True, "email": account["email"], "domain": account["domain"],
             "locale": account.get("locale"), "customer_id": account.get("customer_id"),
             "config_dir": str(backend.config_dir())}
-    if verify:
+    if verify and _dry_run:
+        data["verify"] = "skipped (dry run does not contact Amazon)"
+    elif verify:
         data.update(backend.verify())
     output(data)
 
@@ -231,6 +240,9 @@ def auth_locale(locale):
     account = backend.load_account()
     if not account:
         raise backend.NotLoggedIn("Not logged in. Run: auth login --email you@example.com")
+    if _dry_run:
+        output({"ok": True, "dry_run": True, "would_set_locale": locale}, f"[dry-run] Would set locale to {locale}.")
+        return
     account["locale"] = locale
     backend.save_account(account)
     output({"ok": True, "locale": locale}, f"Locale set to {locale}.")
@@ -320,6 +332,9 @@ def routine():
 @_guard
 def routine_list():
     """List routines with their trigger phrases."""
+    if _dry_run:
+        output({"ok": True, "dry_run": True, "would": "fetch routines from Amazon"}, "[dry-run] Would list routines.")
+        return
     items = []
     for r in backend.fetch_routines():
         phrases = []
@@ -395,6 +410,10 @@ def smarthome():
 @_guard
 def smarthome_list():
     """List lights, plugs and other appliances Alexa controls."""
+    if _dry_run:
+        output({"ok": True, "dry_run": True, "would": "fetch smart-home appliances from Amazon"},
+               "[dry-run] Would list smart-home appliances.")
+        return
     items = sh.flatten_network(backend.fetch_network())
     output(items, f"{len(items)} appliance(s):")
 

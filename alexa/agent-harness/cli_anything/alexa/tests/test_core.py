@@ -458,3 +458,32 @@ def test_repl_keeps_dry_run_and_json(fake_backend, monkeypatch):
     result = CliRunner().invoke(alexa_cli.cli, ["--json", "--dry-run", "repl"])
     assert '"dry_run": true' in result.output
     assert fake_backend == []  # nothing sent to Amazon from the REPL
+
+
+# ── second Codex review round (commit 9a7f2fc) ────────────────────────
+
+@pytest.mark.parametrize("domain,ok", [("amazon.com", True), ("amazon.co.uk", True), ("amazon.com.au", True),
+                                       ("amazon.de", True), ("AMAZON.IN", True), ("evil.example", False),
+                                       ("amazon.com.evil.io", False), ("", False)])
+def test_valid_domain(domain, ok):
+    assert backend.valid_domain(domain) is ok
+
+
+def test_login_rejects_non_amazon_domain(home, monkeypatch):
+    monkeypatch.setattr(backend, "login", lambda *a, **k: pytest.fail("must not start login"))
+    result = CliRunner().invoke(alexa_cli.cli, ["auth", "login", "--email", "a@b.c", "--domain", "evil.example"])
+    assert result.exit_code == 2 and "not an Amazon domain" in result.output
+
+
+def test_locale_dry_run_does_not_write(fake_backend):
+    result, data = run("--dry-run", "auth", "locale", "fr-FR")
+    assert data["would_set_locale"] == "fr-FR" and backend.load_account().get("locale") != "fr-FR"
+
+
+@pytest.mark.parametrize("args,fetcher", [(["routine", "list"], "fetch_routines"),
+                                          (["smarthome", "list"], "fetch_network"),
+                                          (["auth", "status", "--verify"], "verify")])
+def test_read_commands_do_not_contact_amazon_in_dry_run(fake_backend, monkeypatch, args, fetcher):
+    monkeypatch.setattr(backend, fetcher, lambda *a, **k: pytest.fail(f"{fetcher} called in dry run"))
+    result, data = run("--dry-run", *args)
+    assert result.exit_code == 0
