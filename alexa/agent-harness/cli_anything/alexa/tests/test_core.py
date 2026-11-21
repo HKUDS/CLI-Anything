@@ -487,3 +487,33 @@ def test_read_commands_do_not_contact_amazon_in_dry_run(fake_backend, monkeypatc
     monkeypatch.setattr(backend, fetcher, lambda *a, **k: pytest.fail(f"{fetcher} called in dry run"))
     result, data = run("--dry-run", *args)
     assert result.exit_code == 0
+
+
+# ── third Codex review round (commit 5392bed) ─────────────────────────
+
+def test_config_dir_expands_tilde(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALEXA_CLI_HOME", "~/alexa-home")
+    assert backend.config_dir() == tmp_path / "alexa-home"
+
+
+def test_concurrent_account_saves_stay_valid(home):
+    import threading
+    errors = []
+
+    def worker(i):
+        try:
+            for j in range(30):
+                backend.save_account({"email": "a@b.c", "domain": "amazon.com", "n": i * 100 + j})
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert backend.load_account()["email"] == "a@b.c"  # file is complete JSON
+    assert not list(home.glob(".account.*.tmp"))  # no temp files left behind
+    assert stat.S_IMODE(os.stat(home / "account.json").st_mode) == 0o600

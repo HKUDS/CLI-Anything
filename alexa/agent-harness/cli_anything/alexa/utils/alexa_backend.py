@@ -70,7 +70,7 @@ def _quiet_alexapy_logs() -> None:
 # ── Storage ──────────────────────────────────────────────────────────
 
 def config_dir() -> Path:
-    path = Path(os.environ.get("ALEXA_CLI_HOME") or Path.home() / ".cli-anything-alexa")
+    path = Path(os.environ.get("ALEXA_CLI_HOME") or Path.home() / ".cli-anything-alexa").expanduser()
     (path / ".storage").mkdir(parents=True, exist_ok=True)
     try:
         path.chmod(0o700)
@@ -93,12 +93,28 @@ def load_account() -> dict[str, Any] | None:
 
 
 def save_account(account: dict[str, Any]) -> None:
+    """Atomically write account.json (0600).
+
+    Each save uses its own temp file in the same directory, so concurrent CLI
+    processes (e.g. parallel agent calls rotating tokens) never share or
+    delete each other's temp file; os.replace keeps the live file valid.
+    """
+    import tempfile
     f = account_file()
-    tmp = f.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(account, fh, indent=2)
-    os.replace(tmp, f)
+    fd, tmp = tempfile.mkstemp(prefix=".account.", suffix=".tmp", dir=f.parent)
+    try:
+        os.chmod(tmp, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(account, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, f)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def delete_account() -> bool:
