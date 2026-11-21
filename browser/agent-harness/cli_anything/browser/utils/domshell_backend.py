@@ -824,7 +824,7 @@ def grep(
 ) -> dict:
     """Search for pattern in the accessibility tree.
 
-    When ``path`` is provided and is not ``/``, the search is rooted at that
+    When ``path`` is provided, including ``/``, the search is rooted at that
     path via a split-and-check sequence: an anchor ``cd``, then ``grep``,
     and finally a restore ``cd``. Each step is a separate ``domshell_execute``
     call but they all share the same MCP session (and therefore DOMShell lane/cwd).
@@ -836,8 +836,8 @@ def grep(
 
     Args:
         pattern: Text pattern to search for
-        path: Optional path to root the search at. If empty or "/", searches
-            from the server-side current working directory.
+        path: Optional path to root the search at. If empty, searches from
+            the server-side current working directory. "/" targets the tab root.
         prev: Path to restore as cwd after the search. Used only when
             ``path`` is provided. Defaults to "/".
         use_daemon: Use persistent daemon connection if available
@@ -873,7 +873,7 @@ def grep(
             f"wait for the upstream fix."
         )
     translated_path, path_abs = _translate_path(path)
-    if not translated_path:
+    if not path_abs and not translated_path:
         # Unrooted grep — operate on lane cwd, no cd, no restore.
         # `-r` preserves the pre-migration semantic: the old
         # `domshell_grep` tool defaulted to recursive=True (walk all
@@ -904,10 +904,13 @@ def grep(
     # cwd and produce wrong-scope matches.
     if path_abs:
         anchor_cmd = _anchor_path_cmd(translated_path)
+    else:
+        anchor_cmd = f"cd {_q(translated_path)}"
+
+    if path_abs and session is not None:
         restore_cmd = _restore_cwd_cmd(session)
     else:
         translated_prev, prev_abs = _translate_path(prev)
-        anchor_cmd = f"cd {_q(translated_path)}"
         if prev_abs:
             restore_cmd = _anchor_path_cmd(translated_prev)
         else:
@@ -922,10 +925,25 @@ def grep(
         return _parse_execute_result(anchor, "grep")
     # `-r` preserves the pre-migration recursive default (see unrooted
     # branch above for the full rationale).
-    op = asyncio.run(_call_execute(
-        f"grep -r {_q(pattern)}", use_daemon, session=session,
-    ))
-    asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+    op_failed = False
+    try:
+        op = asyncio.run(_call_execute(
+            f"grep -r {_q(pattern)}", use_daemon, session=session,
+        ))
+        op_failed = _is_error(op)
+    except BaseException:
+        op_failed = True
+        raise
+    finally:
+        try:
+            restore = asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+        except BaseException:
+            if not op_failed:
+                raise
+    if not op_failed and _is_error(restore):
+        detail = _parse_execute_result(restore, "grep")["error"]
+        message = f"grep: failed to restore cwd: {detail}"
+        return {"error": message, "output": message}
     return _parse_execute_result(op, "grep")
 
 

@@ -357,6 +357,24 @@ class TestFsModule:
                 "Login", path="/main", prev="/", use_daemon=False, session=sess
             )
 
+    @pytest.mark.parametrize(
+        ("path", "anchor"),
+        [("/", "cd %here%"), ("", "cd %here%/main")],
+    )
+    @patch("cli_anything.browser.core.fs.backend._call_execute", new_callable=AsyncMock)
+    def test_grep_root_and_empty_path_from_non_root_cwd(self, mock_call, path, anchor):
+        sess = Session(working_dir="/main", domshell_lane_id="7")
+        mock_call.return_value = {}
+
+        result = fs.grep_elements(sess, "Login", path)
+
+        assert [c.args[0] for c in mock_call.call_args_list] == [
+            anchor, "grep -r Login", "cd %here%/main",
+        ]
+        assert all(c.kwargs["session"] is sess for c in mock_call.call_args_list)
+        assert result["matches"] == []
+        assert sess.working_dir == "/main"
+
 
 # ── Daemon Mode Tests ────────────────────────────────────────────
 

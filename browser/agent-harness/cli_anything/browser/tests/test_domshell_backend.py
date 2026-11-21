@@ -712,6 +712,167 @@ def test_grep_rooted_emits_three_call_sequence(mock_call):
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize("matches", ["/button[0]", ""])
+def test_grep_root_anchors_and_restores_cwd(mock_call, matches):
+    mock_call.side_effect = [
+        _make_result("[lane: 1]"),
+        _make_result(matches),
+        _make_result("[lane: 1]"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", prev="/main", session=sess)
+
+    assert mock_call.call_args_list == [
+        call("cd %here%", False, session=sess),
+        call("grep -r Login", False, session=sess),
+        call("cd %here%/main", False, session=sess),
+    ]
+    assert result["matches"] == ([matches] if matches else [])
+    assert sess.working_dir == "/main"
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_root_anchor_failure_short_circuits(mock_call):
+    mock_call.return_value = _make_result("Error: tab root unavailable")
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", prev="/main", session=sess)
+
+    assert mock_call.call_args_list == [call("cd %here%", False, session=sess)]
+    assert "error" in result
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize(
+    ("prev", "restore"),
+    [
+        ("/main", "cd %here%/main"),
+        ("main", "cd main"),
+        ("", "cd %here%"),
+        ("/main area", "cd '%here%/main area'"),
+    ],
+)
+def test_grep_daemon_root_without_session_restores_prev(mock_call, prev, restore):
+    mock_call.return_value = _make_result("")
+
+    result = backend.grep("Login", path="/", prev=prev, use_daemon=True)
+
+    assert mock_call.call_args_list == [
+        call("cd %here%", True, session=None),
+        call("grep -r Login", True, session=None),
+        call(restore, True, session=None),
+    ]
+    assert result["matches"] == []
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize("path", ["/", "/main", "main"])
+@pytest.mark.parametrize("restore_fails", [False, True])
+def test_grep_exception_restores_cwd_and_preserves_error(mock_call, path, restore_fails):
+    error = RuntimeError("grep failed")
+    mock_call.side_effect = [
+        _make_result(""),
+        error,
+        RuntimeError("restore failed") if restore_fails else _make_result(""),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    with pytest.raises(RuntimeError, match="grep failed") as exc_info:
+        backend.grep("Login", path=path, prev="/main", session=sess)
+
+    assert exc_info.value is error
+    assert mock_call.call_count == 3
+    assert mock_call.call_args_list[1:] == [
+        call("grep -r Login", False, session=sess),
+        call("cd %here%/main", False, session=sess),
+    ]
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_restore_exception_propagates_after_success(mock_call):
+    error = RuntimeError("restore failed")
+    mock_call.side_effect = [_make_result(""), _make_result(""), error]
+    sess = _make_session(working_dir="/main")
+
+    with pytest.raises(RuntimeError, match="restore failed") as exc_info:
+        backend.grep("Login", path="/", session=sess)
+
+    assert exc_info.value is error
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_success_with_restore_error_returns_error(mock_call):
+    mock_call.side_effect = [
+        _make_result(""),
+        _make_result("/button[0]"),
+        _make_result("\x1b[31mcd: main: No such directory\x1b[0m"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", session=sess)
+
+    assert "failed to restore cwd" in result["error"]
+    assert "cd: main: No such directory" in result["error"]
+    assert result["output"] == result["error"]
+    assert "matches" not in result
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize("restore_raises", [False, True])
+def test_grep_error_result_wins_over_restore_error(mock_call, restore_raises):
+    grep_error = _make_result("Error: grep failed")
+    mock_call.side_effect = [
+        _make_result(""),
+        grep_error,
+        RuntimeError("restore failed") if restore_raises else _make_result("Error: restore failed"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", session=sess)
+
+    assert result == backend._parse_execute_result(grep_error, "grep")
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_exception_wins_over_restore_error_result(mock_call):
+    error = RuntimeError("grep failed")
+    mock_call.side_effect = [
+        _make_result(""),
+        error,
+        _make_result("Error: restore failed"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    with pytest.raises(RuntimeError, match="grep failed") as exc_info:
+        backend.grep("Login", path="/", session=sess)
+
+    assert exc_info.value is error
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_root_requires_session_without_daemon(mock_call):
+    with pytest.raises(ValueError, match="a session argument is required"):
+        backend.grep("Login", path="/")
+    mock_call.assert_not_called()
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_omitted_path_with_session_stays_unrooted(mock_call):
+    mock_call.return_value = _make_result("")
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", session=sess)
+
+    assert mock_call.call_args_list == [call("grep -r Login", False, session=sess)]
+    assert result["matches"] == []
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
 def test_grep_rooted_quotes_path_with_spaces(mock_call):
     """Absolute paths with whitespace are quoted as `cd '%here%/path with spaces'`.
 
