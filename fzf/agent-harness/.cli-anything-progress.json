@@ -1,0 +1,16 @@
+{
+  "software": "fzf",
+  "mode": "build",
+  "target": "/var/home/louranicas/.local/bin/fzf",
+  "phases": {
+    "0": {"status": "completed", "updated_at": "2026-10-26T03:31:47Z"},
+    "1": {"status": "completed", "updated_at": "2026-10-26T03:31:47Z"},
+    "2": {"status": "completed", "updated_at": "2026-10-26T03:51:09Z"},
+    "3": {"status": "completed", "updated_at": "2026-10-26T04:05:16Z"},
+    "4": {"status": "completed", "updated_at": "2026-10-26T04:05:16Z"},
+    "5": {"status": "completed", "updated_at": "2026-10-26T04:05:16Z"},
+    "6": {"status": "completed", "updated_at": "2026-10-26T04:33:30Z"}
+  },
+  "terminal": true,
+  "terminal_status": "completed"
+}

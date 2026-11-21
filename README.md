@@ -1350,6 +1350,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 40</td>
 </tr>
 <tr>
+<td align="center"><strong>🔎 <a href="fzf/agent-harness/">fzf</a></strong></td>
+<td>Terminal fuzzy finding &amp; selection</td>
+<td><code>cli-anything-fzf</code></td>
+<td>Real fzf 0.74.5 matcher, TTY, and owned HTTP/Unix listener</td>
+<td align="center">✅ 185</td>
+</tr>
+<tr>
 <td align="center"><strong>📈 <a href="unrealinsights/agent-harness/">Unreal Insights</a></strong></td>
 <td>Performance Profiling</td>
 <td><code>cli-anything-unrealinsights</code></td>
@@ -1541,6 +1548,7 @@ cli-anything/
 ├── 🎬 openscreen/agent-harness/         # Openscreen CLI — screen recording editor (101 tests)
 ├── ☁️ cloudcompare/agent-harness/       # CloudCompare CLI (88 tests)
 ├── 🔍 exa/agent-harness/               # Exa CLI (40 tests)
+├── 🔎 fzf/agent-harness/               # fzf CLI (185 tests: 95 core + 12 coverage + 78 real-backend E2E)
 └── ⛅ cloudanalyzer/agent-harness/      # CloudAnalyzer CLI (14 tests)
 └── 🔩 3MF/agent-harness/               # 3MF Mesh Editor CLI (50+ tests)
 ```

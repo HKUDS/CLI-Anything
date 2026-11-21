@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cli-anything-fzf:schemas:1",
+  "schema_version": "cli-anything-fzf-schemas/v1",
+  "$defs": {
+    "success_envelope": {
+      "type": "object",
+      "required": ["ok", "command", "data"],
+      "properties": {
+        "ok": {"const": true},
+        "command": {"type": "string", "minLength": 1},
+        "data": {}
+      },
+      "additionalProperties": false
+    },
+    "error_envelope": {
+      "type": "object",
+      "required": ["ok", "error"],
+      "properties": {
+        "ok": {"const": false},
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+            "message": {"type": "string", "minLength": 1},
+            "details": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "backend_identity": {
+      "type": "object",
+      "required": ["path", "realpath", "sha256", "size", "expected_version", "expected_revision", "version", "revision", "version_verified", "compatible"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "realpath": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "integer", "minimum": 1},
+        "expected_version": {"type": "string"},
+        "expected_revision": {"type": "string"},
+        "version": {"type": ["string", "null"]},
+        "revision": {"type": ["string", "null"]},
+        "version_verified": {"type": "boolean"},
+        "compatible": {"type": ["boolean", "null"]},
+        "version_output": {"type": "string"},
+        "dry_run": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "plan": {
+      "type": "object",
+      "required": ["schema_version", "mode", "dry_run", "executed", "backend", "argv", "stdin", "environment_delta", "effect_classes", "hazards", "policy_grants", "refused", "refusal_reasons", "expected_output", "timeout_seconds", "profiles", "option_sources", "plan_id"],
+      "properties": {
+        "schema_version": {"const": "cli-anything-fzf-plan/v1"},
+        "mode": {"enum": ["filter", "select", "listener"]},
+        "dry_run": {"type": "boolean"},
+        "executed": {"type": "boolean"},
+        "backend": {"$ref": "#/$defs/backend_identity"},
+        "argv": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "stdin": {"type": "object", "required": ["kind"], "properties": {"kind": {"type": "string"}}, "additionalProperties": true},
+        "environment_delta": {"type": "object"},
+        "effect_classes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "hazards": {"type": "array", "items": {"type": "object"}},
+        "policy_grants": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "refused": {"type": "boolean"},
+        "refusal_reasons": {"type": "array", "items": {"type": "object"}},
+        "expected_output": {"type": "string"},
+        "timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "profiles": {"type": "array"},
+        "option_sources": {"type": "array", "items": {"type": "object"}},
+        "listener": {"type": "object"},
+        "plan_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": true
+    },
+    "profile": {
+      "type": "object",
+      "required": ["schema_version", "name", "description", "options", "bindings"],
+      "properties": {
+        "schema_version": {"const": "cli-anything-fzf-profile/v1"},
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
+        "options": {"type": "array", "items": {"type": "string"}},
+        "bindings": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "byte_record": {
+      "type": "object",
+      "required": ["text", "utf8", "base64", "byte_count"],
+      "properties": {
+        "text": {"type": ["string", "null"]},
+        "utf8": {"type": "boolean"},
+        "base64": {"type": "string"},
+        "byte_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "selection_result": {
+      "type": "object",
+      "required": ["process_exit_code", "meaning", "backend_completed", "semantic_success", "no_match", "interrupted", "record_separator", "query", "expect_key", "selections", "selection_count", "output_base64", "output_byte_count", "output_sha256"],
+      "properties": {
+        "process_exit_code": {"type": "integer"},
+        "meaning": {"type": "string"},
+        "backend_completed": {"type": "boolean"},
+        "semantic_success": {"type": "boolean"},
+        "no_match": {"type": "boolean"},
+        "interrupted": {"type": "boolean"},
+        "record_separator": {"enum": ["newline", "nul"]},
+        "query": {"anyOf": [{"$ref": "#/$defs/byte_record"}, {"type": "null"}]},
+        "expect_key": {"anyOf": [{"$ref": "#/$defs/byte_record"}, {"type": "null"}]},
+        "selections": {"type": "array", "items": {"$ref": "#/$defs/byte_record"}},
+        "selection_count": {"type": "integer", "minimum": 0},
+        "output_base64": {"type": "string"},
+        "output_byte_count": {"type": "integer", "minimum": 0},
+        "output_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "duration_ms": {"type": "number", "minimum": 0},
+        "stderr": {"type": "string"},
+        "stderr_base64": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "benchmark_result": {
+      "type": "object",
+      "required": ["process_exit_code", "meaning", "backend_completed", "semantic_success", "no_match", "interrupted", "benchmark", "output_base64", "output_byte_count", "output_sha256"],
+      "properties": {
+        "process_exit_code": {"type": "integer"},
+        "meaning": {"type": "string"},
+        "backend_completed": {"type": "boolean"},
+        "semantic_success": {"type": "boolean"},
+        "no_match": {"type": "boolean"},
+        "interrupted": {"type": "boolean"},
+        "benchmark": {"$ref": "#/$defs/byte_record"},
+        "output_base64": {"type": "string"},
+        "output_byte_count": {"type": "integer", "minimum": 0},
+        "output_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "duration_ms": {"type": "number", "minimum": 0},
+        "stderr": {"type": "string"},
+        "stderr_base64": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "listener_state": {
+      "type": "object",
+      "required": ["schema_version", "owner_id", "status", "state_dir", "address", "unsafe", "authenticated", "plan_id", "worker_pid", "backend_pid"],
+      "properties": {
+        "schema_version": {"const": "cli-anything-fzf-listener/v1"},
+        "owner_id": {"type": "string", "format": "uuid"},
+        "status": {"enum": ["starting", "running", "stopped", "exited", "failed"]},
+        "state_dir": {"type": "string"},
+        "address": {"type": "object", "required": ["kind"], "properties": {"kind": {"enum": ["unix", "tcp"]}}, "additionalProperties": true},
+        "unsafe": {"type": "boolean"},
+        "authenticated": {"type": "boolean"},
+        "plan_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "worker_pid": {"type": ["integer", "null"]},
+        "backend_pid": {"type": ["integer", "null"]}
+      },
+      "additionalProperties": true
+    }
+  }
+}
