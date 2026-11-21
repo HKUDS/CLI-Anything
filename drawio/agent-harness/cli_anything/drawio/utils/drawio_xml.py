@@ -24,10 +24,18 @@ Structure:
 """
 
 import os
+import re
 import time
 from xml.etree import ElementTree as ET
 from defusedxml.ElementTree import parse as _defused_parse
 from typing import Optional
+
+_ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+_ID_SEQ = 0
+
+
+def _has_arabic(text: str) -> bool:
+    return bool(text and _ARABIC_RE.search(text))
 
 
 # ============================================================================
@@ -295,8 +303,10 @@ EDGE_STYLES = {
 # ============================================================================
 
 def _new_id(prefix: str = "cell") -> str:
-    """Generate a unique ID."""
-    return f"{prefix}_{int(time.time() * 1000000)}"
+    """Generate a unique ID across rapid consecutive calls."""
+    global _ID_SEQ
+    _ID_SEQ += 1
+    return f"{prefix}_{int(time.time() * 1000000)}_{_ID_SEQ}"
 
 
 def add_vertex(mxfile: ET.Element, shape_type: str,
@@ -333,6 +343,8 @@ def add_vertex(mxfile: ET.Element, shape_type: str,
         style = SHAPE_STYLES[shape_type]
     else:
         style = shape_type if ";" in shape_type else f"{shape_type};"
+    if _has_arabic(label) and "textDirection=" not in style:
+        style = f"{style.rstrip(';')};textDirection=rtl;"
     cell.set("style", style)
     cell.set("vertex", "1")
     cell.set("parent", parent)
@@ -380,6 +392,8 @@ def add_edge(mxfile: ET.Element, source_id: str, target_id: str,
         style = EDGE_STYLES[edge_style]
     else:
         style = edge_style if ";" in edge_style else f"{edge_style};"
+    if _has_arabic(label) and "textDirection=" not in style:
+        style = f"{style.rstrip(';')};textDirection=rtl;"
     cell.set("style", style)
     cell.set("edge", "1")
     cell.set("parent", parent)
