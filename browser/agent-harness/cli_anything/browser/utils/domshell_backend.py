@@ -930,15 +930,20 @@ def grep(
         op = asyncio.run(_call_execute(
             f"grep -r {_q(pattern)}", use_daemon, session=session,
         ))
+        op_failed = _is_error(op)
     except BaseException:
         op_failed = True
         raise
     finally:
         try:
-            asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
+            restore = asyncio.run(_call_execute(restore_cmd, use_daemon, session=session))
         except BaseException:
             if not op_failed:
                 raise
+    if not op_failed and _is_error(restore):
+        detail = _parse_execute_result(restore, "grep")["error"]
+        message = f"grep: failed to restore cwd: {detail}"
+        return {"error": message, "output": message}
     return _parse_execute_result(op, "grep")
 
 

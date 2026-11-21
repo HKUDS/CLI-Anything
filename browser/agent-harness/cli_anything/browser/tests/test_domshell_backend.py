@@ -803,6 +803,58 @@ def test_grep_restore_exception_propagates_after_success(mock_call):
 
 
 @patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_success_with_restore_error_returns_error(mock_call):
+    mock_call.side_effect = [
+        _make_result(""),
+        _make_result("/button[0]"),
+        _make_result("\x1b[31mcd: main: No such directory\x1b[0m"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", session=sess)
+
+    assert "failed to restore cwd" in result["error"]
+    assert "cd: main: No such directory" in result["error"]
+    assert result["output"] == result["error"]
+    assert "matches" not in result
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+@pytest.mark.parametrize("restore_raises", [False, True])
+def test_grep_error_result_wins_over_restore_error(mock_call, restore_raises):
+    grep_error = _make_result("Error: grep failed")
+    mock_call.side_effect = [
+        _make_result(""),
+        grep_error,
+        RuntimeError("restore failed") if restore_raises else _make_result("Error: restore failed"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    result = backend.grep("Login", path="/", session=sess)
+
+    assert result == backend._parse_execute_result(grep_error, "grep")
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
+def test_grep_exception_wins_over_restore_error_result(mock_call):
+    error = RuntimeError("grep failed")
+    mock_call.side_effect = [
+        _make_result(""),
+        error,
+        _make_result("Error: restore failed"),
+    ]
+    sess = _make_session(working_dir="/main")
+
+    with pytest.raises(RuntimeError, match="grep failed") as exc_info:
+        backend.grep("Login", path="/", session=sess)
+
+    assert exc_info.value is error
+    assert mock_call.call_count == 3
+
+
+@patch.object(backend, "_call_execute", new_callable=AsyncMock)
 def test_grep_root_requires_session_without_daemon(mock_call):
     with pytest.raises(ValueError, match="a session argument is required"):
         backend.grep("Login", path="/")
