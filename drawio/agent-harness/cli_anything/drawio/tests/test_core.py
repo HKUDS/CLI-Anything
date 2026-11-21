@@ -128,6 +128,39 @@ class TestDrawioXml:
         cell = drawio_xml.find_cell_by_id(root, v1)
         assert cell.get("value") == "New"
 
+    def test_auto_rtl_syncs_and_preserves_explicit_rtl(self):
+        root = drawio_xml.create_blank_diagram()
+        # Auto-inferred RTL is added for Arabic labels and removed when relabeled to English
+        v_auto = drawio_xml.add_vertex(root, "rectangle", 0, 0, 100, 50, "مرحبا")
+        cell_auto = drawio_xml.find_cell_by_id(root, v_auto)
+        assert cell_auto is not None
+        assert "textDirection=rtl" in cell_auto.get("style", "")
+        drawio_xml.update_cell_label(root, v_auto, "Status:")
+        assert "textDirection=rtl" not in cell_auto.get("style", "")
+
+        # Explicit user-supplied textDirection=rtl is preserved when relabeled to English
+        v_explicit = drawio_xml.add_vertex(
+            root, "rounded=1;textDirection=rtl;", 0, 100, 100, 50, "مرحبا"
+        )
+        drawio_xml.update_cell_label(root, v_explicit, "Status:")
+        cell_explicit = drawio_xml.find_cell_by_id(root, v_explicit)
+        assert cell_explicit is not None
+        assert "textDirection=rtl" in cell_explicit.get("style", "")
+
+        # Explicitly setting textDirection via set_style_property also locks it against auto-removal
+        v_locked = drawio_xml.add_vertex(root, "rectangle", 0, 200, 100, 50, "مرحبا")
+        cell_locked = drawio_xml.find_cell_by_id(root, v_locked)
+        assert cell_locked is not None
+        drawio_xml.set_style_property(cell_locked, "textDirection", "rtl")
+        drawio_xml.update_cell_label(root, v_locked, "Status:")
+        assert "textDirection=rtl" in cell_locked.get("style", "")
+
+        # BOM-prefixed English label must not trigger RTL
+        v_bom = drawio_xml.add_vertex(root, "rectangle", 0, 300, 100, 50, "\ufeffStatus:")
+        cell_bom = drawio_xml.find_cell_by_id(root, v_bom)
+        assert cell_bom is not None
+        assert "textDirection=rtl" not in cell_bom.get("style", "")
+
     def test_move_cell(self):
         root = drawio_xml.create_blank_diagram()
         v1 = drawio_xml.add_vertex(root, "rectangle", 10, 20, 100, 50)

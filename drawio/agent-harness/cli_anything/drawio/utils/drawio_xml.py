@@ -31,6 +31,7 @@ from defusedxml.ElementTree import parse as _defused_parse
 from typing import Optional
 
 _ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFC]")
+_AUTO_RTL_ATTR = "autoTextDirection"
 _ID_SEQ = 0
 
 
@@ -38,17 +39,22 @@ def _has_arabic(text: str) -> bool:
     return bool(text and _ARABIC_RE.search(text))
 
 
-def _apply_auto_rtl_style(style: str, label: str, prev_label: Optional[str] = None) -> str:
-    """Keep auto-inferred textDirection=rtl in sync with label script without overriding explicit directions."""
-    has_dir = "textDirection=" in style
+def _sync_auto_rtl(cell: ET.Element, label: str) -> None:
+    """Keep auto-inferred textDirection=rtl in sync without overriding explicit directions."""
+    style = cell.get("style")
+    if style is None:
+        return
+    style_dict = parse_style(style)
     if _has_arabic(label):
-        if not has_dir:
-            return f"{style.rstrip(';')};textDirection=rtl;"
-        return style
-    if prev_label is not None and _has_arabic(prev_label) and "textDirection=rtl" in style:
-        parts = [p for p in style.split(";") if p and p != "textDirection=rtl"]
-        return ";".join(parts) + (";" if parts else "")
-    return style
+        if "textDirection" not in style_dict:
+            cell.set("style", f"{style.rstrip(';')};textDirection=rtl;")
+            cell.set(_AUTO_RTL_ATTR, "1")
+        return
+    if cell.get(_AUTO_RTL_ATTR) == "1":
+        if style_dict.get("textDirection") == "rtl":
+            parts = [p for p in style.split(";") if p and p != "textDirection=rtl"]
+            cell.set("style", ";".join(parts) + (";" if parts else ""))
+        cell.attrib.pop(_AUTO_RTL_ATTR, None)
 
 
 # ============================================================================
@@ -272,6 +278,8 @@ def set_style_property(cell: ET.Element, key: str, value: str) -> None:
     style = parse_style(cell.get("style", ""))
     style[key] = value
     cell.set("style", build_style(style))
+    if key == "textDirection":
+        cell.attrib.pop(_AUTO_RTL_ATTR, None)
 
 
 def remove_style_property(cell: ET.Element, key: str) -> None:
@@ -279,6 +287,8 @@ def remove_style_property(cell: ET.Element, key: str) -> None:
     style = parse_style(cell.get("style", ""))
     style.pop(key, None)
     cell.set("style", build_style(style))
+    if key == "textDirection":
+        cell.attrib.pop(_AUTO_RTL_ATTR, None)
 
 
 # ============================================================================
@@ -356,8 +366,8 @@ def add_vertex(mxfile: ET.Element, shape_type: str,
         style = SHAPE_STYLES[shape_type]
     else:
         style = shape_type if ";" in shape_type else f"{shape_type};"
-    style = _apply_auto_rtl_style(style, label)
     cell.set("style", style)
+    _sync_auto_rtl(cell, label)
     cell.set("vertex", "1")
     cell.set("parent", parent)
 
@@ -404,8 +414,8 @@ def add_edge(mxfile: ET.Element, source_id: str, target_id: str,
         style = EDGE_STYLES[edge_style]
     else:
         style = edge_style if ";" in edge_style else f"{edge_style};"
-    style = _apply_auto_rtl_style(style, label)
     cell.set("style", style)
+    _sync_auto_rtl(cell, label)
     cell.set("edge", "1")
     cell.set("parent", parent)
     cell.set("source", source_id)
@@ -449,11 +459,8 @@ def update_cell_label(mxfile: ET.Element, cell_id: str, label: str,
     cell = find_cell_by_id(mxfile, cell_id, diagram_index)
     if cell is None:
         return False
-    prev_label = cell.get("value", "")
     cell.set("value", label)
-    style = cell.get("style")
-    if style is not None:
-        cell.set("style", _apply_auto_rtl_style(style, label, prev_label=prev_label))
+    _sync_auto_rtl(cell, label)
     return True
 
 
