@@ -8,6 +8,7 @@ beyond pytest.
 import json
 import math
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -1437,3 +1438,41 @@ class TestFreeCADBackend:
         assert captured["args"] == [str(wrapper), "freecad", str(script_path.resolve())]
         assert captured["timeout"] == 55
         assert captured["env"] == {"QT_QPA_PLATFORM": "offscreen"}
+
+
+class TestPreviewPidLiveness:
+    """Regression: on Windows, os.kill(pid, 0) terminates the process it probes."""
+
+    def _spawn_sleeper(self):
+        import subprocess
+        return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+
+    def test_pid_check_does_not_kill_live_process(self):
+        import subprocess
+        from cli_anything.freecad.core import preview as preview_under_test
+
+        proc = self._spawn_sleeper()
+        try:
+            assert preview_under_test._pid_is_running(proc.pid) is True
+            # The check itself must leave the process alive. Termination on
+            # Windows is asynchronous, so wait briefly rather than polling once.
+            with pytest.raises(subprocess.TimeoutExpired):
+                proc.wait(timeout=1)
+        finally:
+            proc.kill()
+            proc.wait(timeout=10)
+
+    def test_pid_check_and_terminate_handle_exited_process(self):
+        from cli_anything.freecad.core import preview as preview_under_test
+
+        proc = self._spawn_sleeper()
+        proc.kill()
+        proc.wait(timeout=10)
+        assert preview_under_test._pid_is_running(proc.pid) is False
+        assert preview_under_test._terminate_pid(proc.pid) is False
+
+    def test_pid_check_rejects_invalid_values(self):
+        from cli_anything.freecad.core import preview as preview_under_test
+
+        for value in (None, "", "abc", 0, -5):
+            assert preview_under_test._pid_is_running(value) is False
