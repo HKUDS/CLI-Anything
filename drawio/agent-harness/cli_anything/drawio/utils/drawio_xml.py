@@ -30,12 +30,25 @@ from xml.etree import ElementTree as ET
 from defusedxml.ElementTree import parse as _defused_parse
 from typing import Optional
 
-_ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+_ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFC]")
 _ID_SEQ = 0
 
 
 def _has_arabic(text: str) -> bool:
     return bool(text and _ARABIC_RE.search(text))
+
+
+def _apply_auto_rtl_style(style: str, label: str, prev_label: Optional[str] = None) -> str:
+    """Keep auto-inferred textDirection=rtl in sync with label script without overriding explicit directions."""
+    has_dir = "textDirection=" in style
+    if _has_arabic(label):
+        if not has_dir:
+            return f"{style.rstrip(';')};textDirection=rtl;"
+        return style
+    if prev_label is not None and _has_arabic(prev_label) and "textDirection=rtl" in style:
+        parts = [p for p in style.split(";") if p and p != "textDirection=rtl"]
+        return ";".join(parts) + (";" if parts else "")
+    return style
 
 
 # ============================================================================
@@ -343,8 +356,7 @@ def add_vertex(mxfile: ET.Element, shape_type: str,
         style = SHAPE_STYLES[shape_type]
     else:
         style = shape_type if ";" in shape_type else f"{shape_type};"
-    if _has_arabic(label) and "textDirection=" not in style:
-        style = f"{style.rstrip(';')};textDirection=rtl;"
+    style = _apply_auto_rtl_style(style, label)
     cell.set("style", style)
     cell.set("vertex", "1")
     cell.set("parent", parent)
@@ -392,8 +404,7 @@ def add_edge(mxfile: ET.Element, source_id: str, target_id: str,
         style = EDGE_STYLES[edge_style]
     else:
         style = edge_style if ";" in edge_style else f"{edge_style};"
-    if _has_arabic(label) and "textDirection=" not in style:
-        style = f"{style.rstrip(';')};textDirection=rtl;"
+    style = _apply_auto_rtl_style(style, label)
     cell.set("style", style)
     cell.set("edge", "1")
     cell.set("parent", parent)
@@ -438,7 +449,11 @@ def update_cell_label(mxfile: ET.Element, cell_id: str, label: str,
     cell = find_cell_by_id(mxfile, cell_id, diagram_index)
     if cell is None:
         return False
+    prev_label = cell.get("value", "")
     cell.set("value", label)
+    style = cell.get("style")
+    if style is not None:
+        cell.set("style", _apply_auto_rtl_style(style, label, prev_label=prev_label))
     return True
 
 
