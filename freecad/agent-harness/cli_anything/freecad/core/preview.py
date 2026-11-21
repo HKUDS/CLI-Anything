@@ -170,6 +170,8 @@ def _pid_is_running(pid: Any) -> bool:
         return False
     if numeric <= 0:
         return False
+    if os.name == "nt":
+        return _windows_pid_is_running(numeric)
     try:
         os.kill(numeric, 0)
         return True
@@ -177,6 +179,36 @@ def _pid_is_running(pid: Any) -> bool:
         return False
     except PermissionError:
         return True
+
+
+def _windows_pid_is_running(pid: int) -> bool:
+    """Check a pid on Windows without signalling it.
+
+    On Windows, os.kill(pid, 0) calls TerminateProcess (killing the process)
+    and raises OSError (WinError 87) for a pid that no longer exists.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    process_query_limited_information = 0x1000
+    still_active = 259
+    error_access_denied = 5
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        # Access denied means the process exists but belongs to another user.
+        return ctypes.get_last_error() == error_access_denied
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def _terminate_pid(pid: Any) -> bool:
@@ -191,6 +223,11 @@ def _terminate_pid(pid: Any) -> bool:
         return True
     except ProcessLookupError:
         return False
+    except OSError:
+        # Windows reports an already-exited pid as WinError 87, not ProcessLookupError.
+        if os.name == "nt":
+            return False
+        raise
 
 
 def _with_live_refs(session_dir: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
