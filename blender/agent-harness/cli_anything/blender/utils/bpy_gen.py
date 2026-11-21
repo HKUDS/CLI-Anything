@@ -104,7 +104,7 @@ def _gen_render_settings(project: Dict[str, Any]) -> List[str]:
 
     lines = [
         "# ── Render Settings ─────────────────────────────────────────",
-        f"scene.render.engine = '{_engine_to_bpy(engine)}'",
+        *_gen_engine_assignment(engine),
         f"scene.render.resolution_x = {render.get('resolution_x', 1920)}",
         f"scene.render.resolution_y = {render.get('resolution_y', 1080)}",
         f"scene.render.resolution_percentage = {render.get('resolution_percentage', 100)}",
@@ -556,6 +556,23 @@ def _gen_render_output(
     ])
 
     return lines
+
+
+def _gen_engine_assignment(engine: str) -> List[str]:
+    """Generate the render engine assignment.
+
+    EEVEE's identifier is BLENDER_EEVEE in Blender 5.x but BLENDER_EEVEE_NEXT
+    in Blender 4.2-4.4, so the generated script falls back at runtime.
+    """
+    bpy_engine = _engine_to_bpy(engine)
+    if bpy_engine != "BLENDER_EEVEE":
+        return [f"scene.render.engine = '{bpy_engine}'"]
+    return [
+        "try:",
+        "    scene.render.engine = 'BLENDER_EEVEE'",
+        "except TypeError:",
+        "    scene.render.engine = 'BLENDER_EEVEE_NEXT'  # Blender 4.2-4.4",
+    ]
 
 
 def _engine_to_bpy(engine: str) -> str:

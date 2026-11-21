@@ -319,8 +319,19 @@ class TestBPYScriptGeneration:
     def test_script_render_settings_eevee(self):
         proj = create_scene(engine="EEVEE", samples=64)
         script = generate_full_script(proj, "/tmp/render.png")
-        assert "BLENDER_EEVEE_NEXT" in script
+        # Blender 5.x identifier first, with the 4.2-4.4 identifier as fallback.
+        assert "scene.render.engine = 'BLENDER_EEVEE'" in script
+        assert "except TypeError:" in script
+        assert "scene.render.engine = 'BLENDER_EEVEE_NEXT'" in script
         assert "eevee.taa_render_samples" in script
+        compile(script, "<generated>", "exec")
+
+    def test_script_render_settings_non_eevee_has_no_fallback(self):
+        for engine, ident in (("CYCLES", "CYCLES"), ("WORKBENCH", "BLENDER_WORKBENCH")):
+            proj = create_scene(engine=engine)
+            script = generate_full_script(proj, "/tmp/render.png")
+            assert f"scene.render.engine = '{ident}'" in script
+            assert "BLENDER_EEVEE_NEXT" not in script
 
     def test_script_world_settings(self):
         proj = create_scene()
