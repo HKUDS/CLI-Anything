@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/HKUDS/CLI-Anything",
     "description": "Public CLI Registry — Third-party and official CLIs managed by CLI-Hub across npm, bundled, brew, and other install methods",
-    "updated": "2026-08-20"
+    "updated": "2026-11-23"
   },
   "clis": [
     {
@@ -535,6 +535,27 @@
         {
           "name": "Vivideo",
           "url": "https://vivideo.ai"
+        }
+      ]
+    },
+    {
+      "name": "avy",
+      "display_name": "Avy Resident CLI",
+      "version": "0.1.0",
+      "description": "Unofficial CLI for the Avy resident API — report housing faults and manage tenant errands from the terminal",
+      "category": "productivity",
+      "requires": "Python >= 3.9; an Avy tenant account and BankID for login",
+      "homepage": "https://www.avy.se",
+      "source_url": "https://github.com/noor-latif/avy-cli",
+      "package_manager": "pip",
+      "install_strategy": "command",
+      "install_cmd": "pip install git+https://github.com/noor-latif/avy-cli.git",
+      "skill_md": "https://raw.githubusercontent.com/noor-latif/avy-cli/master/skills/avy-cli/SKILL.md",
+      "entry_point": "avy",
+      "contributors": [
+        {
+          "name": "noor-latif",
+          "url": "https://github.com/noor-latif"
         }
       ]
     }
