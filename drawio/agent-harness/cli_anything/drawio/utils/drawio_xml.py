@@ -26,6 +26,7 @@ Structure:
 import os
 import re
 import time
+from html.parser import HTMLParser
 from xml.etree import ElementTree as ET
 from defusedxml.ElementTree import parse as _defused_parse
 from typing import Optional
@@ -35,8 +36,43 @@ _AUTO_RTL_ATTR = "autoTextDirection"
 _ID_SEQ = 0
 
 
-def _has_arabic(text: str) -> bool:
-    return bool(text and _ARABIC_RE.search(text))
+class _HTMLTextExtractor(HTMLParser):
+    """Extract visible decoded text nodes from an HTML draw.io label."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag.lower() in ("script", "style"):
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in ("script", "style") and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self._parts.append(data)
+
+    def get_text(self) -> str:
+        return "".join(self._parts)
+
+
+def _visible_label_text(label: str, is_html: bool) -> str:
+    """Return visible text for direction inference (HTML-decoded when html=1)."""
+    if not label or not is_html:
+        return label
+    parser = _HTMLTextExtractor()
+    parser.feed(label)
+    parser.close()
+    return parser.get_text()
+
+
+def _has_arabic(text: str, is_html: bool = False) -> bool:
+    visible = _visible_label_text(text, is_html)
+    return bool(visible and _ARABIC_RE.search(visible))
 
 
 def _sync_auto_rtl(cell: ET.Element, label: str) -> None:
@@ -45,7 +81,8 @@ def _sync_auto_rtl(cell: ET.Element, label: str) -> None:
     if style is None:
         return
     style_dict = parse_style(style)
-    if _has_arabic(label):
+    is_html = style_dict.get("html") == "1"
+    if _has_arabic(label, is_html=is_html):
         if "textDirection" not in style_dict:
             cell.set("style", f"{style.rstrip(';')};textDirection=rtl;")
             cell.set(_AUTO_RTL_ATTR, "1")

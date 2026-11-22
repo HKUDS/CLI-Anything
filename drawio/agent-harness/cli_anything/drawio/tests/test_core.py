@@ -161,6 +161,36 @@ class TestDrawioXml:
         assert cell_bom is not None
         assert "textDirection=rtl" not in cell_bom.get("style", "")
 
+        # HTML label with Arabic only inside attributes must remain LTR
+        v_html_attr = drawio_xml.add_vertex(
+            root, "rectangle", 0, 400, 100, 50, '<span title="مرحبا">Status:</span>'
+        )
+        cell_html_attr = drawio_xml.find_cell_by_id(root, v_html_attr)
+        assert cell_html_attr is not None
+        assert "textDirection=rtl" not in cell_html_attr.get("style", "")
+
+        # HTML label using numeric Arabic HTML entities must infer and retain RTL
+        v_html_ent = drawio_xml.add_vertex(root, "rectangle", 0, 500, 100, 50, "مرحبا")
+        cell_html_ent = drawio_xml.find_cell_by_id(root, v_html_ent)
+        assert cell_html_ent is not None
+        assert "textDirection=rtl" in cell_html_ent.get("style", "")
+        drawio_xml.update_cell_label(root, v_html_ent, "&#x0645;&#x0631;&#x062d;&#x0628;&#x0627;")
+        assert "textDirection=rtl" in cell_html_ent.get("style", "")
+
+        # Plain-text label (html=0 / no html=1) keeps literal matching
+        v_plain_ent = drawio_xml.add_vertex(
+            root, "rounded=0;html=0;", 0, 600, 100, 50, "&#x0645;&#x0631;&#x062d;&#x0628;&#x0627;"
+        )
+        cell_plain_ent = drawio_xml.find_cell_by_id(root, v_plain_ent)
+        assert cell_plain_ent is not None
+        assert "textDirection=rtl" not in cell_plain_ent.get("style", "")
+        v_plain_lit = drawio_xml.add_vertex(
+            root, "rounded=0;html=0;", 0, 700, 100, 50, '<span title="مرحبا">Status:</span>'
+        )
+        cell_plain_lit = drawio_xml.find_cell_by_id(root, v_plain_lit)
+        assert cell_plain_lit is not None
+        assert "textDirection=rtl" in cell_plain_lit.get("style", "")
+
     def test_move_cell(self):
         root = drawio_xml.create_blank_diagram()
         v1 = drawio_xml.add_vertex(root, "rectangle", 10, 20, 100, 50)
