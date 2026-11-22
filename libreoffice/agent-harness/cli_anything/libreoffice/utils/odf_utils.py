@@ -36,6 +36,14 @@ ODF_NS = {
     "xlink": "http://www.w3.org/1999/xlink",
 }
 
+# Formula grammar namespace. Calc formulas are written as table:formula="of:=...",
+# i.e. the prefix lives in an attribute *value*. ElementTree only emits xmlns
+# declarations for prefixes used in element/attribute *names*, so this cannot go
+# in ODF_NS (register_namespace alone would be dropped); create_content_xml
+# declares it explicitly on the root. Without it LibreOffice reports Err:510.
+ODF_FORMULA_NS = "urn:oasis:names:tc:opendocument:xmlns:of:1.2"
+ODF_FORMULA_PREFIX = "of"
+
 # MIME types for ODF document types
 ODF_MIMETYPES = {
     "writer": "application/vnd.oasis.opendocument.text",
@@ -74,6 +82,8 @@ def create_content_xml(doc_type: str, project: Dict[str, Any]) -> str:
     # Root element
     root = ET.Element(_ns("office", "document-content"))
     root.set(_nsattr("office", "version"), "1.2")
+    if doc_type == "calc":
+        root.set(f"xmlns:{ODF_FORMULA_PREFIX}", ODF_FORMULA_NS)
 
     # Automatic styles
     auto_styles = ET.SubElement(root, _ns("office", "automatic-styles"))
@@ -343,7 +353,7 @@ def _build_calc_content(root: ET.Element, auto_styles: ET.Element,
                     cell_data = cells[cell_ref]
                     if "formula" in cell_data:
                         cell_elem.set(_nsattr("table", "formula"),
-                                      f"of:{cell_data['formula']}")
+                                      f"{ODF_FORMULA_PREFIX}:{cell_data['formula']}")
                         cell_elem.set(_nsattr("office", "value-type"), "float")
                     elif cell_data.get("type") == "float":
                         cell_elem.set(_nsattr("office", "value-type"), "float")

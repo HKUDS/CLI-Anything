@@ -476,6 +476,24 @@ class TestCalc:
         result = set_cell(proj, "C1", "0", formula="=A1+B1")
         assert result["formula"] == "=A1+B1"
 
+    def test_formula_cell_declares_of_namespace(self):
+        """Regression for #652: formulas are written as table:formula="of:=...",
+        so content.xml must declare the ``of`` prefix on its root element or
+        LibreOffice evaluates every formula to Err:510."""
+        proj = self._make_doc()
+        set_cell(proj, "A1", "1", cell_type="float")
+        set_cell(proj, "A2", "0", cell_type="float", formula="=SUM(A1:A1)")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "formula.ods")
+            to_ods(proj, path)
+            content_xml = parse_odf(path)["content_xml"]
+
+        assert 'table:formula="of:=SUM(A1:A1)"' in content_xml
+        root_tag = content_xml[content_xml.index("<office:document-content"):]
+        root_tag = root_tag[:root_tag.index(">")]
+        assert 'xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2"' in root_tag
+
     def test_get_cell(self):
         proj = self._make_doc()
         set_cell(proj, "A1", "Test")
