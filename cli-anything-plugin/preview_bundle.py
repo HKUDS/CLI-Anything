@@ -17,8 +17,9 @@ TRAJECTORY_PROTOCOL_VERSION = "preview-trajectory/v1"
 
 def _slug(value: str) -> str:
     text = (value or "preview").strip().lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    text = re.sub(r"-{2,}", "-", text).strip("-")
+    # Preserve Unicode letters/digits (including Arabic U+0600..U+06FF) while stripping punctuation
+    text = re.sub(r"[^\w\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+", "-", text, flags=re.UNICODE)
+    text = re.sub(r"[-_]{2,}", "-", text).strip("-_")
     return text or "preview"
 
 

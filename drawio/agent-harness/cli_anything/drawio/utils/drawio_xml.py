@@ -23,11 +23,92 @@ Structure:
     </mxfile>
 """
 
+import html
 import os
+import re
 import time
+from html.parser import HTMLParser
 from xml.etree import ElementTree as ET
 from defusedxml.ElementTree import parse as _defused_parse
 from typing import Optional
+
+_ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFC]")
+_HTML_SKIP_BLOCK_RE = re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1\s*>|<!--.*?-->",
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
+_AUTO_RTL_ATTR = "autoTextDirection"
+_ID_SEQ = 0
+
+
+class _HTMLTextExtractor(HTMLParser):
+    """Extract visible decoded text nodes from an HTML draw.io label."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag.lower() in ("script", "style"):
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in ("script", "style") and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self._parts.append(data)
+
+    def get_text(self) -> str:
+        return "".join(self._parts)
+
+
+def _visible_label_text(label: str, is_html: bool) -> str:
+    """Return visible text for direction inference (HTML-decoded when html=1)."""
+    if not label or not is_html:
+        return label
+    parser = _HTMLTextExtractor()
+    try:
+        parser.feed(label)
+        parser.close()
+        return parser.get_text()
+    except Exception:
+        # Older Python 3.x HTMLParser implementations can raise AssertionError or
+        # NotImplementedError on malformed marked sections (e.g. "<![Status]>").
+        # Fall back to regex stripping + unescaping so optional direction inference
+        # never breaks otherwise valid label operations.
+        cleaned = _HTML_SKIP_BLOCK_RE.sub("", label)
+        cleaned = _HTML_TAG_RE.sub("", cleaned)
+        return html.unescape(cleaned)
+
+
+def _has_arabic(text: str, is_html: bool = False) -> bool:
+    visible = _visible_label_text(text, is_html)
+    return bool(visible and _ARABIC_RE.search(visible))
+
+
+def _sync_auto_rtl(cell: ET.Element, label: str) -> None:
+    """Keep auto-inferred textDirection=rtl in sync without overriding explicit directions."""
+    style = cell.get("style")
+    if style is None:
+        return
+    style_dict = parse_style(style)
+    is_html = style_dict.get("html") == "1"
+    if _has_arabic(label, is_html=is_html):
+        if "textDirection" not in style_dict:
+            prefix = style.rstrip(";")
+            new_style = f"{prefix};textDirection=rtl;" if prefix else "textDirection=rtl;"
+            cell.set("style", new_style)
+            cell.set(_AUTO_RTL_ATTR, "1")
+        return
+    if cell.get(_AUTO_RTL_ATTR) == "1":
+        if style_dict.get("textDirection") == "rtl":
+            parts = [p for p in style.split(";") if p.strip() and p.strip() != "textDirection=rtl"]
+            cell.set("style", ";".join(parts) + (";" if parts else ""))
+        cell.attrib.pop(_AUTO_RTL_ATTR, None)
 
 
 # ============================================================================
@@ -251,6 +332,10 @@ def set_style_property(cell: ET.Element, key: str, value: str) -> None:
     style = parse_style(cell.get("style", ""))
     style[key] = value
     cell.set("style", build_style(style))
+    if key == "textDirection":
+        cell.attrib.pop(_AUTO_RTL_ATTR, None)
+    elif key == "html":
+        _sync_auto_rtl(cell, cell.get("value", ""))
 
 
 def remove_style_property(cell: ET.Element, key: str) -> None:
@@ -258,6 +343,10 @@ def remove_style_property(cell: ET.Element, key: str) -> None:
     style = parse_style(cell.get("style", ""))
     style.pop(key, None)
     cell.set("style", build_style(style))
+    if key == "textDirection":
+        cell.attrib.pop(_AUTO_RTL_ATTR, None)
+    elif key == "html":
+        _sync_auto_rtl(cell, cell.get("value", ""))
 
 
 # ============================================================================
@@ -295,8 +384,10 @@ EDGE_STYLES = {
 # ============================================================================
 
 def _new_id(prefix: str = "cell") -> str:
-    """Generate a unique ID."""
-    return f"{prefix}_{int(time.time() * 1000000)}"
+    """Generate a unique ID across rapid consecutive calls."""
+    global _ID_SEQ
+    _ID_SEQ += 1
+    return f"{prefix}_{int(time.time() * 1000000)}_{_ID_SEQ}"
 
 
 def add_vertex(mxfile: ET.Element, shape_type: str,
@@ -344,6 +435,8 @@ def add_vertex(mxfile: ET.Element, shape_type: str,
     geo.set("height", str(height))
     geo.set("as", "geometry")
 
+    _sync_auto_rtl(cell, label)
+
     return cell_id
 
 
@@ -390,6 +483,8 @@ def add_edge(mxfile: ET.Element, source_id: str, target_id: str,
     geo.set("relative", "1")
     geo.set("as", "geometry")
 
+    _sync_auto_rtl(cell, label)
+
     return edge_id
 
 
@@ -425,6 +520,7 @@ def update_cell_label(mxfile: ET.Element, cell_id: str, label: str,
     if cell is None:
         return False
     cell.set("value", label)
+    _sync_auto_rtl(cell, label)
     return True
 
 
