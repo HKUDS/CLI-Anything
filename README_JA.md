@@ -25,7 +25,7 @@ CLI-Anything: AIエージェントと世界のソフトウェアの架け橋</st
 <a href="https://github.com/HKUDS/.github/blob/main/profile/README.md"><img src="https://img.shields.io/badge/WeChat-Group-C5EAB4?style=flat&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
-**ワンコマンド**: あらゆるソフトウェアをOpenClaw、nanobot、Cursor、Claude Codeなどのエージェント対応に。&nbsp;&nbsp;[**English**](README.md) | [**中文文档**](README_CN.md) | [**Deutsch**](README_DE.md)
+**ワンコマンド**: あらゆるソフトウェアをOpenClaw、nanobot、Cursor、Claude Codeなどのエージェント対応に。&nbsp;&nbsp;[**English**](README.md) | [**中文文档**](README_CN.md) | [**Deutsch**](README_DE.md) | [**Tiếng Việt**](README_VI.md)
 
 <p align="center">
   <img src="assets/cli-typing.gif" alt="CLI-Anything タイピングデモ" width="800">
