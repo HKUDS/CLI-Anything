@@ -23,6 +23,7 @@ Structure:
     </mxfile>
 """
 
+import html
 import os
 import re
 import time
@@ -32,6 +33,11 @@ from defusedxml.ElementTree import parse as _defused_parse
 from typing import Optional
 
 _ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFC]")
+_HTML_SKIP_BLOCK_RE = re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1\s*>|<!--.*?-->",
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
 _AUTO_RTL_ATTR = "autoTextDirection"
 _ID_SEQ = 0
 
@@ -65,9 +71,18 @@ def _visible_label_text(label: str, is_html: bool) -> str:
     if not label or not is_html:
         return label
     parser = _HTMLTextExtractor()
-    parser.feed(label)
-    parser.close()
-    return parser.get_text()
+    try:
+        parser.feed(label)
+        parser.close()
+        return parser.get_text()
+    except Exception:
+        # Older Python 3.x HTMLParser implementations can raise AssertionError or
+        # NotImplementedError on malformed marked sections (e.g. "<![Status]>").
+        # Fall back to regex stripping + unescaping so optional direction inference
+        # never breaks otherwise valid label operations.
+        cleaned = _HTML_SKIP_BLOCK_RE.sub("", label)
+        cleaned = _HTML_TAG_RE.sub("", cleaned)
+        return html.unescape(cleaned)
 
 
 def _has_arabic(text: str, is_html: bool = False) -> bool:
@@ -84,12 +99,14 @@ def _sync_auto_rtl(cell: ET.Element, label: str) -> None:
     is_html = style_dict.get("html") == "1"
     if _has_arabic(label, is_html=is_html):
         if "textDirection" not in style_dict:
-            cell.set("style", f"{style.rstrip(';')};textDirection=rtl;")
+            prefix = style.rstrip(";")
+            new_style = f"{prefix};textDirection=rtl;" if prefix else "textDirection=rtl;"
+            cell.set("style", new_style)
             cell.set(_AUTO_RTL_ATTR, "1")
         return
     if cell.get(_AUTO_RTL_ATTR) == "1":
         if style_dict.get("textDirection") == "rtl":
-            parts = [p for p in style.split(";") if p and p != "textDirection=rtl"]
+            parts = [p for p in style.split(";") if p.strip() and p.strip() != "textDirection=rtl"]
             cell.set("style", ";".join(parts) + (";" if parts else ""))
         cell.attrib.pop(_AUTO_RTL_ATTR, None)
 
@@ -317,6 +334,8 @@ def set_style_property(cell: ET.Element, key: str, value: str) -> None:
     cell.set("style", build_style(style))
     if key == "textDirection":
         cell.attrib.pop(_AUTO_RTL_ATTR, None)
+    elif key == "html":
+        _sync_auto_rtl(cell, cell.get("value", ""))
 
 
 def remove_style_property(cell: ET.Element, key: str) -> None:
@@ -326,6 +345,8 @@ def remove_style_property(cell: ET.Element, key: str) -> None:
     cell.set("style", build_style(style))
     if key == "textDirection":
         cell.attrib.pop(_AUTO_RTL_ATTR, None)
+    elif key == "html":
+        _sync_auto_rtl(cell, cell.get("value", ""))
 
 
 # ============================================================================
@@ -404,7 +425,6 @@ def add_vertex(mxfile: ET.Element, shape_type: str,
     else:
         style = shape_type if ";" in shape_type else f"{shape_type};"
     cell.set("style", style)
-    _sync_auto_rtl(cell, label)
     cell.set("vertex", "1")
     cell.set("parent", parent)
 
@@ -414,6 +434,8 @@ def add_vertex(mxfile: ET.Element, shape_type: str,
     geo.set("width", str(width))
     geo.set("height", str(height))
     geo.set("as", "geometry")
+
+    _sync_auto_rtl(cell, label)
 
     return cell_id
 
@@ -452,7 +474,6 @@ def add_edge(mxfile: ET.Element, source_id: str, target_id: str,
     else:
         style = edge_style if ";" in edge_style else f"{edge_style};"
     cell.set("style", style)
-    _sync_auto_rtl(cell, label)
     cell.set("edge", "1")
     cell.set("parent", parent)
     cell.set("source", source_id)
@@ -461,6 +482,8 @@ def add_edge(mxfile: ET.Element, source_id: str, target_id: str,
     geo = ET.SubElement(cell, "mxGeometry")
     geo.set("relative", "1")
     geo.set("as", "geometry")
+
+    _sync_auto_rtl(cell, label)
 
     return edge_id
 

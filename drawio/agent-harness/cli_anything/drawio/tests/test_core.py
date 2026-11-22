@@ -191,6 +191,84 @@ class TestDrawioXml:
         assert cell_plain_lit is not None
         assert "textDirection=rtl" in cell_plain_lit.get("style", "")
 
+    def test_auto_rtl_tolerates_html_parser_failures(self, monkeypatch):
+        root = drawio_xml.create_blank_diagram()
+
+        # Malformed marked section must not fail vertex creation or label updates
+        v_marked = drawio_xml.add_vertex(root, "rectangle", 0, 0, 100, 50, "<![Status]>Status:")
+        cell_marked = drawio_xml.find_cell_by_id(root, v_marked)
+        assert cell_marked is not None
+        assert cell_marked.get("vertex") == "1"
+        assert cell_marked.find("mxGeometry") is not None
+        assert "textDirection=rtl" not in cell_marked.get("style", "")
+
+        # Deterministically exercise the parser-failure fallback on all Python versions
+        def _boom(self, data):
+            raise AssertionError("unknown status keyword 'Status' in marked section")
+
+        monkeypatch.setattr(drawio_xml._HTMLTextExtractor, "feed", _boom)
+
+        v_fb_en = drawio_xml.add_vertex(root, "rectangle", 0, 100, 100, 50, "<![Status]>Status:")
+        cell_fb_en = drawio_xml.find_cell_by_id(root, v_fb_en)
+        assert cell_fb_en is not None
+        assert "textDirection=rtl" not in cell_fb_en.get("style", "")
+
+        v_fb_attr = drawio_xml.add_vertex(
+            root, "rectangle", 0, 200, 100, 50, '<![Status]><span title="مرحبا">Status:</span>'
+        )
+        cell_fb_attr = drawio_xml.find_cell_by_id(root, v_fb_attr)
+        assert cell_fb_attr is not None
+        assert "textDirection=rtl" not in cell_fb_attr.get("style", "")
+
+        v_fb_ar = drawio_xml.add_vertex(root, "rectangle", 0, 300, 100, 50, "<![Status]>&#x0645; Status:")
+        cell_fb_ar = drawio_xml.find_cell_by_id(root, v_fb_ar)
+        assert cell_fb_ar is not None
+        assert "textDirection=rtl" in cell_fb_ar.get("style", "")
+
+        drawio_xml.update_cell_label(root, v_fb_ar, "<![Status]>Status:")
+        assert "textDirection=rtl" not in cell_fb_ar.get("style", "")
+
+    def test_auto_rtl_resyncs_when_html_mode_changes(self):
+        root = drawio_xml.create_blank_diagram()
+
+        # HTML entity label loses inferred RTL when switching html=1 -> html=0, regains it on html=1,
+        # and loses it again if html is removed
+        v_ent = drawio_xml.add_vertex(root, "rectangle", 0, 0, 100, 50, "&#x0645; Status:")
+        cell_ent = drawio_xml.find_cell_by_id(root, v_ent)
+        assert cell_ent is not None
+        assert "textDirection=rtl" in cell_ent.get("style", "")
+        assert cell_ent.get(drawio_xml._AUTO_RTL_ATTR) == "1"
+
+        drawio_xml.set_style_property(cell_ent, "html", "0")
+        assert "textDirection=rtl" not in cell_ent.get("style", "")
+        assert cell_ent.get(drawio_xml._AUTO_RTL_ATTR) is None
+
+        drawio_xml.set_style_property(cell_ent, "html", "1")
+        assert "textDirection=rtl" in cell_ent.get("style", "")
+        assert cell_ent.get(drawio_xml._AUTO_RTL_ATTR) == "1"
+
+        drawio_xml.remove_style_property(cell_ent, "html")
+        assert "textDirection=rtl" not in cell_ent.get("style", "")
+        assert cell_ent.get(drawio_xml._AUTO_RTL_ATTR) is None
+
+        # Explicit textDirection=rtl is preserved when toggling html mode
+        v_exp_rtl = drawio_xml.add_vertex(
+            root, "rounded=0;html=1;textDirection=rtl;", 0, 100, 100, 50, "&#x0645; Status:"
+        )
+        cell_exp_rtl = drawio_xml.find_cell_by_id(root, v_exp_rtl)
+        assert cell_exp_rtl is not None
+        drawio_xml.set_style_property(cell_exp_rtl, "html", "0")
+        assert "textDirection=rtl" in cell_exp_rtl.get("style", "")
+
+        # Explicit textDirection=ltr is preserved when enabling html=1
+        v_exp_ltr = drawio_xml.add_vertex(
+            root, "rounded=0;html=0;textDirection=ltr;", 0, 200, 100, 50, "&#x0645; Status:"
+        )
+        cell_exp_ltr = drawio_xml.find_cell_by_id(root, v_exp_ltr)
+        assert cell_exp_ltr is not None
+        drawio_xml.set_style_property(cell_exp_ltr, "html", "1")
+        assert drawio_xml.parse_style(cell_exp_ltr.get("style", "")).get("textDirection") == "ltr"
+
     def test_move_cell(self):
         root = drawio_xml.create_blank_diagram()
         v1 = drawio_xml.add_vertex(root, "rectangle", 10, 20, 100, 50)
