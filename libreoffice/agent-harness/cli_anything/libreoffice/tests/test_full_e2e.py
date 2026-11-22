@@ -911,6 +911,43 @@ class TestCalcToXLSX:
         print(f"\n  Calc PDF: {result['output']} ({result['file_size']:,} bytes)")
 
 
+class TestCalcFormulaE2E:
+    """Regression for #652: LibreOffice must actually *evaluate* formulas the
+    harness writes. Checking the XML text alone passed on unusable output."""
+
+    @pytest.mark.parametrize("formula", ["=SUM(B1:B2)", "=SUM([.B1:.B2])"])
+    def test_formula_evaluates_in_csv_export(self, tmp_dir, formula):
+        proj = create_document(doc_type="calc", name="Budget")
+        set_cell(proj, "A1", "Rent")
+        set_cell(proj, "B1", "1200", cell_type="float")
+        set_cell(proj, "A2", "Power")
+        set_cell(proj, "B2", "85.5", cell_type="float")
+        set_cell(proj, "A3", "Total")
+        set_cell(proj, "B3", "0", formula=formula)
+
+        csv_path = os.path.join(tmp_dir, "budget.csv")
+        result = export(proj, csv_path, preset="csv", overwrite=True)
+
+        with open(result["output"]) as f:
+            lines = f.read().splitlines()
+        assert lines == ["Rent,1200", "Power,85.5", "Total,1285.5"], \
+            f"Formula {formula!r} did not evaluate; CSV was: {lines}"
+
+    def test_formula_evaluates_in_xlsx_export(self, tmp_dir):
+        proj = create_document(doc_type="calc", name="Budget")
+        set_cell(proj, "A1", "1", cell_type="float")
+        set_cell(proj, "A2", "2", cell_type="float")
+        set_cell(proj, "A3", "0", formula="=SUM(A1:A2)")
+
+        xlsx_path = os.path.join(tmp_dir, "sum.xlsx")
+        result = export(proj, xlsx_path, preset="xlsx", overwrite=True)
+
+        with zipfile.ZipFile(result["output"]) as zf:
+            sheet_xml = zf.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        assert "#VALUE!" not in sheet_xml, "Formula cell exported as an error"
+        assert "<v>3</v>" in sheet_xml, f"Expected cached value 3 in: {sheet_xml[:500]}"
+
+
 class TestImpressToPPTX:
     """True E2E: Impress presentation -> ODP -> PPTX via LibreOffice headless."""
 
