@@ -92,29 +92,33 @@ def load_account() -> dict[str, Any] | None:
         return json.load(fh)
 
 
-def save_account(account: dict[str, Any]) -> None:
-    """Atomically write account.json (0600).
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write JSON atomically with owner-only permissions.
 
-    Each save uses its own temp file in the same directory, so concurrent CLI
-    processes (e.g. parallel agent calls rotating tokens) never share or
-    delete each other's temp file; os.replace keeps the live file valid.
+    Each write uses its own temp file in the same directory, so concurrent CLI
+    processes never share or delete each other's temp file and readers never
+    see a half-written file (os.replace is atomic on one filesystem).
     """
     import tempfile
-    f = account_file()
-    fd, tmp = tempfile.mkstemp(prefix=".account.", suffix=".tmp", dir=f.parent)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".tmp", dir=path.parent)
     try:
         os.chmod(tmp, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(account, fh, indent=2)
+            json.dump(data, fh, indent=2)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, f)
+        os.replace(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+
+
+def save_account(account: dict[str, Any]) -> None:
+    """Atomically write account.json (0600)."""
+    _atomic_write_json(account_file(), account)
 
 
 def delete_account() -> bool:
@@ -361,9 +365,7 @@ def fetch_network() -> Any:
 
 
 def cache_devices(devices: list[dict[str, Any]]) -> None:
-    f = config_dir() / "devices.json"
-    with open(f, "w", encoding="utf-8") as fh:
-        json.dump(devices, fh, indent=2)
+    _atomic_write_json(config_dir() / "devices.json", devices)
 
 
 def cached_devices() -> list[dict[str, Any]]:

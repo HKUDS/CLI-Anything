@@ -517,3 +517,45 @@ def test_concurrent_account_saves_stay_valid(home):
     assert backend.load_account()["email"] == "a@b.c"  # file is complete JSON
     assert not list(home.glob(".account.*.tmp"))  # no temp files left behind
     assert stat.S_IMODE(os.stat(home / "account.json").st_mode) == 0o600
+
+
+# ── fourth Codex review round (commit 3c47279) ────────────────────────
+
+@pytest.mark.parametrize("args", [["speak", "downstairs", "hi"], ["command", "downstairs", "lights off"],
+                                  ["sequence", "downstairs", "joke"], ["routine", "run", "downstairs", "bedtime"],
+                                  ["announce", "hi", "-d", "downstairs"]])
+def test_speech_commands_reject_speaker_groups(fake_backend_with_group, args):
+    result, data = run(*args)
+    assert result.exit_code == 1 and data["error"] == "device_not_found"
+    assert fake_backend_with_group == []
+
+
+@pytest.mark.parametrize("args", [["music", "pause", "downstairs"], ["volume", "downstairs", "20"]])
+def test_media_commands_accept_speaker_groups(fake_backend_with_group, args):
+    result, data = run(*args)
+    assert data["ok"] is True and fake_backend_with_group[0]["device"]["serial"] == "GRP1"
+
+
+def test_device_cache_written_atomically(home):
+    import threading
+    devices = [dev.normalize(d) for d in RAW_DEVICES]
+    stop = threading.Event()
+    bad = []
+
+    def reader():
+        while not stop.is_set():
+            try:
+                data = backend.cached_devices()
+            except json.JSONDecodeError as exc:  # half-written file
+                bad.append(exc)
+                return
+            assert data in ([], devices)
+
+    t = threading.Thread(target=reader)
+    t.start()
+    for _ in range(200):
+        backend.cache_devices(devices)
+    stop.set()
+    t.join()
+    assert bad == [] and backend.cached_devices() == devices
+    assert not list(home.glob(".devices.*.tmp"))

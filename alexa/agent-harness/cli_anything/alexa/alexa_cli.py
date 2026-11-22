@@ -121,9 +121,15 @@ def _devices(refresh: bool = True) -> list[dict[str, Any]]:
     return devices
 
 
-def _resolve(name: str) -> dict[str, Any]:
-    """Resolve an action target among speakers and speaker groups (not apps)."""
-    return dev.resolve(dev.filter_devices(_devices()), name)
+def _resolve(name: str, allow_groups: bool = False) -> dict[str, Any]:
+    """Resolve an action target.
+
+    Speech and voice commands need a real speaker; multi-room speaker groups
+    only accept media commands (music, playback, volume), so they are
+    targetable only when ``allow_groups`` is set. Alexa apps are never targets.
+    """
+    candidates = [d for d in dev.filter_devices(_devices()) if allow_groups or d.get("is_speaker")]
+    return dev.resolve(candidates, name)
 
 
 def _send(action: dict[str, Any], message: str) -> None:
@@ -296,7 +302,8 @@ def speak(device_name, text):
 def announce(text, names, title):
     """Announce TEXT (with chime) on one, several or all Echos."""
     all_devices = _devices()
-    targets = [dev.resolve(dev.filter_devices(all_devices), n) for n in names] if names else \
+    speakers = [d for d in dev.filter_devices(all_devices) if d.get("is_speaker")]
+    targets = [dev.resolve(speakers, n) for n in names] if names else \
         [d for d in dev.filter_devices(all_devices) if d.get("online") and d.get("is_speaker")]
     _send(act.announce(targets, text, title), f"Announcing on {len(targets)} device(s): {text}")
 
@@ -372,7 +379,7 @@ def music():
 @_guard
 def music_play(device_name, query, provider, timer):
     """Search and play QUERY (song, artist, playlist, station)."""
-    d = _resolve(device_name)
+    d = _resolve(device_name, allow_groups=True)
     _send(act.music(d, query, provider, timer), f"{d['name']}: playing '{query}' from {provider}")
 
 
@@ -382,7 +389,7 @@ for _name, _op in _MEDIA_COMMANDS.items():
     def _make(name, op):
         @_guard
         def _cmd(device_name):
-            d = _resolve(device_name)
+            d = _resolve(device_name, allow_groups=True)
             _send(act.media(d, op), f"{d['name']}: {name}")
         _cmd.__doc__ = f"{name.capitalize()} playback on a device."
         return _cmd
@@ -395,7 +402,7 @@ for _name, _op in _MEDIA_COMMANDS.items():
 @_guard
 def volume(device_name, level):
     """Set volume 0-100."""
-    d = _resolve(device_name)
+    d = _resolve(device_name, allow_groups=True)
     _send(act.volume(d, level), f"{d['name']}: volume {level}")
 
 

@@ -1221,7 +1221,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td>Smart Speakers / Smart Home</td>
 <td><code>cli-anything-alexa</code></td>
 <td>Alexa web API (alexapy)</td>
-<td align="center">✅ 94</td>
+<td align="center">✅ 102</td>
 </tr>
 <tr>
 <td align="center"><strong>🎵 MuseScore</strong></td>
@@ -1426,7 +1426,7 @@ nslogger      139 passed  ✅   (97 unit + 42 e2e)
 kdenlive      155 passed  ✅   (111 unit + 44 e2e)
 shotcut       154 passed  ✅   (110 unit + 44 e2e)
 zoom           22 passed  ✅   (22 unit + 0 e2e)
-alexa          94 passed  ✅   (86 unit + 8 e2e, 5 live Amazon e2e opt-in)
+alexa          102 passed  ✅   (94 unit + 8 e2e, 5 live Amazon e2e opt-in)
 drawio        138 passed  ✅   (116 unit + 22 e2e)
 eth2-quickstart 18 passed ✅   (18 unit + 3 e2e skipped)
 mermaid        10 passed  ✅   (5 unit + 5 e2e)
@@ -1527,7 +1527,7 @@ cli-anything/
 ├── 🎞️ kdenlive/agent-harness/           # Kdenlive CLI (155 tests)
 ├── 🎬 shotcut/agent-harness/            # Shotcut CLI (154 tests)
 ├── 📞 zoom/agent-harness/               # Zoom CLI (22 tests)
-├── 🔊 alexa/agent-harness/              # Alexa CLI (94 tests: 86 unit + 8 e2e, 5 live e2e opt-in)
+├── 🔊 alexa/agent-harness/              # Alexa CLI (102 tests: 94 unit + 8 e2e, 5 live e2e opt-in)
 ├── 🎵 musescore/agent-harness/          # MuseScore CLI (56 tests)
 ├── 📐 drawio/agent-harness/             # Draw.io CLI (138 tests)
 ├── 🧪 eez-studio/agent-harness/         # EEZ Studio CLI (project, LVGL, SCPI automation)
