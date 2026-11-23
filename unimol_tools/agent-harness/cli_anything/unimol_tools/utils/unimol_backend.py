@@ -106,7 +106,7 @@ class UniMolBackend:
             # Try to load metrics from saved file (Uni-Mol saves to metric.result)
             metrics_json = {}
             metric_file = os.path.join(config["save_path"], "metric.result")
-            if os.path.exists(metric_file):
+            if self._written_since(metric_file, start_time):
                 try:
                     import pickle
                     with open(metric_file, 'rb') as f:
@@ -136,6 +136,26 @@ class UniMolBackend:
             raise DataValidationError(f"Invalid configuration: {e}")
         except Exception as e:
             raise TrainingError(f"Training failed: {e}")
+
+    @staticmethod
+    def _written_since(path, since):
+        """True if path exists, was written during this run, and does not look planted.
+
+        metric.result is a pickle, and unpickling untrusted data can run code. This check narrows
+        the risk (a stale file, a timestamp set into the future, and on POSIX a file owned by
+        someone else or writable by others are all refused); it does not make unpickling safe.
+        There is no slack below `since`: a file up to 2s older than the start would be the previous
+        run's file in back-to-back runs. On a filesystem with coarse timestamps a fresh file can be
+        refused; the caller then uses the metrics returned by fit(), which is the safe fallback.
+        """
+        if not os.path.exists(path):
+            return False
+        info = os.stat(path)
+        if not since <= info.st_mtime <= time.time() + 2:
+            return False
+        if hasattr(os, "getuid"):
+            return info.st_uid == os.getuid() and not info.st_mode & 0o022
+        return True
 
     @staticmethod
     def _convert_metrics_to_json(metrics):
