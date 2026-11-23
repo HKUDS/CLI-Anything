@@ -408,6 +408,33 @@ def fetch_items(
         return [_normalize_item(conn, row, include_related=False) for row in rows]
 
 
+def fetch_library_records(sqlite_path: Path | str, *, library_id: int | None = None) -> list[dict[str, Any]]:
+    """Regular, non-trashed top-level items with fields, creators, tags and collection keys, in one read-only pass."""
+    items = [i for i in fetch_items(sqlite_path, library_id=library_id)
+             if i["typeName"] not in ("attachment", "note", "annotation")]
+    with closing(connect_readonly(sqlite_path)) as conn:
+        try:
+            trashed = {int(r["itemID"]) for r in conn.execute("SELECT itemID FROM deletedItems")}
+        except sqlite3.OperationalError:  # very old schema without a trash table
+            trashed = set()
+        collection_keys: dict[int, list[str]] = {}
+        for row in conn.execute(
+            "SELECT ci.itemID, c.key FROM collectionItems ci JOIN collections c ON c.collectionID = ci.collectionID"
+        ):
+            collection_keys.setdefault(int(row["itemID"]), []).append(row["key"])
+        records = []
+        for item in items:
+            item_id = int(item["itemID"])
+            if item_id in trashed:
+                continue
+            item["fields"] = _fetch_item_fields(conn, item_id)
+            item["creators"] = _fetch_item_creators(conn, item_id)
+            item["tags"] = _fetch_item_tags(conn, item_id)
+            item["collectionKeys"] = collection_keys.get(item_id, [])
+            records.append(item)
+    return records
+
+
 def find_items_by_title(
     sqlite_path: Path | str,
     query: str,
