@@ -542,7 +542,7 @@
       "name": "treg",
       "display_name": "Treg",
       "version": "0.31.0",
-      "description": "Find live web data and company enrichment tools, inspect their inputs and prices, and call them with one team credential",
+      "description": "Query live data, take actions and generate media from the terminal. Find catalog tools by task, inspect prices, and use your team's APIs, CLIs and skills with one Treg token",
       "category": "ai",
       "requires": "uv and Python 3.12 or 3.13. A Treg team is required for provider calls.",
       "homepage": "https://treg.to",
