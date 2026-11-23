@@ -113,7 +113,7 @@ class TestMetricFileFreshness:
     def test_file_written_during_run_is_accepted(self, tmp_dir):
         from cli_anything.unimol_tools.utils.unimol_backend import UniMolBackend
         import os, time
-        start = time.time()
+        start = time.time() - 1  # the run began a moment ago; file timestamps can lag the clock by a few ms
         path = os.path.join(tmp_dir, "metric.result")
         open(path, "wb").write(b"x")
         assert UniMolBackend._written_since(path, start)
