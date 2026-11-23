@@ -12,6 +12,16 @@ from cli_anything.ghidra.utils.ghidra_backend import GhidraBackend
 from cli_anything.ghidra.utils.repl_skin import ReplSkin
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+
+
+def split_line(line: str) -> list:
+    """Split a REPL line into arguments, keeping the backslashes of Windows paths.
+
+    POSIX shlex treats a backslash as an escape and turns an unquoted Windows path into a
+    different, non-existent one. Quotes still group words and are removed.
+    """
+    return [t[1:-1] if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'" else t
+            for t in shlex.split(line, posix=False)]
 VERSION = "1.0.0"
 
 
@@ -100,7 +110,7 @@ def repl(ctx: click.Context):
             continue
 
         try:
-            cli.main(args=shlex.split(line), obj=dict(ctx.obj), standalone_mode=False)
+            cli.main(args=split_line(line), obj=dict(ctx.obj), standalone_mode=False)
         except click.exceptions.UsageError as e:
             skin.error(str(e))
         except RuntimeError as e:

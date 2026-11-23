@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from cli_anything.ghidra.core import analysis, queries
-from cli_anything.ghidra.ghidra_cli import cli
+from cli_anything.ghidra.ghidra_cli import cli, split_line
 from cli_anything.ghidra.utils import ghidra_backend as backend
 from cli_anything.ghidra.utils.ghidra_backend import (
     GhidraBackend, check, file_key, find_analyze_headless, work_home,
@@ -410,3 +410,23 @@ def test_cli_help_lists_commands():
     out = CliRunner().invoke(cli, ["--help"]).output
     for word in ("analyze", "info", "functions", "decompile", "strings", "imports", "xrefs"):
         assert word in out
+
+
+# --- REPL line splitting --------------------------------------------------
+
+@pytest.mark.parametrize("line,expected", [
+    (r"info C:\Users\alice\sample.exe", ["info", r"C:\Users\alice\sample.exe"]),
+    (r'analyze "C:\Program Files\app\a.exe" --timeout 30', ["analyze", r"C:\Program Files\app\a.exe", "--timeout", "30"]),
+    ("decompile /tmp/a.bin 'FUN_1000'", ["decompile", "/tmp/a.bin", "FUN_1000"]),
+    ("functions x.bin --filter main", ["functions", "x.bin", "--filter", "main"]),
+])
+def test_repl_line_keeps_windows_backslashes(line, expected):
+    assert split_line(line) == expected
+
+
+def test_repl_split_line_reaches_the_command_with_the_unmangled_path():
+    with patch("cli_anything.ghidra.ghidra_cli.GhidraBackend") as cls:
+        cls.return_value.query.return_value = {"functions": 1}
+        res = CliRunner().invoke(cli, ["--json", *split_line(r"info C:\Users\alice\sample.exe")], obj={})
+    assert res.exit_code == 0
+    cls.return_value.query.assert_called_with(r"C:\Users\alice\sample.exe", "info")

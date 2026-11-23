@@ -2,7 +2,7 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 80 unit tests (no Ghidra, no Java, `subprocess.Popen` mocked, plus one test with real processes)
+- `test_core.py`: 85 unit tests (no Ghidra, no Java, `subprocess.Popen` mocked, plus one test with real processes)
 - `test_full_e2e.py`: 3 subprocess tests that need no Ghidra, plus 5 live tests against the real Ghidra (skipped unless `GHIDRA_INSTALL_DIR` is set)
 
 ## Unit Test Plan (test_core.py)
@@ -13,6 +13,7 @@
 - **Timeouts and failures**: a timeout kills the process tree (a test with real processes proves a grandchild dies); an unreadable result file is a clean error; work, script and scratch folders containing `& | < > ^ % !` or a quote are refused before launch, while spaces and parentheses are accepted
 - **Queries**: refuse before analysis, use `-noanalysis -readOnly`, reject bad targets before running, surface the JDK hint / script errors / timeouts, apply `GHIDRA_JAVA_HOME` to the child environment only
 - **Core + CLI**: function filter/limit, string min-length/limit, `--json`, `decompile` prints C, option passing, bounds
+- **REPL line splitting**: a Windows path with backslashes (unquoted or quoted with spaces) reaches the command unchanged; quotes group words and are removed
 
 ## E2E Test Plan (test_full_e2e.py)
 
@@ -28,14 +29,15 @@ A real PE, `C:\Windows\System32\find.exe` (read only, never executed): `analyze`
 With Ghidra 12.2 and JDK 25 (live tests run):
 
 ```
-........................................................................ [ 81%]
-................                                                         [100%]
-88 passed in 65.22s (0:01:05)
+........................................................................ [ 77%]
+.....................                                                    [100%]
+93 passed in 190.34s (0:03:10)
 ```
 
 Without Ghidra (live tests skipped):
 
 ```
-...........sssss                                                         [100%]
-83 passed, 5 skipped in 1.93s
+........................................................................ [ 77%]
+................sssss                                                    [100%]
+88 passed, 5 skipped in 4.01s
 ```
