@@ -1169,6 +1169,15 @@ class TestScriptStrategy:
         _, kwargs = mock_run.call_args
         assert kwargs.get("shell") is True
 
+    @patch("cli_hub.installer.subprocess.run")
+    def test_run_command_refuses_newline_and_nul(self, mock_run):
+        """A newline or NUL could smuggle a second command; never execute it."""
+        for cmd in ("pip install ok\nrm -rf x", "pip install ok\rid", "pip install ok\0id"):
+            result = _run_command(cmd)
+            assert result.returncode == 126
+            assert "Refusing" in result.stderr
+        mock_run.assert_not_called()
+
     # ── Full install flow ──────────────────────────────────────────────
 
     @patch("cli_hub.installer.subprocess.run")
