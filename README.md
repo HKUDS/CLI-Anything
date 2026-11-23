@@ -830,6 +830,7 @@ The meta-skill points agents to the live CLI-Hub catalog, where they can choose 
 | **🌐 Network & Infrastructure** | Manage network services, DNS, ad-blocking, and infrastructure through structured CLI commands | AdGuardHome |
 | **🧪 Testing & Mocking** | Control HTTP mock servers, manage test stubs, record and replay API traffic for integration testing | **[WireMock](https://wiremock.org)** |
 | **🔬 Graphics & GPU Debugging** | Analyze GPU frame captures, inspect pipeline state, export shaders, and diff rendering state | RenderDoc |
+| **🧬 Reverse Engineering** | Import and analyze binaries, decompile functions, extract strings and imports, and trace cross-references headlessly | Ghidra |
 | **⚙️ Fabrication & Machine Control** | Drive real hardware from design file to physical output — safety-gated detect, preflight, jog, and framing commands with machine profiles over the software's real backend | MeerK40t (laser), Ink/Stitch (embroidery) |
 | **🎬 Video & Subtitles** | Transcribe speech, translate subtitles, burn styled captions into video — full captioning pipeline | VideoCaptioner |
 | **🔍 AI-Native Search** | Neural and deep web search with structured content retrieval through embedding-based APIs | [Exa](https://exa.ai) |
@@ -1336,6 +1337,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 27</td>
 </tr>
 <tr>
+<td align="center"><strong>🧬 <a href="ghidra/agent-harness/">Ghidra</a></strong></td>
+<td>Reverse Engineering</td>
+<td><code>cli-anything-ghidra</code></td>
+<td>Ghidra analyzeHeadless + decompiler</td>
+<td align="center">✅ 88</td>
+</tr>
+<tr>
 <td align="center"><strong>🟩 <a href="nsight-graphics/agent-harness/">Nsight Graphics CLI</a></strong></td>
 <td>GPU Debugging &amp; Profiling</td>
 <td><code>cli-anything-nsight-graphics</code></td>
@@ -1432,6 +1440,7 @@ renderdoc      59 passed  ✅   (45 unit + 14 e2e)
 cloudcompare   88 passed  ✅   (49 unit + 39 e2e)
 openscreen    101 passed  ✅   (78 unit + 23 e2e)
 lldb           27 passed  ✅   (23 unit + 4 e2e)
+ghidra         88 passed  ✅   (80 unit + 8 e2e)
 nsight-graphics 51 passed ✅   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
@@ -1536,6 +1545,7 @@ cli-anything/
 ├── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
 ├── 🟩 nsight-graphics/agent-harness/    # Nsight Graphics CLI (51 tests)
 ├── 🐞 lldb/agent-harness/               # LLDB CLI (27 tests)
+├── 🧬 ghidra/agent-harness/             # Ghidra CLI (88 tests)
 ├── 📈 unrealinsights/agent-harness/     # Unreal Insights CLI (50 tests)
 ├── 🎬 videocaptioner/agent-harness/     # VideoCaptioner CLI (26 tests)
 ├── 🎬 openscreen/agent-harness/         # Openscreen CLI — screen recording editor (101 tests)

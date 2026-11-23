@@ -1,0 +1,49 @@
+# Ghidra - CLI Harness SOP
+
+## Overview
+
+Ghidra is the NSA's open-source reverse-engineering suite (disassembler, decompiler, analyzers). It ships a headless launcher, `support/analyzeHeadless`, that imports binaries into a project, runs analysis and executes scripts.
+
+**Real software:** Ghidra 12.x `analyzeHeadless` (Java, needs a JDK 25+).
+**CLI role:** stage the binary - import/analyze once - answer read-only queries via a Java post-script - return JSON.
+
+## Architecture
+
+- **Launcher:** `$GHIDRA_INSTALL_DIR/support/analyzeHeadless[.bat]`, or `analyzeHeadless` on PATH.
+- **Java:** Ghidra 12 needs JDK 25+. If your default `JAVA_HOME` is older, set `GHIDRA_JAVA_HOME`; it is applied to the child process only.
+- **Work folder:** `~/cli-anything-ghidra/` (override with `CLI_ANYTHING_GHIDRA_HOME`). Ghidra rejects any path element starting with `.`, so a dot folder is not used. `projects/` holds the analyzed programs, `inputs/` holds the temporary staged copy (deleted after analysis).
+- **Identity:** a program is identified by the first 16 hex chars of its SHA-256. The same bytes reuse the same analysis, whatever the file is called or where it lives.
+- **Queries:** `-process <key>.bin -noanalysis -readOnly`, so a query never re-analyzes (analysis can take minutes) and never modifies the project. Each query still pays ~10 s of JVM and Ghidra start-up.
+- **Output channel:** the post-script `scripts/CliAnythingQuery.java` writes JSON to a temp file. Ghidra's stdout is log noise and is never parsed. A Java script is used because it runs in every headless setup without extra pip packages.
+
+## Command groups
+
+| Command | Post-script command |
+|---------|---------------------|
+| `analyze BINARY [--loader --processor --entry --timeout]` | import + analysis + `info` |
+| `info BINARY` | `info` |
+| `functions BINARY [--filter --limit]` | `functions` |
+| `decompile BINARY TARGET` | `decompile` (name or address) |
+| `strings BINARY [--min-length --limit]` | `strings` |
+| `imports BINARY` | `imports` |
+| `xrefs BINARY TARGET` | `xrefs` (symbol or address) |
+
+Every command supports `--json`. Running with no subcommand starts the REPL.
+
+Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoader --processor x86:LE:64:default`, and `--entry <addr>` to create a function where execution starts.
+
+## Safety rules (enforced in code, covered by tests)
+
+- **The target binary is never executed.** It is read, hashed and copied.
+- **Windows `.bat` injection (BatBadBut):** `analyzeHeadless.bat` runs through `cmd.exe` even for list-form `subprocess`. Every user string that reaches the command line (function/symbol target, loader, processor, entry address) is checked against a strict allowlist, so `&`, `|`, `%`, `^`, quotes, spaces and a leading `-` are rejected. The input binary is staged as `<hash>.bin`, so its own (possibly attacker-chosen) filename never appears on the command line.
+- Paths that reach the command line (work folder, script folder, scratch folder, launcher) are refused if they contain `& | < > ^ % !` or a quote, so a folder such as `R&D` cannot split the command line either. Parentheses and spaces are fine.
+- No shell is used, stdin is `DEVNULL` (Ghidra's launcher can prompt for a JDK and would hang), and every run has a timeout. On timeout the whole process tree is killed, because killing only the `.bat` would leave `java.exe` running and holding the project lock.
+- Each analysis stages its input in a private folder and hashes the staged copy, so parallel runs on the same binary cannot delete each other's input.
+
+## Known limits
+
+- Analysis is only as good as Ghidra's analyzers; decompiler output is not guaranteed to compile.
+- Queries are read-only: no renaming, retyping or patching.
+- `strings` and `imports` depend on the loader; raw binaries have none.
+- The copy of the binary doubles the disk use of large inputs while analysis runs.
+- `functions`, `strings` and `imports` return at most 100,000 entries each. `strings --min-length` counts characters, not bytes.

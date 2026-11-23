@@ -95,6 +95,7 @@
 !/firefly-iii/
 !/nsight-graphics/
 !/lldb/
+!/ghidra/
 !/macrocli/
 !/sbox/
 !/quietshrink/
@@ -284,6 +285,7 @@
 !/firefly-iii/agent-harness/
 !/nsight-graphics/agent-harness/
 !/lldb/agent-harness/
+!/ghidra/agent-harness/
 !/macrocli/agent-harness/
 !/sbox/agent-harness/
 !/quietshrink/agent-harness/
