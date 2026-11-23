@@ -65,6 +65,7 @@ _UV_INSTALL_HINT = (
 
 
 _SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
+_FORBIDDEN_CHARACTERS = ("\n", "\r", "\0")
 
 
 def _run_command(cmd):
@@ -72,8 +73,17 @@ def _run_command(cmd):
 
     Uses shell=True when the command contains shell operators (pipes, &&, etc.)
     so that script-type installs like ``curl … | bash`` work correctly.
-    Commands come from the trusted registry, not from user input.
+    Commands come from the trusted registry, not from user input. Registry
+    commands are single-line, so a newline or NUL (a way to smuggle a second
+    command past a reviewed first line) is refused rather than executed.
     """
+    if any(c in cmd for c in _FORBIDDEN_CHARACTERS):
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=126,
+            stdout="",
+            stderr="Refusing to run a command that contains a newline or NUL character.",
+        )
     use_shell = any(c in cmd for c in _SHELL_METACHARACTERS)
     try:
         return subprocess.run(
