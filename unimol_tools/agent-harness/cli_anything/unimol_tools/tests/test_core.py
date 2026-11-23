@@ -81,6 +81,16 @@ class TestMetricFileFreshness:
         os.utime(path, (old, old))
         assert not UniMolBackend._written_since(path, time.time())
 
+    def test_file_written_just_before_the_run_started_is_rejected(self, tmp_dir):
+        from cli_anything.unimol_tools.utils.unimol_backend import UniMolBackend
+        import os, time
+        start = time.time()
+        path = os.path.join(tmp_dir, "metric.result")
+        open(path, "wb").write(b"x")
+        before = start - 1  # the previous run's file in back-to-back runs
+        os.utime(path, (before, before))
+        assert not UniMolBackend._written_since(path, start)
+
     def test_file_with_a_future_timestamp_is_rejected(self, tmp_dir):
         from cli_anything.unimol_tools.utils.unimol_backend import UniMolBackend
         import os, time
