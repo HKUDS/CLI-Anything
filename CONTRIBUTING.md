@@ -50,7 +50,7 @@ Bug fixes resolve incorrect behavior in existing harnesses or the plugin.
 
 ## CLI-Hub & Registry
 
-All available CLIs are listed in `registry.json` at the repo root and displayed on the [CLI-Hub](https://hkuds.github.io/CLI-Anything/hub/). The hub reads `registry.json` directly from `main`, so it updates immediately when a PR is merged.
+All available CLIs are listed in `registry.json` at the repo root and displayed on the [CLI-Hub](https://hkuds.github.io/CLI-Anything/). The hub reads `registry.json` directly from `main`, so it updates immediately when a PR is merged.
 
 ### Registry fields
 
