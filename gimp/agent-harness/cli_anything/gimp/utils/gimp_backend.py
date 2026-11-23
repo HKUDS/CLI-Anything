@@ -7,6 +7,7 @@ Requires: gimp (system package)
 """
 
 import os
+import re
 import shutil
 import subprocess
 from typing import Dict, Any, Optional, List
@@ -22,9 +23,23 @@ def _script_fu_escape(value: str) -> str:
     )
 
 
+def _layer_new(
+    width: int, height: int, img_type: str, name: str,
+    opacity: int, blend: str, gimp3: bool,
+) -> str:
+    """Return the gimp-layer-new call for the running GIMP version.
+
+    GIMP 3 moved the layer name to the second argument.
+    """
+    safe_name = _script_fu_escape(name)
+    if gimp3:
+        return f'(car (gimp-layer-new image "{safe_name}" {width} {height} {img_type} {opacity} {blend}))'
+    return f'(car (gimp-layer-new image {width} {height} {img_type} "{safe_name}" {opacity} {blend}))'
+
+
 def find_gimp() -> str:
     """Find the GIMP executable. Raises RuntimeError if not found."""
-    for name in ("gimp", "gimp-2.10", "gimp-2.99"):
+    for name in ("gimp", "gimp-3.0", "gimp-3", "gimp-2.10", "gimp-2.99"):
         path = shutil.which(name)
         if path:
             return path
@@ -44,21 +59,44 @@ def get_version() -> str:
     return result.stdout.strip()
 
 
+_gimp_major: Optional[int] = None
+
+
+def get_major_version() -> int:
+    """Return the installed GIMP major version, or 0 when it cannot be parsed."""
+    global _gimp_major
+    if _gimp_major is None:
+        match = re.search(r"version\s+(\d+)", get_version())
+        _gimp_major = int(match.group(1)) if match else 0
+    return _gimp_major
+
+
 def batch_script_fu(
     script: str,
     timeout: int = 120,
+    gimp3: Optional[bool] = None,
 ) -> dict:
     """Run a Script-Fu command in GIMP batch mode.
 
     Args:
         script: Script-Fu command string (single-quoted safe)
         timeout: Maximum seconds to wait
+        gimp3: Override GIMP 3 detection (used by tests)
 
     Returns:
         Dict with stdout, stderr, return code
     """
     gimp = find_gimp()
-    cmd = [gimp, "-i", "-b", script, "-b", "(gimp-quit 0)"]
+    if gimp3 is None:
+        gimp3 = get_major_version() >= 3
+
+    # GIMP 3 needs a named interpreter when several batch interpreters are
+    # installed, and --quit still exits after a failing command instead of
+    # waiting forever. GIMP 2.10 defaults to the same interpreter.
+    cmd = [gimp, "-i", "--batch-interpreter=plug-in-script-fu-eval"]
+    if gimp3:
+        cmd.append("--quit")
+    cmd += ["-b", script, "-b", "(gimp-quit 0)"]
 
     result = subprocess.run(
         cmd,
@@ -74,6 +112,73 @@ def batch_script_fu(
     }
 
 
+_FMT_BY_EXT = {
+    ".png": "PNG",
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".bmp": "BMP",
+    ".tif": "TIFF",
+    ".tiff": "TIFF",
+    ".gif": "GIF",
+}
+
+
+def _export_statements(
+    fmt: str,
+    safe_path: str,
+    gimp3: bool,
+    drawable: str = "drawable",
+    quality: float = 0.85,
+    compression: int = 6,
+) -> List[str]:
+    """Return Script-Fu statements that export the current image.
+
+    GIMP 3 dropped the GIMP 2 save procedures and their drawable argument.
+    The *-export procedures take the image plus a NULL options object (-1).
+    """
+    q = f"{quality:.2f}"
+
+    if gimp3:
+        calls = {
+            "PNG": (
+                f'(file-png-export RUN-NONINTERACTIVE image "{safe_path}" -1 '
+                f'FALSE {compression} TRUE TRUE TRUE TRUE TRUE FALSE "auto" FALSE)'
+            ),
+            "JPEG": (
+                f'(file-jpeg-export RUN-NONINTERACTIVE image "{safe_path}" -1 '
+                f'{q} 0.0 FALSE FALSE FALSE "sub-sampling-1x1" TRUE 0 "integer" FALSE)'
+            ),
+            "BMP": f'(file-bmp-export RUN-NONINTERACTIVE image "{safe_path}" -1 FALSE FALSE "rgb-888")',
+            "TIFF": (
+                f'(file-tiff-export RUN-NONINTERACTIVE image "{safe_path}" -1 '
+                f'FALSE "lzw" FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE)'
+            ),
+            "GIF": f'(file-gif-export RUN-NONINTERACTIVE image "{safe_path}" -1)',
+        }
+        if fmt not in calls:
+            raise ValueError(f"GIMP 3 export is not implemented for format: {fmt}")
+        return [calls[fmt]]
+
+    calls = {
+        "PNG": f'(file-png-save RUN-NONINTERACTIVE image {drawable} "{safe_path}" "{safe_path}" 0 {compression} 1 1 1 1 1)',
+        "JPEG": f'(file-jpeg-save RUN-NONINTERACTIVE image {drawable} "{safe_path}" "{safe_path}" {q} 0.0 0 0 "" 0 1 0 2)',
+        "BMP": f'(file-bmp-save RUN-NONINTERACTIVE image {drawable} "{safe_path}" "{safe_path}" 0)',
+        "TIFF": f'(file-tiff-save RUN-NONINTERACTIVE image {drawable} "{safe_path}" "{safe_path}" 1)',
+        "GIF": f'(file-gif-save RUN-NONINTERACTIVE image {drawable} "{safe_path}" "{safe_path}" 0 0 0 0)',
+    }
+    if fmt not in calls:
+        return [
+            f'(gimp-file-overwrite RUN-NONINTERACTIVE image {drawable} "{safe_path}" "{safe_path}")'
+        ]
+    if fmt == "GIF":
+        return [
+            '(gimp-image-convert-indexed image CONVERT-DITHER-TYPE-NO-DITHER '
+            'CONVERT-PALETTE-TYPE-GENERATE 256 FALSE FALSE "")',
+            calls["GIF"],
+        ]
+    return [calls[fmt]]
+
+
 def create_and_export(
     width: int,
     height: int,
@@ -82,33 +187,17 @@ def create_and_export(
     timeout: int = 120,
 ) -> dict:
     """Create a new image in GIMP and export it."""
+    find_gimp()
+    gimp3 = get_major_version() >= 3
+
     abs_output = os.path.abspath(output_path)
     safe_abs_output = _script_fu_escape(abs_output)
     os.makedirs(os.path.dirname(abs_output), exist_ok=True)
 
     ext = os.path.splitext(output_path)[1].lower()
-
-    # Build the export command based on format
-    if ext == ".png":
-        export_cmd = (
-            f'(file-png-save RUN-NONINTERACTIVE image layer '
-            f'"{safe_abs_output}" "{safe_abs_output}" 0 9 1 1 1 1 1)'
-        )
-    elif ext in (".jpg", ".jpeg"):
-        export_cmd = (
-            f'(file-jpeg-save RUN-NONINTERACTIVE image layer '
-            f'"{safe_abs_output}" "{safe_abs_output}" 0.85 0.0 0 0 "" 0 1 0 2)'
-        )
-    elif ext == ".bmp":
-        export_cmd = (
-            f'(file-bmp-save RUN-NONINTERACTIVE image layer '
-            f'"{safe_abs_output}" "{safe_abs_output}" 0)'
-        )
-    else:
-        export_cmd = (
-            f'(gimp-file-overwrite RUN-NONINTERACTIVE image layer '
-            f'"{safe_abs_output}" "{safe_abs_output}")'
-        )
+    fmt = _FMT_BY_EXT.get(ext)
+    if fmt is None and gimp3:
+        raise ValueError(f"GIMP 3 export is not implemented for extension: {ext or '(none)'}")
 
     # Color mapping
     color_map = {
@@ -120,22 +209,24 @@ def create_and_export(
     }
     rgb = color_map.get(fill_color, "255 255 255")
 
+    export = " ".join(
+        _export_statements(fmt or "UNKNOWN", safe_abs_output, gimp3, drawable="layer")
+    )
+
     # Build Script-Fu — use plain strings, subprocess handles quoting
     script = (
         f'(let* ('
         f'(image (car (gimp-image-new {width} {height} RGB)))'
-        f'(layer (car (gimp-layer-new image {width} {height} '
-        f'RGB-IMAGE "BG" 100 LAYER-MODE-NORMAL)))'
+        f'(layer {_layer_new(width, height, "RGB-IMAGE", "BG", 100, "LAYER-MODE-NORMAL", gimp3)})'
         f')'
         f'(gimp-image-insert-layer image layer 0 -1)'
-        f'(gimp-image-set-active-layer image layer)'
-        f"(gimp-palette-set-foreground '({rgb}))"
-        f'(gimp-edit-fill layer FILL-FOREGROUND)'
-        f'{export_cmd}'
+        f"(gimp-context-set-foreground '({rgb}))"
+        f'(gimp-drawable-edit-fill layer FILL-FOREGROUND)'
+        f'{export}'
         f'(gimp-image-delete image))'
     )
 
-    result = batch_script_fu(script, timeout=timeout)
+    result = batch_script_fu(script, timeout=timeout, gimp3=gimp3)
 
     if not os.path.exists(abs_output):
         raise RuntimeError(
@@ -171,6 +262,7 @@ def apply_filter_and_export(
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
+    gimp3 = get_major_version() >= 3
     abs_input = os.path.abspath(input_path)
     abs_output = os.path.abspath(output_path)
     safe_abs_input = _script_fu_escape(abs_input)
@@ -178,34 +270,32 @@ def apply_filter_and_export(
     os.makedirs(os.path.dirname(abs_output), exist_ok=True)
 
     ext = os.path.splitext(output_path)[1].lower()
-    if ext == ".png":
-        export_cmd = (
-            f'(file-png-save RUN-NONINTERACTIVE image drawable '
-            f'"{safe_abs_output}" "{safe_abs_output}" 0 9 1 1 1 1 1)'
-        )
-    elif ext in (".jpg", ".jpeg"):
-        export_cmd = (
-            f'(file-jpeg-save RUN-NONINTERACTIVE image drawable '
-            f'"{safe_abs_output}" "{safe_abs_output}" 0.85 0.0 0 0 "" 0 1 0 2)'
-        )
-    else:
-        export_cmd = (
-            f'(gimp-file-overwrite RUN-NONINTERACTIVE image drawable '
-            f'"{safe_abs_output}" "{safe_abs_output}")'
-        )
+    fmt = _FMT_BY_EXT.get(ext)
+    if fmt is None and gimp3:
+        raise ValueError(f"GIMP 3 export is not implemented for extension: {ext or '(none)'}")
+
+    # GIMP 3 takes a single file argument; 2.10 also wants the raw filename
+    load_args = (
+        f'"{safe_abs_input}"'
+        if gimp3
+        else f'"{safe_abs_input}" "{safe_abs_input}"'
+    )
+    export = " ".join(
+        _export_statements(fmt or "UNKNOWN", safe_abs_output, gimp3, drawable="drawable")
+    )
 
     script = (
         f'(let* ('
-        f'(image (car (gimp-file-load RUN-NONINTERACTIVE "{safe_abs_input}" "{safe_abs_input}")))'
+        f'(image (car (gimp-file-load RUN-NONINTERACTIVE {load_args})))'
         f'(drawable (car (gimp-image-flatten image)))'
         f')'
         f'{script_fu_filter}'
         f'(set! drawable (car (gimp-image-flatten image)))'
-        f'{export_cmd}'
+        f'{export}'
         f'(gimp-image-delete image))'
     )
 
-    result = batch_script_fu(script, timeout=timeout)
+    result = batch_script_fu(script, timeout=timeout, gimp3=gimp3)
 
     if not os.path.exists(abs_output):
         raise RuntimeError(
@@ -267,7 +357,8 @@ _EXPORT_COMMANDS: Dict[str, str] = {
 
 
 def _filter_to_script_fu(name: str, params: Dict[str, Any],
-                          img_var: str, drw_var: str) -> Optional[str]:
+                          img_var: str, drw_var: str,
+                          gimp3: bool = False) -> Optional[str]:
     """Convert a CLI filter name + params into a Script-Fu expression.
 
     Returns None when there is no GIMP-native equivalent for *name*.
@@ -276,10 +367,16 @@ def _filter_to_script_fu(name: str, params: Dict[str, Any],
     i, d = img_var, drw_var
 
     if name == "brightness":
-        val = int((p.get("factor", 1.0) - 1.0) * 127)
+        factor = p.get("factor", 1.0) - 1.0
+        if gimp3:
+            return f"(gimp-drawable-brightness-contrast {d} {factor:.3f} 0)"
+        val = int(factor * 127)
         return f"(gimp-brightness-contrast {d} {val} 0)"
     if name == "contrast":
-        val = int((p.get("factor", 1.0) - 1.0) * 127)
+        factor = p.get("factor", 1.0) - 1.0
+        if gimp3:
+            return f"(gimp-drawable-brightness-contrast {d} 0 {factor:.3f})"
+        val = int(factor * 127)
         return f"(gimp-brightness-contrast {d} 0 {val})"
     if name == "saturation":
         val = int((p.get("factor", 1.0) - 1.0) * 100)
@@ -364,6 +461,61 @@ _NAMED_COLORS = {
 # Full-project rendering via GIMP Script-Fu
 # ---------------------------------------------------------------------------
 
+def _render_script(
+    project: Dict[str, Any],
+    safe_output: str,
+    fmt: str,
+    preset: str,
+    quality: Optional[int],
+    gimp3: bool,
+) -> str:
+    """Build the Script-Fu expression that renders a whole project."""
+    from cli_anything.gimp.core.export import EXPORT_PRESETS
+
+    canvas = project["canvas"]
+    cw, ch = canvas["width"], canvas["height"]
+    bg_color = canvas.get("background", "#ffffff")
+
+    # --- build Script-Fu ---
+    s = []
+    s.append(f"(let* ((image (car (gimp-image-new {cw} {ch} RGB))))")
+
+    # Background layer
+    if bg_color.lower() != "transparent":
+        rgb = _NAMED_COLORS.get(bg_color.lower(), _hex_to_rgb(bg_color))
+        bg = _layer_new(cw, ch, "RGB-IMAGE", "Background", 100, "LAYER-MODE-NORMAL", gimp3)
+        s.append(f"(let* ((bg {bg}))")
+        s.append("(gimp-image-insert-layer image bg 0 -1)")
+        s.append(f"(gimp-context-set-foreground '({rgb}))")
+        s.append("(gimp-drawable-edit-fill bg FILL-FOREGROUND))")
+
+    # Composite layers bottom → top
+    layers = project.get("layers", [])
+    for idx, layer in enumerate(reversed(layers)):
+        if not layer.get("visible", True):
+            continue
+        _build_layer_script(s, layer, idx, cw, ch, gimp3)
+
+    if fmt == "JPEG":
+        quality = quality or EXPORT_PRESETS.get(preset, {}).get("params", {}).get("quality", 85)
+    else:
+        quality = 85
+    compression = EXPORT_PRESETS.get(preset, {}).get("params", {}).get("compress_level", 6)
+
+    # Flatten and export
+    s.append("(let* ((drawable (car (gimp-image-flatten image))))")
+    s.extend(_export_statements(
+        fmt, safe_output, gimp3,
+        quality=quality / 100.0, compression=compression,
+    ))
+    s.append(")")
+
+    # Cleanup
+    s.append("(gimp-image-delete image))")  # closes outer let*
+
+    return " ".join(s)
+
+
 def render_project(
     project: Dict[str, Any],
     output_path: str,
@@ -390,7 +542,6 @@ def render_project(
 
     canvas = project["canvas"]
     cw, ch = canvas["width"], canvas["height"]
-    bg_color = canvas.get("background", "#ffffff")
 
     if format_override:
         fmt = format_override.upper()
@@ -399,36 +550,9 @@ def render_project(
     else:
         raise ValueError(f"Unknown preset: {preset}")
 
-    # --- build Script-Fu ---
-    s = []
-    s.append(f"(let* ((image (car (gimp-image-new {cw} {ch} RGB))))")
-
-    # Background layer
-    if bg_color.lower() != "transparent":
-        rgb = _NAMED_COLORS.get(bg_color.lower(), _hex_to_rgb(bg_color))
-        s.append(f"(let* ((bg (car (gimp-layer-new image {cw} {ch} RGB-IMAGE \"Background\" 100 LAYER-MODE-NORMAL))))")
-        s.append(f"(gimp-image-insert-layer image bg 0 -1)")
-        s.append(f"(gimp-palette-set-foreground '({rgb}))")
-        s.append(f"(gimp-edit-fill bg FILL-FOREGROUND))")
-
-    # Composite layers bottom → top
-    layers = project.get("layers", [])
-    for idx, layer in enumerate(reversed(layers)):
-        if not layer.get("visible", True):
-            continue
-        _build_layer_script(s, layer, idx, cw, ch)
-
-    # Flatten
-    s.append("(gimp-image-flatten image)")
-
-    # Export
-    _build_export_cmd(s, safe_output, fmt, preset, quality)
-
-    # Cleanup
-    s.append("(gimp-image-delete image))")  # closes outer let*
-
-    script = " ".join(s)
-    result = batch_script_fu(script, timeout=timeout)
+    gimp3 = get_major_version() >= 3
+    script = _render_script(project, safe_output, fmt, preset, quality, gimp3)
+    result = batch_script_fu(script, timeout=timeout, gimp3=gimp3)
 
     if not os.path.exists(abs_output):
         raise RuntimeError(
@@ -439,6 +563,7 @@ def render_project(
         )
 
     file_size = os.path.getsize(abs_output)
+    layers = project.get("layers", [])
     return {
         "output": abs_output,
         "format": fmt,
@@ -453,7 +578,7 @@ def render_project(
 
 def _build_layer_script(
     s: List[str], layer: Dict[str, Any], idx: int,
-    canvas_w: int, canvas_h: int,
+    canvas_w: int, canvas_h: int, gimp3: bool = False,
 ) -> None:
     """Append Script-Fu expressions for a single layer."""
     var = f"l{idx}"
@@ -470,24 +595,33 @@ def _build_layer_script(
         text = _script_fu_escape(layer.get("text", ""))
         font_size = layer.get("font_size", 24)
         font = _script_fu_escape(layer.get("font", "Sans"))
-        s.append(
-            f'(let* (({var} (car (gimp-text-fontname image -1 0 0 "{text}" 0 TRUE {font_size} UNIT-PIXEL "{font}"))))'
-        )
+        if gimp3:
+            # GIMP 3 takes a font ID instead of a name and has no size type.
+            s.append(
+                f'(let* ((ctxfont (car (gimp-context-get-font)))'
+                f'(matches (car (gimp-fonts-get-list "{font}")))'
+                f'(font (if (> (vector-length matches) 0) (vector-ref matches 0) ctxfont))'
+                f'({var} (car (gimp-text-font image -1 0 0 "{text}" 0 TRUE {font_size} font))))'
+            )
+        else:
+            s.append(
+                f'(let* (({var} (car (gimp-text-fontname image -1 0 0 "{text}" 0 TRUE {font_size} UNIT-PIXEL "{font}"))))'
+            )
     else:
         fill = layer.get("fill", "transparent")
         img_type = "RGBA-IMAGE" if fill == "transparent" else "RGB-IMAGE"
-        name_safe = _script_fu_escape(layer.get("name", f"Layer {idx}"))
-        s.append(f'(let* (({var} (car (gimp-layer-new image {w} {h} {img_type} "{name_safe}" {opacity} {blend}))))')
+        name = layer.get("name", f"Layer {idx}")
+        s.append(f"(let* (({var} {_layer_new(w, h, img_type, name, opacity, blend, gimp3)}))")
         s.append(f"(gimp-image-insert-layer image {var} 0 -1)")
         if fill != "transparent":
             rgb = _NAMED_COLORS.get(fill, _hex_to_rgb(fill))
-            s.append(f"(gimp-palette-set-foreground '({rgb}))")
-            s.append(f"(gimp-edit-fill {var} FILL-FOREGROUND)")
+            s.append(f"(gimp-context-set-foreground '({rgb}))")
+            s.append(f"(gimp-drawable-edit-fill {var} FILL-FOREGROUND)")
 
     # For file/text layers, insert into image and configure
     if ltype == "image" and layer.get("source") and os.path.exists(layer["source"]):
         s.append(f"(gimp-image-insert-layer image {var} 0 -1)")
-    # Text layers are auto-inserted by gimp-text-fontname
+    # Text layers are auto-inserted by gimp-text-fontname and gimp-text-font
 
     # Offsets
     ox, oy = layer.get("offset_x", 0), layer.get("offset_y", 0)
@@ -501,40 +635,11 @@ def _build_layer_script(
 
     # Filters
     for filt in layer.get("filters", []):
-        sf = _filter_to_script_fu(filt["name"], filt.get("params", {}), "image", var)
+        sf = _filter_to_script_fu(filt["name"], filt.get("params", {}), "image", var, gimp3)
         if sf:
             s.append(sf)
 
     s.append(")")  # close this layer's let*
-
-
-def _build_export_cmd(
-    s: List[str], safe_path: str, fmt: str,
-    preset: str, quality: Optional[int],
-) -> None:
-    """Append the Script-Fu export call."""
-    from cli_anything.gimp.core.export import EXPORT_PRESETS
-
-    s.append("(let* ((drawable (car (gimp-image-get-active-drawable image))))")
-
-    if fmt == "JPEG":
-        q = (quality or EXPORT_PRESETS.get(preset, {}).get("params", {}).get("quality", 85)) / 100.0
-        s.append(f'(file-jpeg-save RUN-NONINTERACTIVE image drawable "{safe_path}" "{safe_path}" {q:.2f} 0.0 0 0 "" 0 1 0 2)')
-    elif fmt == "PNG":
-        comp = EXPORT_PRESETS.get(preset, {}).get("params", {}).get("compress_level", 6)
-        s.append(f'(file-png-save RUN-NONINTERACTIVE image drawable "{safe_path}" "{safe_path}" 0 {comp} 1 1 1 1 1)')
-    elif fmt == "BMP":
-        s.append(f'(file-bmp-save RUN-NONINTERACTIVE image drawable "{safe_path}" "{safe_path}" 0)')
-    elif fmt == "TIFF":
-        s.append(f'(file-tiff-save RUN-NONINTERACTIVE image drawable "{safe_path}" "{safe_path}" 1)')
-    elif fmt == "GIF":
-        s.append(f"(gimp-image-convert-indexed image CONVERT-DITHER-TYPE-NO-DITHER CONVERT-PALETTE-TYPE-GENERATE 256 FALSE FALSE \"\")")
-        s.append(f"(set! drawable (car (gimp-image-get-active-drawable image)))")
-        s.append(f'(file-gif-save RUN-NONINTERACTIVE image drawable "{safe_path}" "{safe_path}" 0 0 0 0)')
-    else:
-        s.append(f'(gimp-file-overwrite RUN-NONINTERACTIVE image drawable "{safe_path}" "{safe_path}")')
-
-    s.append(")")  # close export let*
 
 
 def _human_size(nbytes: int) -> str:

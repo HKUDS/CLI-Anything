@@ -742,7 +742,7 @@ def repl(project_path):
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("gimp", version="1.0.0")
+    skin = ReplSkin("gimp", version="1.0.1")
 
     if project_path:
         sess = get_session()
