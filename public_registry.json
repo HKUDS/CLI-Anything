@@ -537,6 +537,29 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "xinyu",
+      "display_name": "XinYu AI CLI",
+      "version": "0.1.58",
+      "description": "AI multimodal story-canvas CLI & built-in MCP server — generate native 4K videos (Seedance 2.5 up to 30s, Kling, Wan), images (Nano Banana Pro, GPT Image, SeeDream), and audio, decompose layers, upscale/rembg, and manage canvas nodes with --json output and async job polling.",
+      "category": "ai",
+      "requires": "Node.js >= 18, XinYu AI API key from xinyuai.app",
+      "homepage": "https://xinyuai.app",
+      "docs_url": "https://xinyuai.app/en/cli",
+      "source_url": "https://github.com/xinyuai-official/xinyu-skills",
+      "package_manager": "npm",
+      "npm_package": "@xinyuai/cli",
+      "install_cmd": "npm install -g @xinyuai/cli",
+      "npx_cmd": "npx @xinyuai/cli",
+      "skill_md": "https://github.com/xinyuai-official/xinyu-skills/blob/main/skills/xinyu/SKILL.md",
+      "entry_point": "xinyu",
+      "contributors": [
+        {
+          "name": "XinYu AI",
+          "url": "https://github.com/xinyuai-official"
+        }
+      ]
     }
   ]
 }
