@@ -189,10 +189,13 @@ def repl(ctx: click.Context):
 @click.option("--entry", default=None, help="Create a function at this address (raw binaries have no entry point)")
 @click.option("--timeout", default=600, show_default=True, type=click.IntRange(10, 86400),
               help="Analysis timeout in seconds")
+@click.option("--force", is_flag=True, default=False,
+              help="Re-import and re-analyze even if these bytes were analyzed with the same options before")
 @click.pass_context
-def analyze(ctx: click.Context, binary: str, loader, processor, entry, timeout: int):
+def analyze(ctx: click.Context, binary: str, loader, processor, entry, timeout: int, force: bool):
     """Import and analyze BINARY into a Ghidra project (the binary is never executed)."""
-    output(analysis_core.analyze(make_backend(ctx), binary, loader, processor, entry, timeout), ctx.obj["as_json"])
+    result = analysis_core.analyze(make_backend(ctx), binary, loader, processor, entry, timeout, force)
+    output(result, ctx.obj["as_json"])
 
 
 @cli.command()

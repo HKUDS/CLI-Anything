@@ -155,3 +155,12 @@ def test_live_real_binary_queries_return_real_data(real_analyzed):
     assert isinstance(imports, list) and (sys.platform != "win32" or imports)
     strings = json.loads(run_cli("--json", "strings", str(binary), "--limit", "5", env_extra=env).stdout)
     assert isinstance(strings, list) and len(strings) <= 5
+
+
+@live
+def test_live_second_analyze_is_cached_and_force_reanalyzes(analyzed):
+    blob, env, _ = analyzed
+    again = json.loads(run_cli("--json", "analyze", str(blob), *RAW_ARGS, env_extra=env).stdout)
+    assert again["cached"] is True and again["functions"] == 1
+    forced = json.loads(run_cli("--json", "analyze", str(blob), *RAW_ARGS, "--force", env_extra=env).stdout)
+    assert forced["cached"] is False and forced["functions"] == 1

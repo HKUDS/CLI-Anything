@@ -21,7 +21,7 @@ pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ghidra/ag
 Running with no subcommand starts the REPL. Add `--json` before the command for machine-readable output (errors become `{"error": "..."}` with exit code 1, or 2 for a usage error such as a missing argument).
 
 ```bash
-cli-anything-ghidra --json analyze BINARY [--loader L --processor P --entry ADDR --timeout SEC]
+cli-anything-ghidra --json analyze BINARY [--loader L --processor P --entry ADDR --timeout SEC --force]
 cli-anything-ghidra --json info BINARY
 cli-anything-ghidra --json functions BINARY [--filter TEXT] [--limit N]
 cli-anything-ghidra --json decompile BINARY TARGET
@@ -34,7 +34,7 @@ cli-anything-ghidra --json xrefs BINARY TARGET
 
 | Command | Purpose |
 |---------|---------|
-| `analyze` | Import and analyze once per binary (can take minutes); returns format, language, function count and `analysis_timed_out` |
+| `analyze` | Import and analyze once per binary (can take minutes); returns format, language, function count, `analysis_timed_out` and `cached` |
 | `info` | Format, language, image base, function and symbol counts |
 | `functions` | Name, address and size of every function |
 | `decompile` | C pseudo-code for a function by name or address |
@@ -44,7 +44,7 @@ cli-anything-ghidra --json xrefs BINARY TARGET
 
 ## Agent Guidance
 
-- Always run `analyze` first; the other commands fail with "has not been analyzed" otherwise. Analysis is cached by file content, so re-analysis is only needed for changed bytes.
+- Always run `analyze` first; the other commands fail with "has not been analyzed" otherwise. Analysis is cached by file content: running `analyze` again on the same bytes with the same `--loader/--processor/--entry` returns the stored result at once with `"cached": true`. Pass `--force` to re-import and re-analyze anyway (for example after changing nothing but wanting a fresh run).
 - A typical triage: `info` -> `functions --filter` -> `decompile` of interesting functions -> `xrefs` to find callers -> `strings` / `imports` for behavior hints.
 - Raw binaries (firmware, shellcode) need `--loader BinaryLoader --processor <lang id>` and `--entry <addr>`; without an entry no function exists to decompile.
 - `TARGET`, `--loader`, `--processor` and `--entry` accept only a strict character set (names, hex addresses, language IDs). A rejection is deliberate (Windows `.bat` injection defense), not a bug.

@@ -30,7 +30,7 @@ Ghidra is the NSA's open-source reverse-engineering suite (disassembler, decompi
 
 Every command supports `--json`. Running with no subcommand starts the REPL. Root options: `--json` and `--query-timeout SEC` (default 300; the decompiler gets that minus 30 s as its own budget).
 
-`analyze` returns `analysis_timed_out`. Ghidra ends a timed-out analysis with exit 0 and a partial result, so the harness reads its log and flags it; the partial result stays queryable. A binary counts as analyzed only after a successful `analyze` (a marker file), never just because a project exists, because a failed import also leaves one.
+`analyze` reuses an earlier complete analysis of the same bytes with the same options (loader, processor, entry) and answers from a stored result in well under a second (`"cached": true`); `--force` re-imports and re-analyzes. A timed-out analysis is never reused. `analyze` also returns `analysis_timed_out`. Ghidra ends a timed-out analysis with exit 0 and a partial result, so the harness reads its log and flags it; the partial result stays queryable. A binary counts as analyzed only after a successful `analyze` (a marker file), never just because a project exists, because a failed import also leaves one.
 
 Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoader --processor x86:LE:64:default`, and `--entry <addr>` to create a function where execution starts.
 

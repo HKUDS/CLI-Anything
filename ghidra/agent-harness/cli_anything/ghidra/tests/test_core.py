@@ -414,7 +414,7 @@ def test_cli_analyze_passes_options():
         res = CliRunner().invoke(cli, ["--json", "analyze", "x.bin", "--loader", "BinaryLoader",
                                        "--processor", "x86:LE:64:default", "--entry", "0", "--timeout", "30"], obj={})
     assert res.exit_code == 0
-    cls.return_value.analyze.assert_called_once_with("x.bin", "BinaryLoader", "x86:LE:64:default", "0", 30)
+    cls.return_value.analyze.assert_called_once_with("x.bin", "BinaryLoader", "x86:LE:64:default", "0", 30, False)
 
 
 def test_cli_timeout_bounds():
@@ -567,7 +567,7 @@ def test_analyze_writes_the_marker_and_a_failed_one_removes_it(be, sample):
     failing = fake_popen(None, [], stdout="ERROR REPORT: Import failed")
     with patch.object(backend.subprocess, "Popen", side_effect=failing):
         with pytest.raises(RuntimeError):
-            be.analyze(str(sample))
+            be.analyze(str(sample), force=True)  # force: the cached result would otherwise be returned
     assert not marker.exists()  # the stale claim is gone
 
 
@@ -659,3 +659,64 @@ def test_repl_split_handles_quoted_option_values(line, expected):
 def test_repl_split_reports_an_unbalanced_quote():
     with pytest.raises(ValueError):
         split_line('info "C:/a b/x.exe')
+
+
+# --- caching of analyze (same bytes, same options) ----------------------
+
+INFO = {"format": "Raw Binary", "language": "x86:LE:64:default", "functions": 1}
+
+
+def test_second_analyze_of_the_same_bytes_reuses_the_result_without_ghidra(be, sample):
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, [])):
+        first = be.analyze(str(sample))
+    assert first["cached"] is False
+    with patch.object(backend.subprocess, "Popen") as popen:
+        second = be.analyze(str(sample))
+    popen.assert_not_called()
+    assert second["cached"] is True and second["functions"] == 1 and second["key"] == first["key"]
+    assert second["analysis_timed_out"] is False
+
+
+def test_force_reanalyzes_even_when_cached(be, sample):
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, [])):
+        be.analyze(str(sample))
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, calls)):
+        result = be.analyze(str(sample), force=True)
+    assert len(calls) == 1 and result["cached"] is False
+
+
+def test_different_options_reanalyze_the_same_bytes(be, sample):
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, [])):
+        be.analyze(str(sample), loader="BinaryLoader", processor="x86:LE:64:default", entry="0")
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, calls)):
+        be.analyze(str(sample), loader="BinaryLoader", processor="x86:LE:64:default", entry="10")
+    assert len(calls) == 1
+
+
+def test_a_timed_out_analysis_is_not_reused(be, sample):
+    log = "ERROR REPORT: Analysis timed out at 3 seconds."
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, [], stdout=log)):
+        assert be.analyze(str(sample), timeout=3)["analysis_timed_out"] is True
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, calls)):
+        again = be.analyze(str(sample), timeout=600)
+    assert len(calls) == 1 and again["analysis_timed_out"] is False
+
+
+@pytest.mark.parametrize("content", ["", "not json", "[]", '{"options": {}}'])
+def test_unusable_marker_means_analyze_runs_again(be, sample, content):
+    be.projects.mkdir(parents=True, exist_ok=True)
+    (be.projects / f"{file_key(sample)}.analyzed").write_text(content)
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, calls)):
+        assert be.analyze(str(sample))["cached"] is False
+    assert len(calls) == 1
+
+
+def test_cli_force_flag_reaches_the_backend():
+    with patch("cli_anything.ghidra.ghidra_cli.GhidraBackend") as cls:
+        cls.return_value.analyze.return_value = {"key": "k"}
+        CliRunner().invoke(cli, ["--json", "analyze", "x.bin", "--force"], obj={})
+    cls.return_value.analyze.assert_called_once_with("x.bin", None, None, None, 600, True)

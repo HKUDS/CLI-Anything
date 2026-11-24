@@ -25,7 +25,7 @@ cli-anything-ghidra --help
 
 ```bash
 cli-anything-ghidra                                   # interactive REPL
-cli-anything-ghidra analyze ./target.exe              # once per binary (can take minutes)
+cli-anything-ghidra analyze ./target.exe              # once per binary (can take minutes); repeats are cached, --force redoes it
 cli-anything-ghidra --json info ./target.exe
 cli-anything-ghidra --json functions ./target.exe --filter main --limit 20
 cli-anything-ghidra decompile ./target.exe FUN_140001010

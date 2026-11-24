@@ -228,14 +228,33 @@ class GhidraBackend:
             raise
         return key, staged, staging
 
+    def _cached(self, path: Path, options: dict) -> dict | None:
+        """Stored result of an earlier, complete analyze of the same bytes with the same options."""
+        key = file_key(path)
+        try:
+            saved = json.loads((self.projects / f"{key}{ANALYZED_SUFFIX}").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(saved, dict) or saved.get("options") != options or saved.get("timed_out"):
+            return None
+        return {"key": key, **saved["info"], "analysis_timed_out": False, "cached": True}
+
     def analyze(self, binary: str, loader: str | None = None, processor: str | None = None,
-                entry: str | None = None, timeout: int = DEFAULT_ANALYSIS_TIMEOUT) -> dict:
+                entry: str | None = None, timeout: int = DEFAULT_ANALYSIS_TIMEOUT, force: bool = False) -> dict:
+        """Import and analyze once; the same bytes with the same options are reused unless force is set."""
         args_extra = []
         if loader:
             args_extra += ["-loader", check(loader, _LOADER, "loader")]
         if processor:
             args_extra += ["-processor", check(processor, _PROCESSOR, "processor")]
         entry_arg = check(entry, _ADDRESS, "entry address") if entry else ""
+        options = {"loader": loader or "", "processor": processor or "", "entry": entry_arg}
+        path = Path(binary).expanduser()
+        if not path.is_file():
+            raise RuntimeError(f"Binary not found: {binary}")
+        cached = None if force else self._cached(path, options)
+        if cached:
+            return cached
         key, staged, staging = self._stage(binary)
         marker = self.projects / f"{key}{ANALYZED_SUFFIX}"
         marker.unlink(missing_ok=True)  # a failed re-analysis must not leave the old "analyzed" claim behind
@@ -251,9 +270,10 @@ class GhidraBackend:
                 )
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-        marker.write_text("")
         # Ghidra ends a timed-out analysis with exit 0 and a partial result, so say so.
-        return {"key": key, **info, "analysis_timed_out": "Analysis timed out" in log}
+        timed_out = "Analysis timed out" in log
+        marker.write_text(json.dumps({"options": options, "timed_out": timed_out, "info": info}), encoding="utf-8")
+        return {"key": key, **info, "analysis_timed_out": timed_out, "cached": False}
 
     def query(self, binary: str, command: str, target: str | None = None, timeout: int | None = None) -> Any:
         timeout = timeout or self.query_timeout
