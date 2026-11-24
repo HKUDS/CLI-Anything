@@ -124,7 +124,10 @@ def test_usage_error_in_json_mode_is_json_on_stdout():
 
 
 def _real_binary():
-    """A small binary every machine has: find.exe on Windows, `true` elsewhere."""
+    """CLI_ANYTHING_GHIDRA_TEST_BINARY (any size, any OS), else a small binary every machine has:
+    find.exe on Windows, `true` elsewhere."""
+    if os.environ.get("CLI_ANYTHING_GHIDRA_TEST_BINARY"):
+        return Path(os.environ["CLI_ANYTHING_GHIDRA_TEST_BINARY"])
     if sys.platform == "win32":
         return Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "find.exe"
     return Path(shutil.which("true") or "/bin/true")
@@ -159,6 +162,18 @@ def test_live_real_binary_queries_return_real_data(real_analyzed):
     assert isinstance(imports, list) and (sys.platform != "win32" or imports)
     strings = json.loads(run_cli("--json", "strings", str(binary), "--limit", "5", env_extra=env).stdout)
     assert isinstance(strings, list) and len(strings) <= 5
+
+
+@live
+def test_live_biggest_function_decompiles_and_xrefs_work(real_analyzed):
+    binary, env, _ = real_analyzed
+    funcs = json.loads(run_cli("--json", "functions", str(binary), env_extra=env).stdout)
+    big = max(funcs, key=lambda f: f["size"])
+    dec = run_cli("--json", "decompile", str(binary), big["address"], env_extra=env, timeout=900)
+    assert dec.returncode == 0, dec.stdout
+    assert "{" in json.loads(dec.stdout)["c"]
+    refs = json.loads(run_cli("--json", "xrefs", str(binary), big["address"], env_extra=env).stdout)
+    assert refs["truncated"] is False and isinstance(refs["references"], list)
 
 
 @live

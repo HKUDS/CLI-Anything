@@ -218,6 +218,15 @@ def _private_dir(path: Path) -> Path:
     return path
 
 
+def _own_dir(path: Path) -> Path:
+    """Create one of this tool's own work folders (never the user-chosen base) and keep it owner-only on POSIX:
+    imported binaries and analysis must not be readable by other local users."""
+    path.mkdir(parents=True, exist_ok=True)
+    if not IS_WINDOWS and path.stat().st_uid == os.getuid():
+        path.chmod(0o700)
+    return path
+
+
 def _fallback_home() -> Path | None:
     """An ASCII-safe work folder for a profile path Ghidra cannot take, or None when there is none.
 
@@ -290,9 +299,7 @@ class GhidraBackend:
         self.ghidra = ghidra_version(self.launcher)
         self.home = home or work_home()
         self.projects = self.home / "projects"
-        self.projects.mkdir(parents=True, exist_ok=True)
-        if not IS_WINDOWS and self.home.stat().st_uid == os.getuid():
-            self.home.chmod(0o700)  # imported binaries and analysis must not be readable by other local users
+        _own_dir(self.projects)
 
     def _env(self) -> dict:
         env = dict(os.environ)
@@ -306,7 +313,7 @@ class GhidraBackend:
 
     def _scratch(self) -> "tempfile.TemporaryDirectory":
         scratch = self.home / "tmp"
-        scratch.mkdir(parents=True, exist_ok=True)
+        _own_dir(scratch)
         return tempfile.TemporaryDirectory(dir=scratch)
 
     @staticmethod
@@ -384,7 +391,7 @@ class GhidraBackend:
         if not path.is_file():
             raise RuntimeError(f"Binary not found: {binary}")
         inputs = self.home / "inputs"
-        inputs.mkdir(parents=True, exist_ok=True)
+        _own_dir(inputs)
         staging = Path(tempfile.mkdtemp(dir=inputs))
         try:
             incoming = staging / "incoming"
@@ -402,7 +409,7 @@ class GhidraBackend:
         """Serialize runs on one binary. Ghidra locks the project even for read-only queries, so a parallel
         call would fail with "Unable to lock project"; here it waits up to `wait` seconds for the other run."""
         locks = self.home / "locks"  # not in the project folder: Ghidra's own project lock is <name>.lock there
-        locks.mkdir(parents=True, exist_ok=True)
+        _own_dir(locks)
         handle = open(locks / f"{key}.lock", "a+b")
         try:
             if handle.seek(0, 2) == 0:  # the lock needs one byte to lock

@@ -359,12 +359,18 @@ def test_stage_hashes_the_copy_and_uses_a_private_folder(be, sample):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-def test_work_home_is_private_even_when_it_already_exists(install, tmp_path, monkeypatch):
+def test_tool_folders_are_private_but_the_chosen_base_is_left_alone(install, tmp_path, monkeypatch):
     monkeypatch.setattr(backend, "IS_WINDOWS", False)
     home = tmp_path / "work"
-    home.mkdir(mode=0o755)
-    os.chmod(home, 0o755)  # umask-independent
-    assert stat.S_IMODE(GhidraBackend(home=home).home.stat().st_mode) == 0o700
+    home.mkdir()
+    os.chmod(home, 0o755)
+    (home / "projects").mkdir()
+    os.chmod(home / "projects", 0o755)  # left over from an older run, umask-independent
+    be = GhidraBackend(home=home)
+    be._scratch().cleanup()
+    assert stat.S_IMODE(home.stat().st_mode) == 0o755
+    for name in ("projects", "tmp"):
+        assert stat.S_IMODE((home / name).stat().st_mode) == 0o700
 
 
 def test_java_home_override_only_in_child_env(be, sample, monkeypatch):
