@@ -165,6 +165,19 @@ def test_live_real_binary_queries_return_real_data(real_analyzed):
 
 
 @live
+def test_live_filter_and_limit_are_applied_inside_ghidra(real_analyzed):
+    binary, env, _ = real_analyzed
+    funcs = json.loads(run_cli("--json", "functions", str(binary), env_extra=env).stdout)
+    word = funcs[0]["name"][:3].upper()  # case-insensitive substring
+    hits = json.loads(run_cli("--json", "functions", str(binary), "--filter", word, env_extra=env).stdout)
+    assert hits and all(word.lower() in f["name"].lower() for f in hits)
+    assert len(json.loads(run_cli("--json", "functions", str(binary), "--limit", "1", env_extra=env).stdout)) == 1
+    nothing = json.loads(run_cli("--json", "functions", str(binary), "--filter", "no such \\ name\"", env_extra=env).stdout)
+    assert nothing == []
+    assert len(json.loads(run_cli("--json", "strings", str(binary), "--limit", "2", env_extra=env).stdout)) <= 2
+
+
+@live
 def test_live_biggest_function_decompiles_and_xrefs_work(real_analyzed):
     binary, env, _ = real_analyzed
     funcs = json.loads(run_cli("--json", "functions", str(binary), env_extra=env).stdout)

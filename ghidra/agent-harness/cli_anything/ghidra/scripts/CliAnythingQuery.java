@@ -1,9 +1,11 @@
 // Headless post-script for cli-anything-ghidra.
 // Args: <command> <output json path> [argument]
-// Commands: info [entry], functions, decompile <name|addr>, strings [min length], imports, xrefs <name|addr>
+// Commands: info [entry], functions|strings|imports [options file], decompile <name|addr>, xrefs <name|addr>
 // Results are written as JSON to the output path; stdout is Ghidra log noise and is never parsed.
 
 import java.io.File;
+import java.io.Reader;
+import java.util.Properties;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -37,14 +39,30 @@ public class CliAnythingQuery extends GhidraScript {
         String json;
         switch (command) {
             case "info": json = info(arg); break;
-            case "functions": json = functions(); break;
+            case "functions": json = functions(options(arg)); break;
             case "decompile": json = decompile(arg, seconds); break;
-            case "strings": json = strings(arg.isEmpty() ? 1 : Integer.parseInt(arg)); break;
-            case "imports": json = imports(); break;
+            case "strings": json = strings(options(arg)); break;
+            case "imports": json = imports(options(arg)); break;
             case "xrefs": json = xrefs(arg); break;
             default: throw new IllegalArgumentException("unknown command: " + command);
         }
         Files.write(new File(a[1]).toPath(), json.getBytes(StandardCharsets.UTF_8));
+    }
+
+    // filter/limit/min come in a properties file (never on the command line, where cmd.exe would parse them)
+    private Properties options(String path) throws Exception {
+        Properties p = new Properties();
+        if (!path.isEmpty()) {
+            try (Reader r = Files.newBufferedReader(new File(path).toPath(), StandardCharsets.UTF_8)) {
+                p.load(r);
+            }
+        }
+        return p;
+    }
+
+    private static int number(Properties p, String key, int fallback) {
+        String v = p.getProperty(key, "");
+        return v.isEmpty() ? fallback : Integer.parseInt(v);
     }
 
     private String info(String entry) throws Exception {
@@ -73,15 +91,22 @@ public class CliAnythingQuery extends GhidraScript {
         return n;
     }
 
-    private String functions() {
-        List<String> items = new ArrayList<>();
+    private String functions(Properties o) {
+        String filter = o.getProperty("filter", "").toLowerCase();
+        int limit = number(o, "limit", 0);
+        StringBuilder out = new StringBuilder("[");
+        int n = 0;
         FunctionIterator it = currentProgram.getListing().getFunctions(true);
-        while (it.hasNext()) {
+        while (it.hasNext() && (limit == 0 || n < limit)) {
             Function f = it.next();
-            items.add("{\"name\":" + q(f.getName()) + ",\"address\":" + q(f.getEntryPoint().toString())
-                + ",\"size\":" + f.getBody().getNumAddresses() + "}");
+            if (!filter.isEmpty() && !f.getName().toLowerCase().contains(filter)) {
+                continue;
+            }
+            out.append(n++ == 0 ? "" : ",").append("{\"name\":").append(q(f.getName()))
+                .append(",\"address\":").append(q(f.getEntryPoint().toString()))
+                .append(",\"size\":").append(f.getBody().getNumAddresses()).append("}");
         }
-        return "[" + String.join(",", items) + "]";
+        return out.append("]").toString();
     }
 
     private Function findFunction(String target) {
@@ -122,32 +147,41 @@ public class CliAnythingQuery extends GhidraScript {
         }
     }
 
-    private String strings(int minLength) {  // the length filter runs here, before any --limit
-        List<String> items = new ArrayList<>();
+    private String strings(Properties o) {
+        int minLength = number(o, "min", 1);
+        int limit = number(o, "limit", 0);
+        StringBuilder out = new StringBuilder("[");
+        int n = 0;
         for (Data d : currentProgram.getListing().getDefinedData(true)) {
+            if (limit != 0 && n >= limit) {
+                break;
+            }
             StringDataInstance s = StringDataInstance.getStringDataInstance(d);
             if (s != null && s != StringDataInstance.NULL_INSTANCE) {
                 String value = s.getStringValue();
                 if (value == null || value.length() < minLength) {  // null: a string in uninitialized memory
                     continue;
                 }
-                items.add("{\"address\":" + q(d.getAddress().toString()) + ",\"length\":" + value.length()
-                    + ",\"value\":" + q(value) + "}");
+                out.append(n++ == 0 ? "" : ",").append("{\"address\":").append(q(d.getAddress().toString()))
+                    .append(",\"length\":").append(value.length()).append(",\"value\":").append(q(value)).append("}");
             }
         }
-        return "[" + String.join(",", items) + "]";
+        return out.append("]").toString();
     }
 
-    private String imports() {
-        List<String> items = new ArrayList<>();
+    private String imports(Properties o) {
+        int limit = number(o, "limit", 0);
+        StringBuilder out = new StringBuilder("[");
+        int n = 0;
         for (String lib : currentProgram.getExternalManager().getExternalLibraryNames()) {
             var locations = currentProgram.getExternalManager().getExternalLocations(lib);
-            while (locations.hasNext()) {
+            while (locations.hasNext() && (limit == 0 || n < limit)) {
                 ExternalLocation loc = locations.next();
-                items.add("{\"library\":" + q(lib) + ",\"name\":" + q(loc.getLabel()) + "}");
+                out.append(n++ == 0 ? "" : ",").append("{\"library\":").append(q(lib))
+                    .append(",\"name\":").append(q(loc.getLabel())).append("}");
             }
         }
-        return "[" + String.join(",", items) + "]";
+        return out.append("]").toString();
     }
 
     private String xrefs(String target) {

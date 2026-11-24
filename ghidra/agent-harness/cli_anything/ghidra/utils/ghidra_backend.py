@@ -499,7 +499,8 @@ class GhidraBackend:
             shutil.rmtree(staging, ignore_errors=True)
         return {"key": key, **info, "analysis_timed_out": timed_out, "cached": False}
 
-    def query(self, binary: str, command: str, target: str | None = None, timeout: int | None = None) -> Any:
+    def query(self, binary: str, command: str, target: str | None = None, timeout: int | None = None,
+              options: dict | None = None) -> Any:
         timeout = timeout or self.query_timeout
         path = Path(binary).expanduser()
         if not path.is_file():
@@ -513,6 +514,12 @@ class GhidraBackend:
                 raise RuntimeError(f"{binary} has not been analyzed yet. Run: cli-anything-ghidra analyze {binary}")
             with self._scratch() as tmp:
                 out = Path(tmp) / "out.json"
+                if options:  # filter/limit go in a file: free text must never reach the (cmd.exe) command line
+                    opts = Path(tmp) / "options.properties"
+                    opts.write_text("".join(
+                        f"{k}={str(v).replace(chr(92), chr(92) * 2).replace(chr(10), chr(92) + 'n').replace(chr(13), chr(92) + 'r')}\n"
+                        for k, v in options.items() if v not in (None, "", 0)), encoding="utf-8")
+                    extra = [str(opts)]
                 data, _ = self._run(
                     [key, "-process", f"{key}.bin", "-noanalysis", "-readOnly",
                      "-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, command, str(out)] + extra,

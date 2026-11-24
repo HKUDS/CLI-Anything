@@ -938,7 +938,7 @@ def test_strings_pass_the_min_length_to_the_collector():
     b = MagicMock()
     b.query.return_value = [{"length": 9, "value": "x" * 9}]
     assert len(queries.list_strings(b, "x.bin", 8)) == 1
-    b.query.assert_called_once_with("x.bin", "strings", "8")
+    b.query.assert_called_once_with("x.bin", "strings", options={"min": 8, "limit": 0})
 
 
 # --- the work folder must work for every user name, not only the author's ---
