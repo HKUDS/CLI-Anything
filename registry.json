@@ -466,6 +466,25 @@
       ]
     },
     {
+      "name": "ghidra",
+      "display_name": "Ghidra",
+      "version": "1.0.0",
+      "description": "Headless reverse engineering via Ghidra: analyze binaries once, then list functions, decompile to C, extract strings and imports, and trace cross-references as JSON (the target is never executed)",
+      "requires": "Ghidra 12.x (GHIDRA_INSTALL_DIR) and JDK 25+",
+      "homepage": "https://ghidra-sre.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ghidra/agent-harness",
+      "entry_point": "cli-anything-ghidra",
+      "skill_md": "skills/cli-anything-ghidra/SKILL.md",
+      "category": "debugging",
+      "contributors": [
+        {
+          "name": "Krinxy",
+          "url": "https://github.com/Krinxy"
+        }
+      ]
+    },
+    {
       "name": "zotero",
       "display_name": "Zotero",
       "version": "0.4.1",
