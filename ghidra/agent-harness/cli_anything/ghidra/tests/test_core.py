@@ -23,6 +23,11 @@ from cli_anything.ghidra.utils.ghidra_backend import (
 LAUNCHER_NAME = "analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless"
 
 
+@pytest.fixture(autouse=True)
+def windows_path_rules(monkeypatch):
+    monkeypatch.setattr(backend, "IS_WINDOWS", True)
+
+
 @pytest.fixture
 def install(tmp_path, monkeypatch):
     support = tmp_path / "ghidra" / "support"
@@ -48,13 +53,17 @@ def sample(tmp_path):
 class FakeProc:
     """subprocess.Popen stand-in: writes the post-script's JSON output when communicate() is called."""
 
-    def __init__(self, cmd, kwargs, payload, stdout, returncode, hang):
+    def __init__(self, cmd, kwargs, payload, stdout, returncode, hang, interrupt=False):
         self.cmd, self.kwargs, self.payload, self.stdout = cmd, kwargs, payload, stdout
         self.returncode, self.hang, self.pid, self.timed_out = returncode, hang, 4242, False
+        self.interrupt = interrupt
 
     def communicate(self, timeout=None):
         if timeout is not None:
             self.kwargs["timeout"] = timeout
+        if self.interrupt and not self.timed_out:
+            self.timed_out = True
+            raise KeyboardInterrupt
         if self.hang and not self.timed_out:
             self.timed_out = True
             raise subprocess.TimeoutExpired(self.cmd, timeout)
@@ -65,11 +74,11 @@ class FakeProc:
         return self.stdout, ""
 
 
-def fake_popen(payload, calls, stdout="", returncode=0, hang=False):
+def fake_popen(payload, calls, stdout="", returncode=0, hang=False, interrupt=False):
     """Popen factory that records every launch in `calls` and keeps the created procs in `.procs`."""
     def popen(cmd, **kwargs):
         calls.append((cmd, kwargs))
-        proc = FakeProc(cmd, kwargs, payload, stdout, returncode, hang)
+        proc = FakeProc(cmd, kwargs, payload, stdout, returncode, hang, interrupt)
         popen.procs.append(proc)
         return proc
     popen.procs = []
@@ -195,7 +204,7 @@ def test_analyze_missing_binary(be):
 
 def analyzed(be, sample):
     be.projects.mkdir(parents=True, exist_ok=True)
-    (be.projects / f"{file_key(sample)}.gpr").write_text("")
+    (be.projects / f"{file_key(sample)}.analyzed").write_text("")
 
 
 def test_query_requires_analysis(be, sample):
@@ -212,7 +221,7 @@ def test_query_command_is_read_only_and_no_reanalysis(be, sample):
     for flag in ("-noanalysis", "-readOnly"):
         assert flag in cmd
     assert cmd[cmd.index("-process") + 1] == f"{file_key(sample)}.bin"
-    assert cmd[-1] == "main" and cmd[cmd.index("-postScript") + 2] == "decompile"
+    assert cmd[-2:] == ["main", "270"] and cmd[cmd.index("-postScript") + 2] == "decompile"
     assert not calls[0][1].get("shell")
 
 
@@ -262,7 +271,10 @@ def test_launcher_gets_its_own_process_group(be, sample):
     with patch.object(backend.subprocess, "Popen", side_effect=fake_popen({}, calls)):
         be.query(str(sample), "info")
     kwargs = calls[0][1]
-    assert kwargs.get("start_new_session") is True or "creationflags" in kwargs
+    if os.name == "nt":
+        assert "creationflags" in kwargs and "start_new_session" not in kwargs
+    else:
+        assert kwargs["start_new_session"] is True and "creationflags" not in kwargs
 
 
 def _alive(pid):
@@ -311,7 +323,7 @@ def test_unsafe_work_folder_is_refused_before_launch(install, tmp_path, sample, 
     be = GhidraBackend(home=tmp_path / "home")
     be.projects = tmp_path / f"work{bad}x"
     be.projects.mkdir(parents=True)
-    (be.projects / f"{file_key(sample)}.gpr").write_text("")
+    (be.projects / f"{file_key(sample)}.analyzed").write_text("")
     with patch.object(backend.subprocess, "Popen") as popen:
         with pytest.raises(RuntimeError, match="cannot take"):
             be.query(str(sample), "info")
@@ -322,7 +334,7 @@ def test_spaces_in_paths_are_fine(be, sample, tmp_path):
     odd = tmp_path / "Program Files" / "my work"
     odd.mkdir(parents=True)
     be.projects = odd
-    (odd / f"{file_key(sample)}.gpr").write_text("")
+    (odd / f"{file_key(sample)}.analyzed").write_text("")
     with patch.object(backend.subprocess, "Popen", side_effect=fake_popen({}, [])):
         assert be.query(str(sample), "info") == {}
 
@@ -519,3 +531,131 @@ def test_parentheses_are_refused_with_or_without_spaces(path):
 @pytest.mark.parametrize("path", ["C:/Program Files/work", "C:/plain/home", "C:/my dir/home"])
 def test_plain_and_space_paths_are_accepted(path):
     assert backend.check_path(path, "work folder") == path
+
+
+# --- review round: Ctrl-C, analyzed marker, timeouts, hints, platform rules ---
+
+def test_ctrl_c_stops_the_launcher_tree_and_propagates(be, sample):
+    analyzed(be, sample)
+    fake = fake_popen(None, [], interrupt=True)
+    with patch.object(backend.subprocess, "Popen", side_effect=fake), patch.object(backend, "_kill_tree") as kill:
+        with pytest.raises(KeyboardInterrupt):
+            be.query(str(sample), "info")
+    kill.assert_called_once_with(fake.procs[0])
+
+
+def test_stubborn_child_is_killed_instead_of_waiting_forever():
+    proc = MagicMock()
+    proc.communicate.side_effect = [subprocess.TimeoutExpired("x", 10), ("", "")]
+    with patch.object(backend, "_kill_tree"):
+        GhidraBackend._stop(proc)
+    proc.kill.assert_called_once()
+
+
+def test_project_file_alone_does_not_count_as_analyzed(be, sample):
+    be.projects.mkdir(parents=True, exist_ok=True)
+    (be.projects / f"{file_key(sample)}.gpr").write_text("")  # what a failed import leaves behind
+    with pytest.raises(RuntimeError, match="not been analyzed"):
+        be.query(str(sample), "info")
+
+
+def test_analyze_writes_the_marker_and_a_failed_one_removes_it(be, sample):
+    marker = be.projects / f"{file_key(sample)}.analyzed"
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen({"functions": 1}, [])):
+        result = be.analyze(str(sample))
+    assert marker.is_file() and result["analysis_timed_out"] is False
+    failing = fake_popen(None, [], stdout="ERROR REPORT: Import failed")
+    with patch.object(backend.subprocess, "Popen", side_effect=failing):
+        with pytest.raises(RuntimeError):
+            be.analyze(str(sample))
+    assert not marker.exists()  # the stale claim is gone
+
+
+def test_timed_out_analysis_is_flagged_not_reported_as_plain_success(be, sample):
+    log = "ERROR REPORT: Analysis timed out at 3 seconds. Processing not completed for file: x"
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen({"functions": 7}, [], stdout=log)):
+        result = be.analyze(str(sample), timeout=3)
+    assert result["analysis_timed_out"] is True and result["functions"] == 7
+
+
+def test_unknown_format_gets_the_loader_hint(be, sample):
+    log = "INFO  No load spec found for import file: x.bin (ProgramLoader)\nERROR REPORT: Import failed"
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(None, [], stdout=log)):
+        with pytest.raises(RuntimeError, match="--loader BinaryLoader"):
+            be.analyze(str(sample))
+
+
+def test_busy_project_gets_a_retry_message(be, sample):
+    analyzed(be, sample)
+    log = "ERROR Unable to lock project! file:///x/projects"
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(None, [], stdout=log)):
+        with pytest.raises(RuntimeError, match="busy"):
+            be.query(str(sample), "info")
+
+
+def test_decompile_gets_its_own_budget_from_the_query_timeout(be, sample):
+    analyzed(be, sample)
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen({}, calls)):
+        be.query(str(sample), "decompile", "main", timeout=300)
+        be.query(str(sample), "functions", timeout=300)
+    assert calls[0][0][-2:] == ["main", "270"]
+    assert "functions" in calls[1][0] and "270" not in calls[1][0]
+
+
+@pytest.mark.parametrize("good", ["ram:00401000", "CODE:0040", "Foo::bar", "mem:0x10"])
+def test_targets_may_name_an_address_space(good):
+    assert backend.check(good, backend._TARGET, "target") == good
+
+
+def test_posix_launcher_only_refuses_control_characters(monkeypatch):
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    assert backend.check_path("/home/me/Projects (old)/a&b/%x!", "work folder")
+    with pytest.raises(RuntimeError, match="newline or NUL"):
+        backend.check_path("/tmp/a" + chr(10) + "b", "work folder")
+
+
+def test_non_ascii_output_never_crashes_on_a_legacy_console(monkeypatch):
+    import io
+    from cli_anything.ghidra import ghidra_cli
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stream)
+    ghidra_cli._safe_streams()
+    print("int \u4e2d\u6587 = 1; // caf\u00e9")
+    stream.flush()
+    assert (chr(92) + "u4e2d").encode() in raw.getvalue() and "caf".encode() in raw.getvalue()
+
+
+def test_plain_xrefs_output_is_json_not_a_python_repr(capsys):
+    from cli_anything.ghidra import ghidra_cli
+    ghidra_cli.output({"target": "0", "references": [{"from": "1", "function": None}]}, False)
+    out = capsys.readouterr().out
+    assert 'null' in out and "None" not in out and out.startswith("target: 0")
+
+
+def test_abort_in_json_mode_is_json(monkeypatch, capsys):
+    with patch("cli_anything.ghidra.ghidra_cli.cli", side_effect=click_abort()):
+        code, out, _ = run_main(monkeypatch, capsys, "--json", "info", "x.bin")
+    assert code == 1 and json.loads(out) == {"error": "Aborted."}
+
+
+def click_abort():
+    import click
+    return click.Abort()
+
+
+@pytest.mark.parametrize("line,expected", [
+    ('functions x.bin --filter="my func"', ["functions", "x.bin", "--filter=my func"]),
+    ("functions x.bin --filter=main", ["functions", "x.bin", "--filter=main"]),
+    (r"info C:\Users\O'Brien\a.exe", ["info", r"C:\Users\O'Brien\a.exe"]),
+    ('xrefs "x y.bin" ""', ["xrefs", "x y.bin", ""]),
+    ("  info   x.bin  ", ["info", "x.bin"]),
+])
+def test_repl_split_handles_quoted_option_values(line, expected):
+    assert split_line(line) == expected
+
+
+def test_repl_split_reports_an_unbalanced_quote():
+    with pytest.raises(ValueError):
+        split_line('info "C:/a b/x.exe')

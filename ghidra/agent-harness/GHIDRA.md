@@ -28,7 +28,9 @@ Ghidra is the NSA's open-source reverse-engineering suite (disassembler, decompi
 | `imports BINARY` | `imports` |
 | `xrefs BINARY TARGET` | `xrefs` (symbol or address) |
 
-Every command supports `--json`. Running with no subcommand starts the REPL.
+Every command supports `--json`. Running with no subcommand starts the REPL. Root options: `--json` and `--query-timeout SEC` (default 300; the decompiler gets that minus 30 s as its own budget).
+
+`analyze` returns `analysis_timed_out`. Ghidra ends a timed-out analysis with exit 0 and a partial result, so the harness reads its log and flags it; the partial result stays queryable. A binary counts as analyzed only after a successful `analyze` (a marker file), never just because a project exists, because a failed import also leaves one.
 
 Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoader --processor x86:LE:64:default`, and `--entry <addr>` to create a function where execution starts.
 
@@ -36,7 +38,7 @@ Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoade
 
 - **The target binary is never executed.** It is read, hashed and copied.
 - **Windows `.bat` injection (BatBadBut):** `analyzeHeadless.bat` runs through `cmd.exe` even for list-form `subprocess`. Every user string that reaches the command line (function/symbol target, loader, processor, entry address) is checked against a strict allowlist, so `&`, `|`, `%`, `^`, quotes, spaces and a leading `-` are rejected. The input binary is staged as `<hash>.bin`, so its own (possibly attacker-chosen) filename never appears on the command line.
-- Paths that reach the command line (work folder, script folder, scratch folder, launcher) are refused if they contain `& | < > ^ % !` or a quote, so a folder such as `R&D` cannot split the command line either. Spaces are fine. Parentheses are refused too: the Ghidra launcher script exits with code 255 on them, even in a quoted path.
+- Paths that reach the command line (work folder, script folder, scratch folder, launcher) are refused on Windows if they contain `& | < > ^ % !` or a quote (on POSIX only newline and NUL are refused), so a folder such as `R&D` cannot split the command line either. Spaces are fine. Parentheses are refused too: the Ghidra launcher script exits with code 255 on them, even in a quoted path.
 - No shell is used, stdin is `DEVNULL` (Ghidra's launcher can prompt for a JDK and would hang), and every run has a timeout. On timeout the whole process tree is killed, because killing only the `.bat` would leave `java.exe` running and holding the project lock.
 - Each analysis stages its input in a private folder and hashes the staged copy, so parallel runs on the same binary cannot delete each other's input.
 
@@ -45,6 +47,8 @@ Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoade
 There is no session file and no undo: the Ghidra project under `~/cli-anything-ghidra/projects` is the persisted state (one analyzed program per binary content), and every query is read-only.
 
 ## Known limits
+
+- Two runs on the same binary at once can find the project locked; the second one answers "busy, retry" instead of waiting.
 
 - Analysis is only as good as Ghidra's analyzers; decompiler output is not guaranteed to compile.
 - Queries are read-only: no renaming, retyping or patching.

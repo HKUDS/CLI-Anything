@@ -35,7 +35,7 @@ cli-anything-ghidra --json xrefs BINARY TARGET
 
 | Command | Purpose |
 |---------|---------|
-| `analyze` | Import and analyze once per binary (can take minutes); returns format, language, function count |
+| `analyze` | Import and analyze once per binary (can take minutes); returns format, language, function count and `analysis_timed_out` |
 | `info` | Format, language, image base, function and symbol counts |
 | `functions` | Name, address and size of every function |
 | `decompile` | C pseudo-code for a function by name or address |
@@ -49,5 +49,9 @@ cli-anything-ghidra --json xrefs BINARY TARGET
 - A typical triage: `info` -> `functions --filter` -> `decompile` of interesting functions -> `xrefs` to find callers -> `strings` / `imports` for behavior hints.
 - Raw binaries (firmware, shellcode) need `--loader BinaryLoader --processor <lang id>` and `--entry <addr>`; without an entry no function exists to decompile.
 - `TARGET`, `--loader`, `--processor` and `--entry` accept only a strict character set (names, hex addresses, language IDs). A rejection is deliberate (Windows `.bat` injection defense), not a bug.
-- Each query takes about 10 seconds because Ghidra starts per call; batch your questions.
+- Each query takes about 10 seconds because Ghidra starts per call; batch your questions. Root options go before the command: `--json`, and `--query-timeout SEC` (default 300) for slow queries, which also sets the decompiler's own budget.
+- If `analyze` returns `"analysis_timed_out": true`, Ghidra stopped at `--timeout` and the result is partial. Queries still work on it; re-run `analyze` with a larger `--timeout` for the full analysis.
+- `analyze` on a file Ghidra does not recognize fails with a hint: raw firmware needs `--loader BinaryLoader --processor <language id>`.
+- A query that fails with "busy" found the project locked by another run on the same binary; retry in a moment.
+- `TARGET` may be a name, a hex address or an address-space address such as `ram:00401000`.
 - Never execute the analyzed binary. Treat decompiler output as a hint, not ground truth.

@@ -33,11 +33,12 @@ public class CliAnythingQuery extends GhidraScript {
         }
         String command = a[0];
         String arg = a.length > 2 ? a[2] : "";
+        int seconds = a.length > 3 ? Integer.parseInt(a[3]) : 60;  // decompiler budget, set by the CLI
         String json;
         switch (command) {
             case "info": json = info(arg); break;
             case "functions": json = functions(); break;
-            case "decompile": json = decompile(arg); break;
+            case "decompile": json = decompile(arg, seconds); break;
             case "strings": json = strings(); break;
             case "imports": json = imports(); break;
             case "xrefs": json = xrefs(arg); break;
@@ -50,10 +51,11 @@ public class CliAnythingQuery extends GhidraScript {
         if (!entry.isEmpty()) {
             Address at = toAddr(entry);
             disassemble(at);
-            createFunction(at, null);
+            if (createFunction(at, null) == null) {
+                throw new IllegalStateException("could not create a function at " + entry);
+            }
         }
-        return "{\"name\":" + q(currentProgram.getName())
-            + ",\"format\":" + q(currentProgram.getExecutableFormat())
+        return "{\"format\":" + q(currentProgram.getExecutableFormat())
             + ",\"language\":" + q(currentProgram.getLanguageID().toString())
             + ",\"compiler\":" + q(currentProgram.getCompilerSpec().getCompilerSpecID().toString())
             + ",\"image_base\":" + q(currentProgram.getImageBase().toString())
@@ -91,7 +93,7 @@ public class CliAnythingQuery extends GhidraScript {
         return at == null ? null : getFunctionContaining(at);
     }
 
-    private String decompile(String target) throws Exception {
+    private String decompile(String target, int seconds) throws Exception {
         Function f = findFunction(target);
         if (f == null) {
             throw new IllegalArgumentException("no function named or containing " + target);
@@ -99,7 +101,7 @@ public class CliAnythingQuery extends GhidraScript {
         DecompInterface decompiler = new DecompInterface();
         try {
             decompiler.openProgram(currentProgram);
-            DecompileResults r = decompiler.decompileFunction(f, 60, monitor);
+            DecompileResults r = decompiler.decompileFunction(f, seconds, monitor);
             if (!r.decompileCompleted()) {
                 throw new IllegalStateException("decompile failed: " + r.getErrorMessage());
             }
@@ -116,6 +118,9 @@ public class CliAnythingQuery extends GhidraScript {
             StringDataInstance s = StringDataInstance.getStringDataInstance(d);
             if (s != null && s != StringDataInstance.NULL_INSTANCE && items.size() < MAX_ITEMS) {
                 String value = s.getStringValue();
+                if (value == null) {  // a defined string in uninitialized memory has no value
+                    continue;
+                }
                 items.add("{\"address\":" + q(d.getAddress().toString()) + ",\"length\":" + value.length()
                     + ",\"value\":" + q(value) + "}");
             }

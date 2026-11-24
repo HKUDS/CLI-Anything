@@ -36,12 +36,15 @@ DEFAULT_ANALYSIS_TIMEOUT = 600
 QUERY_TIMEOUT = 300
 
 
-_TARGET = re.compile(r"^[A-Za-z0-9_.$@?][A-Za-z0-9_.$@?-]{0,199}$")
+_TARGET = re.compile(r"^[A-Za-z0-9_.$@?][A-Za-z0-9_.$@?:-]{0,199}$")  # ":" for spaces like ram:00401000
 _ADDRESS = re.compile(r"^(0x)?[0-9a-fA-F]{1,16}$")
 _LOADER = re.compile(r"^[A-Za-z0-9_]{1,60}$")
 _PROCESSOR = re.compile(r"^[A-Za-z0-9_.+-]+:(LE|BE):\d+:[A-Za-z0-9_.+-]+$")
 
-_PATH_UNSAFE = frozenset('&|<>^%!()"' + chr(10) + chr(13) + chr(0))
+IS_WINDOWS = os.name == "nt"
+ANALYZED_SUFFIX = ".analyzed"  # marker written only after a successful analyze: a .gpr alone proves nothing
+_CONTROL = frozenset(chr(10) + chr(13) + chr(0))
+_PATH_UNSAFE = frozenset('&|<>^%!()"') | _CONTROL
 
 INSTALL_HELP = (
     f"Ghidra not found. Download Ghidra 12.x from https://github.com/NationalSecurityAgency/ghidra/releases, "
@@ -59,14 +62,21 @@ def check(value: str, pattern: "re.Pattern[str]", what: str) -> str:
 
 
 def check_path(path: Path | str, what: str) -> Path | str:
-    """Refuse paths that cmd.exe would split or expand, or that the launcher script cannot take."""
+    """Refuse paths the launcher cannot take.
+
+    On Windows the launcher is a .bat run by cmd.exe, which splits or expands & | < > ^ % ! and quotes,
+    and the script itself exits with 255 on parentheses. On POSIX it is a shell script started without
+    a shell, so only newline, CR and NUL are refused.
+    """
     text = str(path)
-    if any(c in _PATH_UNSAFE for c in text):
+    if IS_WINDOWS and any(c in _PATH_UNSAFE for c in text):
         raise RuntimeError(
             f"The {what} {text!r} contains a character that cmd.exe or the Ghidra launcher "
             "script cannot take (& | < > ^ % ! ( ) or a quote). "
             f"Use another folder (for the work folder set {HOME_ENV})."
         )
+    if any(c in _CONTROL for c in text):
+        raise RuntimeError(f"The {what} contains a newline or NUL character.")
     return path
 
 
@@ -144,7 +154,17 @@ class GhidraBackend:
         scratch.mkdir(parents=True, exist_ok=True)
         return tempfile.TemporaryDirectory(dir=scratch)
 
-    def _run(self, args: list, output: Path, timeout: int) -> Any:
+    @staticmethod
+    def _stop(proc: "subprocess.Popen") -> None:
+        """Kill the launcher's whole tree and reap it; never wait forever for a stubborn child."""
+        _kill_tree(proc)
+        try:
+            proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+    def _run(self, args: list, output: Path, timeout: int) -> tuple:
+        """Run the launcher; returns (data from the post-script's JSON file, Ghidra's log text)."""
         for what, path in (("Ghidra launcher", self.launcher), ("work folder", self.projects),
                            ("script folder", SCRIPTS_DIR), ("scratch folder", output.parent)):
             check_path(path, what)
@@ -159,13 +179,15 @@ class GhidraBackend:
         try:
             stdout, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-            proc.communicate()
+            self._stop(proc)
             raise RuntimeError(f"Ghidra timed out after {timeout}s. Raise --timeout or analyze a smaller binary.")
+        except BaseException:  # Ctrl-C and friends: the launcher has its own process group, so stop it here
+            self._stop(proc)
+            raise
         if not output.is_file():
             raise RuntimeError(self._failure(subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)))
         try:
-            return json.loads(output.read_text(encoding="utf-8"))
+            return json.loads(output.read_text(encoding="utf-8")), (stdout or "") + (stderr or "")
         except ValueError:
             raise RuntimeError("Ghidra left an unreadable result file (killed mid-write?). Run the command again.")
 
@@ -174,6 +196,11 @@ class GhidraBackend:
         text = (proc.stdout or "") + (proc.stderr or "")
         if "JDK" in text and "could not be found" in text:
             return f"Ghidra could not find a supported JDK (12.x needs 25+). Set {JAVA_ENV} to a JDK 25+ folder."
+        if "No load spec found" in text:
+            return ("Ghidra does not recognize the file format. For raw firmware or shellcode pass "
+                    "--loader BinaryLoader --processor <language id, e.g. x86:LE:64:default>.")
+        if "lock" in text.lower():
+            return "The Ghidra project for this binary is busy (another analyze or query runs). Retry in a moment."
         lines = [ln.strip() for ln in text.splitlines() if "ERROR" in ln or "Exception" in ln]
         detail = " | ".join(ln[:200] for ln in lines[:3]) or "no output file was produced"
         return f"Ghidra failed (exit {proc.returncode}): {detail}"
@@ -210,10 +237,12 @@ class GhidraBackend:
             args_extra += ["-processor", check(processor, _PROCESSOR, "processor")]
         entry_arg = check(entry, _ADDRESS, "entry address") if entry else ""
         key, staged, staging = self._stage(binary)
+        marker = self.projects / f"{key}{ANALYZED_SUFFIX}"
+        marker.unlink(missing_ok=True)  # a failed re-analysis must not leave the old "analyzed" claim behind
         try:
             with self._scratch() as tmp:
                 out = Path(tmp) / "out.json"
-                info = self._run(
+                info, log = self._run(
                     [key, "-import", str(staged), "-overwrite", "-analysisTimeoutPerFile", str(int(timeout))]
                     + args_extra
                     + ["-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, "info", str(out)]
@@ -222,7 +251,9 @@ class GhidraBackend:
                 )
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-        return {"key": key, **info}
+        marker.write_text("")
+        # Ghidra ends a timed-out analysis with exit 0 and a partial result, so say so.
+        return {"key": key, **info, "analysis_timed_out": "Analysis timed out" in log}
 
     def query(self, binary: str, command: str, target: str | None = None, timeout: int | None = None) -> Any:
         timeout = timeout or self.query_timeout
@@ -230,14 +261,16 @@ class GhidraBackend:
         if not path.is_file():
             raise RuntimeError(f"Binary not found: {binary}")
         key = file_key(path)
-        if not (self.projects / f"{key}.gpr").is_file():
+        if not (self.projects / f"{key}{ANALYZED_SUFFIX}").is_file():
             raise RuntimeError(f"{binary} has not been analyzed yet. Run: cli-anything-ghidra analyze {binary}")
-        target_arg = check(target, _TARGET, "target") if target else ""
+        extra = [check(target, _TARGET, "target")] if target else []
+        if command == "decompile":  # the decompiler's own budget; the JVM start-up is not part of it
+            extra.append(str(max(10, timeout - 30)))
         with self._scratch() as tmp:
             out = Path(tmp) / "out.json"
-            return self._run(
+            data, _ = self._run(
                 [key, "-process", f"{key}.bin", "-noanalysis", "-readOnly",
-                 "-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, command, str(out)]
-                + ([target_arg] if target_arg else []),
+                 "-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, command, str(out)] + extra,
                 out, timeout,
             )
+            return data

@@ -1,7 +1,6 @@
 """cli-anything-ghidra - CLI harness for Ghidra (headless reverse engineering)."""
 
 import json
-import shlex
 import sys
 
 import click
@@ -14,15 +13,45 @@ from cli_anything.ghidra.utils.repl_skin import ReplSkin
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
+VERSION = "1.0.0"
+
+
 def split_line(line: str) -> list:
     """Split a REPL line into arguments, keeping the backslashes of Windows paths.
 
-    POSIX shlex treats a backslash as an escape and turns an unquoted Windows path into a
-    different, non-existent one. Quotes still group words and are removed.
+    POSIX shlex treats a backslash as an escape and turns an unquoted Windows path into a different,
+    non-existent one. Here a quote opens only at the start of a word or after "=" (so O'Brien in a
+    path stays intact, and --filter="a b" works), is closed by the same quote, and is removed.
+    An unbalanced quote raises ValueError.
     """
-    return [t[1:-1] if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'" else t
-            for t in shlex.split(line, posix=False)]
-VERSION = "1.0.0"
+    args, cur, quote, started = [], [], None, False
+    for ch in line:
+        if quote:
+            if ch == quote:
+                quote = None
+            else:
+                cur.append(ch)
+        elif ch in "\"'" and (not cur or cur[-1] == "="):
+            quote, started = ch, True
+        elif ch.isspace():
+            if started or cur:
+                args.append("".join(cur))
+            cur, started = [], False
+        else:
+            cur.append(ch)
+            started = True
+    if quote:
+        raise ValueError("No closing quotation")
+    if started or cur:
+        args.append("".join(cur))
+    return args
+
+
+def _safe_streams() -> None:
+    """Never crash on a character the console encoding cannot show (decompiled C can hold any text)."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
 
 
 def make_backend(ctx: click.Context) -> GhidraBackend:
@@ -34,7 +63,7 @@ def output(data, as_json: bool) -> None:
         click.echo(json.dumps(data, indent=2, default=str))
     elif isinstance(data, dict):
         for k, v in data.items():
-            click.echo(f"{k}: {v}")
+            click.echo(f"{k}: {json.dumps(v, default=str) if isinstance(v, (list, dict)) else v}")
     elif isinstance(data, list):
         for item in data:
             click.echo(json.dumps(item, default=str) if isinstance(item, dict) else str(item))
@@ -65,6 +94,7 @@ def cli(ctx: click.Context, as_json: bool, query_timeout: int):
 
 
 def main():
+    _safe_streams()
     as_json = "--json" in sys.argv  # the Click context is already unwound when an error reaches here
     try:
         code = cli(obj={}, standalone_mode=False)  # --help and friends come back as an exit code
@@ -75,7 +105,7 @@ def main():
             exc.show()
         sys.exit(exc.exit_code)
     except click.Abort:
-        click.echo("Aborted!", err=True)
+        click.echo(json.dumps({"error": "Aborted."}) if as_json else "Aborted!", err=not as_json)
         sys.exit(1)
     except Exception as exc:  # backend failures (RuntimeError) and anything unexpected: no traceback
         message = str(exc) if isinstance(exc, RuntimeError) else f"Unexpected error ({type(exc).__name__}): {exc}"
@@ -124,9 +154,20 @@ def repl(ctx: click.Context):
             continue
 
         try:
-            cli.main(args=split_line(line), obj=dict(ctx.obj), standalone_mode=False)
+            args = split_line(line)
+        except ValueError as e:  # an unbalanced quote
+            skin.error(f"Cannot parse the line: {e}")
+            continue
+        if not args or args[0] == "repl" or all(a.startswith("-") for a in args):
+            skin.error("Type a command, for example: info BINARY (help lists them).")
+            continue
+
+        try:
+            cli.main(args=args, obj=dict(ctx.obj), standalone_mode=False)
         except click.exceptions.UsageError as e:
             skin.error(str(e))
+        except click.Abort:
+            skin.warning("Aborted.")
         except RuntimeError as e:
             skin.error(str(e))
         except SystemExit:
