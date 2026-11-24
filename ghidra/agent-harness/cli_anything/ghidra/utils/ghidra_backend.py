@@ -254,6 +254,24 @@ def work_home() -> Path:
                        "_ - . ~ @ + [ ].")
 
 
+def _ram_mb() -> int | None:
+    """Physical memory in MB, or None when it cannot be read."""
+    try:
+        if IS_WINDOWS:
+            import ctypes
+
+            class Status(ctypes.Structure):
+                _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong), ("total", ctypes.c_ulonglong),
+                            ("avail", ctypes.c_ulonglong), ("pt", ctypes.c_ulonglong), ("pa", ctypes.c_ulonglong),
+                            ("vt", ctypes.c_ulonglong), ("va", ctypes.c_ulonglong), ("ve", ctypes.c_ulonglong)]
+            status = Status(ctypes.sizeof(Status))
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+            return int(status.total // (1 << 20)) or None
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1 << 20) or None
+    except (AttributeError, ValueError, OSError):
+        return None
+
+
 def file_key(path: Path) -> str:
     """Content hash used as project and program name, so the filename never reaches the command line."""
     digest = hashlib.sha256()
@@ -280,6 +298,10 @@ class GhidraBackend:
         env = dict(os.environ)
         if env.get(JAVA_ENV):
             env["JAVA_HOME"] = env[JAVA_ENV]
+        if not (env.get("GHIDRA_MAXMEM") or env.get("GHIDRA_HEADLESS_MAXMEM")):
+            ram = _ram_mb()  # Ghidra defaults to a 2G heap, too small for very large binaries
+            if ram:
+                env["GHIDRA_HEADLESS_MAXMEM"] = f"{ram * 3 // 4}M"
         return env
 
     def _scratch(self) -> "tempfile.TemporaryDirectory":

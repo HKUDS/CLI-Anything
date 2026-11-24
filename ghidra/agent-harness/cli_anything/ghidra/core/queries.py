@@ -20,8 +20,9 @@ def list_strings(backend: GhidraBackend, binary: str, min_length: int = 4, limit
     return items[:limit] if limit else items
 
 
-def list_imports(backend: GhidraBackend, binary: str) -> list:
-    return backend.query(binary, "imports")
+def list_imports(backend: GhidraBackend, binary: str, limit: int = 0) -> list:
+    items = backend.query(binary, "imports")
+    return items[:limit] if limit else items
 
 
 def xrefs(backend: GhidraBackend, binary: str, target: str) -> dict:

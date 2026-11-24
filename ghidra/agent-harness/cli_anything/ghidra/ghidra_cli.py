@@ -213,7 +213,7 @@ def info(ctx: click.Context, binary: str):
 @cli.command()
 @click.argument("binary", type=click.Path(dir_okay=False))
 @click.option("--filter", "name_filter", default=None, help="Only names containing this text")
-@click.option("--limit", default=0, show_default=True, type=click.IntRange(0, 100000), help="0 = no limit")
+@click.option("--limit", default=0, show_default=True, type=click.IntRange(min=0), help="0 = no limit")
 @click.pass_context
 def functions(ctx: click.Context, binary: str, name_filter, limit: int):
     """List functions (name, address, size)."""
@@ -236,7 +236,7 @@ def decompile(ctx: click.Context, binary: str, target: str):
 @cli.command()
 @click.argument("binary", type=click.Path(dir_okay=False))
 @click.option("--min-length", default=4, show_default=True, type=click.IntRange(1, 10000))
-@click.option("--limit", default=0, show_default=True, type=click.IntRange(0, 100000), help="0 = no limit")
+@click.option("--limit", default=0, show_default=True, type=click.IntRange(min=0), help="0 = no limit")
 @click.pass_context
 def strings(ctx: click.Context, binary: str, min_length: int, limit: int):
     """List defined strings."""
@@ -245,10 +245,11 @@ def strings(ctx: click.Context, binary: str, min_length: int, limit: int):
 
 @cli.command()
 @click.argument("binary", type=click.Path(dir_okay=False))
+@click.option("--limit", default=0, show_default=True, type=click.IntRange(min=0), help="0 = no limit")
 @click.pass_context
-def imports(ctx: click.Context, binary: str):
+def imports(ctx: click.Context, binary: str, limit: int):
     """List imported (external) symbols."""
-    output(queries_core.list_imports(make_backend(ctx), binary), ctx.obj["as_json"])
+    output(queries_core.list_imports(make_backend(ctx), binary, limit), ctx.obj["as_json"])
 
 
 @cli.command()

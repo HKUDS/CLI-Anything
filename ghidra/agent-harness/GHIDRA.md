@@ -74,4 +74,4 @@ There is no session file and no undo: the Ghidra project under `~/cli-anything-g
 - Queries are read-only: no renaming, retyping or patching.
 - `strings` and `imports` depend on the loader; raw binaries have none.
 - The copy of the binary doubles the disk use of large inputs while analysis runs.
-- `functions`, `strings` and `imports` return at most 100,000 entries each. `strings --min-length` counts characters, not bytes.
+- No result is capped by the harness; `--limit` is yours to set. Ghidra gets 75% of physical RAM as heap unless `GHIDRA_MAXMEM` or `GHIDRA_HEADLESS_MAXMEM` is set. `strings --min-length` counts characters, not bytes.

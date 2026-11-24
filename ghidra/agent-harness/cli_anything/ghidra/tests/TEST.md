@@ -47,7 +47,7 @@ With Ghidra 12.2 and JDK 25 on Windows (live tests run; 7 skipped: 3 POSIX permi
 With Ghidra 12.2 and JDK 25 on Linux (Arch; live tests run; 6 skipped: 3 Windows 8.3 short-name tests and 3 Windows `.bat` launcher tests):
 
 ```
-200 passed, 6 skipped in 234.44s (0:03:54)
+202 passed, 6 skipped in 251.02s (0:04:11)
 ```
 
 Without Ghidra (live tests skipped):

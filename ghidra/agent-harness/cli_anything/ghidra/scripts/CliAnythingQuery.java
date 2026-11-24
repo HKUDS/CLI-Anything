@@ -24,8 +24,6 @@ import ghidra.program.model.symbol.Symbol;
 
 public class CliAnythingQuery extends GhidraScript {
 
-    private static final int MAX_ITEMS = 100000;
-
     @Override
     protected void run() throws Exception {
         String[] a = getScriptArgs();
@@ -77,7 +75,7 @@ public class CliAnythingQuery extends GhidraScript {
     private String functions() {
         List<String> items = new ArrayList<>();
         FunctionIterator it = currentProgram.getListing().getFunctions(true);
-        while (it.hasNext() && items.size() < MAX_ITEMS) {
+        while (it.hasNext()) {
             Function f = it.next();
             items.add("{\"name\":" + q(f.getName()) + ",\"address\":" + q(f.getEntryPoint().toString())
                 + ",\"size\":" + f.getBody().getNumAddresses() + "}");
@@ -113,14 +111,11 @@ public class CliAnythingQuery extends GhidraScript {
         }
     }
 
-    private String strings(int minLength) {  // the length filter runs before the cap, so a prefix of short strings cannot hide longer ones
+    private String strings(int minLength) {  // the length filter runs here, before any --limit
         List<String> items = new ArrayList<>();
         for (Data d : currentProgram.getListing().getDefinedData(true)) {
-            if (items.size() >= MAX_ITEMS) {
-                break;  // stop scanning once the cap is reached
-            }
             StringDataInstance s = StringDataInstance.getStringDataInstance(d);
-            if (s != null && s != StringDataInstance.NULL_INSTANCE && items.size() < MAX_ITEMS) {
+            if (s != null && s != StringDataInstance.NULL_INSTANCE) {
                 String value = s.getStringValue();
                 if (value == null || value.length() < minLength) {  // null: a string in uninitialized memory
                     continue;
@@ -136,7 +131,7 @@ public class CliAnythingQuery extends GhidraScript {
         List<String> items = new ArrayList<>();
         for (String lib : currentProgram.getExternalManager().getExternalLibraryNames()) {
             var locations = currentProgram.getExternalManager().getExternalLocations(lib);
-            while (locations.hasNext() && items.size() < MAX_ITEMS) {
+            while (locations.hasNext()) {
                 ExternalLocation loc = locations.next();
                 items.add("{\"library\":" + q(lib) + ",\"name\":" + q(loc.getLabel()) + "}");
             }
@@ -162,19 +157,14 @@ public class CliAnythingQuery extends GhidraScript {
             throw new IllegalArgumentException("cannot resolve " + target);
         }
         List<String> items = new ArrayList<>();
-        boolean truncated = false;
         ReferenceIterator refs = currentProgram.getReferenceManager().getReferencesTo(at);  // lazy, unlike an array
         while (refs.hasNext()) {
-            if (items.size() >= MAX_ITEMS) {
-                truncated = true;
-                break;
-            }
             Reference r = refs.next();
             Function in = getFunctionContaining(r.getFromAddress());
             items.add("{\"from\":" + q(r.getFromAddress().toString()) + ",\"type\":" + q(r.getReferenceType().getName())
                 + ",\"function\":" + (in == null ? "null" : q(in.getName())) + "}");
         }
-        return "{\"target\":" + q(at.toString()) + ",\"truncated\":" + truncated
+        return "{\"target\":" + q(at.toString()) + ",\"truncated\":false"
             + ",\"references\":[" + String.join(",", items) + "]}";
     }
 

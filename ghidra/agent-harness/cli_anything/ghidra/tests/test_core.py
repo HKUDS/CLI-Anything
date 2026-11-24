@@ -392,6 +392,21 @@ def test_functions_filter_and_limit():
     assert len(queries.list_functions(fake_backend(data), "x", limit=1)) == 1
 
 
+def test_heap_defaults_to_most_of_the_ram_unless_the_user_sets_one(be, monkeypatch):
+    monkeypatch.delenv("GHIDRA_MAXMEM", raising=False)
+    monkeypatch.delenv("GHIDRA_HEADLESS_MAXMEM", raising=False)
+    monkeypatch.setattr(backend, "_ram_mb", lambda: 8000)
+    assert be._env()["GHIDRA_HEADLESS_MAXMEM"] == "6000M"
+    monkeypatch.setenv("GHIDRA_MAXMEM", "1G")
+    assert "GHIDRA_HEADLESS_MAXMEM" not in be._env()
+
+
+def test_imports_limit_and_lists_beyond_100000_are_not_cut():
+    data = [{"library": "l", "name": str(i)} for i in range(100001)]
+    assert len(queries.list_imports(fake_backend(data), "x")) == 100001
+    assert len(queries.list_imports(fake_backend(data), "x", limit=2)) == 2
+
+
 def test_strings_min_length_and_limit():
     data = [{"length": 3, "value": "ab"}, {"length": 8, "value": "abcdefg"}, {"length": 9, "value": "abcdefgh"}]
     assert [s["length"] for s in queries.list_strings(fake_backend(data), "x", 4)] == [8, 9]
