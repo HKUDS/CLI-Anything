@@ -74,9 +74,15 @@ def _line(d: dict) -> str:
 
 
 def fail(message: str, code: str = "error") -> None:
+    warning = _domain_warning()  # often the cause of the failure, so always surface it
     if _json_output:
-        click.echo(json.dumps({"ok": False, "error": code, "message": message}, indent=2))
+        payload = {"ok": False, "error": code, "message": message}
+        if warning:
+            payload["warning"] = warning
+        click.echo(json.dumps(payload, indent=2))
     else:
+        if warning:
+            click.echo(f"Warning: {warning}", err=True)
         click.echo(f"Error: {message}", err=True)
     raise SystemExit(1)
 

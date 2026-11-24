@@ -559,3 +559,15 @@ def test_device_cache_written_atomically(home):
     t.join()
     assert bad == [] and backend.cached_devices() == devices
     assert not list(home.glob(".devices.*.tmp"))
+
+
+# ── fifth Codex review round (commit 56dbaed) ─────────────────────────
+
+def test_failure_output_keeps_domain_warning(fake_backend):
+    account = backend.load_account()
+    backend.save_account({**account, "reported_domain": "amazon.co.uk"})
+    result, data = run("speak", "garage", "hi")  # unknown device -> fail()
+    assert result.exit_code == 1 and data["error"] == "device_not_found"
+    assert "--domain amazon.co.uk" in data["warning"]
+    human = CliRunner().invoke(alexa_cli.cli, ["speak", "garage", "hi"])
+    assert "Warning: Your Amazon account is on amazon.co.uk" in human.output
