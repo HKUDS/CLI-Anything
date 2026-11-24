@@ -41,7 +41,7 @@ _ADDRESS = re.compile(r"^(0x)?[0-9a-fA-F]{1,16}$")
 _LOADER = re.compile(r"^[A-Za-z0-9_]{1,60}$")
 _PROCESSOR = re.compile(r"^[A-Za-z0-9_.+-]+:(LE|BE):\d+:[A-Za-z0-9_.+-]+$")
 
-_PATH_UNSAFE = frozenset('&|<>^%!"' + chr(10) + chr(13) + chr(0))
+_PATH_UNSAFE = frozenset('&|<>^%!()"' + chr(10) + chr(13) + chr(0))
 
 INSTALL_HELP = (
     f"Ghidra not found. Download Ghidra 12.x from https://github.com/NationalSecurityAgency/ghidra/releases, "
@@ -59,11 +59,12 @@ def check(value: str, pattern: "re.Pattern[str]", what: str) -> str:
 
 
 def check_path(path: Path | str, what: str) -> Path | str:
-    """Refuse paths that cmd.exe would parse as more than one argument or expand."""
+    """Refuse paths that cmd.exe would split or expand, or that the launcher script cannot take."""
     text = str(path)
     if any(c in _PATH_UNSAFE for c in text):
         raise RuntimeError(
-            f"The {what} {text!r} contains a character cmd.exe interprets (& | < > ^ % ! or a quote). "
+            f"The {what} {text!r} contains a character that cmd.exe or the Ghidra launcher "
+            "script cannot take (& | < > ^ % ! ( ) or a quote). "
             f"Use another folder (for the work folder set {HOME_ENV})."
         )
     return path
@@ -125,7 +126,8 @@ def file_key(path: Path) -> str:
 class GhidraBackend:
     """Runs analyzeHeadless for import/analysis and for read-only queries."""
 
-    def __init__(self, home: Path | None = None):
+    def __init__(self, home: Path | None = None, query_timeout: int = QUERY_TIMEOUT):
+        self.query_timeout = query_timeout
         self.launcher = find_analyze_headless()
         self.home = home or work_home()
         self.projects = self.home / "projects"
@@ -172,8 +174,8 @@ class GhidraBackend:
         text = (proc.stdout or "") + (proc.stderr or "")
         if "JDK" in text and "could not be found" in text:
             return f"Ghidra could not find a supported JDK (12.x needs 25+). Set {JAVA_ENV} to a JDK 25+ folder."
-        lines = [l.strip() for l in text.splitlines() if "ERROR" in l or "Exception" in l]
-        detail = " | ".join(l[:200] for l in lines[:3]) or "no output file was produced"
+        lines = [ln.strip() for ln in text.splitlines() if "ERROR" in ln or "Exception" in ln]
+        detail = " | ".join(ln[:200] for ln in lines[:3]) or "no output file was produced"
         return f"Ghidra failed (exit {proc.returncode}): {detail}"
 
     def _stage(self, binary: str) -> tuple:
@@ -222,7 +224,8 @@ class GhidraBackend:
             shutil.rmtree(staging, ignore_errors=True)
         return {"key": key, **info}
 
-    def query(self, binary: str, command: str, target: str | None = None, timeout: int = QUERY_TIMEOUT) -> Any:
+    def query(self, binary: str, command: str, target: str | None = None, timeout: int | None = None) -> Any:
+        timeout = timeout or self.query_timeout
         path = Path(binary).expanduser()
         if not path.is_file():
             raise RuntimeError(f"Binary not found: {binary}")

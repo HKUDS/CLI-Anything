@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -110,3 +111,47 @@ def test_live_query_before_analyze_fails_clearly(tmp_path):
     blob.write_bytes(b"\x90\x90")
     res = run_cli("--json", "info", str(blob), env_extra={"CLI_ANYTHING_GHIDRA_HOME": str(tmp_path / "home")})
     assert res.returncode == 1 and "not been analyzed" in json.loads(res.stdout)["error"]
+
+
+def test_usage_error_in_json_mode_is_json_on_stdout():
+    res = run_cli("--json", "analyze")
+    assert res.returncode == 2
+    assert "BINARY" in json.loads(res.stdout)["error"]
+
+
+def _real_binary():
+    """A small binary every machine has: find.exe on Windows, `true` elsewhere."""
+    if sys.platform == "win32":
+        return Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "find.exe"
+    return Path(shutil.which("true") or "/bin/true")
+
+
+@pytest.fixture(scope="module")
+def real_analyzed(tmp_path_factory):
+    binary = _real_binary()
+    if not binary.is_file():
+        pytest.skip("no small system binary found")
+    env = {"CLI_ANYTHING_GHIDRA_HOME": str(tmp_path_factory.mktemp("ghidra_real") / "home")}
+    res = run_cli("--json", "analyze", str(binary), "--timeout", "600", env_extra=env, timeout=900)
+    assert res.returncode == 0, res.stdout + res.stderr
+    return binary, env, json.loads(res.stdout)
+
+
+@live
+def test_live_real_binary_is_recognized_and_analyzed(real_analyzed):
+    _, _, info = real_analyzed
+    assert info["format"] in ("Portable Executable (PE)", "ELF")
+    assert info["functions"] > 5
+
+
+@live
+def test_live_real_binary_queries_return_real_data(real_analyzed):
+    binary, env, info = real_analyzed
+    funcs = json.loads(run_cli("--json", "functions", str(binary), env_extra=env).stdout)
+    assert len(funcs) == info["functions"] and all(f["size"] > 0 for f in funcs)
+    dec = json.loads(run_cli("--json", "decompile", str(binary), funcs[0]["name"], env_extra=env).stdout)
+    assert "(" in dec["c"] and dec["name"] == funcs[0]["name"]
+    imports = json.loads(run_cli("--json", "imports", str(binary), env_extra=env).stdout)
+    assert isinstance(imports, list) and (sys.platform != "win32" or imports)
+    strings = json.loads(run_cli("--json", "strings", str(binary), "--limit", "5", env_extra=env).stdout)
+    assert isinstance(strings, list) and len(strings) <= 5

@@ -36,9 +36,13 @@ Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoade
 
 - **The target binary is never executed.** It is read, hashed and copied.
 - **Windows `.bat` injection (BatBadBut):** `analyzeHeadless.bat` runs through `cmd.exe` even for list-form `subprocess`. Every user string that reaches the command line (function/symbol target, loader, processor, entry address) is checked against a strict allowlist, so `&`, `|`, `%`, `^`, quotes, spaces and a leading `-` are rejected. The input binary is staged as `<hash>.bin`, so its own (possibly attacker-chosen) filename never appears on the command line.
-- Paths that reach the command line (work folder, script folder, scratch folder, launcher) are refused if they contain `& | < > ^ % !` or a quote, so a folder such as `R&D` cannot split the command line either. Parentheses and spaces are fine.
+- Paths that reach the command line (work folder, script folder, scratch folder, launcher) are refused if they contain `& | < > ^ % !` or a quote, so a folder such as `R&D` cannot split the command line either. Spaces are fine. Parentheses are refused too: the Ghidra launcher script exits with code 255 on them, even in a quoted path.
 - No shell is used, stdin is `DEVNULL` (Ghidra's launcher can prompt for a JDK and would hang), and every run has a timeout. On timeout the whole process tree is killed, because killing only the `.bat` would leave `java.exe` running and holding the project lock.
 - Each analysis stages its input in a private folder and hashes the staged copy, so parallel runs on the same binary cannot delete each other's input.
+
+## State
+
+There is no session file and no undo: the Ghidra project under `~/cli-anything-ghidra/projects` is the persisted state (one analyzed program per binary content), and every query is read-only.
 
 ## Known limits
 

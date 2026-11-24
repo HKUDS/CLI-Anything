@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from cli_anything.ghidra.core import analysis, queries
-from cli_anything.ghidra.ghidra_cli import cli, split_line
+from cli_anything.ghidra.ghidra_cli import cli, main, split_line
 from cli_anything.ghidra.utils import ghidra_backend as backend
 from cli_anything.ghidra.utils.ghidra_backend import (
     GhidraBackend, check, file_key, find_analyze_headless, work_home,
@@ -143,7 +143,9 @@ def test_other_allowlists_accept(value, pattern):
 
 def test_file_key_is_content_based(tmp_path):
     a, b, c = tmp_path / "a", tmp_path / "b", tmp_path / "c"
-    a.write_bytes(b"same"); b.write_bytes(b"same"); c.write_bytes(b"diff")
+    a.write_bytes(b"same")
+    b.write_bytes(b"same")
+    c.write_bytes(b"diff")
     assert file_key(a) == file_key(b) != file_key(c)
     assert len(file_key(a)) == 16
 
@@ -265,7 +267,8 @@ def test_launcher_gets_its_own_process_group(be, sample):
 
 def _alive(pid):
     if os.name == "nt":
-        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True).stdout  # bytes: output is localized
+        # bytes: the output is localized
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True).stdout
         return str(pid).encode() in out
     try:
         os.kill(pid, 0)
@@ -297,9 +300,9 @@ def test_kill_tree_really_stops_grandchildren():
         subprocess.run(["taskkill", "/F", "/PID", str(child)], capture_output=True) if os.name == "nt" else None
 
 
-@pytest.mark.parametrize("bad", list("&|<>^%!") + ['"', chr(10), chr(13)])
+@pytest.mark.parametrize("bad", list("&|<>^%!()") + ['"', chr(10), chr(13)])
 def test_check_path_rejects_cmd_metacharacters(bad):
-    with pytest.raises(RuntimeError, match="cmd.exe interprets"):
+    with pytest.raises(RuntimeError, match="cannot take"):
         backend.check_path("C:/work" + bad + "x", "work folder")
 
 
@@ -310,13 +313,13 @@ def test_unsafe_work_folder_is_refused_before_launch(install, tmp_path, sample, 
     be.projects.mkdir(parents=True)
     (be.projects / f"{file_key(sample)}.gpr").write_text("")
     with patch.object(backend.subprocess, "Popen") as popen:
-        with pytest.raises(RuntimeError, match="cmd.exe interprets"):
+        with pytest.raises(RuntimeError, match="cannot take"):
             be.query(str(sample), "info")
     popen.assert_not_called()
 
 
-def test_parentheses_and_spaces_in_paths_are_fine(be, sample, tmp_path):
-    odd = tmp_path / "Program Files (x86)" / "work"
+def test_spaces_in_paths_are_fine(be, sample, tmp_path):
+    odd = tmp_path / "Program Files" / "my work"
     odd.mkdir(parents=True)
     be.projects = odd
     (odd / f"{file_key(sample)}.gpr").write_text("")
@@ -416,7 +419,8 @@ def test_cli_help_lists_commands():
 
 @pytest.mark.parametrize("line,expected", [
     (r"info C:\Users\alice\sample.exe", ["info", r"C:\Users\alice\sample.exe"]),
-    (r'analyze "C:\Program Files\app\a.exe" --timeout 30', ["analyze", r"C:\Program Files\app\a.exe", "--timeout", "30"]),
+    (r'analyze "C:\Program Files\app\a.exe" --timeout 30',
+     ["analyze", r"C:\Program Files\app\a.exe", "--timeout", "30"]),
     ("decompile /tmp/a.bin 'FUN_1000'", ["decompile", "/tmp/a.bin", "FUN_1000"]),
     ("functions x.bin --filter main", ["functions", "x.bin", "--filter", "main"]),
 ])
@@ -430,3 +434,88 @@ def test_repl_split_line_reaches_the_command_with_the_unmangled_path():
         res = CliRunner().invoke(cli, ["--json", *split_line(r"info C:\Users\alice\sample.exe")], obj={})
     assert res.exit_code == 0
     cls.return_value.query.assert_called_with(r"C:\Users\alice\sample.exe", "info")
+
+
+# --- error contract of main() --------------------------------------------
+
+def run_main(monkeypatch, capsys, *argv):
+    monkeypatch.setattr(sys, "argv", ["cli-anything-ghidra", *argv])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    out = capsys.readouterr()
+    return exc.value.code, out.out, out.err
+
+
+def test_usage_error_in_json_mode_is_json_with_exit_2(monkeypatch, capsys):
+    code, out, err = run_main(monkeypatch, capsys, "--json", "analyze")
+    assert code == 2 and err == ""
+    assert "BINARY" in json.loads(out)["error"]
+
+
+def test_unknown_option_in_json_mode_is_json(monkeypatch, capsys):
+    code, out, _ = run_main(monkeypatch, capsys, "--json", "info", "x.bin", "--bogus")
+    assert code == 2 and "--bogus" in json.loads(out)["error"]
+
+
+def test_usage_error_without_json_stays_click_text_on_stderr(monkeypatch, capsys):
+    code, out, err = run_main(monkeypatch, capsys, "analyze")
+    assert code == 2 and out == "" and "Usage:" in err and "BINARY" in err
+
+
+def test_help_exits_zero_with_text(monkeypatch, capsys):
+    code, out, _ = run_main(monkeypatch, capsys, "--help")
+    assert code == 0 and "analyze" in out
+
+
+def test_backend_runtime_error_is_json_with_exit_1(monkeypatch, capsys):
+    with patch("cli_anything.ghidra.ghidra_cli.GhidraBackend", side_effect=RuntimeError("no ghidra here")):
+        code, out, _ = run_main(monkeypatch, capsys, "--json", "info", "x.bin")
+    assert code == 1 and json.loads(out) == {"error": "no ghidra here"}
+
+
+@pytest.mark.parametrize("flag", [["--json"], []])
+def test_unexpected_exception_is_a_message_not_a_traceback(monkeypatch, capsys, flag):
+    with patch("cli_anything.ghidra.ghidra_cli.GhidraBackend") as cls:
+        cls.return_value.query.side_effect = KeyError("c")
+        code, out, err = run_main(monkeypatch, capsys, *flag, "info", "x.bin")
+    text = json.loads(out)["error"] if flag else err
+    assert code == 1 and "Unexpected error (KeyError)" in text and "Traceback" not in out + err
+
+
+# --- query timeout option -------------------------------------------------
+
+def test_query_timeout_option_reaches_the_backend():
+    with patch("cli_anything.ghidra.ghidra_cli.GhidraBackend") as cls:
+        cls.return_value.query.return_value = {}
+        CliRunner().invoke(cli, ["--json", "--query-timeout", "900", "info", "x.bin"], obj={})
+    cls.assert_called_once_with(query_timeout=900)
+
+
+def test_query_timeout_default_and_bounds():
+    with patch("cli_anything.ghidra.ghidra_cli.GhidraBackend") as cls:
+        cls.return_value.query.return_value = {}
+        CliRunner().invoke(cli, ["--json", "info", "x.bin"], obj={})
+    cls.assert_called_once_with(query_timeout=300)
+    assert CliRunner().invoke(cli, ["--query-timeout", "1", "info", "x.bin"], obj={}).exit_code == 2
+
+
+def test_backend_uses_its_query_timeout_unless_one_is_given(install, tmp_path, sample):
+    be = GhidraBackend(home=tmp_path / "work", query_timeout=777)
+    analyzed(be, sample)
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen({}, calls)):
+        be.query(str(sample), "info")
+        be.query(str(sample), "info", timeout=5)
+    assert [c[1]["timeout"] for c in calls] == [777, 5]
+
+
+@pytest.mark.parametrize("path", ["C:/a(b)/c", "C:/Program Files (x86)/work", "C:/my (old) dir/home", "/tmp/(x)"])
+def test_parentheses_are_refused_with_or_without_spaces(path):
+    # Found with the real launcher: the Ghidra .bat exits 255 on parentheses even when the path is quoted.
+    with pytest.raises(RuntimeError, match="cannot take"):
+        backend.check_path(path, "work folder")
+
+
+@pytest.mark.parametrize("path", ["C:/Program Files/work", "C:/plain/home", "C:/my dir/home"])
+def test_plain_and_space_paths_are_accepted(path):
+    assert backend.check_path(path, "work folder") == path

@@ -26,7 +26,7 @@ VERSION = "1.0.0"
 
 
 def make_backend(ctx: click.Context) -> GhidraBackend:
-    return GhidraBackend()
+    return GhidraBackend(query_timeout=ctx.obj["query_timeout"])
 
 
 def output(data, as_json: bool) -> None:
@@ -48,8 +48,10 @@ def output(data, as_json: bool) -> None:
 
 @click.group(context_settings=CONTEXT_SETTINGS, invoke_without_command=True)
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
+@click.option("--query-timeout", default=300, show_default=True, type=click.IntRange(10, 86400),
+              help="Seconds to wait for each query (functions, decompile, strings, ...); raise it for huge functions")
 @click.pass_context
-def cli(ctx: click.Context, as_json: bool):
+def cli(ctx: click.Context, as_json: bool, query_timeout: int):
     """cli-anything-ghidra - analyze binaries with Ghidra from the command line.
 
     Needs Ghidra 12.x (set GHIDRA_INSTALL_DIR) and a JDK 25+ (GHIDRA_JAVA_HOME).
@@ -57,21 +59,33 @@ def cli(ctx: click.Context, as_json: bool):
     """
     ctx.ensure_object(dict)
     ctx.obj["as_json"] = as_json
+    ctx.obj["query_timeout"] = query_timeout
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl)
 
 
 def main():
+    as_json = "--json" in sys.argv  # the Click context is already unwound when an error reaches here
     try:
-        cli(obj={})
-    except RuntimeError as exc:
-        # Backend failures arrive as exceptions; surface them as parsable JSON with --json.
-        # sys.argv is used because the Click context is already unwound here.
-        if "--json" in sys.argv:
-            click.echo(json.dumps({"error": str(exc)}, default=str))
+        code = cli(obj={}, standalone_mode=False)  # --help and friends come back as an exit code
+    except click.ClickException as exc:  # usage errors: a missing BINARY, an unknown option, a bad value
+        if as_json:
+            click.echo(json.dumps({"error": exc.format_message()}, default=str))
         else:
-            click.echo(str(exc), err=True)
+            exc.show()
+        sys.exit(exc.exit_code)
+    except click.Abort:
+        click.echo("Aborted!", err=True)
         sys.exit(1)
+    except Exception as exc:  # backend failures (RuntimeError) and anything unexpected: no traceback
+        message = str(exc) if isinstance(exc, RuntimeError) else f"Unexpected error ({type(exc).__name__}): {exc}"
+        if as_json:
+            click.echo(json.dumps({"error": message}, default=str))
+        else:
+            click.echo(message, err=True)
+        sys.exit(1)
+    else:
+        sys.exit(code if isinstance(code, int) else 0)
 
 
 # ---------------------------------------------------------------------------

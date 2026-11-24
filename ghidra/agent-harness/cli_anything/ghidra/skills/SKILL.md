@@ -19,7 +19,7 @@ pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=ghidra/ag
 
 ## Usage
 
-Running with no subcommand starts the REPL. Add `--json` before the command for machine-readable output (errors become `{"error": "..."}` with exit code 1).
+Running with no subcommand starts the REPL. Add `--json` before the command for machine-readable output (errors become `{"error": "..."}` with exit code 1, or 2 for a usage error such as a missing argument).
 
 ```bash
 cli-anything-ghidra --json analyze BINARY [--loader L --processor P --entry ADDR --timeout SEC]
