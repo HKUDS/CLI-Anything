@@ -2,7 +2,7 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 175 unit tests (no Ghidra, no Java, `subprocess.Popen` mocked, plus one test with real processes)
+- `test_core.py`: 180 unit tests (no Ghidra, no Java, `subprocess.Popen` mocked, plus one test with real processes)
 - `test_full_e2e.py`: 4 subprocess tests that need no Ghidra, plus 20 live tests against the real Ghidra (no mocks), skipped unless `GHIDRA_INSTALL_DIR` is set
 
 ## Unit Test Plan (test_core.py)
@@ -15,7 +15,7 @@
 - **Core + CLI**: function filter/limit, string min-length/limit, `--json`, `decompile` prints C, option passing, bounds
 - **Per-binary lock (real file locks and real threads)**: a second run waits for the first and runs after it; a run gives up with "stayed busy" after its wait budget; different binaries never block each other; the lock is released after an error; four parallel queries never overlap
 - **Exit-code diagnostics**: exit 255 on Windows names cmd.exe and the parenthesis; an unrecognized failure shows the last two log lines instead of a blank; `ERROR` lines win over the tail; the real `LockException: Unable to lock project!` maps to the retry message
-- **Any user name**: the probed rule (accepted: letters/digits the code page holds, space and `_ - . ~ @ + [ ]`; refused: `' # $ { } , ; = ``` ` ```, symbols, CJK) is encoded in tests; the default work folder is used for a safe profile, an ASCII-safe per-user fallback for `O'Neil` or `name#1`, a stable and distinct fallback per user, POSIX fallback under `/var/tmp`, an explicit bad folder is an error and never a silent fallback; a scan proves the package contains no user name, home folder or drive path
+- **Any user name**: the probed rule (accepted: letters/digits the code page holds, space and `_ - . ~ @ + [ ]`; refused: `' # $ { } , ; = ``` ` ```, symbols, CJK) is encoded in tests; the default work folder is used for a safe profile, the 8.3 alias of the profile as fallback on Windows (real API; skipped where 8.3 names are off, fail-closed otherwise), a private 0700 per-user folder on POSIX that refuses a symlink or a folder others can write to, an explicit bad folder is an error and never a silent fallback; a scan proves the package contains no user name, home folder or drive path
 - **Caching**: a second `analyze` of the same bytes with the same options returns the stored result without starting Ghidra (`cached: true`); `--force`, different options, a timed-out analysis and an unusable marker all re-analyze; the CLI passes `--force` through
 - **Review round**: Ctrl-C stops the launcher tree and propagates; a stubborn child is killed instead of awaited forever; a project file alone is not "analyzed" (marker only after a successful analyze, removed when a re-analysis fails); a timed-out analysis is flagged (`analysis_timed_out`); an unknown format gets the loader hint; a locked project gets a retry message; decompile gets its own budget from `--query-timeout`; targets may name an address space; the cmd.exe path rules apply on Windows only; non-ASCII output never crashes a legacy console; plain `xrefs` output is JSON, not a Python repr; Abort is JSON in `--json` mode
 - **Error contract** (`main()`): a usage error (missing `BINARY`, unknown option) is `{"error": ...}` with exit 2 in `--json` mode and Click text on stderr otherwise; `--help` exits 0; backend errors are JSON with exit 1; an unexpected exception is a message, never a traceback; `--query-timeout` reaches the backend and is bounded
@@ -38,19 +38,14 @@ A real PE, `C:\Windows\System32\find.exe` (read only, never executed): `analyze`
 
 ## Test Results
 
-With Ghidra 12.2 and JDK 25 (live tests run):
+With Ghidra 12.2 and JDK 25 on Windows (live tests run; 7 skipped: 3 POSIX permission tests, and 4 cases that need 8.3 short names this volume does not create):
 
 ```
-........................................................................ [ 36%]
-........................................................................ [ 72%]
-........................................................                 [100%]
-200 passed in 284.83s (0:04:44)
+198 passed, 7 skipped in 242.11s (0:04:02)
 ```
 
 Without Ghidra (live tests skipped):
 
 ```
-........................................................................ [ 72%]
-..................................sssss.ssssssss.sssssss                 [100%]
-180 passed, 20 skipped in 6.12s
+180 passed, 25 skipped in 5.90s
 ```

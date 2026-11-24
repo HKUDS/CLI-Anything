@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -914,7 +915,6 @@ def _as_profile(monkeypatch, tmp_path, name):
     profile = tmp_path / name
     profile.mkdir()
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: profile))
-    monkeypatch.setenv("ProgramData", str(tmp_path / "ProgramData"))
     monkeypatch.delenv("CLI_ANYTHING_GHIDRA_HOME", raising=False)
     return profile
 
@@ -924,29 +924,88 @@ def test_default_work_folder_is_inside_a_safe_profile(cp1252, monkeypatch, tmp_p
     assert backend.work_home() == (profile / "cli-anything-ghidra").resolve()
 
 
-@pytest.mark.parametrize("name", ["O'Neil", "name#1"])
-def test_profile_ghidra_cannot_take_falls_back_to_an_ascii_folder(cp1252, monkeypatch, tmp_path, name):
+@pytest.mark.skipif(os.name != "nt", reason="8.3 short names are a Windows feature")
+@pytest.mark.parametrize("name", ["O'Neil", "name#1", "名前"])
+def test_windows_falls_back_to_the_short_alias_of_the_profile(cp1252, monkeypatch, tmp_path, name):
+    """Real Windows API, no mocks: the fallback stays inside the user's own profile and is ASCII-safe."""
     profile = _as_profile(monkeypatch, tmp_path, name)
-    monkeypatch.setattr(backend, "IS_WINDOWS", True)
+    short = backend._short_path(profile)
+    if short is None or backend.ghidra_path_problem(str(short)) is not None:
+        pytest.skip("8.3 short names are disabled on this volume")
     home = backend.work_home()
-    assert home.parent.name == "cli-anything-ghidra" and home.parent.parent == (tmp_path / "ProgramData").resolve()
-    assert str(profile) not in str(home) and backend.ghidra_path_problem(str(home)) is None
+    assert backend.ghidra_path_problem(str(home)) is None
+    assert home.name == "cli-anything-ghidra"
+    home.mkdir(parents=True)
+    assert os.path.samefile(home.parent, profile)  # the same folder as the profile, not a shared location
+    assert "ProgramData" not in str(home)
 
 
-def test_fallback_is_stable_and_different_per_user(cp1252, monkeypatch, tmp_path):
+def test_windows_without_short_names_fails_closed_with_the_way_out(cp1252, monkeypatch, tmp_path):
     _as_profile(monkeypatch, tmp_path, "O'Neil")
-    first = backend._fallback_home()
-    assert backend._fallback_home() == first
-    other = tmp_path / "O'Brien"
-    other.mkdir()
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: other))
-    assert backend._fallback_home() != first
+    monkeypatch.setattr(backend, "IS_WINDOWS", True)
+    monkeypatch.setattr(backend, "_short_path", lambda path: None)
+    with pytest.raises(RuntimeError, match="CLI_ANYTHING_GHIDRA_HOME"):
+        backend.work_home()
 
 
-def test_posix_fallback_is_a_per_user_folder_under_var_tmp(cp1252, monkeypatch, tmp_path):
+def test_fallback_is_not_created_when_the_profile_is_fine(cp1252, monkeypatch, tmp_path):
+    _as_profile(monkeypatch, tmp_path, "Max Mustermann")
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    monkeypatch.setattr(backend, "POSIX_FALLBACK_BASE", tmp_path / "shared")
+    backend.work_home()
+    assert not (tmp_path / "shared").exists()
+
+
+posix_only = pytest.mark.skipif(os.name == "nt", reason="owner and permission bits are POSIX")
+
+
+@posix_only
+def test_posix_fallback_is_a_private_per_user_folder(cp1252, monkeypatch, tmp_path):
     _as_profile(monkeypatch, tmp_path, "O'Neil")
     monkeypatch.setattr(backend, "IS_WINDOWS", False)
-    assert backend._fallback_home().parent == Path("/var/tmp")
+    monkeypatch.setattr(backend, "POSIX_FALLBACK_BASE", tmp_path / "shared")
+    (tmp_path / "shared").mkdir()
+    home = backend.work_home()
+    assert home.parent == tmp_path / "shared" and stat.S_IMODE(home.stat().st_mode) == 0o700
+    assert backend.work_home() == home  # stable on the second call
+
+
+@posix_only
+def test_posix_fallback_refuses_a_folder_others_can_write_to(cp1252, monkeypatch, tmp_path):
+    _as_profile(monkeypatch, tmp_path, "O'Neil")
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    monkeypatch.setattr(backend, "POSIX_FALLBACK_BASE", tmp_path / "shared")
+    (tmp_path / "shared").mkdir()
+    first = backend.work_home()
+    os.chmod(first, 0o777)  # someone widened the permissions, or created it with them
+    with pytest.raises(RuntimeError, match="not a private folder"):
+        backend.work_home()
+
+
+@posix_only
+def test_posix_fallback_refuses_a_symlink(cp1252, monkeypatch, tmp_path):
+    profile = _as_profile(monkeypatch, tmp_path, "O'Neil")
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    monkeypatch.setattr(backend, "POSIX_FALLBACK_BASE", shared)
+    tag = backend.hashlib.sha256(str(profile).encode("utf-8", "replace")).hexdigest()[:8]
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(elsewhere, shared / f"cli-anything-ghidra-{tag}")
+    with pytest.raises(RuntimeError, match="not a private folder"):
+        backend.work_home()
+
+
+def test_fallback_differs_per_user_on_posix(cp1252, monkeypatch, tmp_path):
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    monkeypatch.setattr(backend, "POSIX_FALLBACK_BASE", tmp_path / "shared")
+    (tmp_path / "shared").mkdir()
+    names = []
+    for name in ("O'Neil", "O'Brien"):
+        _as_profile(monkeypatch, tmp_path, name)
+        names.append(backend._fallback_home().name)
+    assert names[0] != names[1]
 
 
 def test_explicit_work_folder_with_a_bad_character_is_an_error_not_a_fallback(cp1252, monkeypatch, tmp_path):

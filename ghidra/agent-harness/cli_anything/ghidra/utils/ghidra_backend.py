@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import time
@@ -53,6 +54,7 @@ _PROCESSOR = re.compile(r"^[A-Za-z0-9_.+-]+:(LE|BE):\d+:[A-Za-z0-9_.+-]+$")
 IS_WINDOWS = os.name == "nt"
 ANALYZED_SUFFIX = ".analyzed"  # marker written only after a successful analyze: a .gpr alone proves nothing
 _CONTROL = frozenset(chr(10) + chr(13) + chr(0))
+POSIX_FALLBACK_BASE = Path("/var/tmp")
 _PATH_SEPARATORS = "/:" + chr(92)  # separators and the drive colon are not part of a name
 _GHIDRA_NAME_EXTRA = frozenset(" _-.~@+[]")
 _PATH_UNSAFE = frozenset('&|<>^%!()"') | _CONTROL
@@ -187,22 +189,64 @@ def _home_problem(home: Path) -> str | None:
     return None
 
 
-def _fallback_home() -> Path:
-    """An ASCII-only per-user folder outside the profile, for users whose profile path Ghidra cannot take."""
-    tag = hashlib.sha256(str(Path.home()).encode("utf-8", "replace")).hexdigest()[:8]
+def _short_path(path: Path) -> Path | None:
+    """The 8.3 alias of an existing Windows folder: ASCII-only, and still inside the user's own profile."""
+    try:
+        import ctypes
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = ctypes.windll.kernel32.GetShortPathNameW(str(path), buffer, len(buffer))
+    except (AttributeError, OSError, ImportError):
+        return None
+    return Path(buffer.value) if 0 < length < len(buffer) else None
+
+
+def _private_dir(path: Path) -> Path:
+    """Create `path` for this user only, or verify that an existing one really is theirs.
+
+    The base folder is shared and the name is guessable, so another local user could have created it first
+    (or put a symlink there). An existing folder is accepted only if it is a real directory owned by this user
+    that nobody else can write to or read.
+    """
+    try:
+        path.mkdir(mode=0o700, parents=True)
+    except FileExistsError:
+        info = path.lstat()
+        if (stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode)
+                or info.st_uid != os.getuid() or info.st_mode & 0o077):
+            raise RuntimeError(f"{path} exists but is not a private folder of this user (owner, permissions or "
+                               f"symlink). Remove it, or set {HOME_ENV} to a folder of your own.")
+    return path
+
+
+def _fallback_home() -> Path | None:
+    """An ASCII-safe work folder for a profile path Ghidra cannot take, or None when there is none.
+
+    Windows: the 8.3 alias of the profile folder, so it stays per-user and protected by the profile's own
+    permissions (None if 8.3 names are disabled on the volume). POSIX: a private 0700 folder per user under
+    /var/tmp, verified when it already exists. A shared folder with a guessable name would let another local
+    user pre-create it, so there is no ProgramData-style shared fallback.
+    """
     if IS_WINDOWS:
-        return Path(os.environ.get("ProgramData") or "C:/ProgramData") / "cli-anything-ghidra" / tag
-    return Path("/var/tmp") / f"cli-anything-ghidra-{tag}"
+        short = _short_path(Path.home())
+        return short / "cli-anything-ghidra" if short else None
+    tag = hashlib.sha256(str(Path.home()).encode("utf-8", "replace")).hexdigest()[:8]
+    return _private_dir(POSIX_FALLBACK_BASE / f"cli-anything-ghidra-{tag}")
 
 
 def work_home() -> Path:
     """Where projects and staged inputs live: CLI_ANYTHING_GHIDRA_HOME, else ~/cli-anything-ghidra, else (when
     Ghidra cannot take the profile path, for example O'Neil or a CJK name) an ASCII-safe per-user folder."""
     explicit = os.environ.get(HOME_ENV)
-    candidates = [Path(explicit)] if explicit else [Path.home() / "cli-anything-ghidra", _fallback_home()]
-    problem = None
-    for candidate in candidates:
-        home = candidate.expanduser().resolve()
+    # (how to build the folder, whether to resolve it): the 8.3 alias must not be resolved back to the long name
+    sources = ([(lambda: Path(explicit), True)] if explicit
+               else [(lambda: Path.home() / "cli-anything-ghidra", True), (_fallback_home, False)])
+    problem = f"No usable work folder. Set {HOME_ENV}."
+    for build, resolve in sources:
+        candidate = build()
+        if candidate is None:
+            continue
+        home = candidate.expanduser()
+        home = home.resolve() if resolve else home.absolute()
         problem = _home_problem(home)
         if problem is None:
             return home

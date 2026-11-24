@@ -37,7 +37,7 @@ cli-anything-ghidra --json xrefs ./target.exe 0x140001010
 cli-anything-ghidra analyze ./blob.bin --loader BinaryLoader --processor x86:LE:64:default --entry 0
 ```
 
-Projects live in `~/cli-anything-ghidra/` (override: `CLI_ANYTHING_GHIDRA_HOME`). If your user name contains a character Ghidra refuses (for example `O'Neil` or `#`), a per-user folder under `%ProgramData%` (Windows) or `/var/tmp` is used instead. Delete the folder to clear all analyses.
+Projects live in `~/cli-anything-ghidra/` (override: `CLI_ANYTHING_GHIDRA_HOME`). If your user name contains a character Ghidra refuses (for example `O'Neil` or `#`), the 8.3 alias of your profile (Windows) or a private folder under `/var/tmp` is used instead; if that is not possible you get an error asking for `CLI_ANYTHING_GHIDRA_HOME`. Delete the folder to clear all analyses.
 
 ## Tests
 

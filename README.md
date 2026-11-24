@@ -1341,7 +1341,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td>Reverse Engineering</td>
 <td><code>cli-anything-ghidra</code></td>
 <td>Ghidra analyzeHeadless + decompiler</td>
-<td align="center">✅ 200</td>
+<td align="center">✅ 205</td>
 </tr>
 <tr>
 <td align="center"><strong>🟩 <a href="nsight-graphics/agent-harness/">Nsight Graphics CLI</a></strong></td>
@@ -1440,7 +1440,7 @@ renderdoc      59 passed  ✅   (45 unit + 14 e2e)
 cloudcompare   88 passed  ✅   (49 unit + 39 e2e)
 openscreen    101 passed  ✅   (78 unit + 23 e2e)
 lldb           27 passed  ✅   (23 unit + 4 e2e)
-ghidra         200 passed  ✅   (175 unit + 25 e2e; 20 need Ghidra)
+ghidra         205 tests   ✅   (180 unit + 25 e2e; 20 need Ghidra)
 nsight-graphics 51 passed ✅   (46 unit/CLI + 5 local e2e)
 unrealinsights 50 passed  ✅   (49 unit + 1 e2e, 9 backend-gated e2e skipped)
 cloudanalyzer  14 passed  ✅   (7 unit + 7 e2e)
@@ -1545,7 +1545,7 @@ cli-anything/
 ├── 🔬 renderdoc/agent-harness/          # RenderDoc CLI (59 tests)
 ├── 🟩 nsight-graphics/agent-harness/    # Nsight Graphics CLI (51 tests)
 ├── 🐞 lldb/agent-harness/               # LLDB CLI (27 tests)
-├── 🧬 ghidra/agent-harness/             # Ghidra CLI (200 tests)
+├── 🧬 ghidra/agent-harness/             # Ghidra CLI (205 tests)
 ├── 📈 unrealinsights/agent-harness/     # Unreal Insights CLI (50 tests)
 ├── 🎬 videocaptioner/agent-harness/     # VideoCaptioner CLI (26 tests)
 ├── 🎬 openscreen/agent-harness/         # Openscreen CLI — screen recording editor (101 tests)

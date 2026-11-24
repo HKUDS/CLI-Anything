@@ -277,8 +277,12 @@ def test_live_works_for_any_user_name(tmp_path, name):
     profile.mkdir()
     blob = tmp_path / "answer.bin"
     blob.write_bytes(bytes.fromhex("b82a000000c3"))
-    env = {"USERPROFILE": str(profile), "HOME": str(profile), "ProgramData": str(tmp_path / "ProgramData"),
-           "CLI_ANYTHING_GHIDRA_HOME": ""}
+    if sys.platform == "win32" and name in ("O'Neil", "name#1", "名前"):
+        from cli_anything.ghidra.utils.ghidra_backend import _short_path, ghidra_path_problem
+        short = _short_path(profile)
+        if short is None or ghidra_path_problem(str(short)) is not None:
+            pytest.skip("8.3 short names are disabled on this volume")
+    env = {"USERPROFILE": str(profile), "HOME": str(profile), "CLI_ANYTHING_GHIDRA_HOME": ""}
     res = run_cli("--json", "analyze", str(blob), *RAW_ARGS, env_extra=env)
     assert res.returncode == 0, res.stdout + res.stderr
     assert json.loads(res.stdout)["functions"] == 1
