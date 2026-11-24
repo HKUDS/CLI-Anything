@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
@@ -105,6 +106,10 @@ public class CliAnythingQuery extends GhidraScript {
         }
         DecompInterface decompiler = new DecompInterface();
         try {
+            DecompileOptions options = new DecompileOptions();
+            options.grabFromProgram(currentProgram);
+            options.setMaxPayloadMBytes(2047);  // the default 50 MB fails on huge functions ("Response buffer size exceeded")
+            decompiler.setOptions(options);
             decompiler.openProgram(currentProgram);
             DecompileResults r = decompiler.decompileFunction(f, seconds, monitor);
             if (!r.decompileCompleted()) {
