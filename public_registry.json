@@ -537,6 +537,31 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "aion-cli",
+      "display_name": "Aion CLI",
+      "version": "1.0.0",
+      "description": "Official macOS background app automation CLI for Aion — inspect status, switch scenes, manage smart protections, whitelists, and blacklists, and hold AI long-task protection leases with --json output",
+      "category": "productivity",
+      "requires": "macOS 14+ with Aion installed (https://aion.7caifei.com)",
+      "homepage": "https://aion.7caifei.com",
+      "docs_url": "https://aion.7caifei.com/ai-integration/",
+      "source_url": null,
+      "package_manager": "bundled",
+      "install_strategy": "bundled",
+      "install_notes": "Bundled inside Aion.app (macOS 14+). Install Aion from https://aion.7caifei.com, then run `/Applications/Aion.app/Contents/Resources/aion-cli.sh install-skill` to link `aion` into `~/.local/bin/aion` and install the bundled Agent Skill (or invoke `/Applications/Aion.app/Contents/Resources/aion-cli.sh` directly).",
+      "uninstall_notes": "Remove `~/.local/bin/aion` (and the installed `aion-cli` skill directory if desired) or uninstall Aion.app.",
+      "update_notes": "Update Aion.app to receive the latest bundled CLI.",
+      "skill_md": "https://aion.7caifei.com/skills/aion-cli/SKILL.md",
+      "entry_point": "aion",
+      "detect_cmd": "aion",
+      "contributors": [
+        {
+          "name": "monkey-sking",
+          "url": "https://github.com/monkey-sking"
+        }
+      ]
     }
   ]
 }
