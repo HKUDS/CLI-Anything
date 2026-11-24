@@ -422,6 +422,11 @@ def test_version_is_read_through_a_symlinked_launcher(tmp_path):
     assert backend.ghidra_version(tmp_path / "bin" / "analyzeHeadless") == "12.2"
 
 
+def test_script_is_staged_into_the_work_folder(be):
+    staged = be.scripts / backend.SCRIPT_NAME
+    assert be.scripts.parent == be.home and staged.read_bytes() == (backend.SCRIPTS_DIR / backend.SCRIPT_NAME).read_bytes()
+
+
 def test_heap_defaults_to_most_of_the_ram_unless_the_user_sets_one(be, monkeypatch):
     monkeypatch.delenv("GHIDRA_MAXMEM", raising=False)
     monkeypatch.delenv("GHIDRA_HEADLESS_MAXMEM", raising=False)

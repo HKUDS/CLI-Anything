@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileOptions;
@@ -92,14 +93,14 @@ public class CliAnythingQuery extends GhidraScript {
     }
 
     private String functions(Properties o) {
-        String filter = o.getProperty("filter", "").toLowerCase();
+        String filter = o.getProperty("filter", "").toLowerCase(Locale.ROOT);
         int limit = number(o, "limit", 0);
         StringBuilder out = new StringBuilder("[");
         int n = 0;
         FunctionIterator it = currentProgram.getListing().getFunctions(true);
         while (it.hasNext() && (limit == 0 || n < limit)) {
             Function f = it.next();
-            if (!filter.isEmpty() && !f.getName().toLowerCase().contains(filter)) {
+            if (!filter.isEmpty() && !f.getName().toLowerCase(Locale.ROOT).contains(filter)) {
                 continue;
             }
             out.append(n++ == 0 ? "" : ",").append("{\"name\":").append(q(f.getName()))

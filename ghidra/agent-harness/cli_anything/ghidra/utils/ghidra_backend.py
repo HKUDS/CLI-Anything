@@ -316,6 +316,19 @@ class GhidraBackend:
         self.home = home or work_home()
         self.projects = self.home / "projects"
         _own_dir(self.projects)
+        self.scripts = self._stage_script()
+
+    def _stage_script(self) -> Path:
+        """Copy the bundled Java script into the work folder: its path is validated like every other, and the
+        package may sit under a path (for example `Program Files (x86)`) that the Windows launcher cannot take."""
+        folder = _own_dir(self.home / "scripts")
+        source = SCRIPTS_DIR / SCRIPT_NAME
+        target = folder / SCRIPT_NAME
+        if not target.is_file() or target.read_bytes() != source.read_bytes():
+            partial = folder / f"{SCRIPT_NAME}.{os.getpid()}.part"  # atomic, so a parallel run never sees half a file
+            shutil.copyfile(source, partial)
+            os.replace(partial, target)
+        return folder
 
     def _env(self) -> dict:
         env = dict(os.environ)
@@ -344,7 +357,7 @@ class GhidraBackend:
     def _run(self, args: list, output: Path, timeout: int) -> tuple:
         """Run the launcher; returns (data from the post-script's JSON file, Ghidra's log text)."""
         for what, path in (("Ghidra launcher", self.launcher), ("work folder", self.projects),
-                           ("script folder", SCRIPTS_DIR), ("scratch folder", output.parent)):
+                           ("script folder", self.scripts), ("scratch folder", output.parent)):
             check_path(path, what)
         cmd = [str(self.launcher), str(self.projects)] + args
         try:
@@ -486,7 +499,7 @@ class GhidraBackend:
                     info, log = self._run(
                         [key, "-import", str(staged), "-overwrite", "-analysisTimeoutPerFile", str(int(timeout))]
                         + args_extra
-                        + ["-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, "info", str(out)]
+                        + ["-scriptPath", str(self.scripts), "-postScript", SCRIPT_NAME, "info", str(out)]
                         + ([entry_arg] if entry_arg else []),
                         out, int(timeout) + 120,
                     )
@@ -522,7 +535,7 @@ class GhidraBackend:
                     extra = [str(opts)]
                 data, _ = self._run(
                     [key, "-process", f"{key}.bin", "-noanalysis", "-readOnly",
-                     "-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, command, str(out)] + extra,
+                     "-scriptPath", str(self.scripts), "-postScript", SCRIPT_NAME, command, str(out)] + extra,
                     out, timeout,
                 )
                 return data
