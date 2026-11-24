@@ -144,7 +144,7 @@ def real_analyzed(tmp_path_factory):
 @live
 def test_live_real_binary_is_recognized_and_analyzed(real_analyzed):
     _, _, info = real_analyzed
-    assert info["format"] in ("Portable Executable (PE)", "ELF")
+    assert info["format"] in ("Portable Executable (PE)", "Executable and Linking Format (ELF)")
     assert info["functions"] > 5
 
 
