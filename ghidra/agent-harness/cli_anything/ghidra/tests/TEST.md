@@ -47,7 +47,7 @@ With Ghidra 12.2 and JDK 25 on Windows (live tests run; 7 skipped: 3 POSIX permi
 With Ghidra 12.2 and JDK 25 on Linux (Arch; live tests run; 6 skipped: 3 Windows 8.3 short-name tests and 3 Windows `.bat` launcher tests):
 
 ```
-206 passed, 6 skipped in 290.94s (0:04:50), including the real Capella launcher via CLI_ANYTHING_GHIDRA_TEST_BINARY
+207 passed, 6 skipped in 300.94s (0:05:00), including the real Capella launcher via CLI_ANYTHING_GHIDRA_TEST_BINARY
 ```
 
 Without Ghidra (live tests skipped):
