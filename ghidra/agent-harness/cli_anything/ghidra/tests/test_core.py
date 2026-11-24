@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -282,6 +283,11 @@ def _alive(pid):
         # bytes: the output is localized
         out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True).stdout
         return str(pid).encode() in out
+    try:  # a zombie (an unreaped child in a minimal container) is dead for our purposes
+        with open(f"/proc/{pid}/stat") as stat:
+            return stat.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        pass
     try:
         os.kill(pid, 0)
     except OSError:
@@ -720,3 +726,111 @@ def test_cli_force_flag_reaches_the_backend():
         cls.return_value.analyze.return_value = {"key": "k"}
         CliRunner().invoke(cli, ["--json", "analyze", "x.bin", "--force"], obj={})
     cls.return_value.analyze.assert_called_once_with("x.bin", None, None, None, 600, True)
+
+
+# --- per-binary lock: REAL file locks and threads, no mocks -----------------
+
+def test_second_run_on_the_same_binary_waits_for_the_first(be):
+    order = []
+
+    def holder():
+        with be._locked("key1", 10):
+            order.append("first-start")
+            time.sleep(1.0)
+            order.append("first-end")
+
+    t = threading.Thread(target=holder)
+    t.start()
+    time.sleep(0.3)
+    with be._locked("key1", 10):
+        order.append("second")
+    t.join()
+    assert order == ["first-start", "first-end", "second"]
+
+
+def test_waiting_for_a_busy_binary_gives_up_with_a_clear_error(be):
+    with be._locked("key2", 5):
+        started = time.monotonic()
+        with pytest.raises(RuntimeError, match="stayed busy"):
+            with be._locked("key2", 0.5):
+                pass
+    assert 0.4 < time.monotonic() - started < 3
+
+
+def test_different_binaries_do_not_block_each_other(be):
+    with be._locked("keyA", 5):
+        started = time.monotonic()
+        with be._locked("keyB", 5):
+            pass
+    assert time.monotonic() - started < 1
+
+
+def test_the_lock_is_released_after_an_error(be):
+    with pytest.raises(ValueError):
+        with be._locked("key3", 5):
+            raise ValueError("boom")
+    with be._locked("key3", 0.5):
+        pass
+
+
+def test_parallel_queries_run_one_after_another_and_all_succeed(be, sample):
+    analyzed(be, sample)
+    active, peak, results = [0], [0], []
+
+    def fake(cmd, **kwargs):
+        proc = FakeProc(cmd, kwargs, {"ok": True}, "", 0, False)
+        real = proc.communicate
+
+        def slow(timeout=None):
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+            time.sleep(0.3)
+            active[0] -= 1
+            return real(timeout)
+        proc.communicate = slow
+        return proc
+
+    def call():
+        results.append(be.query(str(sample), "info"))
+
+    with patch.object(backend.subprocess, "Popen", side_effect=fake):
+        threads = [threading.Thread(target=call) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    assert results == [{"ok": True}] * 4 and peak[0] == 1  # never two launcher runs at once
+
+
+# --- diagnostics for exit codes ---------------------------------------------
+
+def _proc(returncode, out="", err=""):
+    return subprocess.CompletedProcess([], returncode, out, err)
+
+
+def test_exit_255_on_windows_says_cmd_exe_could_not_parse_the_command_line(monkeypatch):
+    monkeypatch.setattr(backend, "IS_WINDOWS", True)
+    line = '"dir/home/projects" cannot be processed syntactically at this point.'
+    text = GhidraBackend._failure(_proc(255, line))
+    for expected in ("exit 255", "cmd.exe could not parse", "parenthesis", "syntactically"):
+        assert expected in text
+
+
+def test_unrecognized_failure_shows_the_last_log_lines_not_a_blank(monkeypatch):
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    text = GhidraBackend._failure(_proc(7, "line one\nline two\nline three\n"))
+    assert "exit 7" in text and "line two | line three" in text and "line one" not in text
+
+
+def test_silent_failure_says_so():
+    assert "printed nothing" in GhidraBackend._failure(_proc(9))
+
+
+def test_error_lines_win_over_the_tail():
+    text = GhidraBackend._failure(_proc(1, "INFO x\nERROR Abort due to error: Directory not found: /nope\nINFO y"))
+    assert "Directory not found" in text and "INFO y" not in text
+
+
+def test_real_lock_exception_text_maps_to_the_retry_message():
+    text = "ERROR Abort due to error: ghidra.framework.store.LockException: Unable to lock project! /x/projects/p"
+    assert "busy" in GhidraBackend._failure(_proc(1, text))

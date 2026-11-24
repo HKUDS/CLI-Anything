@@ -19,6 +19,7 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.symbol.ExternalLocation;
 import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.ReferenceIterator;
 import ghidra.program.model.symbol.Symbol;
 
 public class CliAnythingQuery extends GhidraScript {
@@ -115,6 +116,9 @@ public class CliAnythingQuery extends GhidraScript {
     private String strings() {
         List<String> items = new ArrayList<>();
         for (Data d : currentProgram.getListing().getDefinedData(true)) {
+            if (items.size() >= MAX_ITEMS) {
+                break;  // stop scanning once the cap is reached
+            }
             StringDataInstance s = StringDataInstance.getStringDataInstance(d);
             if (s != null && s != StringDataInstance.NULL_INSTANCE && items.size() < MAX_ITEMS) {
                 String value = s.getStringValue();
@@ -158,12 +162,20 @@ public class CliAnythingQuery extends GhidraScript {
             throw new IllegalArgumentException("cannot resolve " + target);
         }
         List<String> items = new ArrayList<>();
-        for (Reference r : getReferencesTo(at)) {
+        boolean truncated = false;
+        ReferenceIterator refs = currentProgram.getReferenceManager().getReferencesTo(at);  // lazy, unlike an array
+        while (refs.hasNext()) {
+            if (items.size() >= MAX_ITEMS) {
+                truncated = true;
+                break;
+            }
+            Reference r = refs.next();
             Function in = getFunctionContaining(r.getFromAddress());
             items.add("{\"from\":" + q(r.getFromAddress().toString()) + ",\"type\":" + q(r.getReferenceType().getName())
                 + ",\"function\":" + (in == null ? "null" : q(in.getName())) + "}");
         }
-        return "{\"target\":" + q(at.toString()) + ",\"references\":[" + String.join(",", items) + "]}";
+        return "{\"target\":" + q(at.toString()) + ",\"truncated\":" + truncated
+            + ",\"references\":[" + String.join(",", items) + "]}";
     }
 
     private static String q(String s) {

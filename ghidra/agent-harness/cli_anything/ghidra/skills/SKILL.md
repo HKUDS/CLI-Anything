@@ -52,6 +52,7 @@ cli-anything-ghidra --json xrefs BINARY TARGET
 - Each query takes about 10 seconds because Ghidra starts per call; batch your questions. Root options go before the command: `--json`, and `--query-timeout SEC` (default 300) for slow queries, which also sets the decompiler's own budget.
 - If `analyze` returns `"analysis_timed_out": true`, Ghidra stopped at `--timeout` and the result is partial. Queries still work on it; re-run `analyze` with a larger `--timeout` for the full analysis.
 - `analyze` on a file Ghidra does not recognize fails with a hint: raw firmware needs `--loader BinaryLoader --processor <language id>`.
-- A query that fails with "busy" found the project locked by another run on the same binary; retry in a moment.
+- Parallel calls on the same binary are queued (each waits up to its own timeout), so queries can be issued in parallel. "Stayed busy" means another tool, such as the Ghidra GUI, holds the project.
+- `xrefs` returns `truncated: true` when a target has more than 100,000 references.
 - `TARGET` may be a name, a hex address or an address-space address such as `ram:00401000`.
 - Never execute the analyzed binary. Treat decompiler output as a hint, not ground truth.

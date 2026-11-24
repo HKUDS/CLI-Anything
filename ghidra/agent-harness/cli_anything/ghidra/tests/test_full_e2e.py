@@ -10,9 +10,13 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
+
+from cli_anything.ghidra.utils.ghidra_backend import find_analyze_headless
 
 LIVE = bool(os.environ.get("GHIDRA_INSTALL_DIR"))
 live = pytest.mark.skipif(not LIVE, reason="needs GHIDRA_INSTALL_DIR (Ghidra 12.x + JDK 25+)")
@@ -164,3 +168,88 @@ def test_live_second_analyze_is_cached_and_force_reanalyzes(analyzed):
     assert again["cached"] is True and again["functions"] == 1
     forced = json.loads(run_cli("--json", "analyze", str(blob), *RAW_ARGS, "--force", env_extra=env).stdout)
     assert forced["cached"] is False and forced["functions"] == 1
+
+
+# --- real exit codes and failure modes of the real launcher ------------------
+
+@live
+def test_live_parallel_queries_on_one_binary_all_succeed(analyzed):
+    """Ghidra locks the project even for read-only runs; the harness queues parallel calls instead of failing."""
+    blob, env, _ = analyzed
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(run_cli("--json", "functions", str(blob), env_extra=env)))
+               for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert [r.returncode for r in results] == [0, 0, 0], [r.stdout for r in results]
+    assert all(len(json.loads(r.stdout)) == 1 for r in results)
+
+
+@live
+def test_live_query_during_forced_reanalysis_waits_and_then_succeeds(analyzed):
+    blob, env, _ = analyzed
+    forced = []
+    t = threading.Thread(target=lambda: forced.append(
+        run_cli("--json", "analyze", str(blob), *RAW_ARGS, "--force", env_extra=env)))
+    t.start()
+    time.sleep(4)  # the re-analysis is running and holds the project
+    during = run_cli("--json", "functions", str(blob), env_extra=env)
+    t.join()
+    assert forced[0].returncode == 0 and during.returncode == 0, during.stdout
+    assert len(json.loads(during.stdout)) == 1
+
+
+@live
+def test_live_unknown_format_without_loader_explains_what_to_do(tmp_path):
+    blob = tmp_path / "raw.bin"
+    blob.write_bytes(bytes.fromhex("b82a000000c3"))
+    res = run_cli("--json", "analyze", str(blob), env_extra={"CLI_ANYTHING_GHIDRA_HOME": str(tmp_path / "home")})
+    assert res.returncode == 1
+    assert "--loader BinaryLoader" in json.loads(res.stdout)["error"]
+
+
+def _run_real_launcher(project_dir):
+    env = dict(os.environ)
+    if os.environ.get("GHIDRA_JAVA_HOME"):
+        env["JAVA_HOME"] = os.environ["GHIDRA_JAVA_HOME"]
+    cmd = [str(find_analyze_headless()), str(project_dir), "p", "-process", "x.bin", "-noanalysis", "-readOnly"]
+    return subprocess.run(cmd,
+                          stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          env=env, timeout=120)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the launcher is a .bat run by cmd.exe only on Windows")
+@live
+def test_live_launcher_exits_255_when_a_parenthesis_is_followed_by_more_path(tmp_path):
+    """Why the harness refuses parentheses: our work folder is <home>/projects, so a parenthesis in <home> is
+    followed by more path, and the real launcher dies in cmd.exe with exit 255 before Java starts."""
+    project_dir = tmp_path / "paren(x)" / "projects"
+    project_dir.mkdir(parents=True)
+    proc = _run_real_launcher(project_dir)
+    log = (proc.stdout or "") + (proc.stderr or "")
+    assert proc.returncode == 255
+    assert "ERROR" not in log and "Exception" not in log  # one cmd.exe line, which is why the message used to be empty
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the launcher is a .bat run by cmd.exe only on Windows")
+@live
+def test_live_launcher_fails_with_a_java_parse_error_when_a_parenthesis_ends_the_path(tmp_path):
+    project_dir = tmp_path / "paren(x)"
+    project_dir.mkdir()
+    proc = _run_real_launcher(project_dir)
+    assert proc.returncode == 1 and "parseOptions" in (proc.stdout or "") + (proc.stderr or "")
+
+
+def test_parentheses_in_the_work_folder_are_refused_with_the_reason(tmp_path):
+    if sys.platform != "win32":
+        pytest.skip("the rule applies to the Windows launcher")
+    fake_install = tmp_path / "g" / "support"
+    fake_install.mkdir(parents=True)
+    (fake_install / "analyzeHeadless.bat").write_text("")
+    blob = tmp_path / "b.bin"
+    blob.write_bytes(b"x")
+    res = run_cli("--json", "analyze", str(blob), env_extra={
+        "GHIDRA_INSTALL_DIR": str(fake_install.parent), "CLI_ANYTHING_GHIDRA_HOME": str(tmp_path / "paren(x)")})
+    assert res.returncode == 1 and "( )" in json.loads(res.stdout)["error"]

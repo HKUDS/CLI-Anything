@@ -42,13 +42,23 @@ Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoade
 - No shell is used, stdin is `DEVNULL` (Ghidra's launcher can prompt for a JDK and would hang), and every run has a timeout. On timeout the whole process tree is killed, because killing only the `.bat` would leave `java.exe` running and holding the project lock.
 - Each analysis stages its input in a private folder and hashes the staged copy, so parallel runs on the same binary cannot delete each other's input.
 
+## Exit codes and what they mean (observed with Ghidra 12.2)
+
+| Exit | Meaning | What the harness reports |
+|------|---------|--------------------------|
+| 0 | Ghidra ran. It also exits 0 when an import failed (`No load spec found`, `Import failed`) or an analysis timed out (`Analysis timed out`), so the harness reads the log. | the loader hint, or `analysis_timed_out: true` |
+| 1 | Ghidra aborted with an `ERROR` line: bad option, missing folder, project not found, a path element starting with `.`, `LockException: Unable to lock project!`; or a Java parse error when a path argument ends in a parenthesis. | the first `ERROR` or `Exception` lines; the lock gets a "busy" message |
+| 255 (Windows) | `cmd.exe` could not parse the `.bat` command line: a parenthesis in the middle of a path argument. One localized line, no `ERROR`. Java never starts. | "cmd.exe could not parse the launcher command line ... a parenthesis" plus the line |
+
+The harness itself exits 0 on success, 1 on any error (`{"error": ...}` with `--json`) and 2 on a usage error. Two runs on the same binary are queued by a lock file in `~/cli-anything-ghidra/locks/`, because Ghidra locks the project even for read-only queries (three parallel queries made two of them fail with exit 1 before the queue existed).
+
 ## State
 
 There is no session file and no undo: the Ghidra project under `~/cli-anything-ghidra/projects` is the persisted state (one analyzed program per binary content), and every query is read-only.
 
 ## Known limits
 
-- Two runs on the same binary at once can find the project locked; the second one answers "busy, retry" instead of waiting.
+- A run waits up to its own timeout for another run on the same binary; after that it answers "stayed busy". A second tool that opens the same project (the Ghidra GUI, for example) is not covered by the queue.
 
 - Analysis is only as good as Ghidra's analyzers; decompiler output is not guaranteed to compile.
 - Queries are read-only: no renaming, retyping or patching.

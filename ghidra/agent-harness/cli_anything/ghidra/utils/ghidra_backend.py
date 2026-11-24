@@ -16,6 +16,7 @@ Security notes:
   leave java.exe running, holding the project lock.
 """
 
+import contextlib
 import hashlib
 import json
 import os
@@ -24,8 +25,15 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
+
+try:  # Windows
+    import msvcrt
+except ImportError:  # POSIX
+    msvcrt = None
+    import fcntl
 
 INSTALL_ENV = "GHIDRA_INSTALL_DIR"
 JAVA_ENV = "GHIDRA_JAVA_HOME"
@@ -96,6 +104,27 @@ def _kill_tree(proc: "subprocess.Popen") -> None:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except ProcessLookupError:
         pass
+
+
+def _try_lock(handle) -> bool:
+    """Take an exclusive, non-blocking lock on the first byte of the lock file."""
+    handle.seek(0)
+    try:
+        if msvcrt:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _unlock(handle) -> None:
+    handle.seek(0)
+    if msvcrt:
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def find_analyze_headless() -> Path:
@@ -193,16 +222,30 @@ class GhidraBackend:
 
     @staticmethod
     def _failure(proc: subprocess.CompletedProcess) -> str:
+        """Explain a run that produced no result file, from the launcher's exit code and log.
+
+        Observed with Ghidra 12.2: exit 0 with "Import failed"/"No load spec found" in the log, exit 1 with an
+        ERROR line (bad option, missing folder, "Unable to lock project!"), exit 255 from cmd.exe alone (a single
+        localized syntax-error line, no ERROR line) when a path contains parentheses.
+        """
         text = (proc.stdout or "") + (proc.stderr or "")
         if "JDK" in text and "could not be found" in text:
             return f"Ghidra could not find a supported JDK (12.x needs 25+). Set {JAVA_ENV} to a JDK 25+ folder."
         if "No load spec found" in text:
             return ("Ghidra does not recognize the file format. For raw firmware or shellcode pass "
                     "--loader BinaryLoader --processor <language id, e.g. x86:LE:64:default>.")
-        if "lock" in text.lower():
+        if "Unable to lock project" in text or "LockException" in text:
             return "The Ghidra project for this binary is busy (another analyze or query runs). Retry in a moment."
         lines = [ln.strip() for ln in text.splitlines() if "ERROR" in ln or "Exception" in ln]
-        detail = " | ".join(ln[:200] for ln in lines[:3]) or "no output file was produced"
+        if lines:
+            detail = " | ".join(ln[:200] for ln in lines[:3])
+        else:
+            tail = [ln.strip() for ln in text.splitlines() if ln.strip()][-2:]
+            if IS_WINDOWS and proc.returncode == 255:
+                detail = ("cmd.exe could not parse the launcher command line, usually because a path contains "
+                          "a special character such as a parenthesis" + (f" ({tail[-1][:120]})" if tail else ""))
+            else:
+                detail = " | ".join(t[:160] for t in tail) or "the launcher printed nothing"
         return f"Ghidra failed (exit {proc.returncode}): {detail}"
 
     def _stage(self, binary: str) -> tuple:
@@ -227,6 +270,30 @@ class GhidraBackend:
             shutil.rmtree(staging, ignore_errors=True)
             raise
         return key, staged, staging
+
+    @contextlib.contextmanager
+    def _locked(self, key: str, wait: float):
+        """Serialize runs on one binary. Ghidra locks the project even for read-only queries, so a parallel
+        call would fail with "Unable to lock project"; here it waits up to `wait` seconds for the other run."""
+        locks = self.home / "locks"  # not in the project folder: Ghidra's own project lock is <name>.lock there
+        locks.mkdir(parents=True, exist_ok=True)
+        handle = open(locks / f"{key}.lock", "a+b")
+        try:
+            if handle.seek(0, 2) == 0:  # the lock needs one byte to lock
+                handle.write(b"0")
+                handle.flush()
+            deadline = time.monotonic() + wait
+            while not _try_lock(handle):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"The Ghidra project for this binary stayed busy for {int(wait)}s "
+                                       "(another analyze or query is running). Retry later.")
+                time.sleep(0.2)
+            try:
+                yield
+            finally:
+                _unlock(handle)
+        finally:
+            handle.close()
 
     def _cached(self, path: Path, options: dict) -> dict | None:
         """Stored result of an earlier, complete analyze of the same bytes with the same options."""
@@ -257,22 +324,27 @@ class GhidraBackend:
             return cached
         key, staged, staging = self._stage(binary)
         marker = self.projects / f"{key}{ANALYZED_SUFFIX}"
-        marker.unlink(missing_ok=True)  # a failed re-analysis must not leave the old "analyzed" claim behind
         try:
-            with self._scratch() as tmp:
-                out = Path(tmp) / "out.json"
-                info, log = self._run(
-                    [key, "-import", str(staged), "-overwrite", "-analysisTimeoutPerFile", str(int(timeout))]
-                    + args_extra
-                    + ["-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, "info", str(out)]
-                    + ([entry_arg] if entry_arg else []),
-                    out, int(timeout) + 120,
-                )
+            with self._locked(key, int(timeout) + 120):
+                cached = None if force else self._cached(path, options)  # a parallel analyze may have finished
+                if cached:
+                    return cached
+                marker.unlink(missing_ok=True)  # a failed re-analysis must not leave the old "analyzed" claim
+                with self._scratch() as tmp:
+                    out = Path(tmp) / "out.json"
+                    info, log = self._run(
+                        [key, "-import", str(staged), "-overwrite", "-analysisTimeoutPerFile", str(int(timeout))]
+                        + args_extra
+                        + ["-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, "info", str(out)]
+                        + ([entry_arg] if entry_arg else []),
+                        out, int(timeout) + 120,
+                    )
+                # Ghidra ends a timed-out analysis with exit 0 and a partial result, so say so.
+                timed_out = "Analysis timed out" in log
+                marker.write_text(json.dumps({"options": options, "timed_out": timed_out, "info": info}),
+                                  encoding="utf-8")
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-        # Ghidra ends a timed-out analysis with exit 0 and a partial result, so say so.
-        timed_out = "Analysis timed out" in log
-        marker.write_text(json.dumps({"options": options, "timed_out": timed_out, "info": info}), encoding="utf-8")
         return {"key": key, **info, "analysis_timed_out": timed_out, "cached": False}
 
     def query(self, binary: str, command: str, target: str | None = None, timeout: int | None = None) -> Any:
@@ -281,16 +353,17 @@ class GhidraBackend:
         if not path.is_file():
             raise RuntimeError(f"Binary not found: {binary}")
         key = file_key(path)
-        if not (self.projects / f"{key}{ANALYZED_SUFFIX}").is_file():
-            raise RuntimeError(f"{binary} has not been analyzed yet. Run: cli-anything-ghidra analyze {binary}")
         extra = [check(target, _TARGET, "target")] if target else []
         if command == "decompile":  # the decompiler's own budget; the JVM start-up is not part of it
             extra.append(str(max(10, timeout - 30)))
-        with self._scratch() as tmp:
-            out = Path(tmp) / "out.json"
-            data, _ = self._run(
-                [key, "-process", f"{key}.bin", "-noanalysis", "-readOnly",
-                 "-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, command, str(out)] + extra,
-                out, timeout,
-            )
-            return data
+        with self._locked(key, timeout):  # parallel calls on the same binary queue up instead of failing
+            if not (self.projects / f"{key}{ANALYZED_SUFFIX}").is_file():
+                raise RuntimeError(f"{binary} has not been analyzed yet. Run: cli-anything-ghidra analyze {binary}")
+            with self._scratch() as tmp:
+                out = Path(tmp) / "out.json"
+                data, _ = self._run(
+                    [key, "-process", f"{key}.bin", "-noanalysis", "-readOnly",
+                     "-scriptPath", str(SCRIPTS_DIR), "-postScript", SCRIPT_NAME, command, str(out)] + extra,
+                    out, timeout,
+                )
+                return data
