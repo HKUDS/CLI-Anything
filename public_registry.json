@@ -537,6 +537,30 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "gemini-desktop",
+      "display_name": "Google Gemini Desktop CLI",
+      "version": "0.1.0",
+      "description": "Agent-native CLI harness for Google Gemini Desktop on Windows — enables zero-token AI architecture and automated task delegation via Win32 UI automation.",
+      "category": "ai",
+      "platform": "windows",
+      "requires": "Google Gemini Desktop on Windows, Python >= 3.10",
+      "homepage": "https://gemini.google.com",
+      "source_url": "https://github.com/creoihnf/cli-anything-gemini-desktop",
+      "package_manager": "pip",
+      "install_strategy": "command",
+      "install_cmd": "pip install git+https://github.com/creoihnf/cli-anything-gemini-desktop.git#subdirectory=agent-harness",
+      "uninstall_cmd": "pip uninstall -y cli-anything-gemini-desktop",
+      "update_cmd": "pip install --upgrade --force-reinstall git+https://github.com/creoihnf/cli-anything-gemini-desktop.git#subdirectory=agent-harness",
+      "skill_md": "https://raw.githubusercontent.com/creoihnf/cli-anything-gemini-desktop/main/agent-harness/cli_anything/gemini_desktop/skills/SKILL.md",
+      "entry_point": "cli-anything-gemini-desktop",
+      "contributors": [
+        {
+          "name": "creoihnf",
+          "url": "https://github.com/creoihnf"
+        }
+      ]
     }
   ]
 }
