@@ -2,8 +2,8 @@
 
 ## Test Inventory Plan
 
-- `test_core.py`: 145 unit tests (no Ghidra, no Java, `subprocess.Popen` mocked, plus one test with real processes)
-- `test_full_e2e.py`: 4 subprocess tests that need no Ghidra, plus 13 live tests against the real Ghidra (no mocks), skipped unless `GHIDRA_INSTALL_DIR` is set
+- `test_core.py`: 175 unit tests (no Ghidra, no Java, `subprocess.Popen` mocked, plus one test with real processes)
+- `test_full_e2e.py`: 4 subprocess tests that need no Ghidra, plus 20 live tests against the real Ghidra (no mocks), skipped unless `GHIDRA_INSTALL_DIR` is set
 
 ## Unit Test Plan (test_core.py)
 
@@ -15,6 +15,7 @@
 - **Core + CLI**: function filter/limit, string min-length/limit, `--json`, `decompile` prints C, option passing, bounds
 - **Per-binary lock (real file locks and real threads)**: a second run waits for the first and runs after it; a run gives up with "stayed busy" after its wait budget; different binaries never block each other; the lock is released after an error; four parallel queries never overlap
 - **Exit-code diagnostics**: exit 255 on Windows names cmd.exe and the parenthesis; an unrecognized failure shows the last two log lines instead of a blank; `ERROR` lines win over the tail; the real `LockException: Unable to lock project!` maps to the retry message
+- **Any user name**: the probed rule (accepted: letters/digits the code page holds, space and `_ - . ~ @ + [ ]`; refused: `' # $ { } , ; = ``` ` ```, symbols, CJK) is encoded in tests; the default work folder is used for a safe profile, an ASCII-safe per-user fallback for `O'Neil` or `name#1`, a stable and distinct fallback per user, POSIX fallback under `/var/tmp`, an explicit bad folder is an error and never a silent fallback; a scan proves the package contains no user name, home folder or drive path
 - **Caching**: a second `analyze` of the same bytes with the same options returns the stored result without starting Ghidra (`cached: true`); `--force`, different options, a timed-out analysis and an unusable marker all re-analyze; the CLI passes `--force` through
 - **Review round**: Ctrl-C stops the launcher tree and propagates; a stubborn child is killed instead of awaited forever; a project file alone is not "analyzed" (marker only after a successful analyze, removed when a re-analysis fails); a timed-out analysis is flagged (`analysis_timed_out`); an unknown format gets the loader hint; a locked project gets a retry message; decompile gets its own budget from `--query-timeout`; targets may name an address space; the cmd.exe path rules apply on Windows only; non-ASCII output never crashes a legacy console; plain `xrefs` output is JSON, not a Python repr; Abort is JSON in `--json` mode
 - **Error contract** (`main()`): a usage error (missing `BINARY`, unknown option) is `{"error": ...}` with exit 2 in `--json` mode and Click text on stderr otherwise; `--help` exits 0; backend errors are JSON with exit 1; an unexpected exception is a message, never a traceback; `--query-timeout` reaches the backend and is bounded
@@ -27,6 +28,7 @@
 
 - Real file: `find.exe` (Windows) or `true` (elsewhere) is analyzed for real; format is PE or ELF, more than 5 functions, the function list matches `info`, the first function decompiles, imports are returned (non-empty on PE) and `--limit` is honored
 - Real failure modes (no mocks): three parallel queries on one binary all succeed (queued); a query during `analyze --force` waits and then succeeds; an unrecognized format without a loader gets the `--loader BinaryLoader` hint; the real launcher exits 255 when a parenthesis is followed by more path and fails with a Java parse error when it ends the path (the reason the harness refuses parentheses)
+- Any user name (real Ghidra): `analyze` and `decompile` work with the profile set to `Max Mustermann`, `Jürgen Müller`, `O'Neil`, `name#1` and a CJK name
 - Caching: a second `analyze` returns `cached: true`; `--force` re-analyzes (`cached: false`)
 - Packaging: a built wheel contains `scripts/CliAnythingQuery.java` and `skills/SKILL.md` (checked by hand with `pip wheel`)
 
@@ -39,16 +41,16 @@ A real PE, `C:\Windows\System32\find.exe` (read only, never executed): `analyze`
 With Ghidra 12.2 and JDK 25 (live tests run):
 
 ```
-........................................................................ [ 44%]
-........................................................................ [ 88%]
-...................                                                      [100%]
-163 passed in 503.37s (0:08:23)
+........................................................................ [ 36%]
+........................................................................ [ 72%]
+........................................................                 [100%]
+200 passed in 284.83s (0:04:44)
 ```
 
 Without Ghidra (live tests skipped):
 
 ```
-........................................................................ [ 88%]
-....sssss.ssssssss.                                                      [100%]
-150 passed, 13 skipped in 11.42s
+........................................................................ [ 72%]
+..................................sssss.ssssssss.sssssss                 [100%]
+180 passed, 20 skipped in 6.12s
 ```

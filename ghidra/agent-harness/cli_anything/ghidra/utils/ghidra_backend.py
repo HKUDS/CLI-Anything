@@ -19,6 +19,7 @@ Security notes:
 import contextlib
 import hashlib
 import json
+import locale
 import os
 import re
 import shutil
@@ -52,6 +53,8 @@ _PROCESSOR = re.compile(r"^[A-Za-z0-9_.+-]+:(LE|BE):\d+:[A-Za-z0-9_.+-]+$")
 IS_WINDOWS = os.name == "nt"
 ANALYZED_SUFFIX = ".analyzed"  # marker written only after a successful analyze: a .gpr alone proves nothing
 _CONTROL = frozenset(chr(10) + chr(13) + chr(0))
+_PATH_SEPARATORS = "/:" + chr(92)  # separators and the drive colon are not part of a name
+_GHIDRA_NAME_EXTRA = frozenset(" _-.~@+[]")
 _PATH_UNSAFE = frozenset('&|<>^%!()"') | _CONTROL
 
 INSTALL_HELP = (
@@ -127,6 +130,18 @@ def _unlock(handle) -> None:
         fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def ghidra_version(launcher: Path) -> str:
+    """Build of the Ghidra install the launcher belongs to (application.version in Ghidra/application.properties)."""
+    props = Path(launcher).parent.parent / "Ghidra" / "application.properties"
+    try:
+        for line in props.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("application.version="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
+
+
 def find_analyze_headless() -> Path:
     install = os.environ.get(INSTALL_ENV, "").strip()
     name = "analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless"
@@ -141,16 +156,58 @@ def find_analyze_headless() -> Path:
     return Path(found)
 
 
+def ghidra_path_problem(path: str) -> str | None:
+    """The first character Ghidra refuses in a project path, or None.
+
+    Probed with Ghidra 12.2: letters and digits are accepted if the Windows code page can represent them
+    (so "J\u00fcrgen M\u00fcller" works), plus space and _ - . ~ @ + [ ]. Refused: $ { } , ; = ` ' # and currency or
+    other symbols, and letters outside the code page (CJK names). A user whose profile path contains one of them
+    cannot use a work folder inside it.
+    """
+    codepage = locale.getpreferredencoding(False)
+    for ch in path:
+        if ch in _PATH_SEPARATORS or ch in _GHIDRA_NAME_EXTRA:
+            continue
+        try:
+            ch.encode(codepage)
+        except (UnicodeEncodeError, LookupError):
+            return ch
+        if not ch.isalnum():
+            return ch
+    return None
+
+
+def _home_problem(home: Path) -> str | None:
+    dotted = [p for p in home.parts if p.startswith(".")]
+    if dotted:
+        return f"Ghidra cannot use a project path containing {dotted[0]!r} (folders starting with '.')."
+    bad = ghidra_path_problem(str(home))
+    if bad is not None:
+        return f"Ghidra cannot use a project path containing the character {bad!r} ({home})."
+    return None
+
+
+def _fallback_home() -> Path:
+    """An ASCII-only per-user folder outside the profile, for users whose profile path Ghidra cannot take."""
+    tag = hashlib.sha256(str(Path.home()).encode("utf-8", "replace")).hexdigest()[:8]
+    if IS_WINDOWS:
+        return Path(os.environ.get("ProgramData") or "C:/ProgramData") / "cli-anything-ghidra" / tag
+    return Path("/var/tmp") / f"cli-anything-ghidra-{tag}"
+
+
 def work_home() -> Path:
-    """Where projects and staged inputs live. Ghidra rejects any path element starting with '.'."""
-    home = Path(os.environ.get(HOME_ENV) or Path.home() / "cli-anything-ghidra").expanduser().resolve()
-    bad = [p for p in home.parts if p.startswith(".")]
-    if bad:
-        raise RuntimeError(
-            f"Ghidra cannot use a project path containing {bad[0]!r} (folders starting with '.'). "
-            f"Set {HOME_ENV} to another folder."
-        )
-    return home
+    """Where projects and staged inputs live: CLI_ANYTHING_GHIDRA_HOME, else ~/cli-anything-ghidra, else (when
+    Ghidra cannot take the profile path, for example O'Neil or a CJK name) an ASCII-safe per-user folder."""
+    explicit = os.environ.get(HOME_ENV)
+    candidates = [Path(explicit)] if explicit else [Path.home() / "cli-anything-ghidra", _fallback_home()]
+    problem = None
+    for candidate in candidates:
+        home = candidate.expanduser().resolve()
+        problem = _home_problem(home)
+        if problem is None:
+            return home
+    raise RuntimeError(f"{problem} Set {HOME_ENV} to a folder whose path uses only letters, digits, space and "
+                       "_ - . ~ @ + [ ].")
 
 
 def file_key(path: Path) -> str:
@@ -168,6 +225,7 @@ class GhidraBackend:
     def __init__(self, home: Path | None = None, query_timeout: int = QUERY_TIMEOUT):
         self.query_timeout = query_timeout
         self.launcher = find_analyze_headless()
+        self.ghidra = ghidra_version(self.launcher)
         self.home = home or work_home()
         self.projects = self.home / "projects"
         self.projects.mkdir(parents=True, exist_ok=True)
@@ -304,6 +362,8 @@ class GhidraBackend:
             return None
         if not isinstance(saved, dict) or saved.get("options") != options or saved.get("timed_out"):
             return None
+        if saved.get("ghidra") != self.ghidra:  # another Ghidra build was selected: its analysis may differ
+            return None
         return {"key": key, **saved["info"], "analysis_timed_out": False, "cached": True}
 
     def analyze(self, binary: str, loader: str | None = None, processor: str | None = None,
@@ -341,7 +401,8 @@ class GhidraBackend:
                     )
                 # Ghidra ends a timed-out analysis with exit 0 and a partial result, so say so.
                 timed_out = "Analysis timed out" in log
-                marker.write_text(json.dumps({"options": options, "timed_out": timed_out, "info": info}),
+                saved = {"options": options, "ghidra": self.ghidra, "timed_out": timed_out, "info": info}
+                marker.write_text(json.dumps(saved),
                                   encoding="utf-8")
         finally:
             shutil.rmtree(staging, ignore_errors=True)

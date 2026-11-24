@@ -54,5 +54,6 @@ cli-anything-ghidra --json xrefs BINARY TARGET
 - `analyze` on a file Ghidra does not recognize fails with a hint: raw firmware needs `--loader BinaryLoader --processor <language id>`.
 - Parallel calls on the same binary are queued (each waits up to its own timeout), so queries can be issued in parallel. "Stayed busy" means another tool, such as the Ghidra GUI, holds the project.
 - `xrefs` returns `truncated: true` when a target has more than 100,000 references.
+- The work folder defaults to `~/cli-anything-ghidra`; if the user name contains a character Ghidra refuses, an ASCII-safe per-user folder is used automatically. Set `CLI_ANYTHING_GHIDRA_HOME` only to choose a folder yourself (a refused character there is an error).
 - `TARGET` may be a name, a hex address or an address-space address such as `ram:00401000`.
 - Never execute the analyzed binary. Treat decompiler output as a hint, not ground truth.

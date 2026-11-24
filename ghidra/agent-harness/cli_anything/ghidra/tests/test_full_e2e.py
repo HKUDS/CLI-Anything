@@ -252,4 +252,35 @@ def test_parentheses_in_the_work_folder_are_refused_with_the_reason(tmp_path):
     blob.write_bytes(b"x")
     res = run_cli("--json", "analyze", str(blob), env_extra={
         "GHIDRA_INSTALL_DIR": str(fake_install.parent), "CLI_ANYTHING_GHIDRA_HOME": str(tmp_path / "paren(x)")})
-    assert res.returncode == 1 and "( )" in json.loads(res.stdout)["error"]
+    assert res.returncode == 1 and "character '('" in json.loads(res.stdout)["error"]
+
+
+@live
+def test_live_real_binary_strings_min_length_is_applied_before_the_cap(real_analyzed):
+    binary, env, _ = real_analyzed
+    short = json.loads(run_cli("--json", "strings", str(binary), "--min-length", "1", env_extra=env).stdout)
+    long_only = json.loads(run_cli("--json", "strings", str(binary), "--min-length", "12", env_extra=env).stdout)
+    assert 0 < len(long_only) < len(short) and all(s["length"] >= 12 for s in long_only)
+
+
+@live
+def test_live_cache_records_the_real_ghidra_build(analyzed):
+    from cli_anything.ghidra.utils.ghidra_backend import ghidra_version
+    assert ghidra_version(find_analyze_headless()) not in ("", "unknown")
+
+
+@live
+@pytest.mark.parametrize("name", ["Max Mustermann", "Jürgen Müller", "O'Neil", "name#1", "名前"])
+def test_live_works_for_any_user_name(tmp_path, name):
+    """The default work folder comes from the profile; names Ghidra cannot take must fall back, not fail."""
+    profile = tmp_path / name
+    profile.mkdir()
+    blob = tmp_path / "answer.bin"
+    blob.write_bytes(bytes.fromhex("b82a000000c3"))
+    env = {"USERPROFILE": str(profile), "HOME": str(profile), "ProgramData": str(tmp_path / "ProgramData"),
+           "CLI_ANYTHING_GHIDRA_HOME": ""}
+    res = run_cli("--json", "analyze", str(blob), *RAW_ARGS, env_extra=env)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert json.loads(res.stdout)["functions"] == 1
+    dec = run_cli("decompile", str(blob), "0", env_extra=env)
+    assert dec.returncode == 0 and "0x2a" in dec.stdout

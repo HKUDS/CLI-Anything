@@ -1,6 +1,6 @@
 // Headless post-script for cli-anything-ghidra.
 // Args: <command> <output json path> [argument]
-// Commands: info [entry], functions, decompile <name|addr>, strings, imports, xrefs <name|addr>
+// Commands: info [entry], functions, decompile <name|addr>, strings [min length], imports, xrefs <name|addr>
 // Results are written as JSON to the output path; stdout is Ghidra log noise and is never parsed.
 
 import java.io.File;
@@ -40,7 +40,7 @@ public class CliAnythingQuery extends GhidraScript {
             case "info": json = info(arg); break;
             case "functions": json = functions(); break;
             case "decompile": json = decompile(arg, seconds); break;
-            case "strings": json = strings(); break;
+            case "strings": json = strings(arg.isEmpty() ? 1 : Integer.parseInt(arg)); break;
             case "imports": json = imports(); break;
             case "xrefs": json = xrefs(arg); break;
             default: throw new IllegalArgumentException("unknown command: " + command);
@@ -113,7 +113,7 @@ public class CliAnythingQuery extends GhidraScript {
         }
     }
 
-    private String strings() {
+    private String strings(int minLength) {  // the length filter runs before the cap, so a prefix of short strings cannot hide longer ones
         List<String> items = new ArrayList<>();
         for (Data d : currentProgram.getListing().getDefinedData(true)) {
             if (items.size() >= MAX_ITEMS) {
@@ -122,7 +122,7 @@ public class CliAnythingQuery extends GhidraScript {
             StringDataInstance s = StringDataInstance.getStringDataInstance(d);
             if (s != null && s != StringDataInstance.NULL_INSTANCE && items.size() < MAX_ITEMS) {
                 String value = s.getStringValue();
-                if (value == null) {  // a defined string in uninitialized memory has no value
+                if (value == null || value.length() < minLength) {  // null: a string in uninitialized memory
                     continue;
                 }
                 items.add("{\"address\":" + q(d.getAddress().toString()) + ",\"length\":" + value.length()

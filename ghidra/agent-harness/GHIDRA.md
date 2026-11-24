@@ -11,7 +11,7 @@ Ghidra is the NSA's open-source reverse-engineering suite (disassembler, decompi
 
 - **Launcher:** `$GHIDRA_INSTALL_DIR/support/analyzeHeadless[.bat]`, or `analyzeHeadless` on PATH.
 - **Java:** Ghidra 12 needs JDK 25+. If your default `JAVA_HOME` is older, set `GHIDRA_JAVA_HOME`; it is applied to the child process only.
-- **Work folder:** `~/cli-anything-ghidra/` (override with `CLI_ANYTHING_GHIDRA_HOME`). Ghidra rejects any path element starting with `.`, so a dot folder is not used. `projects/` holds the analyzed programs, `inputs/` holds the temporary staged copy (deleted after analysis).
+- **Work folder:** `~/cli-anything-ghidra/` (override with `CLI_ANYTHING_GHIDRA_HOME`; a profile path Ghidra cannot take falls back to an ASCII-safe per-user folder, see "Work folder and user names"). Ghidra rejects any path element starting with `.`, so a dot folder is not used. `projects/` holds the analyzed programs, `inputs/` holds the temporary staged copy (deleted after analysis).
 - **Identity:** a program is identified by the first 16 hex chars of its SHA-256. The same bytes reuse the same analysis, whatever the file is called or where it lives.
 - **Queries:** `-process <key>.bin -noanalysis -readOnly`, so a query never re-analyzes (analysis can take minutes) and never modifies the project. Each query still pays ~10 s of JVM and Ghidra start-up.
 - **Output channel:** the post-script `scripts/CliAnythingQuery.java` writes JSON to a temp file. Ghidra's stdout is log noise and is never parsed. A Java script is used because it runs in every headless setup without extra pip packages.
@@ -41,6 +41,16 @@ Raw firmware has no header, so tell Ghidra how to read it: `--loader BinaryLoade
 - Paths that reach the command line (work folder, script folder, scratch folder, launcher) are refused on Windows if they contain `& | < > ^ % !` or a quote (on POSIX only newline and NUL are refused), so a folder such as `R&D` cannot split the command line either. Spaces are fine. Parentheses are refused too: the Ghidra launcher script exits with code 255 on them, even in a quoted path.
 - No shell is used, stdin is `DEVNULL` (Ghidra's launcher can prompt for a JDK and would hang), and every run has a timeout. On timeout the whole process tree is killed, because killing only the `.bat` would leave `java.exe` running and holding the project lock.
 - Each analysis stages its input in a private folder and hashes the staged copy, so parallel runs on the same binary cannot delete each other's input.
+
+## Work folder and user names
+
+The default work folder is `~/cli-anything-ghidra`, so it contains the user name. Ghidra validates every element of its project path, and what it accepts is narrower than what Windows allows in a user name. Probed with Ghidra 12.2 by running the real launcher:
+
+| Accepted | Refused |
+|----------|---------|
+| letters and digits that the Windows code page can represent (`Jürgen Müller`, `José García`, `Žofia`, `ß`), space, `_ - . ~ @ + [ ]` | `' # $ { } , ; = `` ` ``, symbols such as the euro sign, letters outside the code page (CJK names), and any element starting with `.` |
+
+When the profile path contains a refused character (a user called `O'Neil`, for example), the harness does not fail: it uses `%ProgramData%\cli-anything-ghidra\<8 hex of the profile path>` on Windows or `/var/tmp/cli-anything-ghidra-<8 hex>` elsewhere, one folder per user. A `CLI_ANYTHING_GHIDRA_HOME` that you set yourself is never replaced silently: a refused character there is an error that names the character. Nothing in the harness refers to a particular user, drive or home folder; a test scans the package for that.
 
 ## Exit codes and what they mean (observed with Ghidra 12.2)
 

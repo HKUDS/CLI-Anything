@@ -834,3 +834,138 @@ def test_error_lines_win_over_the_tail():
 def test_real_lock_exception_text_maps_to_the_retry_message():
     text = "ERROR Abort due to error: ghidra.framework.store.LockException: Unable to lock project! /x/projects/p"
     assert "busy" in GhidraBackend._failure(_proc(1, text))
+
+
+# --- cache is tied to the Ghidra build; strings filter runs in the collector ---
+
+def _set_version(install, version):
+    props = install / "Ghidra"
+    props.mkdir(exist_ok=True)
+    (props / "application.properties").write_text(f"application.name=Ghidra\napplication.version={version}\n")
+
+
+def test_ghidra_version_is_read_from_the_install(install):
+    _set_version(install, "12.2")
+    assert backend.ghidra_version(install / "support" / LAUNCHER_NAME) == "12.2"
+
+
+def test_unreadable_version_is_unknown_not_an_error(install):
+    assert backend.ghidra_version(install / "support" / LAUNCHER_NAME) == "unknown"
+
+
+def test_switching_the_ghidra_build_invalidates_the_cached_analysis(install, tmp_path, sample):
+    _set_version(install, "12.2")
+    home = tmp_path / "work"
+    first = GhidraBackend(home=home)
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, [])):
+        first.analyze(str(sample))
+    assert first.analyze(str(sample))["cached"] is True  # same build: reused
+    _set_version(install, "12.3")
+    second = GhidraBackend(home=home)
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, calls)):
+        result = second.analyze(str(sample))
+    assert len(calls) == 1 and result["cached"] is False  # another build: analyzed again
+
+
+def test_marker_without_a_version_is_not_reused(be, sample):
+    be.projects.mkdir(parents=True, exist_ok=True)
+    options = {"loader": "", "processor": "", "entry": ""}
+    (be.projects / f"{file_key(sample)}.analyzed").write_text(
+        json.dumps({"options": options, "timed_out": False, "info": INFO}))  # written by an older harness
+    calls = []
+    with patch.object(backend.subprocess, "Popen", side_effect=fake_popen(INFO, calls)):
+        assert be.analyze(str(sample))["cached"] is False
+    assert len(calls) == 1
+
+
+def test_strings_pass_the_min_length_to_the_collector():
+    b = MagicMock()
+    b.query.return_value = [{"length": 9, "value": "x" * 9}]
+    assert len(queries.list_strings(b, "x.bin", 8)) == 1
+    b.query.assert_called_once_with("x.bin", "strings", "8")
+
+
+# --- the work folder must work for every user name, not only the author's ---
+
+@pytest.fixture
+def cp1252(monkeypatch):
+    monkeypatch.setattr(backend.locale, "getpreferredencoding", lambda *a, **k: "cp1252")
+
+
+@pytest.mark.parametrize("name", ["Max Mustermann", "Jürgen Müller", "José García", "Anne-Marie.Dupont",
+                                  "ok~@+[1]", "ß", "Žofia"])
+def test_ghidra_accepts_these_user_names(cp1252, name):
+    assert backend.ghidra_path_problem("C:/Users/" + name + "/cli-anything-ghidra") is None
+
+
+@pytest.mark.parametrize("name,char", [("O'Neil", "'"), ("name#1", "#"), ("a$b", "$"), ("a,b", ","), ("a=b", "="),
+                                       ("a;b", ";"), ("a{b}", "{"), ("a`b", "`"), ("€uro", "€"), ("名前", "名")])
+def test_ghidra_refuses_these_user_names(cp1252, name, char):
+    assert backend.ghidra_path_problem("C:/Users/" + name + "/x") == char
+
+
+def test_cjk_name_is_fine_where_the_code_page_can_hold_it(monkeypatch):
+    monkeypatch.setattr(backend.locale, "getpreferredencoding", lambda *a, **k: "utf-8")
+    assert backend.ghidra_path_problem("/home/名前/x") is None
+
+
+def _as_profile(monkeypatch, tmp_path, name):
+    profile = tmp_path / name
+    profile.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: profile))
+    monkeypatch.setenv("ProgramData", str(tmp_path / "ProgramData"))
+    monkeypatch.delenv("CLI_ANYTHING_GHIDRA_HOME", raising=False)
+    return profile
+
+
+def test_default_work_folder_is_inside_a_safe_profile(cp1252, monkeypatch, tmp_path):
+    profile = _as_profile(monkeypatch, tmp_path, "Jürgen Müller")
+    assert backend.work_home() == (profile / "cli-anything-ghidra").resolve()
+
+
+@pytest.mark.parametrize("name", ["O'Neil", "name#1"])
+def test_profile_ghidra_cannot_take_falls_back_to_an_ascii_folder(cp1252, monkeypatch, tmp_path, name):
+    profile = _as_profile(monkeypatch, tmp_path, name)
+    monkeypatch.setattr(backend, "IS_WINDOWS", True)
+    home = backend.work_home()
+    assert home.parent.name == "cli-anything-ghidra" and home.parent.parent == (tmp_path / "ProgramData").resolve()
+    assert str(profile) not in str(home) and backend.ghidra_path_problem(str(home)) is None
+
+
+def test_fallback_is_stable_and_different_per_user(cp1252, monkeypatch, tmp_path):
+    _as_profile(monkeypatch, tmp_path, "O'Neil")
+    first = backend._fallback_home()
+    assert backend._fallback_home() == first
+    other = tmp_path / "O'Brien"
+    other.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: other))
+    assert backend._fallback_home() != first
+
+
+def test_posix_fallback_is_a_per_user_folder_under_var_tmp(cp1252, monkeypatch, tmp_path):
+    _as_profile(monkeypatch, tmp_path, "O'Neil")
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    assert backend._fallback_home().parent == Path("/var/tmp")
+
+
+def test_explicit_work_folder_with_a_bad_character_is_an_error_not_a_fallback(cp1252, monkeypatch, tmp_path):
+    monkeypatch.setenv("CLI_ANYTHING_GHIDRA_HOME", str(tmp_path / "it's mine"))
+    with pytest.raises(RuntimeError, match="character \"'\".*CLI_ANYTHING_GHIDRA_HOME"):
+        backend.work_home()
+
+
+def test_no_machine_specific_paths_in_the_package():
+    """Nothing may only work on the author's machine: no user names, home folders or drive paths in the code."""
+    import re
+    package = Path(backend.__file__).resolve().parents[1]
+    parts = [r"[A-Za-z]:." + "Users", r"/home/[a-z]", r"/Users/[A-Za-z]", "domin", "Krinxy", "bechtold"]
+    forbidden = re.compile("|".join(parts), re.IGNORECASE)
+    offenders = []
+    for path in package.rglob("*"):
+        if path.is_file() and path.suffix in (".py", ".java", ".md") and "tests" not in path.parts \
+                and path.name != "repl_skin.py":
+            for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                if forbidden.search(line):
+                    offenders.append(f"{path.name}:{number}")
+    assert offenders == []

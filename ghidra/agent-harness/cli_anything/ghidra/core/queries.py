@@ -16,7 +16,7 @@ def decompile(backend: GhidraBackend, binary: str, target: str) -> dict:
 
 
 def list_strings(backend: GhidraBackend, binary: str, min_length: int = 4, limit: int = 0) -> list:
-    items = [s for s in backend.query(binary, "strings") if s["length"] >= min_length]
+    items = [s for s in backend.query(binary, "strings", str(min_length)) if s["length"] >= min_length]
     return items[:limit] if limit else items
 
 
