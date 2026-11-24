@@ -11,7 +11,7 @@ import pytest
 import click.testing
 import requests
 
-from cli_hub import __version__
+from cli_hub import __version__, installer
 from cli_hub.registry import fetch_registry, fetch_all_clis, get_cli, search_clis, list_categories
 from cli_hub.matrix import (
     _package_available,
@@ -917,12 +917,12 @@ class TestInstaller:
             data = _load_installed()
             assert data["gimp"]["version"] == "1.0.0"
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_success(self, mock_get_cli, mock_run):
+    def test_install_success(self, mock_get_cli, mock_popen):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_popen.return_value.__enter__.return_value.wait.return_value = 0
 
         success, msg = install_cli("gimp")
         assert success
@@ -935,16 +935,49 @@ class TestInstaller:
         assert not success
         assert "not found" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_pip_failure(self, mock_get_cli, mock_run):
+    def test_install_pip_failure(self, mock_get_cli, mock_popen):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
-        mock_run.return_value = MagicMock(returncode=1, stderr="some error")
+        mock_popen.return_value.__enter__.return_value.wait.return_value = 1
+
+        def start_process(*args, stderr, **kwargs):
+            stderr.write("some error")
+            return mock_popen.return_value
+
+        mock_popen.side_effect = start_process
 
         success, msg = install_cli("gimp")
         assert not success
-        assert "failed" in msg
+        assert msg == "pip install failed:\nsome error"
+
+    def test_install_pip_timeout_reports_output_and_does_not_record(self, tmp_path, monkeypatch):
+        # Run a local Python module in place of pip for the subprocess wait.
+        (tmp_path / "pip.py").write_text(
+            "import sys, time\n"
+            "print('fixture progress', flush=True)\n"
+            "print('fixture diagnostic', file=sys.stderr, flush=True)\n"
+            "time.sleep(4)\n",
+            encoding="utf-8",
+        )
+        installed_file = tmp_path / "installed.json"
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CLI_HUB_NO_ANALYTICS", "1")
+        monkeypatch.setattr("cli_hub.analytics._analytics_dir", lambda: tmp_path)
+        cli = SAMPLE_REGISTRY["clis"][0]
+        monkeypatch.setattr(installer, "get_cli", lambda name: cli)
+        monkeypatch.setattr("cli_hub.cli.get_cli", lambda name: cli)
+        monkeypatch.setattr(installer, "INSTALLED_FILE", installed_file)
+        monkeypatch.setattr(installer, "_INSTALL_TIMEOUT_SECONDS", 2, raising=False)
+
+        result = click.testing.CliRunner().invoke(main, ["install", "gimp"])
+
+        assert result.exit_code == 1
+        assert "pip install timed out after 2 seconds" in result.output
+        assert "fixture progress" in result.output
+        assert "fixture diagnostic" in result.output
+        assert not installed_file.exists()
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")

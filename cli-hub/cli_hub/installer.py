@@ -1,16 +1,21 @@
 """Install, uninstall, and manage CLIs and matrices."""
 
 import json
+import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+import tempfile
+import time
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
-from cli_hub.registry import get_cli
 from cli_hub.matrix import get_matrix, resolve_install_scope, unmanaged_providers
 from cli_hub.matrix_skill import render_matrix_skill_file
+from cli_hub.registry import get_cli
 
 INSTALLED_FILE = Path.home() / ".cli-hub" / "installed.json"
 MATRIX_STATE_FILE = Path.home() / ".cli-hub" / "matrix_state.json"
@@ -181,15 +186,77 @@ def _bundled_update(cli):
 # ── pip operations (harness CLIs) ──
 
 
+_INSTALL_TIMEOUT_SECONDS = 600
+
+
+def _wait_for_pip_install(process):
+    if os.name != "nt":
+        return process.wait(timeout=_INSTALL_TIMEOUT_SECONDS)
+
+    # Brief Windows waits return control to Python so it can handle Ctrl+C.
+    deadline = time.monotonic() + _INSTALL_TIMEOUT_SECONDS
+    while True:
+        remaining = max(0, deadline - time.monotonic())
+        try:
+            return process.wait(timeout=min(remaining, 0.2))
+        except subprocess.TimeoutExpired:
+            if remaining == 0:
+                raise
+
+
+def _stop_pip_install(process):
+    """Stop pip and its build or VCS subprocesses."""
+    if os.name == "nt":
+        with suppress(OSError, subprocess.TimeoutExpired):
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+    else:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+    if process.poll() is None:
+        process.kill()
+    process.wait()
+
+
 def _pip_install(cli):
-    install_cmd = cli["install_cmd"]
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install"] + install_cmd.replace("pip install ", "").split(),
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"pip install failed:\n{result.stderr}"
+    install_args = cli["install_cmd"].replace("pip install ", "").split()
+    args = [sys.executable, "-m", "pip", "install", *install_args]
+    # Build and VCS children can inherit output handles. Files let us recover
+    # diagnostics without waiting for every writer to close a pipe.
+    with (
+        tempfile.TemporaryFile(mode="w+t", errors="replace") as stdout,
+        tempfile.TemporaryFile(mode="w+t", errors="replace") as stderr,
+        subprocess.Popen(
+            args,
+            stdout=stdout,
+            stderr=stderr,
+            start_new_session=os.name != "nt",
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        ) as process,
+    ):
+        try:
+            returncode = _wait_for_pip_install(process)
+        except subprocess.TimeoutExpired:
+            _stop_pip_install(process)
+            stdout.seek(0)
+            stderr.seek(0)
+            details = "\n".join(filter(None, (stdout.read().rstrip(), stderr.read().rstrip())))
+            message = f"pip install timed out after {_INSTALL_TIMEOUT_SECONDS} seconds."
+            return False, f"{message}\n{details}" if details else message
+        except KeyboardInterrupt:
+            _stop_pip_install(process)
+            raise
+
+        if returncode == 0:
+            return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
+        stderr.seek(0)
+        stdout.seek(0)
+        return False, f"pip install failed:\n{stderr.read() or stdout.read()}"
 
 
 def _pip_uninstall(cli):
