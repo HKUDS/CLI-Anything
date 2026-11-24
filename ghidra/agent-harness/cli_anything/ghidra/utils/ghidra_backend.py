@@ -273,6 +273,8 @@ class GhidraBackend:
         self.home = home or work_home()
         self.projects = self.home / "projects"
         self.projects.mkdir(parents=True, exist_ok=True)
+        if not IS_WINDOWS and self.home.stat().st_uid == os.getuid():
+            self.home.chmod(0o700)  # imported binaries and analysis must not be readable by other local users
 
     def _env(self) -> dict:
         env = dict(os.environ)

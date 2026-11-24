@@ -358,6 +358,15 @@ def test_stage_hashes_the_copy_and_uses_a_private_folder(be, sample):
         shutil.rmtree(folder2, ignore_errors=True)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_work_home_is_private_even_when_it_already_exists(install, tmp_path, monkeypatch):
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    home = tmp_path / "work"
+    home.mkdir(mode=0o755)
+    os.chmod(home, 0o755)  # umask-independent
+    assert stat.S_IMODE(GhidraBackend(home=home).home.stat().st_mode) == 0o700
+
+
 def test_java_home_override_only_in_child_env(be, sample, monkeypatch):
     analyzed(be, sample)
     monkeypatch.setenv("GHIDRA_JAVA_HOME", "/jdk25")
