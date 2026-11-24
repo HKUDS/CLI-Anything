@@ -134,7 +134,7 @@ def _unlock(handle) -> None:
 
 def ghidra_version(launcher: Path) -> str:
     """Build of the Ghidra install the launcher belongs to (application.version in Ghidra/application.properties)."""
-    props = Path(launcher).parent.parent / "Ghidra" / "application.properties"
+    props = Path(launcher).resolve().parent.parent / "Ghidra" / "application.properties"
     try:
         for line in props.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.startswith("application.version="):

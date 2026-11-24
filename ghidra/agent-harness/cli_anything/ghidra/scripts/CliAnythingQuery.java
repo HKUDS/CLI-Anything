@@ -88,6 +88,12 @@ public class CliAnythingQuery extends GhidraScript {
         if (byName != null && !byName.isEmpty()) {
             return byName.get(0);
         }
+        for (Symbol s : currentProgram.getSymbolTable().getSymbols(target)) {  // namespaced names, for example C++ methods
+            Function f = getFunctionAt(s.getAddress());
+            if (f != null) {
+                return f;
+            }
+        }
         Address at = toAddr(target);
         return at == null ? null : getFunctionContaining(at);
     }

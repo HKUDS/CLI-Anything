@@ -172,6 +172,8 @@ def test_live_biggest_function_decompiles_and_xrefs_work(real_analyzed):
     dec = run_cli("--json", "decompile", str(binary), big["address"], env_extra=env, timeout=900)
     assert dec.returncode == 0, dec.stdout
     assert "{" in json.loads(dec.stdout)["c"]
+    by_name = run_cli("--json", "decompile", str(binary), big["name"], env_extra=env, timeout=900)  # also namespaced names
+    assert by_name.returncode == 0, by_name.stdout
     refs = json.loads(run_cli("--json", "xrefs", str(binary), big["address"], env_extra=env).stdout)
     assert refs["truncated"] is False and isinstance(refs["references"], list)
 

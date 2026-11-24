@@ -410,6 +410,18 @@ def test_own_dir_refuses_a_symlink_and_does_not_chmod_its_target(tmp_path, monke
     assert stat.S_IMODE(target.stat().st_mode) == 0o1777
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks")
+def test_version_is_read_through_a_symlinked_launcher(tmp_path):
+    root = tmp_path / "ghidra"
+    (root / "support").mkdir(parents=True)
+    (root / "Ghidra").mkdir()
+    (root / "Ghidra" / "application.properties").write_text("application.version=12.2\n")
+    (root / "support" / "analyzeHeadless").write_text("")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "analyzeHeadless").symlink_to(root / "support" / "analyzeHeadless")
+    assert backend.ghidra_version(tmp_path / "bin" / "analyzeHeadless") == "12.2"
+
+
 def test_heap_defaults_to_most_of_the_ram_unless_the_user_sets_one(be, monkeypatch):
     monkeypatch.delenv("GHIDRA_MAXMEM", raising=False)
     monkeypatch.delenv("GHIDRA_HEADLESS_MAXMEM", raising=False)
