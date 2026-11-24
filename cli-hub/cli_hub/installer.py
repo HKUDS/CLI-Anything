@@ -8,8 +8,9 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
-from contextlib import suppress
+from contextlib import ExitStack, contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
 
@@ -223,6 +224,52 @@ def _stop_pip_install(process):
     process.wait()
 
 
+@contextmanager
+def _pip_install_process(args, stdout, stderr):
+    process = None
+    previous_handlers = {}
+    pending = []
+
+    def forward(signum, frame):
+        if process is not None:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signum)
+        previous = previous_handlers[signum]
+        if callable(previous):
+            previous(signum, frame)
+        else:
+            signal.signal(signum, previous)
+            signal.raise_signal(signum)
+
+    def on_termination(signum, frame):
+        if process is None:
+            # The child can create its session before Popen returns its PID.
+            pending.append((signum, frame))
+        else:
+            forward(signum, frame)
+
+    with ExitStack() as stack:
+        if os.name == "posix" and threading.current_thread() is threading.main_thread():
+            for signum in (signal.SIGTERM, signal.SIGHUP):
+                previous = signal.getsignal(signum)
+                if previous not in (None, signal.SIG_IGN):
+                    previous_handlers[signum] = previous
+                    stack.callback(signal.signal, signum, previous)
+                    signal.signal(signum, on_termination)
+        try:
+            process = stack.enter_context(subprocess.Popen(
+                args,
+                stdout=stdout,
+                stderr=stderr,
+                start_new_session=os.name != "nt",
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            ))
+        finally:
+            for signum, frame in pending:
+                forward(signum, frame)
+        yield process
+
+
 def _pip_install(cli):
     install_args = cli["install_cmd"].replace("pip install ", "").split()
     args = [sys.executable, "-m", "pip", "install", *install_args]
@@ -231,13 +278,7 @@ def _pip_install(cli):
     with (
         tempfile.TemporaryFile(mode="w+t", errors="replace") as stdout,
         tempfile.TemporaryFile(mode="w+t", errors="replace") as stderr,
-        subprocess.Popen(
-            args,
-            stdout=stdout,
-            stderr=stderr,
-            start_new_session=os.name != "nt",
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
-        ) as process,
+        _pip_install_process(args, stdout, stderr) as process,
     ):
         try:
             returncode = _wait_for_pip_install(process)
