@@ -398,6 +398,18 @@ def test_functions_filter_and_limit():
     assert len(queries.list_functions(fake_backend(data), "x", limit=1)) == 1
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks and owners")
+def test_own_dir_refuses_a_symlink_and_does_not_chmod_its_target(tmp_path, monkeypatch):
+    monkeypatch.setattr(backend, "IS_WINDOWS", False)
+    target = tmp_path / "shared"
+    target.mkdir()
+    os.chmod(target, 0o1777)
+    (tmp_path / "projects").symlink_to(target)
+    with pytest.raises(RuntimeError, match="not a folder of this user"):
+        backend._own_dir(tmp_path / "projects")
+    assert stat.S_IMODE(target.stat().st_mode) == 0o1777
+
+
 def test_heap_defaults_to_most_of_the_ram_unless_the_user_sets_one(be, monkeypatch):
     monkeypatch.delenv("GHIDRA_MAXMEM", raising=False)
     monkeypatch.delenv("GHIDRA_HEADLESS_MAXMEM", raising=False)

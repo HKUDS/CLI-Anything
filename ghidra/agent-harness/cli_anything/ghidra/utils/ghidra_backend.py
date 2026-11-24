@@ -220,10 +220,20 @@ def _private_dir(path: Path) -> Path:
 
 def _own_dir(path: Path) -> Path:
     """Create one of this tool's own work folders (never the user-chosen base) and keep it owner-only on POSIX:
-    imported binaries and analysis must not be readable by other local users."""
-    path.mkdir(parents=True, exist_ok=True)
-    if not IS_WINDOWS and path.stat().st_uid == os.getuid():
-        path.chmod(0o700)
+    imported binaries and analysis must not be readable by other local users. An existing child must be a real
+    directory of this user; a symlink or someone else's folder is refused, never followed or chmod-ed."""
+    if IS_WINDOWS:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+            raise RuntimeError(f"{path} exists but is not a folder of this user (symlink or other owner). "
+                               f"Remove it, or set {HOME_ENV} to a folder of your own.")
+        path.chmod(0o700)  # tighten a folder an older run created with the umask
     return path
 
 
@@ -264,7 +274,7 @@ def work_home() -> Path:
 
 
 def _ram_mb() -> int | None:
-    """Physical memory in MB, or None when it cannot be read."""
+    """Usable memory in MB (physical, or the container limit when lower), or None when it cannot be read."""
     try:
         if IS_WINDOWS:
             import ctypes
@@ -276,7 +286,13 @@ def _ram_mb() -> int | None:
             status = Status(ctypes.sizeof(Status))
             ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
             return int(status.total // (1 << 20)) or None
-        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1 << 20) or None
+        total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        for limit_file in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+            try:  # a container limit below the host RAM ("max" or a huge number means unlimited)
+                total = min(total, int(Path(limit_file).read_text().strip()))
+            except (OSError, ValueError):
+                pass
+        return total // (1 << 20) or None
     except (AttributeError, ValueError, OSError):
         return None
 
