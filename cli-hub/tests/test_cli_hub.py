@@ -2,6 +2,9 @@
 
 import json
 import os
+import signal
+import socket
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -11,7 +14,7 @@ import pytest
 import click.testing
 import requests
 
-from cli_hub import __version__
+from cli_hub import __version__, installer
 from cli_hub.registry import fetch_registry, fetch_all_clis, get_cli, search_clis, list_categories
 from cli_hub.matrix import (
     _package_available,
@@ -917,12 +920,12 @@ class TestInstaller:
             data = _load_installed()
             assert data["gimp"]["version"] == "1.0.0"
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_success(self, mock_get_cli, mock_run):
+    def test_install_success(self, mock_get_cli, mock_popen):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_popen.return_value.__enter__.return_value.wait.return_value = 0
 
         success, msg = install_cli("gimp")
         assert success
@@ -935,16 +938,99 @@ class TestInstaller:
         assert not success
         assert "not found" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_pip_failure(self, mock_get_cli, mock_run):
+    def test_install_pip_failure(self, mock_get_cli, mock_popen):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
-        mock_run.return_value = MagicMock(returncode=1, stderr="some error")
+        mock_popen.return_value.__enter__.return_value.wait.return_value = 1
+
+        def start_process(*args, stderr, **kwargs):
+            stderr.write("some error")
+            return mock_popen.return_value
+
+        mock_popen.side_effect = start_process
 
         success, msg = install_cli("gimp")
         assert not success
-        assert "failed" in msg
+        assert msg == "pip install failed:\nsome error"
+
+    def test_install_pip_timeout_reports_output_and_does_not_record(self, tmp_path, monkeypatch):
+        # Run a local Python module in place of pip for the subprocess wait.
+        (tmp_path / "pip.py").write_text(
+            "import sys, time\n"
+            "print('fixture progress', flush=True)\n"
+            "print('fixture diagnostic', file=sys.stderr, flush=True)\n"
+            "time.sleep(4)\n",
+            encoding="utf-8",
+        )
+        installed_file = tmp_path / "installed.json"
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CLI_HUB_NO_ANALYTICS", "1")
+        monkeypatch.setattr("cli_hub.analytics._analytics_dir", lambda: tmp_path)
+        cli = SAMPLE_REGISTRY["clis"][0]
+        monkeypatch.setattr(installer, "get_cli", lambda name: cli)
+        monkeypatch.setattr("cli_hub.cli.get_cli", lambda name: cli)
+        monkeypatch.setattr(installer, "INSTALLED_FILE", installed_file)
+        monkeypatch.setattr(installer, "_INSTALL_TIMEOUT_SECONDS", 2, raising=False)
+
+        result = click.testing.CliRunner().invoke(main, ["install", "gimp"])
+
+        assert result.exit_code == 1
+        assert "pip install timed out after 2 seconds" in result.output
+        assert "fixture progress" in result.output
+        assert "fixture diagnostic" in result.output
+        assert not installed_file.exists()
+
+    @pytest.mark.skipif(os.name != "posix", reason="uses POSIX process groups")
+    @pytest.mark.parametrize("signal_name", ["SIGTERM", "SIGHUP"])
+    def test_pip_children_exit_on_cli_group_termination(self, tmp_path, monkeypatch, signal_name):
+        worker = (
+            "import socket, sys\n"
+            "with socket.create_connection(('127.0.0.1', int(sys.argv[1]))) as peer:\n"
+            "    peer.recv(1)\n"
+        )
+        script = (
+            "from pathlib import Path\n"
+            "from cli_hub import installer\n"
+            "from cli_hub.cli import main\n"
+            f"installer.get_cli = lambda name: {SAMPLE_REGISTRY['clis'][0]!r}\n"
+            "installer.INSTALLED_FILE = Path('installed.json')\n"
+            "main(['install', 'gimp'])\n"
+        )
+        monkeypatch.setenv("CLI_HUB_NO_ANALYTICS", "1")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        source_dir = Path(installer.__file__).resolve().parents[1]
+        python_path = [str(source_dir)]
+        if os.environ.get("PYTHONPATH"):
+            python_path.append(os.environ["PYTHONPATH"])
+        monkeypatch.setenv("PYTHONPATH", os.pathsep.join(python_path))
+
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            listener.settimeout(15)
+            port = listener.getsockname()[1]
+            (tmp_path / "pip.py").write_text(
+                "import subprocess, sys\n"
+                f"subprocess.run([sys.executable, '-c', {worker!r}, {str(port)!r}], check=True)\n",
+                encoding="utf-8",
+            )
+            with subprocess.Popen(
+                [sys.executable, "-c", script], cwd=tmp_path, start_new_session=True,
+            ) as cli:
+                try:
+                    worker_socket, _ = listener.accept()
+                    with worker_socket:
+                        signum = getattr(signal, signal_name)
+                        os.killpg(cli.pid, signum)
+                        assert cli.wait(timeout=5) == -signum
+                        worker_socket.settimeout(2)
+                        assert worker_socket.recv(1) == b""
+                finally:
+                    if cli.poll() is None:
+                        os.killpg(cli.pid, signal.SIGKILL)
+        assert not (tmp_path / "installed.json").exists()
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
