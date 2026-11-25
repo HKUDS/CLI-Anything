@@ -93,6 +93,15 @@ Refine an existing CLI harness to expand coverage. Analyzes gaps between the sof
 /cli-anything:refine /home/user/blender "particle systems and physics simulation"
 ```
 
+### `/cli-anything:refine-native <software-path> [focus]`
+
+Refine a CLI that the software already ships (Go, Rust, TypeScript, a Python CLI cli-anything did not build, and others), instead of a cli-anything harness. It runs the same gap analysis as `refine`: it compares the CLI with the software's other surfaces (HTTP routes, GUI actions, library exports) and with agent-native basics (`--json`, exit codes, no prompts). New commands are added in the CLI's own language, parser and test framework.
+
+```bash
+/cli-anything:refine-native ./my-go-tool
+/cli-anything:refine-native . "machine-readable output on read commands"
+```
+
 ### `/cli-anything:test <software-path-or-repo>`
 
 Run tests for a CLI harness and update TEST.md with results.

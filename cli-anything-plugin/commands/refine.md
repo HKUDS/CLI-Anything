@@ -2,6 +2,10 @@
 
 Refine an existing CLI harness to improve coverage of the software's functions and usage patterns.
 
+## No harness? Use refine-native
+
+If `<software-path>` has no `HARNESS.md` or `agent-harness/` but the software ships its own CLI, use `/cli-anything:refine-native` instead. It runs the same gap analysis using that CLI's own conventions.
+
 ## CRITICAL: Read HARNESS.md First
 
 **Before refining, read `./HARNESS.md`.** All new commands and tests must follow the same standards as the original build. HARNESS.md is the single source of truth for architecture, patterns, and quality requirements.
