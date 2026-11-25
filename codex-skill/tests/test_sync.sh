@@ -21,7 +21,10 @@ VENDORED_GUIDE="${SKILL_DIR}/references/guides/session-locking.md"
 CANONICAL_GUIDE="${REPO_ROOT}/cli-anything-plugin/guides/session-locking.md"
 
 cleanup() {
-  rm -f "${ORPHAN}" "${VENDORED_HARNESS}.bak"
+  rm -f "${ORPHAN}"
+  if [[ -f "${VENDORED_HARNESS}.bak" ]]; then
+    mv "${VENDORED_HARNESS}.bak" "${VENDORED_HARNESS}"
+  fi
   if [[ -f "${CANONICAL_GUIDE}.bak" && ! -f "${CANONICAL_GUIDE}" ]]; then
     mv "${CANONICAL_GUIDE}.bak" "${CANONICAL_GUIDE}"
   else
