@@ -17,6 +17,7 @@ fail() {
 ORPHAN="${SKILL_DIR}/references/guides/orphan-regression.md"
 ORPHAN_NESTED="${SKILL_DIR}/references/guides/orphan-nested"
 ORPHAN_FIXED="${SKILL_DIR}/references/docs/orphan-regression.md"
+ORPHAN_FIXED_NESTED="${SKILL_DIR}/references/docs/orphan-nested"
 VENDORED_HARNESS="${SKILL_DIR}/references/HARNESS.md"
 CANONICAL_HARNESS="${REPO_ROOT}/cli-anything-plugin/HARNESS.md"
 VENDORED_GUIDE="${SKILL_DIR}/references/guides/session-locking.md"
@@ -27,7 +28,7 @@ CANONICAL_GUIDE="${REPO_ROOT}/cli-anything-plugin/guides/session-locking.md"
 BACKUP_DIR="$(mktemp -d)"
 cleanup() {
   rm -f "${ORPHAN}" "${ORPHAN_FIXED}"
-  rm -rf "${ORPHAN_NESTED}"
+  rm -rf "${ORPHAN_NESTED}" "${ORPHAN_FIXED_NESTED}"
   if [[ -f "${BACKUP_DIR}/HARNESS.md" ]] &&
     { [[ ! -f "${VENDORED_HARNESS}" ]] ||
       ! cmp -s "${BACKUP_DIR}/HARNESS.md" "${VENDORED_HARNESS}"; }; then
@@ -94,5 +95,14 @@ expect_validate_fail "stale fixed resource not detected"
 python3 "${SYNC}" >/dev/null
 [[ ! -e "${ORPHAN_FIXED}" ]] || fail "sync did not remove stale fixed resource"
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after fixed cleanup"
+
+# 6. Nested stale fixed resource: validate fails, sync removes it recursively.
+mkdir -p "${ORPHAN_FIXED_NESTED}/old"
+echo "stale" > "${ORPHAN_FIXED_NESTED}/old/file.md"
+expect_validate_fail "nested stale fixed resource not detected"
+python3 "${SYNC}" >/dev/null
+[[ ! -e "${ORPHAN_FIXED_NESTED}" ]] ||
+  fail "sync did not remove nested stale fixed resource"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after nested fixed cleanup"
 
 echo "PASS: codex-skill sync and validation regression tests."

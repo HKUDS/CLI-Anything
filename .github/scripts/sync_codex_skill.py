@@ -52,31 +52,39 @@ def _mapped_files() -> list[tuple[Path, Path]]:
     return pairs
 
 
-# Parents of fixed-file destinations, scanned for orphans left behind when
-# a FILE_MAP destination is renamed or removed. Only files are managed here;
-# directory mirrors are handled via DIR_MAP. Any top-level file under these
-# parents that is neither a mapped destination nor explicitly allowlisted in
-# UNMANAGED_FILES is treated as a stale resource and removed by sync — add
-# new non-vendored files to UNMANAGED_FILES before placing them here.
+# Parents of fixed-file destinations, scanned recursively for orphans left
+# behind when a FILE_MAP destination is renamed or removed. Only files are
+# managed here; directory mirrors are handled via DIR_MAP. Any file under
+# these parents that is neither a mapped destination nor explicitly
+# allowlisted in UNMANAGED_FILES is treated as a stale resource and removed
+# by sync — add new non-vendored files to UNMANAGED_FILES before placing
+# them here.
 FIXED_PARENTS: list[str] = ["references", "references/docs", "scripts"]
 UNMANAGED_FILES: set[str] = {"scripts/install.sh", "scripts/install.ps1"}
 
 
+def _dir_map_dests() -> set[Path]:
+    return {SKILL_DIR / dest_rel for _, dest_rel in DIR_MAP}
+
+
 def _fixed_orphans() -> list[Path]:
     expected = {dest for _, dest in _mapped_files()}
-    orphans: list[Path] = []
+    dir_map_dests = _dir_map_dests()
+    orphans: dict[Path, None] = {}
     for parent_rel in FIXED_PARENTS:
         parent = SKILL_DIR / parent_rel
         if not parent.is_dir():
             continue
-        for entry in sorted(parent.iterdir()):
+        for entry in sorted(parent.rglob("*")):
             if entry.is_dir():
+                continue
+            if any(entry.is_relative_to(dest) for dest in dir_map_dests):
                 continue
             if entry.relative_to(SKILL_DIR).as_posix() in UNMANAGED_FILES:
                 continue
             if entry not in expected:
-                orphans.append(entry)
-    return orphans
+                orphans.setdefault(entry, None)
+    return list(orphans)
 
 
 def sync() -> None:
@@ -111,9 +119,21 @@ def sync() -> None:
     # Remove stale fixed resources left behind by FILE_MAP renames/removals.
     for orphan in _fixed_orphans():
         orphan.unlink()
-    docs_dir = SKILL_DIR / "references/docs"
-    if docs_dir.is_dir() and not any(docs_dir.iterdir()):
-        docs_dir.rmdir()
+    dir_map_dests = _dir_map_dests()
+    fixed_dirs = [SKILL_DIR / rel for rel in FIXED_PARENTS]
+    for nested in sorted(
+        (
+            d
+            for parent in fixed_dirs
+            if parent.is_dir()
+            for d in parent.rglob("*")
+            if d.is_dir() and not any(d.is_relative_to(dest) for dest in dir_map_dests)
+        ),
+        key=lambda d: len(d.parts),
+        reverse=True,
+    ):
+        if nested.is_dir() and not any(nested.iterdir()):
+            nested.rmdir()
 
 
 if __name__ == "__main__":
