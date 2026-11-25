@@ -74,6 +74,8 @@ def stream_to_stdout(chunks) -> dict:
     """
     final = {}
     for chunk in chunks:
+        if "error" in chunk:
+            raise RuntimeError(chunk["error"])
         # generate endpoint uses 'response', chat endpoint uses 'message.content'
         if "response" in chunk:
             sys.stdout.write(chunk["response"])

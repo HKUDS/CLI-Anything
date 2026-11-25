@@ -893,6 +893,28 @@ class TestStreamToStdout:
         captured = capsys.readouterr()
         assert "Yes!" in captured.out
 
+    def test_stream_to_stdout_generate_error(self, capsys):
+        from cli_anything.ollama.core.generate import stream_to_stdout
+        chunks = iter([
+            {"response": "Partial", "done": False},
+            {"error": "model runner failed"},
+        ])
+        with pytest.raises(RuntimeError, match="model runner failed"):
+            stream_to_stdout(chunks)
+        captured = capsys.readouterr()
+        assert "Partial" in captured.out
+
+    def test_stream_to_stdout_chat_error(self, capsys):
+        from cli_anything.ollama.core.generate import stream_to_stdout
+        chunks = iter([
+            {"message": {"role": "assistant", "content": "partial"}, "done": False},
+            {"error": "stream failed"},
+        ])
+        with pytest.raises(RuntimeError, match="stream failed"):
+            stream_to_stdout(chunks)
+        captured = capsys.readouterr()
+        assert "partial" in captured.out
+
     def test_stream_to_stdout_empty(self, capsys):
         from cli_anything.ollama.core.generate import stream_to_stdout
         chunks = iter([{"done": True}])
