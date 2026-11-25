@@ -41,6 +41,67 @@ from skill_generator import (
 )
 
 
+@pytest.mark.parametrize("render", [generate_skill_md, generate_skill_md_simple])
+def test_api_skill_uses_real_command_paths_and_service_requirements(harness_dir, render):
+    cli_pkg = harness_dir / "cli_anything" / "testapp"
+    (cli_pkg / "README.md").write_text(
+        "# Test API\n\nConfigure the service endpoint before making requests.\n\n"
+        "For optional local demos, use `brew install testapp`.\n",
+        encoding="utf-8",
+    )
+    (cli_pkg / "testapp_cli.py").write_text(
+        textwrap.dedent("""\
+            import click
+
+            @click.group()
+            def cli():
+                pass
+
+            @cli.group("published-data")
+            def resources():
+                pass
+
+            @resources.group("audit-log")
+            def log():
+                pass
+
+            @log.command("current")
+            def get_latest():
+                \"\"\"Read the latest event.\"\"\"
+        """),
+        encoding="utf-8",
+    )
+
+    metadata = extract_cli_metadata(str(harness_dir), api_backend=True)
+    content = render(metadata)
+    assert "Access to the service's API" in content
+    assert "cli-anything-testapp published-data audit-log current --help" in content
+    assert "Read the latest event." in content
+    assert "must be installed on your system" not in content
+    assert "brew install testapp" not in content
+    assert "project new" not in content
+    assert "project info" not in content
+    assert "REPL" not in content
+    assert "Undo/Redo" not in content
+
+
+@pytest.mark.parametrize("render", [generate_skill_md, generate_skill_md_simple])
+def test_api_skill_supports_hyphenated_package_and_root_command(tmp_path, render):
+    cli_pkg = tmp_path / "cli_anything" / "test_app"
+    cli_pkg.mkdir(parents=True)
+    (cli_pkg / "__init__.py").write_text("", encoding="utf-8")
+    (cli_pkg / "test_app_cli.py").write_text(
+        "import click\n@click.group()\ndef cli(): pass\n"
+        "@cli.command('health')\ndef status(): pass\n",
+        encoding="utf-8",
+    )
+    content = render(extract_cli_metadata(str(tmp_path), api_backend=True))
+    assert "pip install cli-anything-test-app" in content
+    assert "cli-anything-test-app --help" in content
+    assert "cli-anything-test-app health --help" in content
+    assert "cli-anything-test_app" not in content
+
+
 # ─── Fixtures ──────────────────────────────────────────────────────────
 
 

@@ -13,9 +13,13 @@ The generated SKILL.md files contain:
 
 import ast
 import re
+import shlex
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
+
+
+API_REQUIREMENT = "Access to the service's API. See the harness README for the endpoint and any required credentials."
 
 
 def _format_display_name(name: str) -> str:
@@ -90,6 +94,7 @@ class CommandGroup:
     name: str
     description: str
     commands: list[CommandInfo] = field(default_factory=list)
+    path: Optional[tuple[str, ...]] = None
 
 
 @dataclass
@@ -111,14 +116,20 @@ class SkillMetadata:
     system_package: Optional[str] = None
     command_groups: list[CommandGroup] = field(default_factory=list)
     examples: list[Example] = field(default_factory=list)
+    api_backend: bool = False
+
+    @property
+    def command_name(self) -> str:
+        return _api_command_name(self.software_name) if self.api_backend else f"cli-anything-{self.software_name}"
 
 
-def extract_cli_metadata(harness_path: str) -> SkillMetadata:
+def extract_cli_metadata(harness_path: str, *, api_backend: bool = False) -> SkillMetadata:
     """
     Extract metadata from a CLI-Anything harness directory.
 
     Args:
         harness_path: Path to the agent-harness directory
+        api_backend: Generate prerequisites and examples for a service API
 
     Returns:
         SkillMetadata containing extracted information
@@ -149,7 +160,8 @@ def extract_cli_metadata(harness_path: str) -> SkillMetadata:
     if readme_path.exists():
         readme_content = readme_path.read_text(encoding="utf-8")
         skill_intro = extract_intro_from_readme(readme_content)
-        system_package = extract_system_package(readme_content)
+        if not api_backend:
+            system_package = extract_system_package(readme_content)
 
     # Extract version from setup.py
     setup_path = harness_path / "setup.py"
@@ -166,7 +178,11 @@ def extract_cli_metadata(harness_path: str) -> SkillMetadata:
         command_groups = extract_commands_from_cli(cli_file)
 
     # Generate examples based on software type
-    examples = generate_examples(software_name, command_groups)
+    if api_backend:
+        command_groups = [group for group in command_groups if group.path is not None and group.commands]
+        examples = generate_api_examples(software_name, command_groups)
+    else:
+        examples = generate_examples(software_name, command_groups)
 
     # Build skill name and description
     skill_name = _canonical_skill_name(harness_path, software_name)
@@ -185,7 +201,8 @@ def extract_cli_metadata(harness_path: str) -> SkillMetadata:
         version=version,
         system_package=system_package,
         command_groups=command_groups,
-        examples=examples
+        examples=examples,
+        api_backend=api_backend,
     )
 
 
@@ -288,11 +305,18 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
                 group_path = [_format_display_name(group_parent), local_group_name]
 
         group_name = " ".join(group_path)
+        parent_group = group_lookup.get(parent_key)
+        cli_path = None
+        if parent_key == "click":
+            cli_path = ()
+        elif parent_group is not None and parent_group.path is not None:
+            cli_path = (*parent_group.path, declared_name)
 
         group = CommandGroup(
             name=group_name,
             description=group_doc or f"Commands for {group_name.lower()} operations.",
-            commands=[]
+            commands=[],
+            path=cli_path,
         )
         groups.append(group)
         group_lookup[group_func.lower()] = group
@@ -336,6 +360,24 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
             groups.append(default_group)
 
     return groups
+
+
+def _api_command_name(software_name: str) -> str:
+    return f"cli-anything-{software_name.replace('_', '-')}"
+
+
+def generate_api_examples(software_name: str, command_groups: list[CommandGroup]) -> list[Example]:
+    """Show supported commands without guessing arguments or calling the API."""
+    if not command_groups:
+        return []
+    group = next((item for item in command_groups if item.path), command_groups[0])
+    path = group.path or ()
+    command = shlex.join((_api_command_name(software_name), *path, group.commands[0].name, "--help"))
+    return [Example(
+        title="Inspect Command Options",
+        description="Check the accepted arguments before calling the API.",
+        code=command,
+    )]
 
 
 def generate_examples(software_name: str, command_groups: list[CommandGroup]) -> list[Example]:
@@ -411,6 +453,9 @@ def generate_skill_md(metadata: SkillMetadata, template_path: Optional[str] = No
         skill_intro=metadata.skill_intro,
         version=metadata.version,
         system_package=metadata.system_package,
+        command_name=metadata.command_name,
+        api_backend=metadata.api_backend,
+        api_requirement=API_REQUIREMENT,
         command_groups=[{
             "name": g.name,
             "description": g.description,
@@ -438,21 +483,22 @@ def generate_skill_md_simple(metadata: SkillMetadata) -> str:
         "",
         "## Installation",
         "",
-        f"This CLI is installed as part of the cli-anything-{metadata.software_name} package:",
+        f"This CLI is installed as part of the {metadata.command_name} package:",
         "",
         f"```bash",
-        f"pip install cli-anything-{metadata.software_name}",
+        f"pip install {metadata.command_name}",
         f"```",
         "",
         "**Prerequisites:**",
         "- Python 3.10+",
-        f"- {_format_display_name(metadata.software_name)} must be installed on your system",
     ]
 
-    if metadata.system_package:
-        lines.extend([
-            f"- Install {metadata.software_name}: `{metadata.system_package}`"
-        ])
+    if metadata.api_backend:
+        lines.append(f"- {API_REQUIREMENT}")
+    else:
+        lines.append(f"- {_format_display_name(metadata.software_name)} must be installed on your system")
+        if metadata.system_package:
+            lines.append(f"- Install {metadata.software_name}: `{metadata.system_package}`")
 
     lines.extend([
         "",
@@ -462,19 +508,21 @@ def generate_skill_md_simple(metadata: SkillMetadata) -> str:
         "",
         "```bash",
         "# Show help",
-        f"cli-anything-{metadata.software_name} --help",
-        "",
-        "# Start interactive REPL mode",
-        f"cli-anything-{metadata.software_name}",
-        "",
-        "# Create a new project",
-        f"cli-anything-{metadata.software_name} project new -o project.json",
-        "",
-        "# Run with JSON output (for agent consumption)",
-        f"cli-anything-{metadata.software_name} --json project info -p project.json",
-        "```",
-        "",
+        f"{metadata.command_name} --help",
     ])
+    if not metadata.api_backend:
+        lines.extend([
+            "",
+            "# Start interactive REPL mode",
+            f"cli-anything-{metadata.software_name}",
+            "",
+            "# Create a new project",
+            f"cli-anything-{metadata.software_name} project new -o project.json",
+            "",
+            "# Run with JSON output (for agent consumption)",
+            f"cli-anything-{metadata.software_name} --json project info -p project.json",
+        ])
+    lines.extend(["```", ""])
 
     # Add command groups
     if metadata.command_groups:
@@ -530,7 +578,8 @@ def generate_skill_md_simple(metadata: SkillMetadata) -> str:
 
 
 def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
-                        template_path: Optional[str] = None) -> str:
+                        template_path: Optional[str] = None, *,
+                        api_backend: bool = False) -> str:
     """
     Generate a SKILL.md file for a CLI-Anything harness.
 
@@ -539,12 +588,13 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
         output_path: Optional output path for SKILL.md
                      (default: skills/cli-anything-<software>/SKILL.md)
         template_path: Optional path to custom Jinja2 template
+        api_backend: Generate prerequisites and examples for a service API
 
     Returns:
         Path to the generated SKILL.md file
     """
     # Extract metadata
-    metadata = extract_cli_metadata(harness_path)
+    metadata = extract_cli_metadata(harness_path, api_backend=api_backend)
 
     # Generate content
     content = generate_skill_md(metadata, template_path)
@@ -591,13 +641,19 @@ if __name__ == "__main__":
         help="Path to custom Jinja2 template",
         default=None
     )
+    parser.add_argument(
+        "--api",
+        action="store_true",
+        help="Generate usage and prerequisites for an API-backed harness.",
+    )
 
     args = parser.parse_args()
 
     output_file = generate_skill_file(
         args.harness_path,
         args.output,
-        args.template
+        args.template,
+        api_backend=args.api,
     )
 
     print(f"Generated: {output_file}")

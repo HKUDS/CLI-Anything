@@ -7,7 +7,7 @@ description: Build a complete CLI-Anything harness for any GUI application (all 
 
 Build a complete, stateful CLI harness for any GUI application.
 
-**Target software**: use the path or repo URL supplied with this command.
+**Target software**: use the supplied source path, repository URL, or documented API.
 
 ## CRITICAL: Resolve PLUGIN_ROOT (absolute paths only)
 
@@ -38,12 +38,14 @@ Always **Read** `{PLUGIN_ROOT}/references/HARNESS.md` with an absolute path. Als
 
 ## Arguments
 
-- First argument is the **software path or repo URL** (required):
+- For a local build, supply a **software path or repo URL**:
   - Local path (e.g. `/home/user/gimp`, `./blender`)
   - GitHub repository URL
   - Software names alone (e.g. `gimp`) are NOT accepted
 
 If a GitHub URL is provided, clone locally first, then work on the local copy. Derive the software name from the directory name.
+
+For an API-backed build, use `/cli-anything --api <software-name> <api-docs-url-or-openapi-file>`. Follow the API Backend Pattern in the referenced HARNESS.md and use the API documentation for Phases 0 and 1.
 
 ## Phase Gates and Resume (hard gate)
 
@@ -81,7 +83,8 @@ Rules:
 Implements the complete cli-anything methodology. **All phases follow HARNESS.md.**
 
 ### Phase 0: Source Acquisition
-- Clone URL targets if needed; verify local source exists; derive software name
+- For a source target, clone repository URLs if needed, verify the local source, and derive the software name.
+- For an API target, verify the documentation or OpenAPI specification and use the supplied software name.
 - Create `agent-harness/` and initialize the progress file
 
 ### Phase 1: Codebase Analysis
@@ -106,7 +109,7 @@ Implements the complete cli-anything methodology. **All phases follow HARNESS.md
 
 ### Phase 7: Packaging and Installation
 - `setup.py` with namespace packages; `cli-anything-<software>` console script
-- `pip install -e .`; verify PATH; generate CLI-specific `SKILL.md` via `{PLUGIN_ROOT}/scripts/skill_generator.py`
+- `pip install -e .`; verify PATH; generate CLI-specific `SKILL.md` via `{PLUGIN_ROOT}/scripts/skill_generator.py` with `--api` for API-backed harnesses
 
 ## Quality Bar Checklist (do not skip)
 
