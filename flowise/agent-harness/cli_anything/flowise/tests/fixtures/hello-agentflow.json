@@ -1,0 +1,52 @@
+{
+  "nodes": [
+    {
+      "id": "startAgentflow_0",
+      "type": "agentFlow",
+      "position": {"x": 0, "y": 0},
+      "data": {
+        "id": "startAgentflow_0",
+        "label": "Start",
+        "name": "startAgentflow",
+        "type": "Start",
+        "version": 1.1,
+        "baseClasses": ["Start"],
+        "inputs": {"startInputType": "chatInput"},
+        "inputParams": [],
+        "inputAnchors": [],
+        "outputAnchors": [
+          {"id": "startAgentflow_0-output-startAgentflow", "label": "Start", "name": "startAgentflow"}
+        ]
+      }
+    },
+    {
+      "id": "directReplyAgentflow_0",
+      "type": "agentFlow",
+      "position": {"x": 240, "y": 0},
+      "data": {
+        "id": "directReplyAgentflow_0",
+        "label": "Direct Reply",
+        "name": "directReplyAgentflow",
+        "type": "DirectReply",
+        "version": 1,
+        "baseClasses": ["DirectReply"],
+        "inputs": {"directReplyMessage": "Hello from CLI-Anything"},
+        "inputParams": [
+          {"label": "Message", "name": "directReplyMessage", "type": "string", "acceptVariable": true}
+        ],
+        "inputAnchors": [],
+        "outputAnchors": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "start-to-reply",
+      "source": "startAgentflow_0",
+      "sourceHandle": "startAgentflow_0-output-startAgentflow",
+      "target": "directReplyAgentflow_0",
+      "targetHandle": "directReplyAgentflow_0",
+      "type": "agentFlow"
+    }
+  ]
+}
