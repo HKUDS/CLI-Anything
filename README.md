@@ -1140,6 +1140,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ <a href="n8n/agent-harness/">55+ cmds</a></td>
 </tr>
 <tr>
+<td align="center"><strong><a href="flowise/agent-harness/">Flowise</a></strong></td>
+<td>AI Workflow Automation</td>
+<td><code>cli-anything-flowise</code></td>
+<td>Flowise REST API</td>
+<td align="center">✅ <a href="flowise/agent-harness/cli_anything/flowise/README.md">7 cmds</a></td>
+</tr>
+<tr>
 <td align="center"><strong>📧 <a href="mailchimp/agent-harness/">Mailchimp</a></strong></td>
 <td>Email Marketing &amp; Automation</td>
 <td><code>cli-anything-mailchimp</code></td>

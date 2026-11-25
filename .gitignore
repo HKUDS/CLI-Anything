@@ -89,6 +89,7 @@
 !/openscreen/
 !/QGIS/
 !/n8n/
+!/flowise/
 !/obsidian/
 !/joplin/
 !/unrealinsights/
@@ -192,6 +193,8 @@
 /exa/.*
 /n8n/*
 /n8n/.*
+/flowise/*
+/flowise/.*
 /obsidian/*
 /obsidian/.*
 /joplin/*
@@ -275,6 +278,7 @@
 !/exa/agent-harness/
 !/QGIS/agent-harness/
 !/n8n/agent-harness/
+!/flowise/agent-harness/
 !/obsidian/agent-harness/
 !/joplin/agent-harness/
 !/calibre/agent-harness/

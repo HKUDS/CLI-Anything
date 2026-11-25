@@ -1111,6 +1111,25 @@
       ]
     },
     {
+      "name": "flowise",
+      "display_name": "Flowise",
+      "version": "1.0.0",
+      "description": "Manage, deploy, and run Flowise workflows through the REST API",
+      "requires": "Flowise server",
+      "homepage": "https://flowiseai.com",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=flowise/agent-harness",
+      "entry_point": "cli-anything-flowise",
+      "skill_md": "skills/cli-anything-flowise/SKILL.md",
+      "category": "automation",
+      "contributors": [
+        {
+          "name": "Surfire",
+          "url": "https://github.com/Surfire"
+        }
+      ]
+    },
+    {
       "name": "cloudanalyzer",
       "display_name": "CloudAnalyzer",
       "version": "1.0.0",
