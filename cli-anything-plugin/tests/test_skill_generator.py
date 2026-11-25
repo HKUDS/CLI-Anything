@@ -7,6 +7,7 @@ Run with: pytest tests/test_skill_generator.py -v
 """
 
 import os
+import shlex
 import sys
 import textwrap
 import tempfile
@@ -14,6 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 # Resolve skill_generator.py location:
 # - In the repo: cli-anything-plugin/skill_generator.py (parent dir)
@@ -100,6 +102,119 @@ def test_api_skill_supports_hyphenated_package_and_root_command(tmp_path, render
     assert "cli-anything-test-app --help" in content
     assert "cli-anything-test-app health --help" in content
     assert "cli-anything-test_app" not in content
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_args"),
+    [
+        (
+            """\
+            import click
+
+            @click.group()
+            def cli():
+                pass
+
+            @cli.group()
+            @click.option("--workspace", required=True)
+            def resources(workspace):
+                pass
+
+            @resources.group()
+            def reports():
+                pass
+
+            @reports.command("list")
+            def list_reports():
+                raise AssertionError("help must not run this command")
+            """,
+            ["resources", "--help"],
+        ),
+        (
+            """\
+            import click
+
+            @click.group()
+            @click.argument("workspace")
+            def cli(workspace):
+                pass
+
+            @cli.command()
+            def health():
+                raise AssertionError("help must not run this command")
+            """,
+            ["--help"],
+        ),
+        (
+            """\
+            import click
+
+            @click.group("resources")
+            def resources():
+                pass
+
+            @resources.command("list")
+            def list_resources():
+                raise AssertionError("help must not run this command")
+
+            @click.group()
+            def cli():
+                pass
+
+            cli.add_command(resources, name="data")
+            """,
+            ["data", "list", "--help"],
+        ),
+        (
+            """\
+            import click
+
+            @click.group()
+            def cli():
+                pass
+
+            @click.group()
+            def reports_group():
+                pass
+
+            @reports_group.command()
+            def status():
+                pass
+
+            cli.add_command(reports_group)
+            """,
+            None,
+        ),
+    ],
+    ids=[
+        "required-parent-option", "required-root-argument",
+        "registered-group-alias", "ambiguous-default-group-name",
+    ],
+)
+def test_generated_api_help_runs_in_click(harness_dir, source, expected_args):
+    cli_file = harness_dir / "cli_anything" / "testapp" / "testapp_cli.py"
+    source = textwrap.dedent(source)
+    cli_file.write_text(source, encoding="utf-8")
+    namespace = {}
+    exec(compile(source, str(cli_file), "exec"), namespace)
+
+    metadata = extract_cli_metadata(str(harness_dir), api_backend=True)
+    if expected_args is None:
+        assert not metadata.examples
+        expected_args = ["--help"]
+        [command] = [
+            line for line in generate_skill_md(metadata).splitlines()
+            if line.startswith("cli-anything-testapp ")
+        ]
+    else:
+        [example] = metadata.examples
+        command = example.code
+    executable, *args = shlex.split(command)
+    result = CliRunner().invoke(namespace["cli"], args, prog_name=executable)
+
+    assert result.exit_code == 0, result.output
+    assert executable == "cli-anything-testapp"
+    assert args == expected_args
 
 
 # ─── Fixtures ──────────────────────────────────────────────────────────
