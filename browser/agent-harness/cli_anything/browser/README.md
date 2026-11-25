@@ -226,8 +226,13 @@ Run tests:
 pytest cli_anything/browser/tests/test_core.py -v
 
 # E2E tests (requires Chrome + DOMShell)
-pytest cli_anything/browser/tests/test_full_e2e.py -v
+DOMSHELL_E2E=1 pytest cli_anything/browser/tests/test_full_e2e.py -v
 ```
+
+The absolute-path test also needs `DOMSHELL_E2E_CDP_URL`, the loopback
+debugger URL of a dedicated Chrome test profile connected to DOMShell.
+Allow navigation and writes for the local fixture on `127.0.0.1`. The
+test activates and closes its own fixture tab group.
 
 ## Troubleshooting
 
