@@ -177,6 +177,7 @@ cmp -s "${VENDORED_HARNESS}" "${CANONICAL_HARNESS}" ||
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after dir repair"
 
 # 11. Regular file at an expected parent directory: sync repairs.
+cp -R "${SKILL_DIR}/references" "${BACKUP_DIR}/references"
 rm -rf "${SKILL_DIR}/references/docs"
 echo "stale" > "${SKILL_DIR}/references/docs"
 expect_validate_fail "file at expected parent directory not detected"
@@ -188,7 +189,6 @@ python3 "${SYNC}" >/dev/null
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after parent repair"
 
 # 12. Symlinked references directory: sync must not escape codex-skill/.
-cp -R "${SKILL_DIR}/references" "${BACKUP_DIR}/references"
 rm -rf "${SKILL_DIR}/references"
 ln -s "${REPO_ROOT}/cli-anything-plugin" "${SKILL_DIR}/references"
 python3 "${SYNC}" >/dev/null
@@ -199,5 +199,18 @@ python3 "${SYNC}" >/dev/null
 [[ -f "${SKILL_DIR}/references/HARNESS.md" ]] ||
   fail "sync did not restore resources under the replaced directory"
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after symlinked ancestor repair"
+
+# 13. Symlinked DIR_MAP root: validate fails, sync replaces with a real dir.
+rm -rf "${SKILL_DIR}/references/guides"
+ln -s "${REPO_ROOT}/cli-anything-plugin/guides" "${SKILL_DIR}/references/guides"
+expect_validate_fail "symlinked DIR_MAP root not detected"
+python3 "${SYNC}" >/dev/null
+[[ ! -L "${SKILL_DIR}/references/guides" ]] ||
+  fail "sync did not replace symlinked DIR_MAP root"
+[[ -f "${SKILL_DIR}/references/guides/session-locking.md" ]] ||
+  fail "sync did not restore resources under symlinked DIR_MAP root"
+[[ -f "${REPO_ROOT}/cli-anything-plugin/guides/session-locking.md" ]] ||
+  fail "sync touched canonical sources through symlinked DIR_MAP root"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after DIR_MAP root repair"
 
 echo "PASS: codex-skill sync and validation regression tests."

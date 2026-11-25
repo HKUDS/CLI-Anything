@@ -19,10 +19,26 @@ def main() -> int:
     stale: list[str] = []
     missing: list[str] = []
     linked: list[str] = []
+    linked_ancestors: list[str] = []
     expected_dests: set[Path] = set()
 
     for source, dest in _mapped_files():
         expected_dests.add(dest)
+        # A symlinked ancestor (e.g. references/guides -> ../plugin/guides)
+        # makes read_bytes()/rglob() follow the link, so the bundle would
+        # depend on files outside codex-skill/ without any leaf-level signal.
+        current = SKILL_DIR
+        ancestor_is_symlink = False
+        for part in dest.relative_to(SKILL_DIR).parts[:-1]:
+            current = current / part
+            if current.is_symlink():
+                rel = current.relative_to(SKILL_DIR).as_posix()
+                if rel not in linked_ancestors:
+                    linked_ancestors.append(rel)
+                ancestor_is_symlink = True
+                break
+        if ancestor_is_symlink:
+            continue
         if dest.is_symlink():
             # A symlink would make the bundle depend on a file outside it;
             # is_file()/read_bytes() would follow the link and mask this.
@@ -52,11 +68,16 @@ def main() -> int:
         for orphan in namespace["_fixed_orphans"]()
     )
 
-    if not missing and not stale and not orphans and not linked:
+    if not missing and not stale and not orphans and not linked and not linked_ancestors:
         print("Codex skill vendored resources validation passed.")
         return 0
 
     print("Codex skill vendored resources validation failed:", file=sys.stderr)
+    for rel in linked_ancestors:
+        print(
+            f"- symlinked ancestor of mapped destination: codex-skill/{rel}",
+            file=sys.stderr,
+        )
     for rel in linked:
         print(f"- symlink at mapped destination: codex-skill/{rel}", file=sys.stderr)
     for rel in missing:
