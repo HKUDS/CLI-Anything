@@ -34,7 +34,7 @@ def main() -> int:
         dest_dir = SKILL_DIR / dest_rel
         if not dest_dir.is_dir():
             continue
-        for dest in sorted(dest_dir.iterdir()):
+        for dest in sorted(dest_dir.rglob("*")):
             if dest.is_file() and dest not in expected_dests:
                 orphans.append(dest.relative_to(SKILL_DIR).as_posix())
 

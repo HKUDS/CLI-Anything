@@ -69,9 +69,17 @@ def sync() -> None:
         dest_dir = SKILL_DIR / dest_rel
         if not dest_dir.is_dir():
             continue
-        for existing in sorted(dest_dir.iterdir()):
+        for existing in sorted(dest_dir.rglob("*")):
             if existing.is_file() and existing not in expected:
                 existing.unlink()
+        # Prune now-empty nested directories left behind by cleanup.
+        for nested in sorted(
+            (d for d in dest_dir.rglob("*") if d.is_dir()),
+            key=lambda d: len(d.parts),
+            reverse=True,
+        ):
+            if not any(nested.iterdir()):
+                nested.rmdir()
 
 
 if __name__ == "__main__":
