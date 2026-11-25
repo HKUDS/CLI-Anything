@@ -6,6 +6,8 @@ on:
       - 'codex-skill/**'
       - 'cli-anything-plugin/**'
       - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/scripts/sync_codex_skill.py'
+      - '.github/scripts/validate_codex_skill.py'
       - '.github/workflows/check-codex-skill.yml'
   push:
     branches:
@@ -14,6 +16,8 @@ on:
       - 'codex-skill/**'
       - 'cli-anything-plugin/**'
       - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/scripts/sync_codex_skill.py'
+      - '.github/scripts/validate_codex_skill.py'
       - '.github/workflows/check-codex-skill.yml'
   workflow_dispatch:
 
@@ -32,3 +36,6 @@ jobs:
 
       - name: Test Codex skill installer
         run: bash codex-skill/tests/test_install.sh
+
+      - name: Test vendored resource sync and validation
+        run: bash codex-skill/tests/test_sync.sh

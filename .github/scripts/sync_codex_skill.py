@@ -43,17 +43,35 @@ def _mapped_files() -> list[tuple[Path, Path]]:
         source_dir = REPO_ROOT / source_rel
         dest_dir = SKILL_DIR / dest_rel
         for source in sorted(source_dir.iterdir()):
+            if source.is_dir():
+                raise SystemExit(
+                    f"unsupported subdirectory in mirrored source dir: {source}"
+                )
             if source.is_file():
                 pairs.append((source, dest_dir / source.name))
     return pairs
 
 
 def sync() -> None:
-    for source, dest in _mapped_files():
+    mapped = list(_mapped_files())
+    for source, dest in mapped:
         if not source.is_file():
             raise SystemExit(f"canonical source missing: {source}")
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, dest)
+
+    # Remove vendored files in the mirrored directories whose canonical
+    # source was deleted or renamed. Cleanup is scoped to DIR_MAP
+    # destinations; FILE_MAP destinations are fixed paths and cannot
+    # accumulate orphans.
+    expected = {dest for _, dest in mapped}
+    for _, dest_rel in DIR_MAP:
+        dest_dir = SKILL_DIR / dest_rel
+        if not dest_dir.is_dir():
+            continue
+        for existing in sorted(dest_dir.iterdir()):
+            if existing.is_file() and existing not in expected:
+                existing.unlink()
 
 
 if __name__ == "__main__":
