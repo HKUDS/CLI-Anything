@@ -234,6 +234,37 @@ def test_render_success_publishes_complete_output(monkeypatch, tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["out.svg"]
 
 
+def test_render_reports_deferred_output_close_failure(monkeypatch, tmp_path):
+    import errno
+    import io
+
+    monkeypatch.setattr(mermaid_backend.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"<svg/>"))
+    open_staging = mermaid_backend._open_staging_file
+    real_close = os.close
+    descriptors = []
+    closes = []
+
+    def capture_staging(*args):
+        fd = open_staging(*args)
+        descriptors.append(fd)
+        return fd
+
+    def fail_staging_close(fd):
+        real_close(fd)
+        if fd in descriptors:
+            closes.append(fd)
+            raise OSError(errno.ENOSPC, "deferred output close failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(mermaid_backend, "_open_staging_file", capture_staging)
+        patch.setattr(os, "close", fail_staging_close)
+        with pytest.raises(RuntimeError, match="Could not write.*deferred output close failure"):
+            mermaid_backend.render_to_file("pako:x", str(tmp_path / "out.svg"), "svg")
+
+    assert len(closes) == len(descriptors) == 1
+    assert not list(tmp_path.glob(".mermaid-*"))
+
+
 @pytest.mark.parametrize("failure_mode", ["size", "replace", "chmod"])
 def test_render_publish_failure_preserves_destination(monkeypatch, tmp_path, failure_mode):
     import io

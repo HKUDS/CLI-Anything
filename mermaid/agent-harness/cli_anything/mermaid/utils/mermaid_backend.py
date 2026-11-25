@@ -407,6 +407,10 @@ def render_to_file(serialized: str, output_path: str, fmt: str, *, overwrite: bo
         _validate_staging_entry(temporary_path, pending_fd)
         os.replace(temporary_path, destination_path)
         temporary_path = None  # Publication releases ownership of the staging name.
+        # Report late write errors. Do not retry close after an error, since the
+        # descriptor may already have been released.
+        published_fd, pending_fd = pending_fd, None
+        os.close(published_fd)
     except OSError as exc:
         raise RuntimeError(f"Could not write {output_path}: {exc}") from exc
     finally:
