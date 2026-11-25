@@ -13,7 +13,7 @@ def read_readme():
 
 setup(
     name="cli-anything-browser",
-    version="1.0.0",
+    version="1.0.1",
 
     author="CLI Anything Contributors",
     description="CLI harness for browser automation via DOMShell MCP server",
@@ -34,7 +34,8 @@ setup(
     install_requires=[
         "click>=8.1,<9.0",
         "prompt-toolkit>=3.0,<4.0",
-        "mcp>=0.1.0,<1.0.0",
+        "mcp>=1.30,<2.0",
+        "anyio>=4.6",
     ],
 
     extras_require={

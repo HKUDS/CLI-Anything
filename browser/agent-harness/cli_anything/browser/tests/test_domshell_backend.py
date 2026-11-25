@@ -1160,7 +1160,7 @@ def test_call_execute_includes_group_id_when_lane_is_set():
     fake_stdio.__aenter__.return_value = (object(), object())
     fake_stdio.__aexit__.return_value = None
 
-    with patch.object(backend, "stdio_client", return_value=fake_stdio), \
+    with sess, patch.object(backend, "stdio_client", return_value=fake_stdio), \
          patch.object(backend, "ClientSession", return_value=fake_mcp_session), \
          patch.object(backend, "_build_server_args", return_value=[]):
         import asyncio as _aio
@@ -1196,7 +1196,7 @@ def test_call_execute_passes_group_id_new_when_lane_is_none():
     fake_stdio.__aenter__.return_value = (object(), object())
     fake_stdio.__aexit__.return_value = None
 
-    with patch.object(backend, "stdio_client", return_value=fake_stdio), \
+    with sess, patch.object(backend, "stdio_client", return_value=fake_stdio), \
          patch.object(backend, "ClientSession", return_value=fake_mcp_session), \
          patch.object(backend, "_build_server_args", return_value=[]):
         import asyncio as _aio

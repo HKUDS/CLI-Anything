@@ -115,18 +115,17 @@ This is the first CLI-Anything harness to use an MCP server as a backend.
 - Async MCP interface wrapped in sync functions via `asyncio.run()`
 
 **Session management**:
-- MCP server is stateless (spawned per command)
 - CLI maintains state (URL, working directory, history)
-- Daemon mode (`--daemon`) provides persistent connection
+- Each default `Session` owns a lazily connected stdio proxy
 
-### 2. Daemon Mode
+### 2. Connection Lifetime
 
-By default, each CLI command spawns a new MCP server process. This is simple but adds latency (~1-3s cold start).
+The REPL and each one-shot CLI invocation close their session proxy on exit.
+Python callers use the context manager or call `Session.close()`. Direct
+backend calls without a session open and close their own proxy.
 
-**Daemon mode** (`--daemon` flag):
-- Spawns MCP server once, reuses connection
-- Much faster for interactive use
-- Requires explicit `daemon-start`/`daemon-stop`
+The `--daemon` flag selects a process-wide connection. Chrome tab groups
+are owned by DOMShell and survive closing the MCP transport.
 
 ### 3. State Model
 
@@ -300,7 +299,7 @@ Each command spawns `npx @apireno/domshell`:
 - **Cold start**: 1-3 seconds (first run, package download)
 - **Warm start**: ~100-500ms (subsequent runs)
 
-**Mitigation**: Use daemon mode for interactive sessions.
+**Mitigation**: Keep related commands in one REPL or reuse a Python session.
 
 ### Accessibility Tree Size
 
