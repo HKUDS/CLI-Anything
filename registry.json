@@ -731,6 +731,25 @@
       "contributor_url": "https://github.com/scially"
     },
     {
+      "name": "sqlite",
+      "display_name": "SQLite",
+      "version": "1.0.0",
+      "description": "SQLite schema inspection, parameterized queries, atomic SQL batches, streaming CSV workflows, and online backups",
+      "requires": "Python 3.10+ linked to SQLite 3.35+",
+      "homepage": "https://www.sqlite.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=sqlite/agent-harness",
+      "entry_point": "cli-anything-sqlite",
+      "skill_md": "skills/cli-anything-sqlite/SKILL.md",
+      "category": "database",
+      "contributors": [
+        {
+          "name": "hiSandog",
+          "url": "https://github.com/hiSandog"
+        }
+      ]
+    },
+    {
       "name": "chromadb",
       "display_name": "ChromaDB",
       "version": "1.0.0",
