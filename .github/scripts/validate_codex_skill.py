@@ -36,7 +36,9 @@ def main() -> int:
         if not dest_dir.is_dir():
             continue
         for dest in sorted(dest_dir.rglob("*")):
-            if dest.is_file() and dest not in expected_dests:
+            if dest.is_symlink() or (
+                dest.is_file() and dest not in expected_dests
+            ):
                 orphans.append(dest.relative_to(SKILL_DIR).as_posix())
 
     orphans.extend(

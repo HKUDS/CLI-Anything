@@ -76,7 +76,7 @@ def _fixed_orphans() -> list[Path]:
         if not parent.is_dir():
             continue
         for entry in sorted(parent.rglob("*")):
-            if entry.is_dir():
+            if entry.is_dir() and not entry.is_symlink():
                 continue
             if any(entry.is_relative_to(dest) for dest in dir_map_dests):
                 continue
@@ -105,7 +105,9 @@ def sync() -> None:
         if not dest_dir.is_dir():
             continue
         for existing in sorted(dest_dir.rglob("*")):
-            if existing.is_file() and existing not in expected:
+            if existing.is_symlink() or (
+                existing.is_file() and existing not in expected
+            ):
                 existing.unlink()
         # Prune now-empty nested directories left behind by cleanup.
         for nested in sorted(

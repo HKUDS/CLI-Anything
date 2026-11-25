@@ -18,6 +18,8 @@ ORPHAN="${SKILL_DIR}/references/guides/orphan-regression.md"
 ORPHAN_NESTED="${SKILL_DIR}/references/guides/orphan-nested"
 ORPHAN_FIXED="${SKILL_DIR}/references/docs/orphan-regression.md"
 ORPHAN_FIXED_NESTED="${SKILL_DIR}/references/docs/orphan-nested"
+ORPHAN_LINK="${SKILL_DIR}/references/guides/orphan-link"
+ORPHAN_DANGLING_LINK="${SKILL_DIR}/references/docs/orphan-dangling-link"
 VENDORED_HARNESS="${SKILL_DIR}/references/HARNESS.md"
 CANONICAL_HARNESS="${REPO_ROOT}/cli-anything-plugin/HARNESS.md"
 VENDORED_GUIDE="${SKILL_DIR}/references/guides/session-locking.md"
@@ -27,7 +29,7 @@ CANONICAL_GUIDE="${REPO_ROOT}/cli-anything-plugin/guides/session-locking.md"
 # wildcard mirroring cannot sweep them into the vendored bundle.
 BACKUP_DIR="$(mktemp -d)"
 cleanup() {
-  rm -f "${ORPHAN}" "${ORPHAN_FIXED}"
+  rm -f "${ORPHAN}" "${ORPHAN_FIXED}" "${ORPHAN_LINK}" "${ORPHAN_DANGLING_LINK}"
   rm -rf "${ORPHAN_NESTED}" "${ORPHAN_FIXED_NESTED}"
   if [[ -f "${BACKUP_DIR}/HARNESS.md" ]] &&
     { [[ ! -f "${VENDORED_HARNESS}" ]] ||
@@ -104,5 +106,21 @@ python3 "${SYNC}" >/dev/null
 [[ ! -e "${ORPHAN_FIXED_NESTED}" ]] ||
   fail "sync did not remove nested stale fixed resource"
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after nested fixed cleanup"
+
+# 7. Orphaned directory symlink: validate fails, sync removes the link.
+ln -s /tmp "${ORPHAN_LINK}"
+expect_validate_fail "orphaned directory symlink not detected"
+python3 "${SYNC}" >/dev/null
+[[ ! -e "${ORPHAN_LINK}" && ! -L "${ORPHAN_LINK}" ]] ||
+  fail "sync did not remove orphaned directory symlink"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after symlink cleanup"
+
+# 8. Dangling symlink under a fixed parent: validate fails, sync removes it.
+ln -s /nonexistent "${ORPHAN_DANGLING_LINK}"
+expect_validate_fail "dangling symlink not detected"
+python3 "${SYNC}" >/dev/null
+[[ ! -e "${ORPHAN_DANGLING_LINK}" && ! -L "${ORPHAN_DANGLING_LINK}" ]] ||
+  fail "sync did not remove dangling symlink"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after dangling link cleanup"
 
 echo "PASS: codex-skill sync and validation regression tests."
