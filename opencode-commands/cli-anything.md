@@ -6,7 +6,7 @@ subtask: true
 
 Build a complete, stateful CLI harness for any GUI application.
 
-**Target software**: $1
+**Arguments**: $ARGUMENTS
 
 ## CRITICAL: Read HARNESS.md First
 
@@ -14,7 +14,7 @@ Build a complete, stateful CLI harness for any GUI application.
 
 ## Arguments
 
-- `$1` is the **software path or repo URL**. Either:
+- For a source target, supply the **software path or repo URL**. Either:
   - A **local path** to the software source code (e.g., `/home/user/gimp`, `./blender`)
   - A **GitHub repository URL** (e.g., `https://github.com/GNOME/gimp`, `github.com/blender/blender`)
 
@@ -22,17 +22,18 @@ Build a complete, stateful CLI harness for any GUI application.
 
   **Note:** Software names alone (e.g., "gimp") are NOT accepted. You must provide the actual source code path or repository URL so the agent can analyze the codebase.
 
+- For `--api <software-name> <api-docs-url-or-openapi-file>`, use the software name and official API documentation as the target. Follow the API Backend Pattern in HARNESS.md for analysis, live tests, and `skill_generator.py --api`.
+
 ## What This Command Does
 
 This command implements the complete cli-anything methodology to build a production-ready CLI harness for any GUI application. **All phases follow the standards defined in HARNESS.md.**
 
 ### Phase 0: Source Acquisition
-- If `$1` is a GitHub URL, clone it to a local working directory
-- Verify the local path exists and contains source code
-- Derive the software name from the directory name (e.g., `/home/user/gimp` -> `gimp`)
+- For a source target, clone repository URLs if needed, verify the local source, and derive the software name.
+- For an API target, verify the documentation or OpenAPI specification and use the supplied software name.
 
 ### Phase 1: Codebase Analysis
-- Analyzes the local source code
+- Analyze the local source, or the API operations and data model for an API-backed target.
 - Analyzes the backend engine and data model
 - Maps GUI actions to API calls
 - Identifies existing CLI tools
@@ -68,6 +69,9 @@ This command implements the complete cli-anything methodology to build a product
 - Runs all tests with `pytest -v --tb=no`
 - Appends full test results to `TEST.md`
 - Documents test coverage and any gaps
+
+### Phase 6.5: SKILL.md Generation
+- For an API target, use `python <CLI-Anything-checkout>/cli-anything-plugin/skill_generator.py --api <agent-harness-path>`. Locate the checkout used to install these commands or obtain it from the CLI-Anything repository. The generator uses the template from that checkout.
 
 ### Phase 7: PyPI Publishing and Installation
 - Creates `setup.py` with `find_namespace_packages(include=["cli_anything.*"])`

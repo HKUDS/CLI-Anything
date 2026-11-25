@@ -13,9 +13,13 @@ The generated SKILL.md files contain:
 
 import ast
 import re
+import shlex
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
+
+
+API_REQUIREMENT = "Access to the service's API. See the harness README for the endpoint and any required credentials."
 
 
 def _format_display_name(name: str) -> str:
@@ -34,7 +38,9 @@ def _canonical_skill_name(harness_path: Path, software_name: str) -> str:
 def _click_decorator_info(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     kind: str,
-) -> Optional[tuple[str, str]]:
+    *,
+    require_stable_names: bool = False,
+) -> Optional[tuple[str, str | None]]:
     """Return the owner and declared name for a Click decorator."""
     for decorator in function.decorator_list:
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
@@ -45,26 +51,23 @@ def _click_decorator_info(
         ):
             continue
 
-        declared_name = None
+        name = None
         if isinstance(decorator, ast.Call):
-            if decorator.args:
-                first_arg = decorator.args[0]
-                if (
-                    isinstance(first_arg, ast.Constant)
-                    and isinstance(first_arg.value, str)
-                ):
-                    declared_name = first_arg.value
-            if declared_name is None:
-                for keyword in decorator.keywords:
-                    if (
-                        keyword.arg == "name"
-                        and isinstance(keyword.value, ast.Constant)
-                        and isinstance(keyword.value.value, str)
-                    ):
-                        declared_name = keyword.value.value
-                        break
+            name = decorator.args[0] if decorator.args else next(
+                (kw.value for kw in decorator.keywords if kw.arg == "name"), None
+            )
+        if isinstance(name, ast.Constant) and isinstance(name.value, str):
+            return target.value.id, name.value
 
-        return target.value.id, declared_name or function.name.replace("_", "-")
+        default_name = function.name.replace("_", "-")
+        if require_stable_names:
+            if name is not None and not (isinstance(name, ast.Constant) and name.value is None):
+                return target.value.id, None
+            default_name = default_name.lower()
+            # Click 8.2 began removing these suffixes from inferred names.
+            if default_name.endswith(("-command", "-cmd", "-group", "-grp")):
+                return target.value.id, None
+        return target.value.id, default_name
 
     return None
 
@@ -75,6 +78,61 @@ def _function_docstring(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str
     if docstring:
         return docstring.strip()
     return ""
+
+
+def _apply_click_group_registrations(
+    tree: ast.Module, group_parents: dict[str, tuple[str, str | None]]
+) -> None:
+    """Apply direct, module-level add_command registrations of standalone groups."""
+    for statement in tree.body:
+        if not isinstance(statement, ast.Expr) or not isinstance(
+            statement.value, ast.Call
+        ):
+            continue
+        call = statement.value
+        target = call.func
+        if not (
+            isinstance(target, ast.Attribute)
+            and target.attr == "add_command"
+            and isinstance(target.value, ast.Name)
+            and call.args
+            and isinstance(call.args[0], ast.Name)
+        ):
+            continue
+        child = call.args[0].id
+        if child not in group_parents or group_parents[child][0] != "click":
+            continue
+        alias = call.args[1] if len(call.args) > 1 else next(
+            (kw.value for kw in call.keywords if kw.arg == "name"), None
+        )
+        if alias is None or (isinstance(alias, ast.Constant) and alias.value is None):
+            name = group_parents[child][1]
+        elif isinstance(alias, ast.Constant) and isinstance(alias.value, str):
+            name = alias.value
+        else:
+            name = None
+        group_parents[child] = (target.value.id, name)
+
+
+def _requires_click_parameter(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for decorator in function.decorator_list:
+        if not (
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr in {"option", "argument"}
+            and isinstance(decorator.func.value, ast.Name)
+            and decorator.func.value.id == "click"
+        ):
+            continue
+        required = next(
+            (kw.value for kw in decorator.keywords if kw.arg == "required"), None
+        )
+        if required is None:
+            if decorator.func.attr == "argument":
+                return True
+        elif not isinstance(required, ast.Constant) or required.value is not False:
+            return True
+    return False
 
 
 @dataclass
@@ -90,6 +148,8 @@ class CommandGroup:
     name: str
     description: str
     commands: list[CommandInfo] = field(default_factory=list)
+    path: Optional[tuple[str, ...]] = None
+    required_ancestor_path: Optional[tuple[str, ...]] = None
 
 
 @dataclass
@@ -111,14 +171,20 @@ class SkillMetadata:
     system_package: Optional[str] = None
     command_groups: list[CommandGroup] = field(default_factory=list)
     examples: list[Example] = field(default_factory=list)
+    api_backend: bool = False
+
+    @property
+    def command_name(self) -> str:
+        return _api_command_name(self.software_name) if self.api_backend else f"cli-anything-{self.software_name}"
 
 
-def extract_cli_metadata(harness_path: str) -> SkillMetadata:
+def extract_cli_metadata(harness_path: str, *, api_backend: bool = False) -> SkillMetadata:
     """
     Extract metadata from a CLI-Anything harness directory.
 
     Args:
         harness_path: Path to the agent-harness directory
+        api_backend: Generate prerequisites and examples for a service API
 
     Returns:
         SkillMetadata containing extracted information
@@ -149,7 +215,8 @@ def extract_cli_metadata(harness_path: str) -> SkillMetadata:
     if readme_path.exists():
         readme_content = readme_path.read_text(encoding="utf-8")
         skill_intro = extract_intro_from_readme(readme_content)
-        system_package = extract_system_package(readme_content)
+        if not api_backend:
+            system_package = extract_system_package(readme_content)
 
     # Extract version from setup.py
     setup_path = harness_path / "setup.py"
@@ -163,10 +230,16 @@ def extract_cli_metadata(harness_path: str) -> SkillMetadata:
     command_groups = []
 
     if cli_file.exists():
-        command_groups = extract_commands_from_cli(cli_file)
+        command_groups = extract_commands_from_cli(
+            cli_file, require_stable_names=api_backend
+        )
 
     # Generate examples based on software type
-    examples = generate_examples(software_name, command_groups)
+    if api_backend:
+        command_groups = [group for group in command_groups if group.path is not None and group.commands]
+        examples = generate_api_examples(software_name, command_groups)
+    else:
+        examples = generate_examples(software_name, command_groups)
 
     # Build skill name and description
     skill_name = _canonical_skill_name(harness_path, software_name)
@@ -185,7 +258,8 @@ def extract_cli_metadata(harness_path: str) -> SkillMetadata:
         version=version,
         system_package=system_package,
         command_groups=command_groups,
-        examples=examples
+        examples=examples,
+        api_backend=api_backend,
     )
 
 
@@ -245,7 +319,9 @@ def extract_version_from_setup(setup_path: Path) -> str:
     return "1.0.0"
 
 
-def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
+def extract_commands_from_cli(
+    cli_path: Path, *, require_stable_names: bool = False
+) -> list[CommandGroup]:
     """Extract command groups and commands from CLI file."""
     content = cli_path.read_text(encoding="utf-8")
     tree = ast.parse(content, filename=str(cli_path))
@@ -264,21 +340,56 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
     group_functions = [
         (function, decorator_info)
         for function in functions
-        if (decorator_info := _click_decorator_info(function, "group"))
+        if (decorator_info := _click_decorator_info(
+            function, "group", require_stable_names=require_stable_names
+        ))
     ]
+    group_parents = {
+        function.name: decorator_info for function, decorator_info in group_functions
+    }
+    _apply_click_group_registrations(tree, group_parents)
     root_group_funcs = {
-        function.name.lower()
-        for function, (parent, _) in group_functions
-        if parent.lower() == "click"
+        name for name, (parent, _) in group_parents.items() if parent == "click"
+    }
+    required_groups = {
+        function.name
+        for function, _ in group_functions
+        if _requires_click_parameter(function)
     }
 
-    for function, (group_parent, declared_name) in group_functions:
+    def resolve_paths(
+        group_name: str, seen: frozenset[str] = frozenset()
+    ) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+        if group_name in seen or group_name not in group_parents:
+            return None, None
+        parent, name = group_parents[group_name]
+        if parent == "click":
+            if len(root_group_funcs) != 1:
+                return None, None
+            path = ()
+            required_path = None
+        else:
+            parent_path, required_path = resolve_paths(parent, seen | {group_name})
+            if parent_path is None or not name:
+                return None, None
+            path = (*parent_path, name)
+        if required_path is None and group_name in required_groups:
+            required_path = path
+        return path, required_path
+
+    for function, (_, default_name) in group_functions:
         group_func = function.name
         group_doc = _function_docstring(function)
+        group_parent, declared_name = group_parents[group_func]
+        cli_path, required_path = resolve_paths(group_func)
 
-        local_group_name = _format_display_name(declared_name)
+        local_group_name = _format_display_name(
+            declared_name or default_name or function.name
+        )
         parent_key = group_parent.lower()
-        if parent_key == "click" or parent_key in root_group_funcs:
+        if cli_path:
+            group_path = [_format_display_name(part) for part in cli_path]
+        elif parent_key == "click" or group_parent in root_group_funcs:
             group_path = [local_group_name]
         else:
             parent_path = group_display_paths.get(parent_key)
@@ -288,11 +399,12 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
                 group_path = [_format_display_name(group_parent), local_group_name]
 
         group_name = " ".join(group_path)
-
         group = CommandGroup(
             name=group_name,
             description=group_doc or f"Commands for {group_name.lower()} operations.",
-            commands=[]
+            commands=[],
+            path=cli_path,
+            required_ancestor_path=required_path,
         )
         groups.append(group)
         group_lookup[group_func.lower()] = group
@@ -301,7 +413,9 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
     command_functions = [
         (function, decorator_info)
         for function in functions
-        if (decorator_info := _click_decorator_info(function, "command"))
+        if (decorator_info := _click_decorator_info(
+            function, "command", require_stable_names=require_stable_names
+        ))
     ]
 
     for function, (group_name, declared_name) in command_functions:
@@ -310,7 +424,7 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
 
         # Find the matching group
         group = group_lookup.get(group_name.lower())
-        if group:
+        if group and declared_name:
             group.commands.append(CommandInfo(
                 name=declared_name,
                 description=cmd_doc or f"Execute {cmd_func} operation."
@@ -327,15 +441,36 @@ def extract_commands_from_cli(cli_path: Path) -> list[CommandGroup]:
         for function, (_, declared_name) in command_functions:
             cmd_func = function.name
             cmd_doc = _function_docstring(function)
-            default_group.commands.append(CommandInfo(
-                name=declared_name,
-                description=cmd_doc or f"Execute {cmd_func} operation."
-            ))
+            if declared_name:
+                default_group.commands.append(CommandInfo(
+                    name=declared_name,
+                    description=cmd_doc or f"Execute {cmd_func} operation."
+                ))
 
         if default_group.commands:
             groups.append(default_group)
 
     return groups
+
+
+def _api_command_name(software_name: str) -> str:
+    return f"cli-anything-{software_name.replace('_', '-')}"
+
+
+def generate_api_examples(software_name: str, command_groups: list[CommandGroup]) -> list[Example]:
+    """Show supported commands without guessing arguments or calling the API."""
+    if not command_groups:
+        return []
+    group = next((item for item in command_groups if item.path), command_groups[0])
+    path = group.required_ancestor_path
+    if path is None:
+        path = (*(group.path or ()), group.commands[0].name)
+    command = shlex.join((_api_command_name(software_name), *path, "--help"))
+    return [Example(
+        title="Inspect Command Options",
+        description="Check the accepted arguments before calling the API.",
+        code=command,
+    )]
 
 
 def generate_examples(software_name: str, command_groups: list[CommandGroup]) -> list[Example]:
@@ -411,6 +546,9 @@ def generate_skill_md(metadata: SkillMetadata, template_path: Optional[str] = No
         skill_intro=metadata.skill_intro,
         version=metadata.version,
         system_package=metadata.system_package,
+        command_name=metadata.command_name,
+        api_backend=metadata.api_backend,
+        api_requirement=API_REQUIREMENT,
         command_groups=[{
             "name": g.name,
             "description": g.description,
@@ -438,21 +576,22 @@ def generate_skill_md_simple(metadata: SkillMetadata) -> str:
         "",
         "## Installation",
         "",
-        f"This CLI is installed as part of the cli-anything-{metadata.software_name} package:",
+        f"This CLI is installed as part of the {metadata.command_name} package:",
         "",
         f"```bash",
-        f"pip install cli-anything-{metadata.software_name}",
+        f"pip install {metadata.command_name}",
         f"```",
         "",
         "**Prerequisites:**",
         "- Python 3.10+",
-        f"- {_format_display_name(metadata.software_name)} must be installed on your system",
     ]
 
-    if metadata.system_package:
-        lines.extend([
-            f"- Install {metadata.software_name}: `{metadata.system_package}`"
-        ])
+    if metadata.api_backend:
+        lines.append(f"- {API_REQUIREMENT}")
+    else:
+        lines.append(f"- {_format_display_name(metadata.software_name)} must be installed on your system")
+        if metadata.system_package:
+            lines.append(f"- Install {metadata.software_name}: `{metadata.system_package}`")
 
     lines.extend([
         "",
@@ -462,19 +601,21 @@ def generate_skill_md_simple(metadata: SkillMetadata) -> str:
         "",
         "```bash",
         "# Show help",
-        f"cli-anything-{metadata.software_name} --help",
-        "",
-        "# Start interactive REPL mode",
-        f"cli-anything-{metadata.software_name}",
-        "",
-        "# Create a new project",
-        f"cli-anything-{metadata.software_name} project new -o project.json",
-        "",
-        "# Run with JSON output (for agent consumption)",
-        f"cli-anything-{metadata.software_name} --json project info -p project.json",
-        "```",
-        "",
+        f"{metadata.command_name} --help",
     ])
+    if not metadata.api_backend:
+        lines.extend([
+            "",
+            "# Start interactive REPL mode",
+            f"cli-anything-{metadata.software_name}",
+            "",
+            "# Create a new project",
+            f"cli-anything-{metadata.software_name} project new -o project.json",
+            "",
+            "# Run with JSON output (for agent consumption)",
+            f"cli-anything-{metadata.software_name} --json project info -p project.json",
+        ])
+    lines.extend(["```", ""])
 
     # Add command groups
     if metadata.command_groups:
@@ -530,7 +671,8 @@ def generate_skill_md_simple(metadata: SkillMetadata) -> str:
 
 
 def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
-                        template_path: Optional[str] = None) -> str:
+                        template_path: Optional[str] = None, *,
+                        api_backend: bool = False) -> str:
     """
     Generate a SKILL.md file for a CLI-Anything harness.
 
@@ -539,12 +681,13 @@ def generate_skill_file(harness_path: str, output_path: Optional[str] = None,
         output_path: Optional output path for SKILL.md
                      (default: skills/cli-anything-<software>/SKILL.md)
         template_path: Optional path to custom Jinja2 template
+        api_backend: Generate prerequisites and examples for a service API
 
     Returns:
         Path to the generated SKILL.md file
     """
     # Extract metadata
-    metadata = extract_cli_metadata(harness_path)
+    metadata = extract_cli_metadata(harness_path, api_backend=api_backend)
 
     # Generate content
     content = generate_skill_md(metadata, template_path)
@@ -591,13 +734,19 @@ if __name__ == "__main__":
         help="Path to custom Jinja2 template",
         default=None
     )
+    parser.add_argument(
+        "--api",
+        action="store_true",
+        help="Generate usage and prerequisites for an API-backed harness.",
+    )
 
     args = parser.parse_args()
 
     output_file = generate_skill_file(
         args.harness_path,
         args.output,
-        args.template
+        args.template,
+        api_backend=args.api,
     )
 
     print(f"Generated: {output_file}")

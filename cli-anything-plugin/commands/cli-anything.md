@@ -1,6 +1,6 @@
 # cli-anything Command
 
-Build a complete, stateful CLI harness for any GUI application.
+Build a CLI harness for an application or a service with a documented API.
 
 ## CRITICAL: Read HARNESS.md First
 
@@ -10,29 +10,31 @@ Build a complete, stateful CLI harness for any GUI application.
 
 ```bash
 /cli-anything <software-path-or-repo>
+/cli-anything --api <software-name> <api-docs-url-or-openapi-file>
 ```
 
 ## Arguments
 
-- `<software-path-or-repo>` - **Required.** Either:
+- `<software-path-or-repo>` is a local source path or repository URL:
   - A **local path** to the software source code (e.g., `/home/user/gimp`, `./blender`)
   - A **GitHub repository URL** (e.g., `https://github.com/GNOME/gimp`, `github.com/blender/blender`)
 
   If a GitHub URL is provided, the agent clones the repo locally first, then works on the local copy.
 
-  **Note:** Software names alone (e.g., "gimp") are NOT accepted. You must provide the actual source code path or repository URL so the agent can analyze the codebase.
+- For `--api`, supply the software name and its official API documentation or OpenAPI specification. These are the sources for the design. If a closed-source target has only a documented API, confirm that the user wants an API-backed harness and obtain those references.
 
 ## What This Command Does
 
-This command implements the complete cli-anything methodology to build a production-ready CLI harness for any GUI application. **All phases follow the standards defined in HARNESS.md.**
+This command follows the phases in HARNESS.md for local and API-backed applications.
 
 ### Phase 0: Source Acquisition
 - If `<software-path-or-repo>` is a GitHub URL, clone it to a local working directory
-- Verify the local path exists and contains source code
+- Verify the local source path exists
 - Derive the software name from the directory name (e.g., `/home/user/gimp` -> `gimp`)
+- For `--api`, use the supplied software name and verify the official documentation or OpenAPI specification identifies the API version. Work in a new or existing harness directory selected for that service.
 
 ### Phase 1: Codebase Analysis
-- Analyzes the local source code
+- Analyze the local source code or the API's operations, authentication, and data model
 - Analyzes the backend engine and data model
 - Maps GUI actions to API calls
 - Identifies existing CLI tools
@@ -45,7 +47,7 @@ This command implements the complete cli-anything methodology to build a product
 
 ### Phase 3: Implementation
 - Creates the directory structure: `agent-harness/cli_anything/<software>/core`, `utils`, `tests`
-- Implements core modules (project, session, export, etc.)
+- Implements core modules that match the target's workflows
 - Builds the Click-based CLI with REPL support
 - Implements `--json` output mode for agent consumption
 - All imports use `cli_anything.<software>.*` namespace
@@ -61,6 +63,7 @@ This command implements the complete cli-anything methodology to build a product
 - Writes E2E tests (`test_full_e2e.py`) - real files, full pipeline
 - Implements workflow tests simulating real-world usage
 - Adds output verification (pixel analysis, format validation, etc.)
+- For an API backend, verify installed CLI behavior against the real service using the API Backend Pattern in HARNESS.md.
 - Adds `TestCLISubprocess` class with `_resolve_cli("cli-anything-<software>")`
   that tests the installed command via subprocess (no hardcoded paths or CWD)
 
@@ -71,6 +74,7 @@ This command implements the complete cli-anything methodology to build a product
 
 ### Phase 6.5: SKILL.md Generation
 - Extracts CLI metadata using `skill_generator.py`
+- For `--api` targets, run `python skill_generator.py --api <agent-harness-path>` so the generated skill describes the service prerequisites and actual command options.
 - Generates SKILL.md with YAML frontmatter and Markdown body
 - Includes command groups, examples, and agent-specific guidance
 - Outputs the canonical skill to `skills/cli-anything-<software>/SKILL.md` and refreshes the packaged compatibility copy at `cli_anything/<software>/skills/SKILL.md`

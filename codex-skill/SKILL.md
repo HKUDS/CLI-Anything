@@ -1,6 +1,6 @@
 ---
 name: cli-anything
-description: Use when the user wants Codex to build, refine, test, validate, or list CLI-Anything harnesses for GUI applications or source repositories. Adapts the full CLI-Anything methodology to Codex without changing the generated Python harness format.
+description: Use when the user wants Codex to build, refine, test, validate, or list CLI-Anything harnesses for applications, source repositories, or documented APIs.
 ---
 
 # CLI-Anything for Codex
@@ -59,8 +59,11 @@ Accept either:
 
 - A local source path such as `./gimp` or `/path/to/software`
 - A GitHub repository URL
+- A software name and official API documentation or OpenAPI specification for
+  an API-backed target
 
-Derive the software name from the local directory name after cloning if needed.
+For source-backed targets, derive the software name from the local directory.
+For API-backed targets, follow the API Backend Pattern in HARNESS.md.
 
 ## Modes
 

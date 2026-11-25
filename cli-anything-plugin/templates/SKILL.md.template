@@ -11,17 +11,21 @@ description: >-
 
 ## Installation
 
-This CLI is installed as part of the cli-anything-{{ software_name }} package:
+This CLI is installed as part of the {{ command_name }} package:
 
 ```bash
-pip install cli-anything-{{ software_name }}
+pip install {{ command_name }}
 ```
 
 **Prerequisites:**
 - Python 3.10+
+{% if api_backend %}
+- {{ api_requirement }}
+{% else %}
 - {{ software_name }} must be installed on your system
 {% if system_package %}
 - Install {{ software_name }}: `{{ system_package }}`
+{% endif %}
 {% endif %}
 
 ## Usage
@@ -30,26 +34,30 @@ pip install cli-anything-{{ software_name }}
 
 ```bash
 # Show help
-cli-anything-{{ software_name }} --help
+{{ command_name }} --help
+{% if not api_backend %}
 
 # Start interactive REPL mode
-cli-anything-{{ software_name }}
+{{ command_name }}
 
 # Create a new project
-cli-anything-{{ software_name }} project new -o project.json
+{{ command_name }} project new -o project.json
 
 # Run with JSON output (for agent consumption)
-cli-anything-{{ software_name }} --json project info -p project.json
+{{ command_name }} --json project info -p project.json
+{% endif %}
 ```
 
+{% if not api_backend %}
 ### REPL Mode
 
 When invoked without a subcommand, the CLI enters an interactive REPL session:
 
 ```bash
-cli-anything-{{ software_name }}
+{{ command_name }}
 # Enter commands interactively with tab-completion and history
 ```
+{% endif %}
 
 {% if command_groups %}
 ## Command Groups
@@ -79,6 +87,7 @@ cli-anything-{{ software_name }}
 ```
 
 {% endfor %}
+{% if not api_backend %}
 ## State Management
 
 The CLI maintains session state with:
@@ -96,11 +105,12 @@ All commands support dual output modes:
 
 ```bash
 # Human output
-cli-anything-{{ software_name }} project info -p project.json
+{{ command_name }} project info -p project.json
 
 # JSON output for agents
-cli-anything-{{ software_name }} --json project info -p project.json
+{{ command_name }} --json project info -p project.json
 ```
+{% endif %}
 
 ## For AI Agents
 

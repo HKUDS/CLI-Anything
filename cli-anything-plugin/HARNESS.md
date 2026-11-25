@@ -145,15 +145,16 @@ Now write the actual test code based on the TEST.md plan:
 
 1. **Unit tests** (`test_core.py`) — Every core function tested in isolation with
    synthetic data. No external dependencies.
-2. **E2E tests — intermediate files** (`test_full_e2e.py`) — Verify the project files
+2. **E2E tests — intermediate files** (`test_full_e2e.py`) — For file-based workflows, verify project files
    your CLI generates are structurally correct (valid XML, correct ZIP structure, etc.)
-3. **E2E tests — true backend** (`test_full_e2e.py`) — **MUST invoke the real software.**
-   Create a project, export via the actual software backend, and verify the output:
+3. **E2E tests — true backend** (`test_full_e2e.py`) — **MUST invoke the real backend.**
+   Follow the API Backend Pattern for service operations. For file-based workflows,
+   create a project, export via the actual backend, and verify the output:
    - File exists and size > 0
    - Correct format (PDF magic bytes `%PDF-`, DOCX/XLSX/PPTX is valid ZIP/OOXML, etc.)
    - Content verification where possible (CSV contains expected data, etc.)
    - **Print artifact paths** so users can manually inspect: `print(f"\n  PDF: {path} ({size:,} bytes)")`
-   - **No graceful degradation** — if the software isn't installed, tests fail, not skip
+   - Report missing applications, endpoints, or credentials when running real-backend tests.
 4. **Output verification** — **Don't trust that export works just because it exits
    successfully.** Verify outputs programmatically:
    - Magic bytes / file format validation
@@ -162,7 +163,7 @@ Now write the actual test code based on the TEST.md plan:
    - Audio analysis (RMS levels, spectral comparison)
    - Duration/format checks against expected values
 5. **CLI subprocess tests** — Test the installed CLI command as a real user/agent would.
-   The subprocess tests MUST also produce real final output (not just ODF intermediate).
+   Verify the final artifact, service response, or state change through that entry point.
    Use the `_resolve_cli` helper to run the installed `cli-anything-<software>` command:
    ```python
    def _resolve_cli(name):
@@ -323,8 +324,8 @@ can't handle real workloads and diverges from the actual software's behavior.
    - Audacity: `sox` for effects processing
    - OBS: `obs-websocket` protocol
 
-2. **The software is a required dependency**, not optional. Add it to installation
-   instructions. The CLI is useless without the actual software.
+2. **The backend is a required dependency.** Document the local software or the
+   service endpoint and account access needed to run the harness.
 
 3. **Generate valid project/intermediate files** (ODF, MLT XML, .blend, SVG, etc.)
    then hand them to the real software for rendering. Your CLI is a structured
@@ -372,6 +373,29 @@ CLI (e.g., DOMShell for browser automation). See [`guides/mcp-backend.md`](guide
 for the full backend wrapper pattern, session management, daemon mode, and example implementations.
 
 **Use when:** no native CLI exists, software has an MCP server, or you need agent-native tool integration.
+
+### API Backend Pattern
+
+Use the documented service API when it is the target's supported automation
+interface. Treat official API documentation or an OpenAPI specification as the
+source for Phase 1. Map command groups to documented resources and operations.
+For services that already persist state, keep the CLI's local state limited to
+what its workflows need.
+
+- **Connection:** Use a configurable API base URL and document the supported API
+  version and credential environment variables in the harness README. Keep
+  authorization values out of arguments, logs, and generated skills.
+- **Operations:** Set request timeouts and report API failures through the normal
+  JSON and exit-code paths. Require explicit opt-in for mutations in automated
+  workflows. Poll remote jobs up to a deadline and verify the format and contents
+  of any downloaded output before reporting success.
+- **Verification:** Exercise response handling with offline tests. Run a separate
+  installed-command test against the actual service using a read-only operation.
+  When testing writes, use a disposable account or workspace and verify the
+  resulting service state. A requested live run without service access should
+  report that prerequisite as missing.
+- **Skill generation:** Pass `--api` to `skill_generator.py`. Document the specific
+  endpoint and safe workflow examples in the harness README.
 
 ### Filter Translation Pitfalls
 
@@ -423,9 +447,8 @@ Four test layers with complementary purposes:
    `cli-anything-<software>` command via `subprocess.run` to run the full workflow
    end-to-end: create project → add content → export via real software → verify output.
 
-**No graceful degradation.** The real software MUST be installed. Tests must NOT
-skip or fake results when the software is missing — the CLI is useless without it.
-The software is a hard dependency, not optional.
+True backend tests require access to the local application or remote service.
+Report missing prerequisites explicitly when running those tests.
 
 **Example — true E2E test for LibreOffice:**
 ```python
@@ -482,14 +505,12 @@ Real-world workflow test scenarios should include:
 These are non-negotiable. Every harness MUST follow all of them.
 
 **Backend & Rendering:**
-- **The real software is a hard dependency.** The CLI MUST invoke the actual application
-  (LibreOffice, Blender, GIMP, etc.) for rendering and export. Do NOT reimplement
-  rendering in Python. Do NOT gracefully degrade to a fallback library. If the software
-  is not installed, error with clear install instructions.
-- **Manipulate the native format directly** — Parse and modify the app's native project
-  files (MLT XML, ODF, SVG, etc.) as the data layer.
-- **Leverage existing CLI tools** — Use `libreoffice --headless`, `blender --background`,
-  `melt`, `ffmpeg`, `inkscape --actions`, `sox` as subprocesses for rendering.
+- **Call the real backend.** Local harnesses MUST invoke the actual application
+  for rendering and export. Use its CLI and native project formats where
+  available. If the required application is missing, report how to install it.
+- **Use the service API for API-backed operations.** Report missing endpoint or
+  account access as an error. Use the service's render and export endpoints
+  when it provides those operations.
 - **Verify rendering produces correct output** — See "The Rendering Gap" in
   Architecture Patterns & Pitfalls above.
 - **Every filter/effect in the registry MUST have a corresponding render mapping**
@@ -532,17 +553,17 @@ These are non-negotiable. Every harness MUST follow all of them.
   REPL MUST be the default behavior (`invoke_without_command=True`).
 
 **Testing:**
-- **E2E tests MUST invoke the real software** and produce real output files (PDF, DOCX,
-  rendered images, videos). Verify output exists, has correct format (magic bytes, ZIP
-  structure), and print artifact paths for manual inspection. Never test only
-  intermediate files.
+- **E2E tests MUST exercise the real backend.** For file-producing workflows,
+  verify the final file exists, validate its format and contents, and print
+  its path. For API operations returning data, verify the live response or
+  resulting service state.
 - **Every export/render function MUST be verified** with programmatic output analysis.
   "It ran without errors" is not sufficient.
 - **E2E tests MUST include subprocess tests** that invoke the installed
   `cli-anything-<software>` command via `_resolve_cli()`. Tests must work against
   the actual installed package, not just source imports.
-- **Test suites MUST include real-file E2E tests**, not just unit tests with synthetic
-  data. Format assumptions break constantly with real media.
+- **Use real inputs in E2E tests.** For file workflows, include real files so
+  the test exercises the formats the harness supports.
 
 **Documentation:**
 - **Every `cli_anything/<software>/` directory MUST contain a `README.md`** explaining
