@@ -537,6 +537,28 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "mayx-cli",
+      "display_name": "Mayx's Blog CLI",
+      "version": "1.0.1",
+      "description": "CLI and full-screen TUI reader for Mayx's Blog — list, search, full-text grep, read posts and comment threads, with --json output for agents and scripts",
+      "category": "web",
+      "requires": "Node.js >= 18",
+      "homepage": "https://mabbs.github.io",
+      "source_url": null,
+      "package_manager": "npm",
+      "npm_package": "mayx-cli",
+      "install_cmd": "npm install -g mayx-cli",
+      "npx_cmd": "npx mayx-cli",
+      "skill_md": "https://www.npmjs.com/package/mayx-cli",
+      "entry_point": "mayx",
+      "contributors": [
+        {
+          "name": "Mabbs",
+          "url": "https://github.com/Mabbs"
+        }
+      ]
     }
   ]
 }
