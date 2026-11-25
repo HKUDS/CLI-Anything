@@ -238,6 +238,20 @@ npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
 
 **Works with:** OpenClaw, Nanobot, Claude Code, Codex, Reasonix, Antigravity, and other SKILL-compatible agents.
 
+**TRAE and TRAE CN**
+
+Run the command for your edition from the project directory:
+
+```bash
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill --agent trae --yes
+# TRAE CN
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill --agent trae-cn --yes
+```
+
+Both install the skill under `.trae/skills/cli-hub-meta-skill/` for the current
+project. Open that project in TRAE and use the skill to discover and run
+published CLIs through `cli-hub`.
+
 Then prompt:
 
 ```text

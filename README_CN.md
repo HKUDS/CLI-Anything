@@ -55,6 +55,21 @@ CLI 是人类和 AI Agent 共通的万能接口：
 
 ## 🚀 快速上手
 
+### 在 TRAE 中使用已有 CLI
+
+先运行 `pip install cli-anything-hub`，然后在项目目录执行与你的版本对应的命令。
+
+```bash
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill --agent trae --yes
+# TRAE 国内版
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill --agent trae-cn --yes
+```
+
+两个版本都会把 skill 安装到当前项目的 `.trae/skills/cli-hub-meta-skill/`。
+在 TRAE 中打开该项目，即可用这个 skill 通过 `cli-hub` 查找并运行已发布的 CLI。
+
+### 生成新的 CLI
+
 ### 环境要求
 
 - **Python 3.10+**
