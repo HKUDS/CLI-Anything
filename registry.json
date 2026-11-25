@@ -510,7 +510,7 @@
     {
       "name": "mermaid",
       "display_name": "Mermaid",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Mermaid Live Editor state files and renderer URLs",
       "requires": null,
       "homepage": "https://mermaid.js.org",
