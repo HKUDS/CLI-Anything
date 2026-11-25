@@ -13,7 +13,7 @@ with open("cli_anything/gimp/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cli-anything-gimp",
-    version="1.0.0",
+    version="1.0.1",
     author="cli-anything contributors",
     author_email="",
     description="CLI harness for GIMP - Raster image processing via gimp -i -b (batch mode). Recommended: gimp (apt install gimp)",
@@ -36,15 +36,13 @@ setup(
     install_requires=[
         "click>=8.0.0",
         "prompt-toolkit>=3.0.0",
+        "Pillow>=10.0.0",
     ],
     extras_require={
-        "pillow": [
-            "Pillow>=10.0.0",
-        ],
+        "pillow": [],  # Keep existing installs with the former optional extra working.
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
-            "Pillow>=10.0.0",
             "numpy>=1.24.0",
         ],
     },
@@ -54,7 +52,7 @@ setup(
         ],
     },
     package_data={
-        "cli_anything.gimp": ["skills/*.md"],
+        "cli_anything.gimp": ["README.md", "skills/*.md"],
     },
     include_package_data=True,
     zip_safe=False,

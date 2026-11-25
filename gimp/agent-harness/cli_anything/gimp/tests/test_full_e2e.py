@@ -440,6 +440,21 @@ class TestCLISubprocess:
         result = Image.open(out_path)
         assert result.size == (300, 200)
 
+    def test_draw_rect_persists_and_renders_across_commands(self, tmp_path):
+        project_path = str(tmp_path / "poster.json")
+        output_path = tmp_path / "poster.png"
+        self._run(["project", "new", "--width", "80", "--height", "60", "-o", project_path])
+        self._run(["--json", "--project", project_path,
+                   "layer", "new", "-n", "Background", "--type", "solid", "--fill", "#1a1a2e"])
+        self._run(["--project", project_path, "draw", "rect",
+                   "--x1", "10", "--y1", "10", "--x2", "40", "--y2", "30", "--fill", "#e94560"])
+        self._run(["--project", project_path, "export", "render", str(output_path)])
+
+        with Image.open(output_path) as image:
+            rgb = image.convert("RGB")
+            assert rgb.getpixel((20, 20)) == (233, 69, 96)
+            assert rgb.getpixel((2, 2)) == (26, 26, 46)
+
 
 # ── Real-World Workflow Tests ────────────────────────────────────
 
