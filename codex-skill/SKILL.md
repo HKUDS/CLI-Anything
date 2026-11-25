@@ -21,8 +21,9 @@ Before implementation, use the full methodology source of truth:
    `https://github.com/HKUDS/CLI-Anything` and use `cli-anything-plugin/HARNESS.md`.
 6. Only if all full-methodology sources are unavailable, follow the condensed rules below.
 
-The installer vendors the canonical resources from `cli-anything-plugin/` into this
-skill so a normal Codex installation is self-contained.
+The canonical resources from `cli-anything-plugin/` are vendored into this skill
+directory (under `references/` and `scripts/`) and kept in sync by CI, so both
+`npx skills add` bundles and Codex installations are self-contained.
 
 ## Resource Map
 

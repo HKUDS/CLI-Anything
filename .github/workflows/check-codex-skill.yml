@@ -27,5 +27,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate vendored skill resources
+        run: python3 .github/scripts/validate_codex_skill.py
+
       - name: Test Codex skill installer
         run: bash codex-skill/tests/test_install.sh
