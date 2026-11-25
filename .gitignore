@@ -80,6 +80,7 @@
 !/musescore/
 !/krita/
 !/freecad/
+!/kicad/
 !/iterm2/
 !/slay_the_spire_ii/
 !/eth2-quickstart/
@@ -166,6 +167,8 @@
 /krita/.*
 /freecad/*
 /freecad/.*
+/kicad/*
+/kicad/.*
 /iterm2/*
 /iterm2/.*
 /slay_the_spire_ii/*
@@ -259,6 +262,7 @@
 !/musescore/agent-harness/
 !/krita/agent-harness/
 !/freecad/agent-harness/
+!/kicad/agent-harness/
 !/iterm2/agent-harness/
 !/slay_the_spire_ii/agent-harness/
 !/slay_the_spire_ii/README.md

@@ -807,6 +807,25 @@
       ]
     },
     {
+      "name": "kicad",
+      "display_name": "KiCad",
+      "version": "1.0.0",
+      "description": "Run electrical rule checks and bundle Gerber, drill, placement and BOM files",
+      "requires": "KiCad 9 with kicad-cli",
+      "homepage": "https://www.kicad.org",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=kicad/agent-harness",
+      "entry_point": "cli-anything-kicad",
+      "skill_md": "skills/cli-anything-kicad/SKILL.md",
+      "category": "design",
+      "contributors": [
+        {
+          "name": "Surfire",
+          "url": "https://github.com/Surfire"
+        }
+      ]
+    },
+    {
       "name": "iterm2",
       "display_name": "iTerm2",
       "version": "1.0.0",
