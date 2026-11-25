@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import json as json_mod
@@ -322,8 +323,13 @@ def launch(name, args):
     track_launch(name)
     if sys.platform == "win32":
         # Keep the launcher attached while the child owns the interactive prompt.
-        completed = subprocess.run([executable, *args], check=False)
-        raise SystemExit(completed.returncode)
+        child = subprocess.Popen([executable, *args])
+        previous_handler = signal.signal(signal.SIGINT, lambda *_: None)
+        try:
+            returncode = child.wait()
+        finally:
+            signal.signal(signal.SIGINT, previous_handler)
+        raise SystemExit(returncode)
     os.execvp(entry, [entry, *args])
 
 
