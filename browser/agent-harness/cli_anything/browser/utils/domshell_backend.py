@@ -29,6 +29,8 @@ from typing import Any, Optional
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from cli_anything.browser.core.session import Session
+from cli_anything.browser.utils.mcp_connection import MCPConnection
 
 log = logging.getLogger(__name__)
 
@@ -508,7 +510,8 @@ async def _call_execute(
         use_daemon: If True, use persistent daemon connection (if available)
         session: Harness ``Session`` whose ``domshell_lane_id`` should be
             forwarded as ``group_id`` (when set) and updated from the result
-            (when DOMShell returns a ``[lane: <id>]`` marker). Pass ``None``
+            (when DOMShell returns a ``[lane: <id>]`` marker). In default mode
+            the session owns the connection until ``Session.close()``. Pass ``None``
             for one-off direct calls that don't need cross-call state.
 
     Returns:
@@ -518,6 +521,33 @@ async def _call_execute(
         RuntimeError: If MCP server is not available or tool call fails
     """
     global _daemon_session, _daemon_read, _daemon_write, _daemon_lane_id
+
+    if not use_daemon and isinstance(session, Session):
+        def connect() -> MCPConnection:
+            params = StdioServerParameters(command=DEFAULT_SERVER_CMD, args=_build_server_args())
+            return MCPConnection(params, stdio_client, ClientSession)
+
+        async def execute(client: ClientSession) -> Any:
+            arguments = {"command": command, "group_id": session.domshell_lane_id or "new"}
+            result = await client.call_tool("domshell_execute", arguments)
+            _capture_lane(session, result)
+            return result
+
+        connection = None
+        try:
+            connection = session._get_connection(connect)
+            result = await connection.run(execute)
+        except asyncio.CancelledError:
+            if connection is not None:
+                await asyncio.to_thread(session._release_connection, connection, cancelled=True)
+            raise
+        except Exception as e:
+            if connection is not None:
+                # The request may have already acted. Close without replay.
+                await asyncio.to_thread(session._release_connection, connection, failed=True)
+            raise RuntimeError(f"DOMShell MCP call failed: {e}") from e
+        session._release_connection(connection)
+        return result
 
     arguments: dict[str, Any] = {"command": command}
     # Lane handling — three sources, in priority order:
@@ -1081,15 +1111,8 @@ def type_text(
     keys into whatever was previously focused (potentially a password
     field). Halting between focus and type prevents that.
 
-    Performance note: in non-daemon mode with an absolute path this
-    issues up to four ``_call_execute`` calls (anchor ``cd``, focus,
-    type, restore ``cd``), and each opens a fresh stdio MCP session —
-    so up to four ``npx`` server spawns per call. Relative paths use
-    two calls; daemon mode reuses one persistent connection for the
-    whole chain regardless of path form. The per-call overhead is
-    accepted to keep the wrapper-level error semantics simple; a future
-    refactor could share a single ``ClientSession`` across the chain
-    (post-merge follow-up).
+    A non-daemon ``Session`` shares its MCP connection across the
+    separately checked requests in this operation.
 
     Args:
         path: Path to input element

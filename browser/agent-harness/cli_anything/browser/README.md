@@ -103,7 +103,12 @@ cli-anything-browser --json fs ls /
 
 ### Daemon Mode (Persistent Connection)
 
-For faster interactive use, start daemon mode within a REPL session:
+The default REPL opens one DOMShell proxy on its first browser command and
+reuses it until exit. Python callers can manage the same lifetime with
+`with Session() as session:` or call `session.close()` in a `finally` block.
+Closing a session stops its proxy. Its Chrome tab group remains open.
+
+The `--daemon` flag selects the process-wide connection:
 
 ```bash
 # Start REPL with daemon mode
@@ -243,7 +248,8 @@ Run: `npx @apireno/domshell --version` (first run downloads the package)
 - Check that DOMShell is enabled in Chrome
 
 ### Commands hang on first use
-First `npx` call downloads DOMShell package (10-50 MB). Subsequent calls are faster. Use `--daemon` mode for persistent connection.
+The first `npx` call may need to download the DOMShell package. Commands in
+the same REPL reuse the proxy.
 
 ## Architecture
 

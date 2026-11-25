@@ -36,6 +36,46 @@ def runner():
     return CliRunner()
 
 
+def test_default_session_reuses_live_proxy(monkeypatch):
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    from cli_anything.browser.core.session import Session
+    from cli_anything.browser.utils import domshell_backend as backend
+
+    transport = backend.stdio_client
+    opened = 0
+    closed = 0
+
+    @asynccontextmanager
+    async def count_transport(params):
+        nonlocal opened, closed
+        try:
+            async with transport(params) as streams:
+                opened += 1
+                yield streams
+        finally:
+            closed += 1
+
+    monkeypatch.setattr(backend, "stdio_client", count_transport)
+    with Session() as session:
+        try:
+            result = backend.open_url(os.environ.get("DOMSHELL_E2E_URL", TEST_URL), session=session)
+            assert "error" not in result, result
+            lane = session.domshell_lane_id
+            assert lane and lane.isdigit()
+            for _ in range(9):
+                result = backend.ls("", session=session)
+                assert "error" not in result and result["raw"], result
+                assert session.domshell_lane_id == lane
+            assert opened == 1
+        finally:
+            if session.domshell_lane_id:
+                asyncio.run(backend._call_execute("group close", session=session))
+
+    assert opened == closed == 1
+
+
 class TestDependencyChecks:
     """Test that dependency checking works correctly."""
 

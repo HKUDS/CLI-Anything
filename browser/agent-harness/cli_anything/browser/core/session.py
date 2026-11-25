@@ -7,9 +7,12 @@ Maintains page state across CLI commands:
 - Daemon mode status
 """
 
-from typing import Optional
+import threading
+from typing import TYPE_CHECKING, Callable, Optional
 from dataclasses import dataclass, field
 
+if TYPE_CHECKING:
+    from cli_anything.browser.utils.mcp_connection import MCPConnection
 
 @dataclass
 class Session:
@@ -34,6 +37,49 @@ class Session:
     forward_stack: list[str] = field(default_factory=list)
     daemon_mode: bool = False
     domshell_lane_id: Optional[str] = None
+    _connection: Optional["MCPConnection"] = field(
+        default=None, init=False, repr=False, compare=False,
+    )
+    _connection_lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False,
+    )
+    _connection_users: int = field(default=0, init=False, repr=False, compare=False)
+    _closed: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def _get_connection(self, factory: Callable[[], "MCPConnection"]) -> "MCPConnection":
+        with self._connection_lock:
+            if self._closed:
+                raise RuntimeError("Browser session is closed")
+            if self._connection is None:
+                self._connection = factory()
+                self._connection_users = 0
+            self._connection_users += 1
+            return self._connection
+
+    def _release_connection(
+        self, connection: "MCPConnection", *, cancelled: bool = False, failed: bool = False,
+    ) -> None:
+        with self._connection_lock:
+            if self._connection is not connection:
+                return
+            self._connection_users -= 1
+            if failed or (cancelled and self._connection_users == 0 and connection.starting):
+                self._connection = None
+                connection.close()
+
+    def close(self) -> None:
+        """Stop this session's proxy and leave its browser tabs open."""
+        with self._connection_lock:
+            self._closed = True
+            connection, self._connection = self._connection, None
+            if connection is not None:
+                connection.close()
+
+    def __enter__(self) -> "Session":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
 
     def set_url(self, url: str, record_history: bool = True) -> None:
         """Set the current URL and update history.

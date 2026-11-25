@@ -21,6 +21,7 @@ import shlex
 import click
 from typing import Optional
 
+from cli_anything.browser import __version__
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page as page_mod
 from cli_anything.browser.core import fs as fs_mod
@@ -38,6 +39,15 @@ def get_session() -> Session:
     if _session is None:
         _session = Session()
     return _session
+
+
+def _close_session() -> None:
+    global _session, _repl_mode, _availability_cached
+    current, _session = _session, None
+    _repl_mode = False
+    _availability_cached = None
+    if current is not None:
+        current.close()
 
 
 def output(data, message: str = ""):
@@ -104,7 +114,7 @@ def handle_error(func):
 @click.group(invoke_without_command=True)
 @click.option("--json", "use_json", is_flag=True, help="Output as JSON")
 @click.option("--daemon", "use_daemon", is_flag=True,
-              help="Use persistent daemon mode (faster for interactive use)")
+              help="Use the process-wide daemon connection")
 @click.pass_context
 def cli(ctx, use_json, use_daemon):
     """Browser CLI — Filesystem-first browser automation via DOMShell.
@@ -133,6 +143,8 @@ def cli(ctx, use_json, use_daemon):
 
     # Initialize session with daemon mode
     _session = get_session()
+    if not _repl_mode:
+        ctx.call_on_close(_close_session)
     if use_daemon:
         try:
             backend.start_daemon()
@@ -144,7 +156,7 @@ def cli(ctx, use_json, use_daemon):
                 click.echo(json.dumps({"error": str(e), "type": "daemon_error"}))
             else:
                 click.echo(f"Daemon start failed: {e}", err=True)
-                click.echo("Falling back to per-command mode", err=True)
+                click.echo("Falling back to the session connection", err=True)
 
     if ctx.invoked_subcommand is None:
         ctx.invoke(repl)
@@ -374,14 +386,22 @@ def session_daemon_stop():
 # ── REPL ─────────────────────────────────────────────────────────
 @cli.command()
 @handle_error
-def repl():
+@click.pass_context
+def repl(ctx):
     """Start interactive REPL session."""
     from cli_anything.browser.utils.repl_skin import ReplSkin
 
     global _repl_mode
+    previous_repl_mode = _repl_mode
+
+    def restore_repl_mode():
+        global _repl_mode
+        _repl_mode = previous_repl_mode
+
+    ctx.call_on_close(restore_repl_mode)
     _repl_mode = True
 
-    skin = ReplSkin("browser", version="1.0.0")
+    skin = ReplSkin("browser", version=__version__)
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()
@@ -435,9 +455,6 @@ def repl():
         except (EOFError, KeyboardInterrupt):
             skin.print_goodbye()
             break
-
-    _repl_mode = False
-
 
 # ── Entry Point ──────────────────────────────────────────────────
 def main():
