@@ -16,6 +16,7 @@ fail() {
 
 ORPHAN="${SKILL_DIR}/references/guides/orphan-regression.md"
 ORPHAN_NESTED="${SKILL_DIR}/references/guides/orphan-nested"
+ORPHAN_FIXED="${SKILL_DIR}/references/docs/orphan-regression.md"
 VENDORED_HARNESS="${SKILL_DIR}/references/HARNESS.md"
 CANONICAL_HARNESS="${REPO_ROOT}/cli-anything-plugin/HARNESS.md"
 VENDORED_GUIDE="${SKILL_DIR}/references/guides/session-locking.md"
@@ -25,7 +26,7 @@ CANONICAL_GUIDE="${REPO_ROOT}/cli-anything-plugin/guides/session-locking.md"
 # wildcard mirroring cannot sweep them into the vendored bundle.
 BACKUP_DIR="$(mktemp -d)"
 cleanup() {
-  rm -f "${ORPHAN}"
+  rm -f "${ORPHAN}" "${ORPHAN_FIXED}"
   rm -rf "${ORPHAN_NESTED}"
   if [[ -f "${BACKUP_DIR}/HARNESS.md" ]] &&
     { [[ ! -f "${VENDORED_HARNESS}" ]] ||
@@ -86,5 +87,12 @@ expect_validate_fail "nested orphan tree not detected"
 python3 "${SYNC}" >/dev/null
 [[ ! -e "${ORPHAN_NESTED}" ]] || fail "sync did not remove nested orphan tree"
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after nested orphan cleanup"
+
+# 5. Stale fixed resource: validate fails, sync removes it.
+echo "stale" > "${ORPHAN_FIXED}"
+expect_validate_fail "stale fixed resource not detected"
+python3 "${SYNC}" >/dev/null
+[[ ! -e "${ORPHAN_FIXED}" ]] || fail "sync did not remove stale fixed resource"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after fixed cleanup"
 
 echo "PASS: codex-skill sync and validation regression tests."

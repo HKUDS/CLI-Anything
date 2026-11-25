@@ -28,7 +28,8 @@ def main() -> int:
         if source.read_bytes() != dest.read_bytes():
             stale.append(dest.relative_to(SKILL_DIR).as_posix())
 
-    # Reverse check: no orphan files in the mirrored directories.
+    # Reverse check: no orphan files in the mirrored directories or at
+    # fixed-file destinations.
     orphans: list[str] = []
     for _, dest_rel in namespace["DIR_MAP"]:
         dest_dir = SKILL_DIR / dest_rel
@@ -37,6 +38,11 @@ def main() -> int:
         for dest in sorted(dest_dir.rglob("*")):
             if dest.is_file() and dest not in expected_dests:
                 orphans.append(dest.relative_to(SKILL_DIR).as_posix())
+
+    orphans.extend(
+        orphan.relative_to(SKILL_DIR).as_posix()
+        for orphan in namespace["_fixed_orphans"]()
+    )
 
     if not missing and not stale and not orphans:
         print("Codex skill vendored resources validation passed.")

@@ -52,6 +52,33 @@ def _mapped_files() -> list[tuple[Path, Path]]:
     return pairs
 
 
+# Parents of fixed-file destinations, scanned for orphans left behind when
+# a FILE_MAP destination is renamed or removed. Only files are managed here;
+# directory mirrors are handled via DIR_MAP. Any top-level file under these
+# parents that is neither a mapped destination nor explicitly allowlisted in
+# UNMANAGED_FILES is treated as a stale resource and removed by sync — add
+# new non-vendored files to UNMANAGED_FILES before placing them here.
+FIXED_PARENTS: list[str] = ["references", "references/docs", "scripts"]
+UNMANAGED_FILES: set[str] = {"scripts/install.sh", "scripts/install.ps1"}
+
+
+def _fixed_orphans() -> list[Path]:
+    expected = {dest for _, dest in _mapped_files()}
+    orphans: list[Path] = []
+    for parent_rel in FIXED_PARENTS:
+        parent = SKILL_DIR / parent_rel
+        if not parent.is_dir():
+            continue
+        for entry in sorted(parent.iterdir()):
+            if entry.is_dir():
+                continue
+            if entry.relative_to(SKILL_DIR).as_posix() in UNMANAGED_FILES:
+                continue
+            if entry not in expected:
+                orphans.append(entry)
+    return orphans
+
+
 def sync() -> None:
     mapped = list(_mapped_files())
     for source, dest in mapped:
@@ -80,6 +107,13 @@ def sync() -> None:
         ):
             if not any(nested.iterdir()):
                 nested.rmdir()
+
+    # Remove stale fixed resources left behind by FILE_MAP renames/removals.
+    for orphan in _fixed_orphans():
+        orphan.unlink()
+    docs_dir = SKILL_DIR / "references/docs"
+    if docs_dir.is_dir() and not any(docs_dir.iterdir()):
+        docs_dir.rmdir()
 
 
 if __name__ == "__main__":
