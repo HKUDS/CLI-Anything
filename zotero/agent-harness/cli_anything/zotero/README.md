@@ -422,6 +422,22 @@ Backend:
 | `list` | List tags and item counts | No | SQLite |
 | `items <tag>` | Read items carrying a tag | No | SQLite |
 
+### `library`
+
+Library-wide, read-only reports over the active library (regular items only; attachments, notes and trashed items are skipped).
+
+| Command | Purpose | Requires Zotero Running | Backend |
+|---|---|---:|---|
+| `duplicates` | Group items that share a DOI, an arXiv ID or a normalized title (transitive); a shared title never links two items with different DOIs | No | SQLite |
+| `audit [--require FIELD]...` | List items with missing metadata; defaults depend on the item type, `--require` overrides them | No | SQLite |
+| `export [--format json\|csv] [--output FILE] [--force]` | Snapshot collections and items (key, type, title, creators, date, DOI, url, publication, collections, tags, extra). CSV cells starting with `= + - @` get a leading `'` so spreadsheets do not run them; output to a pipe is UTF-8; `--output` refuses to write inside the Zotero data directory | No | SQLite |
+
+```bash
+cli-anything-zotero --json library duplicates
+cli-anything-zotero --json library audit --require identifier --require abstractNote
+cli-anything-zotero library export --format csv --output library.csv
+```
+
 ### `style`
 
 | Command | Purpose | Requires Zotero Running | Backend |

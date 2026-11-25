@@ -14,6 +14,7 @@
 - render citations and bibliography entries through Zotero's own CSL engine
 - route stable read/search/export flows across both user and group libraries
 - build LLM-ready structured context for one item
+- report duplicates (DOI, arXiv ID, normalized title), audit missing metadata and export a library snapshot, all read-only
 - optionally call OpenAI directly for analysis
 
 ### Experimental Local Enhancements
@@ -322,6 +323,9 @@ Backend:
 | `search items <ref>` | Execute a saved search | Yes | Local API | Live command |
 | `tag list` | List tags | No | SQLite | Includes item counts |
 | `tag items <tag>` | Read items under one tag | No | SQLite | Tag string or tag ID |
+| `library duplicates` | Group items sharing a DOI, arXiv ID or normalized title | No | SQLite | Skips trash; titles under 12 normalized characters are not compared; a shared title never links items with different DOIs |
+| `library audit` | List items with missing metadata | No | SQLite | Defaults per item type; `--require` overrides |
+| `library export` | Snapshot collections and items as JSON or CSV | No | SQLite | `--output` refuses to overwrite without `--force` and never writes inside the Zotero data directory; CSV formula cells are prefixed with `'`; piped output is UTF-8 |
 | `style list` | Read installed CSL styles | No | local data dir | Parses local `.csl` files |
 | `import file <path>` | Import through Zotero translators | Yes | connector | Supports optional `--attachments-manifest` sidecar |
 | `import json <path>` | Save official connector JSON items | Yes | connector | Supports inline per-item `attachments` descriptors |

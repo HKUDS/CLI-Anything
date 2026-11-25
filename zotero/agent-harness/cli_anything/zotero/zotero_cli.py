@@ -4,12 +4,13 @@ import json
 import shlex
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import click
 
 from cli_anything.zotero import __version__
-from cli_anything.zotero.core import analysis, catalog, discovery, experimental, imports, notes, rendering, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, experimental, imports, library, notes, rendering, session as session_mod
 from cli_anything.zotero.utils.repl_skin import ReplSkin
 
 try:
@@ -148,6 +149,17 @@ def emit(ctx: click.Context | None, data: Any, *, message: str = "") -> None:
         click.echo(_json_text(data))
         return
     click.echo(_safe_text_for_stdout(str(data)))
+
+
+def _echo_export(text: str) -> None:
+    """Export data goes out as UTF-8 bytes when piped (machines read it, and the Windows console
+    codepage would garble or replace characters); on a terminal it uses the console encoding."""
+    if sys.stdout.isatty():
+        click.echo(_safe_text_for_stdout(text), nl=False)
+        return
+    stream = click.get_binary_stream("stdout")
+    stream.write(text.encode("utf-8"))
+    stream.flush()
 
 
 def _print_collection_tree(nodes: list[dict[str, Any]], level: int = 0) -> None:
@@ -615,6 +627,55 @@ def tag_list(ctx: click.Context) -> int:
 @click.pass_context
 def tag_items_command(ctx: click.Context, tag_ref: str) -> int:
     emit(ctx, catalog.tag_items(current_runtime(ctx), tag_ref, session=current_session()))
+    return 0
+
+
+@cli.group("library")
+def library_group() -> None:
+    """Library-wide read-only reports: duplicates, metadata audit, snapshot export."""
+
+
+@library_group.command("duplicates")
+@click.pass_context
+def library_duplicates(ctx: click.Context) -> int:
+    """Group items that share a DOI, an arXiv ID or a normalized title."""
+    emit(ctx, library.find_duplicates(library.records(current_runtime(ctx), current_session())))
+    return 0
+
+
+@library_group.command("audit")
+@click.option("--require", "required", multiple=True,
+              help="Field every item must have (repeatable; overrides the per-item-type defaults). "
+                   "Use 'identifier' for DOI-or-URL and 'creators' for authors.")
+@click.pass_context
+def library_audit(ctx: click.Context, required: tuple[str, ...]) -> int:
+    """List items with missing metadata (creators, date, DOI/URL, publication, abstract, ...)."""
+    items = library.records(current_runtime(ctx), current_session())
+    emit(ctx, library.audit_metadata(items, tuple(required) or None))
+    return 0
+
+
+@library_group.command("export")
+@click.option("--format", "fmt", type=click.Choice(["json", "csv"]), default="json", show_default=True)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False), default=None,
+              help="Write to this file instead of stdout.")
+@click.option("--force", is_flag=True, help="Overwrite --output if it exists.")
+@click.pass_context
+def library_export(ctx: click.Context, fmt: str, output_path: str | None, force: bool) -> int:
+    """Snapshot collections and regular items of the active library (read-only)."""
+    data = library.snapshot(current_runtime(ctx), current_session())
+    text = library.snapshot_csv(data) if fmt == "csv" else json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    if output_path is None:
+        _echo_export(text)
+        return 0
+    target = Path(output_path)
+    data_dir = current_runtime(ctx).environment.data_dir
+    if data_dir is not None and Path(data_dir).resolve() in target.resolve().parents:
+        raise click.ClickException("Refusing to write inside the Zotero data directory; choose another --output.")
+    if target.exists() and not force:
+        raise click.ClickException(f"{output_path} exists. Pass --force to overwrite it.")
+    target.write_text(text, encoding="utf-8", newline="")
+    emit(ctx, {"written": str(target), "format": fmt, "items": len(data["items"])})
     return 0
 
 

@@ -98,6 +98,16 @@ Tag inspection commands.
 | `list` | Execute `list`. |
 | `items` | Execute `items`. |
 
+### Library
+
+Library-wide read-only reports over regular items (attachments, notes and trashed items are skipped).
+
+| Command | Description |
+|---------|-------------|
+| `duplicates` | Group items sharing a DOI, an arXiv ID or a normalized title; a shared title never links items with different DOIs. |
+| `audit [--require FIELD]...` | List items with missing metadata; defaults depend on the item type, `--require` overrides them. |
+| `export [--format json\|csv] [--output FILE] [--force]` | Snapshot collections and items; `--output` refuses to overwrite without `--force` and never writes inside the Zotero data directory. CSV cells starting with `= + - @` get a leading `'`; piped output is UTF-8. |
+
 ### Style
 
 Installed CSL style inspection commands.
@@ -180,6 +190,17 @@ Assemble structured context for downstream model analysis.
 
 ```bash
 cli-anything-zotero item context <item-key> --include-notes --include-links --json
+```
+
+### Audit And Deduplicate A Library
+
+Read-only; nothing is written to Zotero. Field names are Zotero field names, plus `creators` and `identifier` (DOI or URL).
+
+```bash
+cli-anything-zotero --json library duplicates
+cli-anything-zotero --json library audit
+cli-anything-zotero --json library audit --require identifier --require abstractNote
+cli-anything-zotero library export --format csv --output library.csv
 ```
 
 ## Version

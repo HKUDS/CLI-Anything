@@ -468,7 +468,7 @@
     {
       "name": "zotero",
       "display_name": "Zotero",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "description": "CLI & MCP server for Zotero 7/8 — 52 MCP tools + 70+ CLI commands for search, import, PDF, BibTeX, notes, and more",
       "requires": "Zotero 7/8 desktop app (running), Python 3.10+",
       "homepage": "https://www.zotero.org",
