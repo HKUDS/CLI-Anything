@@ -87,16 +87,36 @@ def _fixed_orphans() -> list[Path]:
     return list(orphans)
 
 
+def _clear_conflicting(dest: Path) -> None:
+    """Remove entries that conflict with the regular file/dir layout sync
+    needs, so the documented repair command can restore the mirror without
+    manual deletion.
+
+    Ancestors are cleared top-down and symlinks are never followed, so a
+    symlinked ancestor cannot redirect removals outside codex-skill/.
+    """
+    current = SKILL_DIR
+    for part in dest.relative_to(SKILL_DIR).parts:
+        current = current / part
+        if current.is_symlink():
+            current.unlink()
+        elif current.is_dir():
+            continue
+        elif current.exists():
+            current.unlink()
+        else:
+            return
+    if dest.is_dir():
+        shutil.rmtree(dest)
+
+
 def sync() -> None:
     mapped = list(_mapped_files())
     for source, dest in mapped:
         if not source.is_file():
             raise SystemExit(f"canonical source missing: {source}")
+        _clear_conflicting(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.is_symlink():
-            # copyfile follows symlinks; remove the link so the bundle gets
-            # an independent copy instead of writing through it.
-            dest.unlink()
         shutil.copyfile(source, dest)
 
     # Remove vendored files in the mirrored directories whose canonical

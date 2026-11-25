@@ -29,20 +29,39 @@ CANONICAL_GUIDE="${REPO_ROOT}/cli-anything-plugin/guides/session-locking.md"
 # wildcard mirroring cannot sweep them into the vendored bundle.
 BACKUP_DIR="$(mktemp -d)"
 cleanup() {
-  rm -f "${ORPHAN}" "${ORPHAN_FIXED}" "${ORPHAN_LINK}" "${ORPHAN_DANGLING_LINK}"
-  rm -rf "${ORPHAN_NESTED}" "${ORPHAN_FIXED_NESTED}"
+  # Restore the canonical guide first: sync requires it to be present.
+  if [[ -f "${BACKUP_DIR}/session-locking.md" ]]; then
+    if [[ -L "${CANONICAL_GUIDE}" || -d "${CANONICAL_GUIDE}" ]]; then
+      rm -rf "${CANONICAL_GUIDE}"
+    fi
+    [[ -f "${CANONICAL_GUIDE}" ]] ||
+      cp "${BACKUP_DIR}/session-locking.md" "${CANONICAL_GUIDE}"
+  fi
+  # Best-effort structural repair: clears conflicting path types, removes
+  # orphans, and restores vendored copies from canonical sources.
+  python3 "${SYNC}" >/dev/null 2>&1 || true
+  # If a file still occupies an expected parent directory (sync broken),
+  # clear it and retry once so the mirror can be rebuilt.
+  if [[ -f "${SKILL_DIR}/references/docs" ]]; then
+    rm -f "${SKILL_DIR}/references/docs"
+    python3 "${SYNC}" >/dev/null 2>&1 || true
+  fi
+  # Belt-and-braces restores in case sync itself is broken or refused to run.
+  rm -f "${ORPHAN}" "${ORPHAN_FIXED}" "${ORPHAN_LINK}" "${ORPHAN_DANGLING_LINK}" 2>/dev/null ||
+    true
+  rm -rf "${ORPHAN_NESTED}" "${ORPHAN_FIXED_NESTED}" 2>/dev/null || true
   if [[ -f "${BACKUP_DIR}/HARNESS.md" ]] &&
     { [[ -L "${VENDORED_HARNESS}" ]] ||
       [[ ! -f "${VENDORED_HARNESS}" ]] ||
       ! cmp -s "${BACKUP_DIR}/HARNESS.md" "${VENDORED_HARNESS}"; }; then
     [[ ! -L "${VENDORED_HARNESS}" ]] || rm -f "${VENDORED_HARNESS}"
+    [[ ! -d "${VENDORED_HARNESS}" ]] || rm -rf "${VENDORED_HARNESS}"
     cp "${BACKUP_DIR}/HARNESS.md" "${VENDORED_HARNESS}"
   fi
   if [[ -f "${BACKUP_DIR}/session-locking.md" ]]; then
-    [[ ! -L "${CANONICAL_GUIDE}" ]] || rm -f "${CANONICAL_GUIDE}"
-    [[ -f "${CANONICAL_GUIDE}" ]] ||
-      cp "${BACKUP_DIR}/session-locking.md" "${CANONICAL_GUIDE}"
-    [[ ! -L "${VENDORED_GUIDE}" ]] || rm -f "${VENDORED_GUIDE}"
+    if [[ -L "${VENDORED_GUIDE}" || -d "${VENDORED_GUIDE}" ]]; then
+      rm -rf "${VENDORED_GUIDE}"
+    fi
     [[ -f "${VENDORED_GUIDE}" ]] ||
       cp "${BACKUP_DIR}/session-locking.md" "${VENDORED_GUIDE}"
   fi
@@ -137,5 +156,40 @@ python3 "${SYNC}" >/dev/null
 cmp -s "${VENDORED_HARNESS}" "${CANONICAL_HARNESS}" ||
   fail "sync did not restore vendored copy at symlinked destination"
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after symlink restore"
+
+# 10. Directory at a mapped destination: validate fails, sync repairs.
+rm -f "${VENDORED_HARNESS}"
+mkdir -p "${VENDORED_HARNESS}/old"
+echo "stale" > "${VENDORED_HARNESS}/old/file.md"
+expect_validate_fail "directory at mapped destination not detected"
+python3 "${SYNC}" >/dev/null
+[[ -f "${VENDORED_HARNESS}" && ! -d "${VENDORED_HARNESS}" ]] ||
+  fail "sync did not replace directory at mapped destination"
+cmp -s "${VENDORED_HARNESS}" "${CANONICAL_HARNESS}" ||
+  fail "sync did not restore correct content at mapped destination"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after dir repair"
+
+# 11. Regular file at an expected parent directory: sync repairs.
+rm -rf "${SKILL_DIR}/references/docs"
+echo "stale" > "${SKILL_DIR}/references/docs"
+expect_validate_fail "file at expected parent directory not detected"
+python3 "${SYNC}" >/dev/null
+[[ -d "${SKILL_DIR}/references/docs" ]] ||
+  fail "sync did not replace file at expected parent directory"
+[[ -f "${SKILL_DIR}/references/docs/PREVIEW_PROTOCOL.md" ]] ||
+  fail "sync did not restore resources under repaired parent"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after parent repair"
+
+# 12. Symlinked references directory: sync must not escape codex-skill/.
+rm -rf "${SKILL_DIR}/references"
+ln -s "${REPO_ROOT}/cli-anything-plugin" "${SKILL_DIR}/references"
+python3 "${SYNC}" >/dev/null
+[[ ! -L "${SKILL_DIR}/references" ]] ||
+  fail "sync did not replace symlinked references directory"
+[[ -f "${CANONICAL_HARNESS}" ]] ||
+  fail "sync deleted a canonical source through a symlinked ancestor"
+[[ -f "${SKILL_DIR}/references/HARNESS.md" ]] ||
+  fail "sync did not restore resources under the replaced directory"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after symlinked ancestor repair"
 
 echo "PASS: codex-skill sync and validation regression tests."
