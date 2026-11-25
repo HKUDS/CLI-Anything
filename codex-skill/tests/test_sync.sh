@@ -46,6 +46,13 @@ cleanup() {
     rm -f "${SKILL_DIR}/references/docs"
     python3 "${SYNC}" >/dev/null 2>&1 || true
   fi
+  # Restore the whole references tree independently of sync if a test left
+  # it as a symlink or missing (the sync under test may itself be broken).
+  if [[ -d "${BACKUP_DIR}/references" ]] &&
+    { [[ -L "${SKILL_DIR}/references" ]] || [[ ! -d "${SKILL_DIR}/references" ]]; }; then
+    rm -rf "${SKILL_DIR}/references"
+    cp -R "${BACKUP_DIR}/references" "${SKILL_DIR}/references"
+  fi
   # Belt-and-braces restores in case sync itself is broken or refused to run.
   rm -f "${ORPHAN}" "${ORPHAN_FIXED}" "${ORPHAN_LINK}" "${ORPHAN_DANGLING_LINK}" 2>/dev/null ||
     true
@@ -181,6 +188,7 @@ python3 "${SYNC}" >/dev/null
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after parent repair"
 
 # 12. Symlinked references directory: sync must not escape codex-skill/.
+cp -R "${SKILL_DIR}/references" "${BACKUP_DIR}/references"
 rm -rf "${SKILL_DIR}/references"
 ln -s "${REPO_ROOT}/cli-anything-plugin" "${SKILL_DIR}/references"
 python3 "${SYNC}" >/dev/null
