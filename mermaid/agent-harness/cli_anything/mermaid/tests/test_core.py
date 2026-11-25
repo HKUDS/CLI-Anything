@@ -234,6 +234,36 @@ def test_render_success_publishes_complete_output(monkeypatch, tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["out.svg"]
 
 
+@pytest.mark.parametrize("stage", ["before_render", "after_render"])
+def test_render_rejects_os_output_traversal_failure(monkeypatch, tmp_path, stage):
+    import errno
+    import io
+
+    target = tmp_path / "out.svg"
+    actual_stat = os.stat
+    renderer_calls = []
+
+    def stat_with_output_failure(path, *args, **kwargs):
+        if path == str(target) and (stage == "before_render" or renderer_calls):
+            raise OSError(errno.ELOOP, "requested path exceeds the OS traversal limit", path)
+        return actual_stat(path, *args, **kwargs)
+
+    def fake_renderer(*_args, **_kwargs):
+        renderer_calls.append(True)
+        return io.BytesIO(b"<svg/>")
+
+    expected = "OS traversal limit" if stage == "before_render" else "Requested output path changed"
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "stat", stat_with_output_failure)
+        patch.setattr(mermaid_backend.urllib.request, "urlopen", fake_renderer)
+        with pytest.raises(RuntimeError, match=expected):
+            mermaid_backend.render_to_file("pako:x", str(target), "svg")
+
+    assert len(renderer_calls) == (1 if stage == "after_render" else 0)
+    assert not target.exists()
+    assert not list(tmp_path.iterdir())
+
+
 def test_render_reports_deferred_output_close_failure(monkeypatch, tmp_path):
     import errno
     import io

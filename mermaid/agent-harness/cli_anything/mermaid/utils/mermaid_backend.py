@@ -62,6 +62,12 @@ def _validate_output_path_shape(path: str) -> None:
 
 def _capture_output_links(path: str) -> dict[str, tuple]:
     """Record named symlink entries, including links in their target paths."""
+    # Check the whole requested path with the OS. Individual link checks and
+    # realpath can lose traversal errors when resolving each component.
+    try:
+        os.stat(path)
+    except FileNotFoundError:
+        pass  # A missing destination is an ordinary new output.
     references = {}
     pending = [path]
     expanded = set()
