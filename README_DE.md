@@ -429,7 +429,7 @@ cd gimp/agent-harness && pip install -e .
 # Von überall aufrufbar
 cli-anything-gimp --help
 cli-anything-gimp project new --width 1920 --height 1080 -o poster.json
-cli-anything-gimp --json layer add -n "Background" --type solid --color "#1a1a2e"
+cli-anything-gimp --json --project poster.json layer new -n "Background" --type solid --fill "#1a1a2e"
 
 # In die interaktive REPL einsteigen
 cli-anything-gimp
