@@ -30,6 +30,7 @@ ODF_NS = {
     "presentation": "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0",
     "svg": "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0",
     "meta": "urn:oasis:names:tc:opendocument:xmlns:meta:1.0",
+    "of": "urn:oasis:names:tc:opendocument:xmlns:of:1.2",
     "dc": "http://purl.org/dc/elements/1.1/",
     "manifest": "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0",
     "number": "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0",
@@ -67,6 +68,24 @@ def _nsattr(prefix: str, local: str) -> str:
     return f"{{{ODF_NS[prefix]}}}{local}"
 
 
+def _normalize_formula_for_write(formula) -> str:
+    """Return the formula body for a table:formula attribute value.
+
+    Project state stores formulas in several shapes ("SUM(B2:B7)",
+    "=SUM(B2:B7)", or with a namespace prefix left over from an import).
+    ODF requires the attribute value to be "<prefix>:=<expression>", so
+    strip any existing prefix and make sure the "=" is present.
+    """
+    body = str(formula).strip()
+    for prefix in ("of:", "oooc:"):
+        if body.startswith(prefix):
+            body = body[len(prefix):]
+            break
+    if not body.startswith("="):
+        body = "=" + body
+    return body
+
+
 def create_content_xml(doc_type: str, project: Dict[str, Any]) -> str:
     """Create content.xml for an ODF document from a project dict."""
     _register_namespaces()
@@ -74,6 +93,12 @@ def create_content_xml(doc_type: str, project: Dict[str, Any]) -> str:
     # Root element
     root = ET.Element(_ns("office", "document-content"))
     root.set(_nsattr("office", "version"), "1.2")
+    # Formulas are stored as attribute values ("of:=..."), so no element or
+    # attribute name ever uses the OpenFormula namespace and ElementTree
+    # would never emit its declaration. Declare it explicitly: without it,
+    # LibreOffice cannot resolve the formula namespace and every formula
+    # cell evaluates to Err:510.
+    root.set("xmlns:of", ODF_NS["of"])
 
     # Automatic styles
     auto_styles = ET.SubElement(root, _ns("office", "automatic-styles"))
@@ -343,7 +368,7 @@ def _build_calc_content(root: ET.Element, auto_styles: ET.Element,
                     cell_data = cells[cell_ref]
                     if "formula" in cell_data:
                         cell_elem.set(_nsattr("table", "formula"),
-                                      f"of:{cell_data['formula']}")
+                                      "of:" + _normalize_formula_for_write(cell_data["formula"]))
                         cell_elem.set(_nsattr("office", "value-type"), "float")
                     elif cell_data.get("type") == "float":
                         cell_elem.set(_nsattr("office", "value-type"), "float")
