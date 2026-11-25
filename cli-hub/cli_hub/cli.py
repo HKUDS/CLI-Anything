@@ -2,6 +2,8 @@
 
 import os
 import shutil
+import signal
+import subprocess
 import sys
 import json as json_mod
 from pathlib import Path
@@ -309,7 +311,8 @@ def launch(name, args):
         raise SystemExit(1)
 
     entry = cli["entry_point"]
-    if not shutil.which(entry):
+    executable = shutil.which(entry)
+    if not executable:
         click.secho(
             f"'{entry}' not found on PATH. Install it first: cli-hub install {name}",
             fg="red",
@@ -318,7 +321,16 @@ def launch(name, args):
         raise SystemExit(1)
 
     track_launch(name)
-    os.execvp(entry, [entry] + list(args))
+    if sys.platform == "win32":
+        # Keep the launcher attached while the child owns the interactive prompt.
+        child = subprocess.Popen([executable, *args])
+        previous_handler = signal.signal(signal.SIGINT, lambda *_: None)
+        try:
+            returncode = child.wait()
+        finally:
+            signal.signal(signal.SIGINT, previous_handler)
+        raise SystemExit(returncode)
+    os.execvp(entry, [entry, *args])
 
 
 @main.group(name="previews", invoke_without_command=True)
