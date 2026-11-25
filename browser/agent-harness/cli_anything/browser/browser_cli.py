@@ -21,6 +21,7 @@ import shlex
 import click
 from typing import Optional
 
+from cli_anything.browser import __version__
 from cli_anything.browser.core.session import Session
 from cli_anything.browser.core import page as page_mod
 from cli_anything.browser.core import fs as fs_mod
@@ -381,7 +382,7 @@ def repl():
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("browser", version="1.0.0")
+    skin = ReplSkin("browser", version=__version__)
     skin.print_banner()
 
     pt_session = skin.create_prompt_session()
@@ -441,7 +442,10 @@ def repl():
 
 # ── Entry Point ──────────────────────────────────────────────────
 def main():
-    cli()
+    try:
+        cli()
+    finally:
+        backend.stop_daemon()
 
 
 if __name__ == "__main__":

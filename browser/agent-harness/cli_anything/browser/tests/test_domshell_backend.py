@@ -6,8 +6,12 @@ regressions (quoting, command names, multi-line layout, restore ordering)
 fail loudly.
 """
 
+import asyncio
+import sys
+import threading
+import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import pytest
 
@@ -1208,6 +1212,119 @@ def test_call_execute_passes_group_id_new_when_lane_is_none():
     assert sess.domshell_lane_id == "brand-new"
 
 
+@pytest.fixture
+def daemon_stdio_server(tmp_path, monkeypatch):
+    server = tmp_path / "stdio_server.py"
+    server.write_text(
+        """
+import asyncio
+import os
+from pathlib import Path
+
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import TextContent, Tool
+
+server = Server("cwd-test")
+cwd = "/"
+
+@server.list_tools()
+async def tools():
+    return [Tool(
+        name="domshell_execute",
+        description="Exercise server-side working directory persistence.",
+        inputSchema={
+            "type": "object",
+            "properties": {"command": {"type": "string"}, "group_id": {"type": "string"}},
+            "required": ["command", "group_id"],
+        },
+    )]
+
+@server.call_tool()
+async def execute(name, arguments):
+    global cwd
+    command = arguments["command"]
+    if command == "wait":
+        Path(__file__).with_name("request-started").touch()
+        await asyncio.Event().wait()
+    if command == "cd main":
+        cwd = "/main"
+    elif command != "ls":
+        raise ValueError(f"Unexpected command: {command}")
+    return [TextContent(type="text", text=f"{os.getpid()} {cwd}\\n[lane: 1]")]
+
+async def main():
+    async with stdio_server() as (read, write):
+        await server.run(read, write, server.create_initialization_options())
+
+asyncio.run(main())
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(backend, "DEFAULT_SERVER_CMD", sys.executable)
+    monkeypatch.setattr(backend, "_build_server_args", lambda: [str(server)])
+    monkeypatch.setattr(backend, "_daemon_lane_id", None)
+    return tmp_path / "request-started"
+
+
+def test_daemon_reuses_stdio_session_across_sync_calls(daemon_stdio_server):
+    try:
+        assert backend.start_daemon()
+        initial_listing = backend.ls("", use_daemon=True)
+        pid, cwd = initial_listing["raw"].split()
+        assert cwd == "/"
+        backend.cd("main", use_daemon=True)
+        assert backend.ls("", use_daemon=True)["raw"] == f"{pid} /main"
+    finally:
+        backend.stop_daemon()
+    assert not backend.daemon_started()
+
+
+def test_daemon_stop_cancels_pending_stdio_request(daemon_stdio_server):
+    errors = []
+
+    def run_request():
+        try:
+            asyncio.run(backend._call_execute("wait", use_daemon=True))
+        except RuntimeError as exc:
+            errors.append(str(exc))
+
+    assert backend.start_daemon()
+    worker = threading.Thread(target=run_request, daemon=True)
+    stopper = threading.Thread(target=backend.stop_daemon, daemon=True)
+    worker.start()
+    try:
+        deadline = time.monotonic() + 5
+        while not daemon_stdio_server.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert daemon_stdio_server.exists()
+    finally:
+        stopper.start()
+        stopper.join(timeout=6)
+    assert not stopper.is_alive(), "Daemon shutdown blocked on an unanswered request"
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert len(errors) == 1
+    assert "daemon stopped during the request" in errors[0]
+    assert not backend.daemon_started()
+
+
+def test_daemon_transport_failure_does_not_replay_command(monkeypatch):
+    daemon = SimpleNamespace(
+        execute=AsyncMock(side_effect=RuntimeError("transport closed")),
+        close=Mock(),
+    )
+    monkeypatch.setattr(backend, "_daemon", daemon)
+    with patch.object(backend, "stdio_client") as stdio_client:
+        with pytest.raises(RuntimeError, match="transport closed"):
+            asyncio.run(backend._call_execute("click button", use_daemon=True))
+        stdio_client.assert_not_called()
+
+    daemon.execute.assert_awaited_once()
+    daemon.close.assert_called_once()
+    assert not backend.daemon_started()
+
+
 def test_call_execute_daemon_no_session_first_call_passes_new_and_captures_lane():
     """Daemon mode + no session, first call: passes ``group_id="new"``
     and captures the lane id from the response into the module-level
@@ -1229,14 +1346,13 @@ def test_call_execute_daemon_no_session_first_call_passes_new_and_captures_lane(
             return_value=_make_result("✓\n[lane: daemon-captured-99]")
         )
         fake_mcp_session = AsyncMock()
-        fake_mcp_session.call_tool = fake_tool
+        fake_mcp_session.execute = fake_tool
 
-        with patch.object(backend, "_daemon_session", fake_mcp_session):
+        with patch.object(backend, "_daemon", fake_mcp_session):
             import asyncio as _aio
             _aio.run(backend._call_execute("ls /", use_daemon=True, session=None))
 
-        name, arguments = fake_tool.call_args.args
-        assert name == "domshell_execute"
+        (arguments,) = fake_tool.call_args.args
         assert arguments.get("group_id") == "new"
         assert backend._daemon_lane_id == "daemon-captured-99"
     finally:
@@ -1257,13 +1373,13 @@ def test_call_execute_daemon_no_session_subsequent_calls_reuse_captured_lane():
             return_value=_make_result("✓\n[lane: preexisting-77]")
         )
         fake_mcp_session = AsyncMock()
-        fake_mcp_session.call_tool = fake_tool
+        fake_mcp_session.execute = fake_tool
 
-        with patch.object(backend, "_daemon_session", fake_mcp_session):
+        with patch.object(backend, "_daemon", fake_mcp_session):
             import asyncio as _aio
             _aio.run(backend._call_execute("ls /", use_daemon=True, session=None))
 
-        name, arguments = fake_tool.call_args.args
+        (arguments,) = fake_tool.call_args.args
         assert arguments.get("group_id") == "preexisting-77"
         # Capture stays the same — no clobber on subsequent calls.
         assert backend._daemon_lane_id == "preexisting-77"

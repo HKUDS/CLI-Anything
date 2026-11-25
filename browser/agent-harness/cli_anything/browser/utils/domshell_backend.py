@@ -25,7 +25,9 @@ import shlex
 import subprocess
 import shutil
 import threading
+from contextlib import ExitStack, asynccontextmanager
 from typing import Any, Optional
+from anyio.from_thread import start_blocking_portal
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -57,11 +59,52 @@ def _build_server_args() -> list[str]:
         "--token", token,
     ]
 
-# Daemon mode: persistent MCP connection
-_daemon_session: Optional[ClientSession] = None
-_daemon_read: Optional[Any] = None
-_daemon_write: Optional[Any] = None
-_daemon_client_context: Optional[Any] = None  # Store stdio_client context manager
+@asynccontextmanager
+async def _open_mcp_session():
+    params = StdioServerParameters(
+        command=DEFAULT_SERVER_CMD,
+        args=_build_server_args(),
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            yield session
+
+
+class _DaemonConnection:
+    def __init__(self) -> None:
+        self._closing = False
+        # Keep MCP transport and session contexts on the same loop and task.
+        with ExitStack() as stack:
+            self._portal = stack.enter_context(start_blocking_portal())
+            # After closing MCP, cancel any unanswered calls before joining
+            # the portal thread.
+            stack.callback(self._portal.call, self._portal.stop, True)
+            self._session = stack.enter_context(
+                self._portal.wrap_async_context_manager(_open_mcp_session())
+            )
+            self._stack = stack.pop_all()
+
+    async def execute(self, arguments: dict[str, Any]) -> Any:
+        if self._closing:
+            raise RuntimeError("DOMShell daemon is stopping")
+        request = self._portal.start_task_soon(
+            self._session.call_tool, "domshell_execute", arguments
+        )
+        try:
+            return await asyncio.wrap_future(request)
+        except asyncio.CancelledError:
+            if self._closing:
+                raise RuntimeError("DOMShell daemon stopped during the request") from None
+            raise
+
+    def close(self) -> None:
+        self._closing = True
+        self._stack.close()
+
+
+_daemon: Optional[_DaemonConnection] = None
+_daemon_lock = threading.Lock()
 
 # Module-level lane id captured from the first daemon-mode-no-session
 # call. Reused on every subsequent daemon-no-session call so direct
@@ -517,7 +560,7 @@ async def _call_execute(
     Raises:
         RuntimeError: If MCP server is not available or tool call fails
     """
-    global _daemon_session, _daemon_read, _daemon_write, _daemon_lane_id
+    global _daemon_lane_id
 
     arguments: dict[str, Any] = {"command": command}
     # Lane handling — three sources, in priority order:
@@ -545,129 +588,35 @@ async def _call_execute(
     else:
         arguments["group_id"] = "new"
 
-    if use_daemon and _daemon_session is not None:
-        # Use persistent daemon connection
-        try:
-            result = await _daemon_session.call_tool(
-                "domshell_execute", arguments
-            )
-            _capture_lane(session, result)
-            # Daemon-level capture on first daemon-no-session call so
-            # subsequent calls reuse the same lane regardless of whether
-            # the daemon stays alive or we fall back to fresh spawns.
-            # `is None` check moved INSIDE the lock to fix the
-            # test-and-set race between concurrent callers.
-            if use_daemon and session is None:
-                with _daemon_lane_lock:
-                    if _daemon_lane_id is None:
-                        captured = _extract_lane_id(result)
-                        if captured:
-                            _daemon_lane_id = captured
-            return result
-        except Exception as e:
-            # Daemon died — log diagnosability and fall back to spawning
-            # a fresh server below. Silent swallow was making the daemon
-            # failure mode invisible in user reports.
-            log.warning(
-                "DOMShell daemon call failed, respawning per-command: %s", e,
-                exc_info=True,
-            )
-            await _stop_daemon()
-
-    # Spawn new MCP server process
-    server_params = StdioServerParameters(
-        command=DEFAULT_SERVER_CMD,
-        args=_build_server_args()
-    )
-
+    daemon = _daemon if use_daemon else None
     try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as mcp_session:
-                await mcp_session.initialize()
-                result = await mcp_session.call_tool(
-                    "domshell_execute", arguments
-                )
-                _capture_lane(session, result)
-                # See daemon-path capture above for rationale — same
-                # logic applies on the fresh-spawn fall-back path,
-                # including the lock-guarded test-and-set.
-                if use_daemon and session is None:
-                    with _daemon_lane_lock:
-                        if _daemon_lane_id is None:
-                            captured = _extract_lane_id(result)
-                            if captured:
-                                _daemon_lane_id = captured
-                return result
+        if daemon is not None:
+            result = await daemon.execute(arguments)
+        else:
+            async with _open_mcp_session() as mcp_session:
+                result = await mcp_session.call_tool("domshell_execute", arguments)
     except Exception as e:
+        if daemon is not None:
+            # The server may have acted before losing the response.
+            # Close this connection without replaying the command.
+            await asyncio.to_thread(_close_daemon, daemon)
         raise RuntimeError(
             f"DOMShell MCP call failed: {e}\n"
-            f"Ensure Chrome is running with DOMShell extension installed.\n"
-            f"Chrome Web Store: https://chromewebstore.google.com/detail/domshell"
+            "Ensure Chrome is running with DOMShell extension installed.\n"
+            "Chrome Web Store: https://chromewebstore.google.com/detail/domshell"
         ) from e
 
-# NOTE: Known limitation - Daemon mode uses asyncio.run() per tool call (in sync wrappers).
-# Each asyncio.run() creates a new event loop. Async IO objects created in one loop
-# (like the daemon session) may have issues when accessed from subsequent calls that
-# create new loops. This is a documented limitation for v1; future work should use
-# a single long-lived event loop (e.g., background thread + run_coroutine_threadsafe).
-async def _start_daemon() -> bool:
-    """Start persistent daemon mode.
-
-    Returns:
-        True if daemon started successfully
-
-    Raises:
-        RuntimeError: If daemon fails to start
-    """
-    global _daemon_session, _daemon_read, _daemon_write, _daemon_client_context
-
-    if _daemon_session is not None:
-        return True  # Already running
-
-    server_params = StdioServerParameters(
-        command=DEFAULT_SERVER_CMD,
-        args=_build_server_args()
-    )
-
-    try:
-        # Store the context manager so we can properly clean it up later
-        _daemon_client_context = stdio_client(server_params)
-        _daemon_read, _daemon_write = await _daemon_client_context.__aenter__()
-        _daemon_session = ClientSession(_daemon_read, _daemon_write)
-        await _daemon_session.__aenter__()
-        await _daemon_session.initialize()
-        return True
-    except Exception as e:
-        _daemon_session = None
-        _daemon_read = None
-        _daemon_write = None
-        _daemon_client_context = None
-        raise RuntimeError(f"Failed to start DOMShell daemon: {e}") from e
-
-
-async def _stop_daemon() -> None:
-    """Stop persistent daemon mode."""
-    global _daemon_session, _daemon_read, _daemon_write, _daemon_client_context
-
-    if _daemon_session is None:
-        return
-
-    try:
-        await _daemon_session.__aexit__(None, None, None)
-        if _daemon_client_context:
-            await _daemon_client_context.__aexit__(None, None, None)
-    except Exception:
-        pass  # Ignore cleanup errors
-    finally:
-        _daemon_session = None
-        _daemon_read = None
-        _daemon_write = None
-        _daemon_client_context = None
+    _capture_lane(session, result)
+    if use_daemon and session is None:
+        with _daemon_lane_lock:
+            if _daemon_lane_id is None:
+                _daemon_lane_id = _extract_lane_id(result)
+    return result
 
 
 def daemon_started() -> bool:
     """Check if daemon mode is active."""
-    return _daemon_session is not None
+    return _daemon is not None
 
 
 # ── Sync wrappers for each DOMShell command ──────────────────────────
@@ -1110,7 +1059,7 @@ def type_text(
     _assert_single_line("path", path)
     _assert_single_line("text", text)
 
-    # In daemon mode both halves share the persistent `_daemon_session`
+    # In daemon mode both halves share the persistent MCP session
     # naturally — same MCP session means same DOMShell lane, no
     # group_id juggling needed. Only the non-daemon path requires
     # `session.domshell_lane_id` because each `_call_execute` opens a
@@ -1190,9 +1139,28 @@ def start_daemon() -> bool:
     Raises:
         RuntimeError: If daemon fails to start
     """
-    return asyncio.run(_start_daemon())
+    global _daemon
+    with _daemon_lock:
+        if _daemon is None:
+            try:
+                _daemon = _DaemonConnection()
+            except Exception as e:
+                raise RuntimeError(f"Failed to start DOMShell daemon: {e}") from e
+    return True
+
+
+def _close_daemon(expected: Optional[_DaemonConnection] = None) -> None:
+    global _daemon
+    with _daemon_lock:
+        if _daemon is None or (expected is not None and expected is not _daemon):
+            return
+        daemon, _daemon = _daemon, None
+        try:
+            daemon.close()
+        except Exception:
+            log.warning("Failed to close DOMShell daemon", exc_info=True)
 
 
 def stop_daemon() -> None:
-    """Stop persistent daemon mode (sync wrapper)."""
-    asyncio.run(_stop_daemon())
+    """Stop the persistent MCP connection."""
+    _close_daemon()
