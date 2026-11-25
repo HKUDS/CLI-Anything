@@ -1,0 +1,13 @@
+{
+  "name": "com.cli-anything.unity2020",
+  "version": "0.3.1",
+  "displayName": "CLI-Anything Unity Editor Bridge",
+  "description": "Editor-only local transport for the CLI-Anything Unity harness.",
+  "unity": "2019.4",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.0.2",
+    "com.unity.ugui": "1.0.0",
+    "com.unity.test-framework": "1.1.22"
+  }
+}

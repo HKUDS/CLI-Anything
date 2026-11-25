@@ -1,0 +1,12 @@
+{
+  "name": "CliAnything.Unity.Editor",
+  "references": [
+    "UnityEngine.UI",
+    "UnityEditor.TestRunner",
+    "UnityEngine.TestRunner"
+  ],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
+  "autoReferenced": false
+}

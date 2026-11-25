@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "unity2020",
+      "display_name": "Unity Editor",
+      "version": "0.3.1",
+      "description": "Control a running Unity Editor with local JSON commands for scenes, assets, rendering, tests and build jobs.",
+      "requires": "Licensed Unity Editor with the included bridge, Python 3.10+",
+      "homepage": "https://unity.com/products/unity-engine",
+      "source_url": null,
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity2020/agent-harness",
+      "entry_point": "cli-anything-unity2020",
+      "skill_md": "skills/cli-anything-unity2020/SKILL.md",
+      "category": "gamedev",
+      "contributors": [
+        {
+          "name": "key-zxy",
+          "url": "https://github.com/key-zxy"
+        }
+      ]
     }
   ]
 }
