@@ -48,6 +48,9 @@ def output(data: Any, message: str = "") -> None:
     if _json_output:
         if warning and isinstance(data, dict) and "warning" not in data:
             data = {**data, "warning": warning}
+        elif warning:
+            # Keep list-shaped JSON stable for agents; surface the warning on stderr.
+            click.echo(f"Warning: {warning}", err=True)
         click.echo(json.dumps(data, indent=2, default=str))
         return
     if warning:
@@ -118,7 +121,7 @@ def _devices(refresh: bool = True) -> list[dict[str, Any]]:
     """Normalized devices: live from Amazon, or the cache in dry-run mode."""
     if _dry_run or not refresh:
         cached = backend.cached_devices()
-        if cached:
+        if cached is not None:  # an empty cached list is a valid answer
             return cached
         why = "Dry run" if _dry_run else "--cached"
         raise dev.DeviceNotFound(f"{why} needs a cached device list. Run `device list` once while logged in.")

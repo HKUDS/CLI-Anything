@@ -368,10 +368,11 @@ def cache_devices(devices: list[dict[str, Any]]) -> None:
     _atomic_write_json(config_dir() / "devices.json", devices)
 
 
-def cached_devices() -> list[dict[str, Any]]:
+def cached_devices() -> list[dict[str, Any]] | None:
+    """The last fetched device list, or None if none was ever cached."""
     f = config_dir() / "devices.json"
     if not f.exists():
-        return []
+        return None
     with open(f, encoding="utf-8") as fh:
         return json.load(fh)
 

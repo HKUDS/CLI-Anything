@@ -549,7 +549,7 @@ def test_device_cache_written_atomically(home):
             except json.JSONDecodeError as exc:  # half-written file
                 bad.append(exc)
                 return
-            assert data in ([], devices)
+            assert data in (None, devices)
 
     t = threading.Thread(target=reader)
     t.start()
@@ -571,3 +571,26 @@ def test_failure_output_keeps_domain_warning(fake_backend):
     assert "--domain amazon.co.uk" in data["warning"]
     human = CliRunner().invoke(alexa_cli.cli, ["speak", "garage", "hi"])
     assert "Warning: Your Amazon account is on amazon.co.uk" in human.output
+
+
+# ── sixth Codex review round (commit 5585375) ─────────────────────────
+
+def test_list_json_warning_goes_to_stderr(fake_backend):
+    account = backend.load_account()
+    backend.save_account({**account, "reported_domain": "amazon.co.uk"})
+    result = CliRunner().invoke(alexa_cli.cli, ["--json", "device", "list"])
+    stdout = result.stdout
+    assert isinstance(json.loads(stdout), list)  # stdout stays a JSON list
+    assert "--domain amazon.co.uk" in result.stderr
+
+
+def test_empty_cache_is_valid(home, monkeypatch):
+    backend.save_account({"email": "a@b.c", "domain": "amazon.com", "oauth": {"refresh_token": "x"}})
+    backend.cache_devices([])
+    monkeypatch.setattr(backend, "fetch_devices", lambda: pytest.fail("--cached must not fetch"))
+    result, data = run("device", "list", "--cached")
+    assert result.exit_code == 0 and data == []
+
+
+def test_missing_cache_is_none(home):
+    assert backend.cached_devices() is None
