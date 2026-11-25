@@ -8,8 +8,7 @@ Control a running Unity Editor via a local, Editor-only Unity package. The bridg
 | --- | --- |
 | 2020.3.45f1, Windows | Clean-project Editor compilation and CLI end-to-end coverage. |
 | 2022.3.21f1, Windows | Experimental. Clean-project Editor compilation, status, batch reads and scene creation passed. The full editing and capture workflow timed out. |
-| 2019.4 LTS and 2020.1–2020.2 | Experimental compatibility target. These Editor versions have not been tested end to end. Prefab Mode uses the version-appropriate API. Profiler counter enumeration requires 2020.2 or later. Material writes require Unity's single-asset save API. |
-| Earlier than 2019.4 | Outside the package's declared minimum. |
+| Earlier than 2020.3 | Outside the package's declared minimum. The bridge manifest requires Unity 2020.3 or newer. |
 
 Other Editor patches, Unity 6, macOS and Linux are unverified. Feature availability can vary with the Editor patch, graphics pipeline and installed platform modules. Unity itself must be installed and licensed. On Unity versions that show an API update prompt, resolve it in the Editor and wait for compilation before using the CLI.
 

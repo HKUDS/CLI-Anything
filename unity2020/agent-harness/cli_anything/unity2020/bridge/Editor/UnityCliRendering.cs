@@ -7,9 +7,7 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
-#if UNITY_2020_2_OR_NEWER
 using Unity.Profiling.LowLevel.Unsafe;
-#endif
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
@@ -211,7 +209,6 @@ namespace CliAnything.Unity
 
         private static object DescribeProfilerCounters()
         {
-#if UNITY_2020_2_OR_NEWER
             var handles = new List<ProfilerRecorderHandle>();
             try
             {
@@ -251,9 +248,6 @@ namespace CliAnything.Unity
                 note = "Enumerated with Unity.Profiling.LowLevel.Unsafe.ProfilerRecorderHandle.GetAvailable on Unity " +
                     Application.unityVersion + "; record values with ProfilerRecorder."
             };
-#else
-            return new { enumerable = false, note = "ProfilerRecorder counter enumeration requires Unity 2020.2 or newer." };
-#endif
         }
 
         private static object SetProfilerEnabled(bool enabled)
@@ -2415,7 +2409,9 @@ namespace CliAnything.Unity
             }
             var normalized = path.Replace('\\', '/').Trim('/');
             Transform nameMatch = null;
-            var ambiguous = false;
+            var nameAmbiguous = false;
+            var fullMatches = new List<Transform>();
+            var relativeMatches = new List<Transform>();
             foreach (var transform in WalkScenes())
             {
                 if (!string.IsNullOrEmpty(scenePath) &&
@@ -2428,16 +2424,19 @@ namespace CliAnything.Unity
                 var relative = !string.IsNullOrEmpty(sceneName) && full.StartsWith(sceneName + "/", StringComparison.Ordinal)
                     ? full.Substring(sceneName.Length + 1)
                     : full;
-                if (string.Equals(full, normalized, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(relative, normalized, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(full, normalized, StringComparison.OrdinalIgnoreCase))
                 {
-                    return transform;
+                    fullMatches.Add(transform);
+                }
+                else if (string.Equals(relative, normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    relativeMatches.Add(transform);
                 }
                 if (normalized.IndexOf('/') < 0 && string.Equals(transform.name, normalized, StringComparison.OrdinalIgnoreCase))
                 {
                     if (nameMatch != null)
                     {
-                        ambiguous = true;
+                        nameAmbiguous = true;
                     }
                     else
                     {
@@ -2445,7 +2444,24 @@ namespace CliAnything.Unity
                     }
                 }
             }
-            if (ambiguous)
+            // A scene-qualified path wins; a bare relative path must be unique across loaded scenes.
+            if (fullMatches.Count == 1)
+            {
+                return fullMatches[0];
+            }
+            if (fullMatches.Count > 1)
+            {
+                throw AmbiguousObjectPath(path, fullMatches, label);
+            }
+            if (relativeMatches.Count == 1)
+            {
+                return relativeMatches[0];
+            }
+            if (relativeMatches.Count > 1)
+            {
+                throw AmbiguousObjectPath(path, relativeMatches, label);
+            }
+            if (nameAmbiguous)
             {
                 throw new InvalidOperationException("Multiple loaded objects are named " + path + "; pass the full Path including the scene name.");
             }
@@ -2454,6 +2470,19 @@ namespace CliAnything.Unity
                 return nameMatch;
             }
             throw new InvalidOperationException("No loaded scene object at Path '" + path + "' for " + label + ".");
+        }
+
+        private static InvalidOperationException AmbiguousObjectPath(string path, List<Transform> matches, string label)
+        {
+            var scenes = matches
+                .Select(match => match.gameObject.scene.path)
+                .Where(scene => !string.IsNullOrEmpty(scene))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(scene => scene, StringComparer.Ordinal)
+                .ToArray();
+            return new InvalidOperationException("Path '" + path + "' for " + label + " matches " + matches.Count +
+                " loaded objects in " + (scenes.Length == 0 ? "multiple scenes" : string.Join(", ", scenes)) +
+                "; pass --scene with the scene asset path or a scene-qualified Path.");
         }
 
         private static string AssetPathOf(Object value)

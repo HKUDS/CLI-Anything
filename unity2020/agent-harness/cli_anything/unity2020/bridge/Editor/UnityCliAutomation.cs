@@ -26,6 +26,9 @@ namespace CliAnything.Unity
         private const string TestJobKeyPrefix = "UnityCli.Automation.TestJob.";
         private const string LastPackageJobKey = "UnityCli.Automation.LastPackageJob";
         private const string PackageJobKeyPrefix = "UnityCli.Automation.PackageJob.";
+        // UnityCliBridge.Poll services one request per 0.25 s, so a queued build must survive a few ticks
+        // before BuildPipeline.BuildPlayer blocks the Editor thread, otherwise build cancel can never run.
+        private const double BuildStartGraceSeconds = 2.0;
         private static readonly string ProjectPath = Path.GetDirectoryName(Application.dataPath);
         private static readonly Dictionary<string, TestJob> TestJobs = new Dictionary<string, TestJob>();
         private static readonly Dictionary<string, BuildJob> BuildJobs = new Dictionary<string, BuildJob>();
@@ -896,14 +899,29 @@ namespace CliAnything.Unity
                 ScenePaths = scenePaths,
                 Development = development,
                 AllowDebugging = allowDebugging,
-                StartedUtc = DateTime.UtcNow.ToString("o")
+                StartedUtc = DateTime.UtcNow.ToString("o"),
+                ExecuteAfterUtc = DateTime.UtcNow.AddSeconds(BuildStartGraceSeconds)
             };
             BuildJobs[job.Id] = job;
             _lastBuildJobId = job.Id;
             TrimJobs(BuildJobs, job.Id);
             var jobId = job.Id;
-            EditorApplication.delayCall += () => ExecuteBuild(jobId);
+            EditorApplication.delayCall += () => StartQueuedBuild(jobId);
             return Ok(DescribeBuildJob(job));
+        }
+
+        private static void StartQueuedBuild(string jobId)
+        {
+            if (!BuildJobs.TryGetValue(jobId, out var job) || job.Status != "queued")
+            {
+                return;
+            }
+            if (DateTime.UtcNow < job.ExecuteAfterUtc)
+            {
+                EditorApplication.delayCall += () => StartQueuedBuild(jobId);
+                return;
+            }
+            ExecuteBuild(jobId);
         }
 
         private static object GetBuildJob(JObject args)
@@ -1599,6 +1617,7 @@ namespace CliAnything.Unity
             public int TotalWarnings;
             public string StartedUtc;
             public string FinishedUtc;
+            public DateTime ExecuteAfterUtc;
             public double DurationSeconds;
             public string Error;
         }
@@ -1753,7 +1772,9 @@ namespace CliAnything.Unity
 
         private static bool IsAssetPath(string path, string extension = null)
         {
-            if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/", StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(path) ||
+                !(string.Equals(path, "Assets", StringComparison.Ordinal) ||
+                  path.StartsWith("Assets/", StringComparison.Ordinal)))
             {
                 return false;
             }

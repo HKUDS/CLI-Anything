@@ -5,7 +5,7 @@ description: Use the CLI-Anything Unity Editor bridge to inspect and edit an ope
 
 # Unity Editor CLI
 
-Install the Python harness and run `cli-anything-unity2020 bridge-path` to locate its bridge package. In Unity Package Manager, choose **Add package from disk** and select that `package.json`. Wait for script compilation. Full clean-project validation covers Unity 2020.3.45f1 on Windows. The 2022.3.21f1 run verified compilation, basic reads and scene creation. Editing and rendering on 2022.3 remain experimental. Unity 2019.4 is an untested minimum.
+Install the Python harness and run `cli-anything-unity2020 bridge-path` to locate its bridge package. In Unity Package Manager, choose **Add package from disk** and select that `package.json`. Wait for script compilation. Full clean-project validation covers Unity 2020.3.45f1 on Windows. The 2022.3.21f1 run verified compilation, basic reads and scene creation. Editing and rendering on 2022.3 remain experimental. Unity 2020.3 is the package's declared minimum.
 
 - `cli-anything-unity2020 --project "/path/to/UnityProject" --json status` checks the target project and Editor state.
 - `cli-anything-unity2020 --json scene hierarchy --limit 50` lists scene objects. Use their IDs for edits. Run from inside the target project or pass its absolute path with `--project`.

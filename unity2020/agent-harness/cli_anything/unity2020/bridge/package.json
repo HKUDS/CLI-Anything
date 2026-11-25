@@ -3,7 +3,7 @@
   "version": "0.3.1",
   "displayName": "CLI-Anything Unity Editor Bridge",
   "description": "Editor-only local transport for the CLI-Anything Unity harness.",
-  "unity": "2019.4",
+  "unity": "2020.3",
   "license": "Apache-2.0",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.0.2",

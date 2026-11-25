@@ -737,11 +737,7 @@ namespace CliAnything.Unity
 
         private static string PrefabStagePath(PrefabStage stage)
         {
-#if UNITY_2020_2_OR_NEWER
             return stage.assetPath;
-#else
-            return stage.prefabAssetPath;
-#endif
         }
 
         private static object DescribePrefabStage(PrefabStage stage)

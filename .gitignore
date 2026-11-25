@@ -109,6 +109,8 @@
 !/cc-switch/
 !/siyuan/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
+/unity2020/*
+/unity2020/.*
 /gimp/*
 /gimp/.*
 /blender/*
