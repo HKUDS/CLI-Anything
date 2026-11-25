@@ -1133,6 +1133,13 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center">✅ 76</td>
 </tr>
 <tr>
+<td align="center"><strong><a href="sqlite/agent-harness/">SQLite</a></strong></td>
+<td>Embedded Database</td>
+<td><code>cli-anything-sqlite</code></td>
+<td>Real SQLite engine via Python sqlite3</td>
+<td align="center">✅ <a href="sqlite/agent-harness/cli_anything/sqlite/tests/TEST.md">Tests</a></td>
+</tr>
+<tr>
 <td align="center"><strong>⚡ <a href="n8n/agent-harness/">n8n</a></strong></td>
 <td>Workflow Automation</td>
 <td><code>cli-anything-n8n</code></td>

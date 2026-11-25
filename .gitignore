@@ -77,6 +77,10 @@
 !/seaclip/
 !/pm2/
 !/chromadb/
+!/sqlite/
+/sqlite/*
+/sqlite/.*
+!/sqlite/agent-harness/
 !/musescore/
 !/krita/
 !/freecad/
