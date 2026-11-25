@@ -32,13 +32,17 @@ cleanup() {
   rm -f "${ORPHAN}" "${ORPHAN_FIXED}" "${ORPHAN_LINK}" "${ORPHAN_DANGLING_LINK}"
   rm -rf "${ORPHAN_NESTED}" "${ORPHAN_FIXED_NESTED}"
   if [[ -f "${BACKUP_DIR}/HARNESS.md" ]] &&
-    { [[ ! -f "${VENDORED_HARNESS}" ]] ||
+    { [[ -L "${VENDORED_HARNESS}" ]] ||
+      [[ ! -f "${VENDORED_HARNESS}" ]] ||
       ! cmp -s "${BACKUP_DIR}/HARNESS.md" "${VENDORED_HARNESS}"; }; then
+    [[ ! -L "${VENDORED_HARNESS}" ]] || rm -f "${VENDORED_HARNESS}"
     cp "${BACKUP_DIR}/HARNESS.md" "${VENDORED_HARNESS}"
   fi
   if [[ -f "${BACKUP_DIR}/session-locking.md" ]]; then
+    [[ ! -L "${CANONICAL_GUIDE}" ]] || rm -f "${CANONICAL_GUIDE}"
     [[ -f "${CANONICAL_GUIDE}" ]] ||
       cp "${BACKUP_DIR}/session-locking.md" "${CANONICAL_GUIDE}"
+    [[ ! -L "${VENDORED_GUIDE}" ]] || rm -f "${VENDORED_GUIDE}"
     [[ -f "${VENDORED_GUIDE}" ]] ||
       cp "${BACKUP_DIR}/session-locking.md" "${VENDORED_GUIDE}"
   fi
@@ -122,5 +126,16 @@ python3 "${SYNC}" >/dev/null
 [[ ! -e "${ORPHAN_DANGLING_LINK}" && ! -L "${ORPHAN_DANGLING_LINK}" ]] ||
   fail "sync did not remove dangling symlink"
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after dangling link cleanup"
+
+# 9. Symlinked mapped destination: validate fails, sync restores a real copy.
+rm -f "${VENDORED_HARNESS}"
+ln -s "${CANONICAL_HARNESS}" "${VENDORED_HARNESS}"
+expect_validate_fail "symlinked mapped destination not detected"
+python3 "${SYNC}" >/dev/null
+[[ ! -L "${VENDORED_HARNESS}" ]] ||
+  fail "sync did not replace symlinked mapped destination"
+cmp -s "${VENDORED_HARNESS}" "${CANONICAL_HARNESS}" ||
+  fail "sync did not restore vendored copy at symlinked destination"
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after symlink restore"
 
 echo "PASS: codex-skill sync and validation regression tests."

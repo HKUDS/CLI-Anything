@@ -93,6 +93,10 @@ def sync() -> None:
         if not source.is_file():
             raise SystemExit(f"canonical source missing: {source}")
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.is_symlink():
+            # copyfile follows symlinks; remove the link so the bundle gets
+            # an independent copy instead of writing through it.
+            dest.unlink()
         shutil.copyfile(source, dest)
 
     # Remove vendored files in the mirrored directories whose canonical

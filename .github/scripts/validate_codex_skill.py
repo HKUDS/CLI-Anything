@@ -18,10 +18,16 @@ _mapped_files = namespace["_mapped_files"]
 def main() -> int:
     stale: list[str] = []
     missing: list[str] = []
+    linked: list[str] = []
     expected_dests: set[Path] = set()
 
     for source, dest in _mapped_files():
         expected_dests.add(dest)
+        if dest.is_symlink():
+            # A symlink would make the bundle depend on a file outside it;
+            # is_file()/read_bytes() would follow the link and mask this.
+            linked.append(dest.relative_to(SKILL_DIR).as_posix())
+            continue
         if not dest.is_file():
             missing.append(dest.relative_to(SKILL_DIR).as_posix())
             continue
@@ -46,11 +52,13 @@ def main() -> int:
         for orphan in namespace["_fixed_orphans"]()
     )
 
-    if not missing and not stale and not orphans:
+    if not missing and not stale and not orphans and not linked:
         print("Codex skill vendored resources validation passed.")
         return 0
 
     print("Codex skill vendored resources validation failed:", file=sys.stderr)
+    for rel in linked:
+        print(f"- symlink at mapped destination: codex-skill/{rel}", file=sys.stderr)
     for rel in missing:
         print(f"- missing: codex-skill/{rel}", file=sys.stderr)
     for rel in stale:
