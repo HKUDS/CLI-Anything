@@ -1848,6 +1848,63 @@ setup(
         harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
     )["ok"] is True
 
+    # Multi-root PEP 420 precedence: where = ["src1", "src2"] with initialized CLI in src1 and
+    # namespace-only directory (no __init__.py, only skills/SKILL.md) in src2 -> setuptools gives
+    # later root src2 precedence, so the wheel lacks the CLI module and strict verification MUST fail.
+    ns_harness = _create_valid_harness(tmp_path / "multi_ns", "nsapp")
+    shutil.copytree(ns_harness / "cli_anything", ns_harness / "src1" / "cli_anything")
+    src2_skills = ns_harness / "src2" / "cli_anything" / "nsapp" / "skills"
+    src2_skills.mkdir(parents=True)
+    shutil.copy2(
+        ns_harness / "cli_anything" / "nsapp" / "skills" / "SKILL.md",
+        src2_skills / "SKILL.md",
+    )
+    (ns_harness / "setup.py").unlink()
+    (ns_harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-nsapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-nsapp = "cli_anything.nsapp.nsapp_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src1", "src2"]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.nsapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_ns_override = verify_harness.verify_harness(
+        ns_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_ns_override["ok"] is False
+    assert {c["id"]: c for c in r_ns_override["checks"]}["console-script"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_ns_override_310 = verify_harness.verify_harness(
+            ns_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_ns_override_310["ok"] is False
+        assert {c["id"]: c for c in r_ns_override_310["checks"]}["console-script"]["status"] == "fail"
+
+    # Once src2 also provides nsapp_cli.py, strict verification passes.
+    shutil.copy2(
+        ns_harness / "src1" / "cli_anything" / "nsapp" / "nsapp_cli.py",
+        ns_harness / "src2" / "cli_anything" / "nsapp" / "nsapp_cli.py",
+    )
+    assert verify_harness.verify_harness(
+        ns_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
 
 def test_verify_manifest_preserves_dot_prefix_for_ordered_exclusions_and_build_py(
     tmp_path: Path,

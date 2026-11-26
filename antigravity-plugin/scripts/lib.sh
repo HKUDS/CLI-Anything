@@ -206,21 +206,119 @@ is_cli_anything_install_path() {
   esac
 }
 
+# Convert Windows host drive paths (e.g. C:\foo\bar) into shell POSIX paths on MSYS/Cygwin/WSL.
+from_host_path() {
+  local p="${1}"
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if [[ "${p}" =~ ^[A-Za-z]:[\\/] || "${p}" == \\\\* ]]; then
+        if command -v cygpath >/dev/null 2>&1; then
+          cygpath -u "${p}"
+          return 0
+        fi
+        if [[ "${p}" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
+          local drive rest
+          drive="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
+          rest="$(printf '%s' "${BASH_REMATCH[2]}" | tr '\\' '/')"
+          printf '/%s/%s' "${drive}" "${rest}"
+          return 0
+        fi
+      fi
+      ;;
+    Linux)
+      if is_wsl_host && [[ "${p}" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
+        local drive rest
+        drive="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
+        rest="$(printf '%s' "${BASH_REMATCH[2]}" | tr '\\' '/')"
+        printf '/mnt/%s/%s' "${drive}" "${rest}"
+        return 0
+      fi
+      ;;
+  esac
+  printf '%s' "${p}"
+}
+
+# Resolve symlinks/junctions on a path (including existing ancestors when the leaf is absent),
+# returning a host-format path suitable for normalize_path_key comparison.
+resolve_real_path() {
+  local raw="${1}"
+  local shell_path
+  shell_path="$(from_host_path "${raw}")"
+
+  local pybin=""
+  pybin="$(detect_python_bin 2>/dev/null || true)"
+  if [[ -n "${pybin}" ]]; then
+    local py_input="${shell_path}"
+    case "$(uname -s 2>/dev/null || true)" in
+      MINGW*|MSYS*|CYGWIN*)
+        # Native Windows Python expects a Windows path; MSYS Python accepts both.
+        py_input="$(to_host_path "${shell_path}")"
+        ;;
+    esac
+    local py_out=""
+    if py_out="$("${pybin}" -c 'import os,sys; print(os.path.realpath(os.path.expanduser(sys.argv[1])))' "${py_input}" 2>/dev/null)" && [[ -n "${py_out}" ]]; then
+      to_host_path "${py_out}"
+      return 0
+    fi
+  fi
+
+  # Pure-shell fallback (no Python): walk up to the deepest existing directory and resolve with pwd -P.
+  local cur="${shell_path}"
+  local suffix=""
+  if [[ "${cur}" == "~"* ]]; then
+    cur="${HOME}${cur:1}"
+  fi
+  if [[ "${cur}" != "/" ]]; then
+    cur="${cur%/}"
+  fi
+  while [[ -n "${cur}" && "${cur}" != "/" && ! -d "${cur}" ]]; do
+    local base parent
+    base="$(basename "${cur}")"
+    parent="$(dirname "${cur}")"
+    if [[ "${parent}" == "${cur}" ]]; then
+      break
+    fi
+    if [[ -n "${suffix}" ]]; then
+      suffix="${base}/${suffix}"
+    else
+      suffix="${base}"
+    fi
+    cur="${parent}"
+  done
+
+  if [[ -d "${cur}" ]]; then
+    local resolved_dir
+    resolved_dir="$(cd "${cur}" 2>/dev/null && pwd -P)" || resolved_dir="${cur}"
+    if [[ -n "${suffix}" ]]; then
+      if [[ "${resolved_dir}" == "/" ]]; then
+        resolved_dir="/${suffix}"
+      else
+        resolved_dir="${resolved_dir}/${suffix}"
+      fi
+    fi
+    to_host_path "${resolved_dir}"
+    return 0
+  fi
+
+  to_host_path "${shell_path}"
+}
+
 # True when dir is a self-installed cli-anything plugin directory (supports invoking
-# uninstall.sh via a symlink target path whose parent basename is not 'plugins').
+# uninstall.sh via a symlink/junction target path whose parent basename is not 'plugins').
 is_verified_self_install_dir() {
   local dir="${1}"
   [[ "$(basename "${dir}")" == "cli-anything" ]] || return 1
   [[ -f "${dir}/PLUGIN_ROOT.txt" && -f "${dir}/plugin.json" ]] || return 1
   grep -q '"name"[[:space:]]*:[[:space:]]*"cli-anything"' "${dir}/plugin.json" || return 1
-  local stamped real_dir stamp_key real_key dir_key
+  local stamped real_dir stamp_key stamp_real_key real_key dir_key
   stamped="$(tr -d '\r\n' < "${dir}/PLUGIN_ROOT.txt")"
   [[ -n "${stamped}" ]] || return 1
   real_dir="$(to_host_path "$(cd "${dir}" && pwd -P)")"
   stamp_key="$(normalize_path_key "${stamped}")"
+  stamp_real_key="$(normalize_path_key "$(resolve_real_path "${stamped}")")"
   real_key="$(normalize_path_key "${real_dir}")"
   dir_key="$(normalize_path_key "$(to_host_path "${dir}")")"
-  [[ "${stamp_key}" == "${real_key}" || "${stamp_key}" == "${dir_key}" ]]
+  [[ "${stamp_key}" == "${real_key}" || "${stamp_key}" == "${dir_key}" || "${stamp_real_key}" == "${real_key}" ]]
 }
 
 discovery_pointer_path() {

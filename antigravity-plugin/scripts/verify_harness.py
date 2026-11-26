@@ -408,10 +408,12 @@ def _apply_find_package_dir(
     base_pkg_dir: dict[str, str],
     pkg_spec: dict[str, Any] | None,
     candidate_pkgs: Iterable[str],
-    *,
-    init_required_pkgs: set[str] | None = None,
 ) -> dict[str, str]:
-    """Mirror setuptools.config.expand.find_packages() fill_package_dir behavior."""
+    """Mirror setuptools.config.expand.find_packages() fill_package_dir behavior.
+
+    PEP420PackageFinder selects any matching directory under each `where` root (even without
+    `__init__.py`) and later roots overwrite earlier entries in `fill_package_dir`.
+    """
     out = dict(base_pkg_dir)
     if not pkg_spec or pkg_spec.get("kind") != "find" or not pkg_spec.get("from_pyproject"):
         return out
@@ -443,7 +445,6 @@ def _apply_find_package_dir(
 
     includes = pkg_spec.get("includes")
     excludes = pkg_spec.get("excludes")
-    req_set = init_required_pkgs or set()
     pkgs_list = [p for p in dict.fromkeys(candidate_pkgs) if p]
 
     for path in search:
@@ -456,7 +457,7 @@ def _apply_find_package_dir(
                 excludes,
                 harness=harness,
                 wheres=[path],
-                require_init=pkg in req_set,
+                require_init=False,
             ):
                 continue
             if _norm_pkg_dir_value(out.get("", "")) != path:
@@ -499,7 +500,6 @@ def _validate_console_script_target(
         base_package_dir or {},
         pkg_spec,
         candidates,
-        init_required_pkgs={target_pkg} if target_pkg else set(),
     )
 
     pkg_dir_rel = _get_package_dir_rel(module_path, eff_pkg_dir)
@@ -1768,7 +1768,6 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         eff_base_package_dir,
         eff_pkg_spec,
         [p for p in (target_pkg, f"{target_pkg}.skills" if target_pkg else None) if p],
-        init_required_pkgs={target_pkg} if target_pkg else set(),
     )
 
     expected_prefixes = {f"cli-anything-{software_slug}"}

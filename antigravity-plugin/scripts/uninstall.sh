@@ -72,9 +72,10 @@ fi
 if [[ -f "${DISCOVERY_POINTER}" ]]; then
   POINTER="$(tr -d '\r\n' < "${DISCOVERY_POINTER}")"
   PTR_KEY="$(normalize_path_key "${POINTER}")"
+  PTR_REAL_KEY="$(normalize_path_key "$(resolve_real_path "${POINTER}")")"
   DEST_KEY="$(normalize_path_key "${DEST_HOST}")"
   DEST_UNIX_KEY="$(normalize_path_key "${DEST_DIR}")"
-  if [[ "${PTR_KEY}" == "${DEST_KEY}" || "${PTR_KEY}" == "${DEST_UNIX_KEY}" ]]; then
+  if [[ "${PTR_KEY}" == "${DEST_KEY}" || "${PTR_KEY}" == "${DEST_UNIX_KEY}" || "${PTR_REAL_KEY}" == "${DEST_KEY}" ]]; then
     rm -f "${DISCOVERY_POINTER}"
     echo "Removed discovery pointer: ${DISCOVERY_POINTER}"
   else

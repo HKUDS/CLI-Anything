@@ -350,3 +350,182 @@ def test_windows_release_lock_does_not_delete_unacquired_foreign_lock(tmp_path: 
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert foreign_lock.is_file(), "unacquired foreign lock file was deleted"
     assert foreign_lock.read_text(encoding="utf-8").strip() == "99999"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junction + Bash uninstall test")
+def test_windows_junction_ps_install_and_bash_self_uninstall(tmp_path: Path) -> None:
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    assert shell, "PowerShell required on Windows"
+    git_bash = None
+    for candidate in (
+        Path(r"C:\Program Files\Git\bin\bash.exe"),
+        Path(r"C:\Program Files\Git\usr\bin\bash.exe"),
+    ):
+        if candidate.is_file():
+            git_bash = str(candidate)
+            break
+    if git_bash is None:
+        which_bash = shutil.which("bash")
+        if which_bash and "system32" not in which_bash.lower():
+            git_bash = which_bash
+    if git_bash is None:
+        pytest.skip("Git Bash / MSYS bash not installed")
+
+    def _run_ps(script: Path, env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *extra],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    def _mkjunction(link: Path, target: Path) -> None:
+        proc = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 0, f"mklink /J failed: {proc.stdout}{proc.stderr}"
+
+    junctions: list[Path] = []
+    try:
+        # Case 1: Workspace installed via install.ps1 under a junctioned plugins root; invoking
+        # Bash uninstall.sh via the physical junction target must remove ONLY the workspace copy
+        # and leave the separate global install & pointer untouched.
+        c1 = tmp_path / "ws_case"
+        home1 = c1 / "home"
+        home1.mkdir(parents=True)
+        ws1 = c1 / "ws"
+        (ws1 / ".agents").mkdir(parents=True)
+        ws_storage = c1 / "plugin-storage"
+        ws_storage.mkdir(parents=True)
+        ws_plugins_link = ws1 / ".agents" / "plugins"
+        _mkjunction(ws_plugins_link, ws_storage)
+        junctions.append(ws_plugins_link)
+
+        env1 = os.environ.copy()
+        env1["HOME"] = str(home1)
+        env1["USERPROFILE"] = str(home1)
+        env1.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+        g_inst = _run_ps(PLUGIN_SRC / "scripts" / "install.ps1", env1)
+        assert g_inst.returncode == 0, g_inst.stdout + g_inst.stderr
+        global_installed = home1 / ".gemini" / "config" / "plugins" / "cli-anything"
+        global_pointer = home1 / ".gemini" / "cli-anything-generator.root"
+        assert (global_installed / "plugin.json").is_file()
+        assert global_pointer.is_file()
+
+        w_inst = _run_ps(PLUGIN_SRC / "scripts" / "install.ps1", env1, "-Workspace", str(ws1))
+        assert w_inst.returncode == 0, w_inst.stdout + w_inst.stderr
+        ws_installed = ws_storage / "cli-anything"
+        assert (ws_installed / "plugin.json").is_file()
+
+        b_uninst = subprocess.run(
+            [git_bash, str(ws_installed / "scripts" / "uninstall.sh")],
+            env=env1,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert b_uninst.returncode == 0, b_uninst.stdout + b_uninst.stderr
+        assert not ws_installed.exists(), "workspace install under junction target was not removed by uninstall.sh"
+        assert (global_installed / "plugin.json").is_file(), "global install was unexpectedly deleted by uninstall.sh"
+        assert global_pointer.is_file(), "global discovery pointer was unexpectedly deleted"
+
+        # Case 2: Global installed via install.ps1 under a junctioned plugins root; invoking
+        # Bash uninstall.sh via the physical junction target removes both the install and pointer.
+        c2 = tmp_path / "global_case"
+        home2 = c2 / "home"
+        (home2 / ".gemini" / "config").mkdir(parents=True)
+        g_storage = c2 / "global-storage"
+        g_storage.mkdir(parents=True)
+        g_plugins_link = home2 / ".gemini" / "config" / "plugins"
+        _mkjunction(g_plugins_link, g_storage)
+        junctions.append(g_plugins_link)
+
+        env2 = os.environ.copy()
+        env2["HOME"] = str(home2)
+        env2["USERPROFILE"] = str(home2)
+        env2.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+        g2_inst = _run_ps(PLUGIN_SRC / "scripts" / "install.ps1", env2)
+        assert g2_inst.returncode == 0, g2_inst.stdout + g2_inst.stderr
+        g2_installed = g_storage / "cli-anything"
+        g2_pointer = home2 / ".gemini" / "cli-anything-generator.root"
+        assert (g2_installed / "plugin.json").is_file()
+        assert g2_pointer.is_file()
+
+        b2_uninst = subprocess.run(
+            [git_bash, str(g2_installed / "scripts" / "uninstall.sh")],
+            env=env2,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert b2_uninst.returncode == 0, b2_uninst.stdout + b2_uninst.stderr
+        assert not g2_installed.exists(), "global install under junction target was not removed by uninstall.sh"
+        assert not g2_pointer.exists(), "global discovery pointer was not removed by uninstall.sh"
+    finally:
+        for junc in junctions:
+            if junc.exists():
+                os.rmdir(junc)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink workspace self-uninstall test")
+def test_posix_symlink_workspace_self_uninstall_preserves_global(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir(parents=True)
+    ws = tmp_path / "ws"
+    (ws / ".agents").mkdir(parents=True)
+    ws_storage = tmp_path / "plugin-storage"
+    ws_storage.mkdir(parents=True)
+    (ws / ".agents" / "plugins").symlink_to(ws_storage)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+    g_inst = subprocess.run(
+        ["bash", str(PLUGIN_SRC / "scripts" / "install.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert g_inst.returncode == 0, g_inst.stdout + g_inst.stderr
+    global_installed = home / ".gemini" / "config" / "plugins" / "cli-anything"
+    global_pointer = home / ".gemini" / "cli-anything-generator.root"
+    assert (global_installed / "plugin.json").is_file()
+    assert global_pointer.is_file()
+
+    w_inst = subprocess.run(
+        ["bash", str(PLUGIN_SRC / "scripts" / "install.sh"), "--workspace", str(ws)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert w_inst.returncode == 0, w_inst.stdout + w_inst.stderr
+    ws_installed = ws_storage / "cli-anything"
+    assert (ws_installed / "plugin.json").is_file()
+    # Stamp logical symlinked destination (simulating an installer that stamps logical paths).
+    (ws_installed / "PLUGIN_ROOT.txt").write_text(
+        f"{ws / '.agents' / 'plugins' / 'cli-anything'}\n", encoding="utf-8"
+    )
+
+    u_ws = subprocess.run(
+        ["bash", str(ws_installed / "scripts" / "uninstall.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert u_ws.returncode == 0, u_ws.stdout + u_ws.stderr
+    assert not ws_installed.exists()
+    assert (global_installed / "plugin.json").is_file()
+    assert global_pointer.is_file()
