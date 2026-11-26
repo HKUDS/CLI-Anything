@@ -362,8 +362,16 @@ def _poetry_packages_cover(
     return False
 
 
+def _is_absolute_pattern(pattern: str) -> bool:
+    """Return True if a glob/path pattern is rooted (POSIX `/` or Windows drive / UNC)."""
+    s = pattern.strip().replace("\\", "/")
+    return s.startswith("/") or bool(re.match(r"^[A-Za-z]:", s))
+
+
 def _glob_matches_relpath(rel_path: str, pattern: str, *, recursive: bool = True) -> bool:
-    """Match a POSIX relative path against a glob pattern (`**` matches 0+ dirs when recursive=True)."""
+    """Match a POSIX relative path against a relative glob pattern (`**` matches 0+ dirs when recursive=True)."""
+    if _is_absolute_pattern(pattern):
+        return False
     rel_norm = rel_path.strip().replace("\\", "/")
     pat_norm = pattern.strip().replace("\\", "/")
     while rel_norm.startswith("./"):
@@ -419,6 +427,8 @@ def _pkg_data_matches_file(
     applicable_keys = {pkg_name, "", "*"} if allow_star_wildcard else {pkg_name, ""}
 
     def _matches(raw_pat: str) -> bool:
+        if _is_absolute_pattern(raw_pat):
+            return False
         pat = raw_pat.strip().replace("\\", "/")
         while pat.startswith("./"):
             pat = pat[2:]
@@ -463,7 +473,9 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
     if pending:
         logical_lines.append(pending.strip())
 
-    def _norm_dir(dir_token: str) -> str:
+    def _norm_dir(dir_token: str) -> str | None:
+        if _is_absolute_pattern(dir_token):
+            return None
         d = dir_token.strip().replace("\\", "/")
         while d.startswith("./"):
             d = d[2:]
@@ -483,19 +495,29 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
             if any(_glob_matches_relpath(target_rel, pat, recursive=True) for pat in tokens[1:]):
                 selected = False
         elif action in {"global-include", "global-exclude"}:
-            if any(_glob_matches_relpath(target_rel, f"**/{pat}", recursive=True) for pat in tokens[1:]):
+            if any(
+                not _is_absolute_pattern(pat) and _glob_matches_relpath(target_rel, f"**/{pat}", recursive=True)
+                for pat in tokens[1:]
+            ):
                 selected = action == "global-include"
         elif action in {"recursive-include", "recursive-exclude"}:
             if len(tokens) < 3:
                 continue
             d = _norm_dir(tokens[1])
+            if d is None:
+                continue
             prefix = f"{d}/**/" if d else "**/"
-            if any(_glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True) for pat in tokens[2:]):
+            if any(
+                not _is_absolute_pattern(pat) and _glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True)
+                for pat in tokens[2:]
+            ):
                 selected = action == "recursive-include"
         elif action == "graft":
             if len(tokens) != 2:
                 continue
             d = _norm_dir(tokens[1])
+            if d is None:
+                continue
             # setuptools FileList.graft() calls glob(dir) WITHOUT recursive=True, then collects
             # all files recursively beneath each matched directory.
             if not d or any(_glob_matches_relpath(anc, d, recursive=False) for anc in ancestor_dirs):
@@ -504,6 +526,8 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
             if len(tokens) != 2:
                 continue
             d = _norm_dir(tokens[1])
+            if d is None:
+                continue
             dir_glob = f"{d}/**/*" if d else "**/*"
             if _glob_matches_relpath(target_rel, dir_glob, recursive=True):
                 selected = False
@@ -668,157 +692,329 @@ def _inspect_setup_py(
     return info
 
 
-def _strip_toml_comment(line: str) -> str:
-    """Remove an unquoted TOML `# ...` comment from a line."""
-    in_quote: str | None = None
-    escaped = False
-    for idx, ch in enumerate(line):
-        if escaped:
-            escaped = False
-            continue
-        if in_quote == '"' and ch == "\\":
-            escaped = True
-            continue
-        if ch in {'"', "'"}:
-            if in_quote is None:
-                in_quote = ch
-            elif in_quote == ch:
-                in_quote = None
-        elif ch == "#" and in_quote is None:
-            return line[:idx]
-    return line
+class _TomlFallbackParser:
+    """Minimal stdlib-only TOML 1.0 parser for Python 3.10 where tomllib is absent."""
 
+    _ESCAPES = {
+        "b": "\b",
+        "t": "\t",
+        "n": "\n",
+        "f": "\f",
+        "r": "\r",
+        '"': '"',
+        "\\": "\\",
+    }
 
-def _delimiter_balance(line: str) -> int:
-    """Return net square/curly bracket depth change outside quoted TOML strings."""
-    in_quote: str | None = None
-    escaped = False
-    delta = 0
-    for ch in line:
-        if escaped:
-            escaped = False
-            continue
-        if in_quote == '"' and ch == "\\":
-            escaped = True
-            continue
-        if ch in {'"', "'"}:
-            if in_quote is None:
-                in_quote = ch
-            elif in_quote == ch:
-                in_quote = None
-        elif in_quote is None:
-            if ch in {"[", "{"}:
-                delta += 1
-            elif ch in {"]", "}"}:
-                delta -= 1
-    return delta
+    def __init__(self, text: str) -> None:
+        cleaned = text[1:] if text.startswith("\ufeff") else text
+        self.text = cleaned.replace("\r\n", "\n")
+        self.n = len(self.text)
+        self.pos = 0
 
-
-def _parse_inline_table_items(rhs: str) -> list[tuple[str, str]]:
-    """Parse top-level `key = raw_value` pairs from a TOML inline table `{...}`."""
-    s = rhs.strip()
-    if not (s.startswith("{") and s.endswith("}")):
-        return []
-    inner = s[1:-1]
-    entries: list[str] = []
-    buf: list[str] = []
-    in_quote: str | None = None
-    escaped = False
-    brace_depth = 0
-    bracket_depth = 0
-    for ch in inner:
-        if escaped:
-            buf.append(ch)
-            escaped = False
-            continue
-        if in_quote == '"' and ch == "\\":
-            buf.append(ch)
-            escaped = True
-            continue
-        if ch in {'"', "'"}:
-            if in_quote is None:
-                in_quote = ch
-            elif in_quote == ch:
-                in_quote = None
-            buf.append(ch)
-            continue
-        if in_quote is None:
-            if ch == "{":
-                brace_depth += 1
-            elif ch == "}":
-                brace_depth -= 1
-            elif ch == "[":
-                bracket_depth += 1
-            elif ch == "]":
-                bracket_depth -= 1
-            elif ch == "," and brace_depth == 0 and bracket_depth == 0:
-                entries.append("".join(buf).strip())
-                buf = []
-                continue
-        buf.append(ch)
-    tail = "".join(buf).strip()
-    if tail:
-        entries.append(tail)
-
-    items: list[tuple[str, str]] = []
-    for entry in entries:
-        # Split on the first unquoted '='
-        eq_idx = -1
-        q: str | None = None
-        esc = False
-        for i, ch in enumerate(entry):
-            if esc:
-                esc = False
-                continue
-            if q == '"' and ch == "\\":
-                esc = True
-                continue
-            if ch in {'"', "'"}:
-                if q is None:
-                    q = ch
-                elif q == ch:
-                    q = None
-            elif ch == "=" and q is None:
-                eq_idx = i
+    def parse(self) -> dict[str, Any]:
+        root: dict[str, Any] = {}
+        current: dict[str, Any] = root
+        while True:
+            self._skip_ws_and_comments(allow_newlines=True)
+            if self.pos >= self.n:
                 break
-        if eq_idx != -1:
-            key = entry[:eq_idx].strip().strip('"').strip("'")
-            val = entry[eq_idx + 1 :].strip()
-            if key:
-                items.append((key, val))
-    return items
+            ch = self.text[self.pos]
+            if ch == "[":
+                if self.pos + 1 < self.n and self.text[self.pos + 1] == "[":
+                    self.pos += 2
+                    keys = self._parse_key_path()
+                    self._skip_ws_inline()
+                    if not self.text.startswith("]]", self.pos):
+                        raise ValueError("Expected ']]'")
+                    self.pos += 2
+                    current = self._ensure_array_table(root, keys)
+                else:
+                    self.pos += 1
+                    keys = self._parse_key_path()
+                    self._skip_ws_inline()
+                    if self.pos >= self.n or self.text[self.pos] != "]":
+                        raise ValueError("Expected ']'")
+                    self.pos += 1
+                    current = self._ensure_table(root, keys)
+                self._skip_to_eol()
+            else:
+                keys = self._parse_key_path()
+                self._skip_ws_inline()
+                if self.pos >= self.n or self.text[self.pos] != "=":
+                    raise ValueError(f"Expected '=' at pos {self.pos}")
+                self.pos += 1
+                self._skip_ws_inline()
+                val = self._parse_value()
+                self._assign_path(current, keys, val)
+                self._skip_to_eol()
+        return root
+
+    def _skip_ws_inline(self) -> None:
+        while self.pos < self.n and self.text[self.pos] in {" ", "\t"}:
+            self.pos += 1
+
+    def _skip_ws_and_comments(self, *, allow_newlines: bool) -> None:
+        ws = {" ", "\t", "\r", "\n"} if allow_newlines else {" ", "\t"}
+        while self.pos < self.n:
+            ch = self.text[self.pos]
+            if ch in ws:
+                self.pos += 1
+            elif ch == "#":
+                while self.pos < self.n and self.text[self.pos] != "\n":
+                    self.pos += 1
+            else:
+                break
+
+    def _skip_to_eol(self) -> None:
+        self._skip_ws_inline()
+        if self.pos < self.n and self.text[self.pos] == "#":
+            while self.pos < self.n and self.text[self.pos] != "\n":
+                self.pos += 1
+        if self.pos < self.n and self.text[self.pos] == "\r":
+            self.pos += 1
+        if self.pos < self.n and self.text[self.pos] == "\n":
+            self.pos += 1
+
+    def _parse_key_segment(self) -> str:
+        self._skip_ws_inline()
+        if self.pos >= self.n:
+            raise ValueError("Unexpected EOF while parsing TOML key")
+        ch = self.text[self.pos]
+        if ch == '"':
+            return self._parse_basic_string(multiline=False)
+        if ch == "'":
+            return self._parse_literal_string(multiline=False)
+        start = self.pos
+        while self.pos < self.n and (self.text[self.pos].isalnum() or self.text[self.pos] in {"_", "-"}):
+            self.pos += 1
+        if self.pos == start:
+            raise ValueError(f"Invalid TOML bare key at pos {self.pos}")
+        return self.text[start : self.pos]
+
+    def _parse_key_path(self) -> list[str]:
+        parts = [self._parse_key_segment()]
+        while True:
+            self._skip_ws_inline()
+            if self.pos < self.n and self.text[self.pos] == ".":
+                self.pos += 1
+                parts.append(self._parse_key_segment())
+            else:
+                break
+        return parts
+
+    def _parse_value(self) -> Any:
+        self._skip_ws_inline()
+        if self.pos >= self.n:
+            raise ValueError("Unexpected EOF while parsing TOML value")
+        if self.text.startswith('"""', self.pos):
+            return self._parse_basic_string(multiline=True)
+        if self.text.startswith("'''", self.pos):
+            return self._parse_literal_string(multiline=True)
+        ch = self.text[self.pos]
+        if ch == '"':
+            return self._parse_basic_string(multiline=False)
+        if ch == "'":
+            return self._parse_literal_string(multiline=False)
+        if ch == "[":
+            return self._parse_array()
+        if ch == "{":
+            return self._parse_inline_table()
+        return self._parse_scalar()
+
+    def _parse_basic_string(self, *, multiline: bool) -> str:
+        delim = '"""' if multiline else '"'
+        self.pos += len(delim)
+        if multiline:
+            if self.text.startswith("\r\n", self.pos):
+                self.pos += 2
+            elif self.text.startswith("\n", self.pos):
+                self.pos += 1
+        out: list[str] = []
+        while self.pos < self.n:
+            if multiline and self.text.startswith('"""', self.pos):
+                # Allow 1 or 2 trailing quotes immediately before closing delimiter.
+                run = 0
+                while self.pos + run < self.n and self.text[self.pos + run] == '"':
+                    run += 1
+                if run > 3:
+                    out.append('"' * (run - 3))
+                    self.pos += run
+                    return "".join(out)
+                self.pos += 3
+                return "".join(out)
+            ch = self.text[self.pos]
+            if not multiline and ch == '"':
+                self.pos += 1
+                return "".join(out)
+            if ch == "\\":
+                self.pos += 1
+                if self.pos >= self.n:
+                    raise ValueError("Unterminated escape")
+                esc = self.text[self.pos]
+                if multiline and esc in {" ", "\t", "\r", "\n"}:
+                    while self.pos < self.n and self.text[self.pos] in {" ", "\t", "\r", "\n"}:
+                        self.pos += 1
+                    continue
+                if esc in self._ESCAPES:
+                    out.append(self._ESCAPES[esc])
+                    self.pos += 1
+                elif esc == "u":
+                    out.append(chr(int(self.text[self.pos + 1 : self.pos + 5], 16)))
+                    self.pos += 5
+                elif esc == "U":
+                    out.append(chr(int(self.text[self.pos + 1 : self.pos + 9], 16)))
+                    self.pos += 9
+                else:
+                    out.append(esc)
+                    self.pos += 1
+            else:
+                out.append(ch)
+                self.pos += 1
+        raise ValueError("Unterminated TOML basic string")
+
+    def _parse_literal_string(self, *, multiline: bool) -> str:
+        delim = "'''" if multiline else "'"
+        self.pos += len(delim)
+        if multiline:
+            if self.text.startswith("\r\n", self.pos):
+                self.pos += 2
+            elif self.text.startswith("\n", self.pos):
+                self.pos += 1
+        start = self.pos
+        if multiline:
+            end = self.text.find("'''", self.pos)
+            if end == -1:
+                raise ValueError("Unterminated TOML multiline literal string")
+            run = 0
+            while end + run < self.n and self.text[end + run] == "'":
+                run += 1
+            extra = run - 3
+            val = self.text[start : end + extra]
+            self.pos = end + run
+            return val
+        end = self.text.find("'", self.pos)
+        if end == -1:
+            raise ValueError("Unterminated TOML literal string")
+        val = self.text[start:end]
+        self.pos = end + 1
+        return val
+
+    def _parse_array(self) -> list[Any]:
+        self.pos += 1  # '['
+        items: list[Any] = []
+        while True:
+            self._skip_ws_and_comments(allow_newlines=True)
+            if self.pos >= self.n:
+                raise ValueError("Unterminated TOML array")
+            if self.text[self.pos] == "]":
+                self.pos += 1
+                return items
+            items.append(self._parse_value())
+            self._skip_ws_and_comments(allow_newlines=True)
+            if self.pos < self.n and self.text[self.pos] == ",":
+                self.pos += 1
+            elif self.pos < self.n and self.text[self.pos] == "]":
+                self.pos += 1
+                return items
+            else:
+                raise ValueError(f"Expected ',' or ']' in TOML array at pos {self.pos}")
+
+    def _parse_inline_table(self) -> dict[str, Any]:
+        self.pos += 1  # '{'
+        table: dict[str, Any] = {}
+        while True:
+            self._skip_ws_and_comments(allow_newlines=True)
+            if self.pos >= self.n:
+                raise ValueError("Unterminated TOML inline table")
+            if self.text[self.pos] == "}":
+                self.pos += 1
+                return table
+            keys = self._parse_key_path()
+            self._skip_ws_inline()
+            if self.pos >= self.n or self.text[self.pos] != "=":
+                raise ValueError(f"Expected '=' in TOML inline table at pos {self.pos}")
+            self.pos += 1
+            self._skip_ws_inline()
+            val = self._parse_value()
+            self._assign_path(table, keys, val)
+            self._skip_ws_and_comments(allow_newlines=True)
+            if self.pos < self.n and self.text[self.pos] == ",":
+                self.pos += 1
+            elif self.pos < self.n and self.text[self.pos] == "}":
+                self.pos += 1
+                return table
+            else:
+                raise ValueError(f"Expected ',' or '}}' in TOML inline table at pos {self.pos}")
+
+    def _parse_scalar(self) -> Any:
+        start = self.pos
+        while self.pos < self.n and self.text[self.pos] not in {",", "]", "}", "#", "\r", "\n"}:
+            self.pos += 1
+        raw = self.text[start : self.pos].strip()
+        if raw == "true":
+            return True
+        if raw == "false":
+            return False
+        cleaned = raw.replace("_", "")
+        try:
+            return int(cleaned, 0)
+        except ValueError:
+            pass
+        try:
+            return float(cleaned)
+        except ValueError:
+            return raw
+
+    @staticmethod
+    def _ensure_table(root: dict[str, Any], keys: list[str]) -> dict[str, Any]:
+        cur: Any = root
+        for k in keys:
+            if isinstance(cur, list):
+                cur = cur[-1]
+            if k not in cur:
+                cur[k] = {}
+            cur = cur[k]
+            if isinstance(cur, list):
+                cur = cur[-1]
+        if not isinstance(cur, dict):
+            raise ValueError(f"Key path {keys!r} does not resolve to a table")
+        return cur
+
+    @staticmethod
+    def _ensure_array_table(root: dict[str, Any], keys: list[str]) -> dict[str, Any]:
+        parent = _TomlFallbackParser._ensure_table(root, keys[:-1]) if len(keys) > 1 else root
+        last = keys[-1]
+        if last not in parent:
+            parent[last] = []
+        if not isinstance(parent[last], list):
+            raise ValueError(f"Key path {keys!r} is not an array of tables")
+        entry: dict[str, Any] = {}
+        parent[last].append(entry)
+        return entry
+
+    @staticmethod
+    def _assign_path(table: dict[str, Any], keys: list[str], value: Any) -> None:
+        cur: Any = table
+        for k in keys[:-1]:
+            if isinstance(cur, list):
+                cur = cur[-1]
+            if k not in cur:
+                cur[k] = {}
+            cur = cur[k]
+        if isinstance(cur, list):
+            cur = cur[-1]
+        if not isinstance(cur, dict):
+            raise ValueError(f"Cannot assign into non-table at {keys!r}")
+        cur[keys[-1]] = value
 
 
-def _extract_toml_str_list(rhs: str) -> list[str]:
-    return re.findall(r"""["']([^"']+)["']""", rhs)
+def _loads_toml_fallback(text: str) -> dict[str, Any]:
+    """Parse TOML text into Python dicts/lists without tomllib (Python 3.10 fallback)."""
+    return _TomlFallbackParser(text).parse()
 
 
-def _parse_poetry_packages_fallback(rhs: str) -> list[tuple[str, str]]:
-    """Extract (include, from_dir) pairs from a TOML array of inline tables."""
-    entries: list[tuple[str, str]] = []
-    for table_match in re.finditer(r"\{[^{}]*\}", rhs):
-        inc = ""
-        from_dir = "."
-        for k, v in _parse_inline_table_items(table_match.group(0)):
-            vals = _extract_toml_str_list(v)
-            if not vals:
-                continue
-            if k == "include":
-                inc = vals[0]
-            elif k == "from":
-                from_dir = vals[0]
-        if inc:
-            entries.append((inc, from_dir))
-    return entries
-
-
-def _inspect_pyproject_toml_fallback(
-    text: str,
-    target_pkg: str | None = None,
-    harness: Path | None = None,
-) -> dict[str, Any]:
-    """Python 3.10 stdlib fallback parser for pyproject.toml without tomllib."""
-    info: dict[str, Any] = {
+def _empty_pyproject_info() -> dict[str, Any]:
+    return {
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
@@ -837,236 +1033,18 @@ def _inspect_pyproject_toml_fallback(
         "has_python_requires": False,
     }
 
-    logical_lines: list[str] = []
-    pending = ""
-    depth = 0
-    for raw in text.splitlines():
-        cleaned = _strip_toml_comment(raw).strip()
-        if not cleaned:
-            continue
-        if depth > 0:
-            pending = f"{pending} {cleaned}"
-            depth += _delimiter_balance(cleaned)
-            if depth <= 0:
-                logical_lines.append(pending)
-                pending = ""
-                depth = 0
-        elif cleaned.startswith("[") and cleaned.endswith("]") and "=" not in cleaned:
-            logical_lines.append(cleaned)
-        else:
-            line_depth = _delimiter_balance(cleaned)
-            if line_depth > 0:
-                pending = cleaned
-                depth = line_depth
-            else:
-                logical_lines.append(cleaned)
-    if pending:
-        logical_lines.append(pending)
 
-    section = ""
-    build_backend: str | None = None
-
-    # Track backend-specific declarations separately so we apply only the active backend at the end.
-    setuptools_find_seen = False
-    setuptools_namespaces_disabled = False
-    setuptools_find_wheres: list[str] | None = None
-    setuptools_find_includes: list[str] | None = None
-    setuptools_find_excludes: list[str] | None = None
-    setuptools_explicit_pkgs: list[str] | None = None
-    setuptools_package_data: dict[str, list[str]] = {}
-    setuptools_declares_package_data = False
-    setuptools_exclude_package_data: dict[str, list[str]] = {}
-    setuptools_declares_exclude_package_data = False
-    setuptools_include_package_data: bool | None = None
-
-    hatch_pkgs: list[str] | None = None
-    poetry_pkg_entries: list[tuple[str, str]] | None = None
-    poetry_has_python_dep = False
-
-    project_scripts: list[str] = []
-    poetry_scripts: list[str] = []
-
-    reserved_ep_sections = {
-        "project.entry-points.console_scripts",
-        'project.entry-points."console_scripts"',
-        "project.entry-points.'console_scripts'",
-    }
-
-    for line in logical_lines:
-        if line.startswith("[") and line.endswith("]") and "=" not in line:
-            section = line[1:-1].strip()
-            if section == "project" or section.startswith("project."):
-                info["has_project_table"] = True
-            if section in reserved_ep_sections:
-                info["reserved_console_scripts_ep"] = True
-            if section == "tool.setuptools.packages.find":
-                setuptools_find_seen = True
-            if section == "tool.setuptools.package-data":
-                setuptools_declares_package_data = True
-            if section == "tool.setuptools.exclude-package-data":
-                setuptools_declares_exclude_package_data = True
-            continue
-
-        if section == "build-system" and re.match(r"^build-backend\s*=", line):
-            rhs = line.split("=", 1)[1].strip()
-            vals = _extract_toml_str_list(rhs)
-            if vals:
-                build_backend = vals[0].strip() or None
-        elif section == "project":
-            if re.match(r"^dynamic\s*=", line):
-                rhs = line.split("=", 1)[1]
-                if "scripts" in _extract_toml_str_list(rhs):
-                    info["scripts_dynamic"] = True
-            elif re.match(r"^requires-python\s*=", line):
-                vals = _extract_toml_str_list(line.split("=", 1)[1])
-                if vals and vals[0].strip():
-                    info["has_python_requires"] = True
-            elif re.match(r"^scripts\s*=\s*\{", line):
-                rhs = line.split("=", 1)[1]
-                project_scripts.extend(k for k, _ in _parse_inline_table_items(rhs))
-            elif re.match(r"^scripts\.", line) and "=" in line:
-                key = line.split("=", 1)[0].split(".", 1)[1].strip().strip('"').strip("'")
-                if key:
-                    project_scripts.append(key)
-            elif re.match(r"^entry-points\s*=\s*\{", line):
-                rhs = line.split("=", 1)[1]
-                for ep_group, _ep_val in _parse_inline_table_items(rhs):
-                    if ep_group == "console_scripts":
-                        info["reserved_console_scripts_ep"] = True
-        elif section == "project.entry-points":
-            if re.match(r"""^["']?console_scripts["']?\s*=""", line):
-                info["reserved_console_scripts_ep"] = True
-        elif section == "project.scripts" and "=" in line:
-            key = line.split("=", 1)[0].strip().strip('"').strip("'")
-            if key:
-                project_scripts.append(key)
-        elif section == "tool.setuptools.packages.find":
-            if re.match(r"^namespaces\s*=\s*false\b", line):
-                setuptools_namespaces_disabled = True
-            elif re.match(r"^where\s*=", line):
-                setuptools_find_wheres = _extract_toml_str_list(line.split("=", 1)[1])
-            elif re.match(r"^include\s*=", line):
-                setuptools_find_includes = _extract_toml_str_list(line.split("=", 1)[1])
-            elif re.match(r"^exclude\s*=", line):
-                setuptools_find_excludes = _extract_toml_str_list(line.split("=", 1)[1])
-        elif section == "tool.setuptools.packages" and re.match(r"^find\s*=\s*\{", line):
-            setuptools_find_seen = True
-            rhs = line.split("=", 1)[1]
-            for fk, fv in _parse_inline_table_items(rhs):
-                if fk == "namespaces" and re.match(r"^false\b", fv):
-                    setuptools_namespaces_disabled = True
-                elif fk == "where":
-                    setuptools_find_wheres = _extract_toml_str_list(fv)
-                elif fk == "include":
-                    setuptools_find_includes = _extract_toml_str_list(fv)
-                elif fk == "exclude":
-                    setuptools_find_excludes = _extract_toml_str_list(fv)
-        elif section == "tool.setuptools":
-            if re.match(r"^packages\s*=", line):
-                rhs = line.split("=", 1)[1].strip()
-                if rhs.startswith("["):
-                    setuptools_explicit_pkgs = _extract_toml_str_list(rhs)
-            elif re.match(r"^include-package-data\s*=\s*true\b", line):
-                setuptools_include_package_data = True
-            elif re.match(r"^include-package-data\s*=\s*false\b", line):
-                setuptools_include_package_data = False
-            elif re.match(r"^package-data\s*=\s*\{", line):
-                setuptools_declares_package_data = True
-                rhs = line.split("=", 1)[1]
-                for pk, pv in _parse_inline_table_items(rhs):
-                    setuptools_package_data[pk] = _extract_toml_str_list(pv)
-            elif re.match(r"^exclude-package-data\s*=\s*\{", line):
-                setuptools_declares_exclude_package_data = True
-                rhs = line.split("=", 1)[1]
-                for pk, pv in _parse_inline_table_items(rhs):
-                    setuptools_exclude_package_data[pk] = _extract_toml_str_list(pv)
-        elif section == "tool.setuptools.package-data" and "=" in line:
-            pk = line.split("=", 1)[0].strip().strip('"').strip("'")
-            rhs = line.split("=", 1)[1].strip()
-            if rhs.startswith("["):
-                setuptools_package_data[pk] = _extract_toml_str_list(rhs)
-        elif section == "tool.setuptools.exclude-package-data" and "=" in line:
-            pk = line.split("=", 1)[0].strip().strip('"').strip("'")
-            rhs = line.split("=", 1)[1].strip()
-            if rhs.startswith("["):
-                setuptools_exclude_package_data[pk] = _extract_toml_str_list(rhs)
-        elif section == "tool.hatch.build.targets.wheel" and re.match(r"^packages\s*=", line):
-            rhs = line.split("=", 1)[1].strip()
-            if rhs.startswith("["):
-                hatch_pkgs = _extract_toml_str_list(rhs)
-        elif section == "tool.poetry":
-            if re.match(r"^packages\s*=", line):
-                rhs = line.split("=", 1)[1].strip()
-                if rhs.startswith("["):
-                    poetry_pkg_entries = _parse_poetry_packages_fallback(rhs)
-            elif re.match(r"^scripts\s*=\s*\{", line):
-                rhs = line.split("=", 1)[1]
-                poetry_scripts.extend(k for k, _ in _parse_inline_table_items(rhs))
-        elif section == "tool.poetry.dependencies" and re.match(r"^python\s*=", line):
-            poetry_has_python_dep = True
-        elif section == "tool.poetry.scripts" and "=" in line:
-            key = line.split("=", 1)[0].strip().strip('"').strip("'")
-            if key:
-                poetry_scripts.append(key)
-
-    backend_kind = _classify_build_backend(build_backend)
-    info["build_backend"] = build_backend
-    info["backend_kind"] = backend_kind
-
-    if backend_kind == "setuptools":
-        if setuptools_declares_package_data:
-            info["declares_package_data"] = True
-            info["package_data"] = setuptools_package_data
-        if setuptools_declares_exclude_package_data:
-            info["declares_exclude_package_data"] = True
-            info["exclude_package_data"] = setuptools_exclude_package_data
-        info["include_package_data"] = setuptools_include_package_data
-        if setuptools_find_seen:
-            info["declares_packages"] = True
-            if setuptools_namespaces_disabled:
-                info["namespaces_disabled"] = True
-            else:
-                if _find_selects_package(
-                    target_pkg,
-                    setuptools_find_includes,
-                    setuptools_find_excludes,
-                    harness=harness,
-                    wheres=setuptools_find_wheres,
-                ):
-                    info["namespace_ok"] = True
-                if target_pkg and _find_selects_package(
-                    f"{target_pkg}.skills",
-                    setuptools_find_includes,
-                    setuptools_find_excludes,
-                    harness=harness,
-                    wheres=setuptools_find_wheres,
-                    require_init=False,
-                ):
-                    info["skills_subpkg_ok"] = True
-        elif setuptools_explicit_pkgs is not None:
-            info["declares_packages"] = True
-            if _explicit_packages_cover(target_pkg, setuptools_explicit_pkgs):
-                info["namespace_ok"] = True
-            if target_pkg and f"{target_pkg}.skills" in setuptools_explicit_pkgs:
-                info["skills_subpkg_ok"] = True
-    elif backend_kind == "hatch":
-        if hatch_pkgs is not None:
-            info["declares_packages"] = True
-            if _hatch_packages_cover(target_pkg, hatch_pkgs, harness=harness):
-                info["namespace_ok"] = True
-    elif backend_kind == "poetry":
-        if poetry_has_python_dep:
-            info["has_python_requires"] = True
-        if poetry_pkg_entries is not None:
-            info["declares_packages"] = True
-            if _poetry_packages_cover(target_pkg, poetry_pkg_entries, harness=harness):
-                info["namespace_ok"] = True
-
-    info["console_scripts"].extend(project_scripts)
-    if backend_kind == "poetry":
-        info["console_scripts"].extend(poetry_scripts)
-
-    return info
+def _inspect_pyproject_toml_fallback(
+    text: str,
+    target_pkg: str | None = None,
+    harness: Path | None = None,
+) -> dict[str, Any]:
+    """Python 3.10 stdlib fallback path using the stdlib TOML parser + shared inspection logic."""
+    try:
+        data = _loads_toml_fallback(text)
+    except Exception:
+        return _empty_pyproject_info()
+    return _inspect_pyproject_data(data, target_pkg=target_pkg, harness=harness)
 
 
 def _inspect_pyproject_toml(
@@ -1075,24 +1053,6 @@ def _inspect_pyproject_toml(
     harness: Path | None = None,
 ) -> dict[str, Any]:
     """Inspect pyproject.toml for PEP 420 namespace packaging and console scripts."""
-    info: dict[str, Any] = {
-        "build_backend": None,
-        "backend_kind": "setuptools",
-        "namespace_ok": False,
-        "skills_subpkg_ok": False,
-        "namespaces_disabled": False,
-        "declares_packages": False,
-        "has_project_table": False,
-        "scripts_dynamic": False,
-        "reserved_console_scripts_ep": False,
-        "console_scripts": [],
-        "declares_package_data": False,
-        "package_data": {},
-        "declares_exclude_package_data": False,
-        "exclude_package_data": {},
-        "include_package_data": None,
-        "has_python_requires": False,
-    }
     try:
         import tomllib  # Python 3.11+
 
@@ -1100,8 +1060,16 @@ def _inspect_pyproject_toml(
     except ImportError:
         return _inspect_pyproject_toml_fallback(text, target_pkg=target_pkg, harness=harness)
     except Exception:
-        return info
+        return _empty_pyproject_info()
+    return _inspect_pyproject_data(data, target_pkg=target_pkg, harness=harness)
 
+
+def _inspect_pyproject_data(
+    data: Any,
+    target_pkg: str | None = None,
+    harness: Path | None = None,
+) -> dict[str, Any]:
+    info = _empty_pyproject_info()
     if not isinstance(data, dict):
         return info
 

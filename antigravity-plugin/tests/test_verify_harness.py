@@ -1311,6 +1311,52 @@ setup(
     else:
         assert r_case["ok"] is True, r_case["checks"]
 
+    # 8. Absolute globs in package_data or MANIFEST.in must NOT be treated as package-relative.
+    h_abs = _create_valid_harness(tmp_path / "abs_glob", "absapp")
+    (h_abs / "setup.py").write_text(
+        (h_abs / "setup.py").read_text(encoding="utf-8").replace("skills/*.md", "/skills/*.md"),
+        encoding="utf-8",
+    )
+    r_abs = verify_harness.verify_harness(h_abs, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_abs["ok"] is False
+    assert {c["id"]: c for c in r_abs["checks"]}["package-data-skills"]["status"] == "warn"
+
+    (h_man / "MANIFEST.in").write_text("graft /cli_anything\n", encoding="utf-8")
+    r_abs_man = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_abs_man["ok"] is False
+    assert {c["id"]: c for c in r_abs_man["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 9. Inline [tool.setuptools] packages = {find = {...}} works identically on Python 3.10 fallback.
+    h_inl = _create_valid_harness(tmp_path / "inline_find", "inlapp")
+    (h_inl / "setup.py").unlink()
+    (h_inl / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-inlapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-inlapp = "cli_anything.inlapp.inlapp_cli:main"
+
+[tool.setuptools]
+packages = {find = {include = ["cli_anything.*"]}}
+
+[tool.setuptools.package-data]
+"cli_anything.inlapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_inl = verify_harness.verify_harness(
+            h_inl, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_inl["ok"] is True, r_inl["checks"]
+
 
 def test_pyproject_py310_fallback_matches_tomllib_semantics(tmp_path: Path) -> None:
     harness = _create_valid_harness(tmp_path, "demoapp")
@@ -1406,8 +1452,32 @@ packages = [
 [tool.poetry.scripts]
 cli-anything-demoapp = "cli_anything.demoapp.demoapp_cli:main"
 """,
+        """[tool.setuptools]
+packages = {find = {include = ["cli_anything.*"]}}
+""",
+        """[tool.setuptools]
+packages.find.include = ["cli_anything.*"]
+""",
+        """[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.packages]]
+include = "cli_anything"
+from = "."
+
+[tool.poetry.scripts]
+cli-anything-demoapp = "cli_anything.demoapp.demoapp_cli:main"
+""",
     ]
+    try:
+        import tomllib
+    except ImportError:
+        tomllib = None  # type: ignore[assignment]
+
     for sample in samples:
+        if tomllib is not None:
+            assert verify_harness._loads_toml_fallback(sample) == tomllib.loads(sample), sample
         assert verify_harness._inspect_pyproject_toml_fallback(
             sample, target_pkg=target, harness=harness
         ) == verify_harness._inspect_pyproject_toml(sample, target_pkg=target, harness=harness), sample
