@@ -537,6 +537,28 @@
           "url": "https://vivideo.ai"
         }
       ]
+    },
+    {
+      "name": "webrouter",
+      "display_name": "WebRouter",
+      "version": "0.16.0",
+      "description": "Search the web and extract page content through multiple providers with one CLI, with keyless search and extraction.",
+      "category": "web",
+      "requires": "Python >= 3.11",
+      "homepage": "https://webrouter.net",
+      "source_url": "https://github.com/Nimbleway/webrouter",
+      "package_manager": "pip",
+      "install_cmd": "pip install webrouter",
+      "update_cmd": "pip install --upgrade webrouter",
+      "uninstall_cmd": "pip uninstall -y webrouter",
+      "entry_point": "webrouter",
+      "skill_md": "https://github.com/Nimbleway/webrouter/blob/main/skills/web-router/SKILL.md",
+      "contributors": [
+        {
+          "name": "yogev-nimble",
+          "url": "https://github.com/yogev-nimble"
+        }
+      ]
     }
   ]
 }
