@@ -331,7 +331,7 @@
     {
       "name": "gimp",
       "display_name": "GIMP",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Raster image processing via gimp -i -b (batch mode)",
       "requires": "gimp (apt install gimp)",
       "homepage": "https://www.gimp.org",
