@@ -16,6 +16,7 @@ from cli_anything.drawio.core import connectors as conn_mod
 from cli_anything.drawio.core import pages as pages_mod
 from cli_anything.drawio.core import export as export_mod
 from cli_anything.drawio.utils import drawio_xml
+from cli_anything.drawio.utils import drawio_backend
 
 
 # ============================================================================
@@ -867,3 +868,123 @@ class TestWorkflows:
             assert len(edges) == 1
         finally:
             os.unlink(path)
+
+
+# ============================================================================
+# draw.io backend invocation
+# (regression: Windows Electron sandbox + child output decoding)
+# ============================================================================
+
+class TestDrawioBackend:
+    """The backend shells out to an Electron app, so both the command it builds
+    and the way it decodes the child's output matter on Windows."""
+
+    def _fake_run(self, recorded, returncode=0, make_output=None):
+        class _Result:
+            def __init__(self):
+                self.returncode = returncode
+                self.stdout = ""
+                self.stderr = ""
+
+        def _run(cmd, **kwargs):
+            recorded["cmd"] = cmd
+            recorded["kwargs"] = kwargs
+            if make_output:
+                make_output()
+            return _Result()
+
+        return _run
+
+    def test_windows_export_disables_electron_sandbox(self, monkeypatch, tmp_path):
+        src = tmp_path / "in.drawio"
+        src.write_text("<mxfile/>", encoding="utf-8")
+        out = tmp_path / "out.png"
+        recorded = {}
+
+        monkeypatch.setattr(drawio_backend, "_IS_WINDOWS", True)
+        monkeypatch.setattr(drawio_backend, "find_drawio", lambda: "draw.io.exe")
+        monkeypatch.setattr(
+            drawio_backend.subprocess, "run",
+            self._fake_run(recorded, make_output=lambda: out.write_bytes(b"x")),
+        )
+
+        drawio_backend.export_diagram(str(src), str(out), fmt="png", overwrite=True)
+
+        # --no-sandbox is a flag on the draw.io process itself, not a value
+        assert recorded["cmd"][0] == "draw.io.exe"
+        assert recorded["cmd"][1] == "--no-sandbox"
+
+    def test_posix_export_keeps_sandbox(self, monkeypatch, tmp_path):
+        src = tmp_path / "in.drawio"
+        src.write_text("<mxfile/>", encoding="utf-8")
+        out = tmp_path / "out.png"
+        recorded = {}
+
+        monkeypatch.setattr(drawio_backend, "_IS_WINDOWS", False)
+        monkeypatch.setattr(drawio_backend, "find_drawio", lambda: "/usr/bin/drawio")
+        monkeypatch.setattr(
+            drawio_backend.subprocess, "run",
+            self._fake_run(recorded, make_output=lambda: out.write_bytes(b"x")),
+        )
+
+        drawio_backend.export_diagram(str(src), str(out), fmt="png", overwrite=True)
+
+        assert "--no-sandbox" not in recorded["cmd"]
+
+    def test_export_decodes_child_output_as_utf8(self, monkeypatch, tmp_path):
+        """text=True alone decodes with the ANSI code page, which explodes on
+        draw.io's UTF-8 output when the console is GBK."""
+        src = tmp_path / "in.drawio"
+        src.write_text("<mxfile/>", encoding="utf-8")
+        out = tmp_path / "out.png"
+        recorded = {}
+
+        monkeypatch.setattr(drawio_backend, "find_drawio", lambda: "draw.io.exe")
+        monkeypatch.setattr(
+            drawio_backend.subprocess, "run",
+            self._fake_run(recorded, make_output=lambda: out.write_bytes(b"x")),
+        )
+
+        drawio_backend.export_diagram(str(src), str(out), fmt="png", overwrite=True)
+
+        assert recorded["kwargs"].get("encoding") == "utf-8"
+        assert recorded["kwargs"].get("errors") == "replace"
+
+    def test_export_passes_format_and_geometry(self, monkeypatch, tmp_path):
+        src = tmp_path / "in.drawio"
+        src.write_text("<mxfile/>", encoding="utf-8")
+        out = tmp_path / "out.png"
+        recorded = {}
+
+        monkeypatch.setattr(drawio_backend, "find_drawio", lambda: "draw.io.exe")
+        monkeypatch.setattr(
+            drawio_backend.subprocess, "run",
+            self._fake_run(recorded, make_output=lambda: out.write_bytes(b"x")),
+        )
+
+        drawio_backend.export_diagram(
+            str(src), str(out), fmt="png", scale=2, width=1600, height=900,
+            border=8, transparent=True, crop=True, overwrite=True,
+        )
+
+        cmd = recorded["cmd"]
+        assert "--format" in cmd and "png" in cmd
+        assert "--scale" in cmd and "2" in cmd
+        assert "--width" in cmd and "1600" in cmd
+        assert "--height" in cmd and "900" in cmd
+        assert "--border" in cmd and "8" in cmd
+        assert "--transparent" in cmd
+        assert "--crop" in cmd
+
+    def test_missing_output_file_raises(self, monkeypatch, tmp_path):
+        src = tmp_path / "in.drawio"
+        src.write_text("<mxfile/>", encoding="utf-8")
+        recorded = {}
+
+        monkeypatch.setattr(drawio_backend, "find_drawio", lambda: "draw.io.exe")
+        monkeypatch.setattr(drawio_backend.subprocess, "run", self._fake_run(recorded))
+
+        with pytest.raises(RuntimeError, match="produced no output file"):
+            drawio_backend.export_diagram(
+                str(src), str(tmp_path / "nope.png"), fmt="png", overwrite=True,
+            )

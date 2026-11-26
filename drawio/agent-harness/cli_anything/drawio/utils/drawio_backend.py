@@ -14,7 +14,15 @@ Requires: draw.io desktop app
 import os
 import shutil
 import subprocess
+import sys
 from typing import Optional
+
+# draw.io is an Electron app. On Windows, started from an unprivileged parent
+# without a sandbox token, the renderer dies with STATUS_BREAKPOINT
+# (0x80000003) before writing anything -- Python only sees exit code
+# 2147483651 and an empty stderr. Turning the sandbox off for the short-lived
+# export process is what the draw.io CLI itself needs to run at all.
+_IS_WINDOWS = sys.platform == "win32"
 
 
 def find_drawio() -> str:
@@ -46,7 +54,9 @@ def get_drawio_version() -> str:
     try:
         result = subprocess.run(
             [drawio, "--version"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+            timeout=15,
         )
         output = result.stdout.strip() or result.stderr.strip()
         return output.split("\n")[0] if output else "unknown"
@@ -96,12 +106,17 @@ def export_diagram(
     drawio = find_drawio()
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-    cmd = [
-        drawio,
+    cmd = [drawio]
+
+    # Windows needs the Electron sandbox off (see _IS_WINDOWS above).
+    if _IS_WINDOWS:
+        cmd.append("--no-sandbox")
+
+    cmd.extend([
         "--export", drawio_path,
         "--output", output_path,
         "--format", fmt,
-    ]
+    ])
 
     if page_index is not None:
         cmd.extend(["--page-index", str(page_index)])
@@ -118,9 +133,13 @@ def export_diagram(
     if crop:
         cmd.append("--crop")
 
+    # draw.io writes UTF-8, but text=True alone decodes with the ANSI code page
+    # and kills the reader thread on a GBK console with
+    # "UnicodeDecodeError: 'gbk' codec can't decode byte 0x82". Be explicit.
     result = subprocess.run(
         cmd,
         capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
         timeout=timeout,
     )
 
