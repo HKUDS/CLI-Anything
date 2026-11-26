@@ -3,14 +3,14 @@
 Covers the ComfyUI prompt queue lifecycle:
 - POST /prompt  — submit a workflow for generation
 - GET  /queue   — inspect pending and running items
-- DELETE /queue — clear the queue
+- POST /queue   — clear the queue (body: {"clear": true})
 - GET  /history — completed prompt history
 - POST /interrupt — stop the current generation
 """
 
 import uuid
 
-from cli_anything.comfyui.utils.comfyui_backend import api_get, api_post, api_delete
+from cli_anything.comfyui.utils.comfyui_backend import api_get, api_post
 
 
 def queue_prompt(
@@ -92,7 +92,8 @@ def clear_queue(base_url: str) -> dict:
     Returns:
         Dict with status confirmation.
     """
-    api_delete(base_url, "/queue", data={"clear": True})
+    # ComfyUI clears the queue with POST /queue; DELETE /queue returns 405.
+    api_post(base_url, "/queue", data={"clear": True})
     return {"status": "cleared"}
 
 

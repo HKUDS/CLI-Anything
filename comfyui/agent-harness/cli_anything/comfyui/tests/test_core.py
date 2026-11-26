@@ -311,17 +311,18 @@ class TestQueueClear:
 
     def test_clear_queue(self):
         """Should return cleared status."""
-        with patch("cli_anything.comfyui.core.queue.api_delete", return_value={"status": "ok"}):
+        with patch("cli_anything.comfyui.core.queue.api_post", return_value={"status": "ok"}):
             result = queue_mod.clear_queue("http://localhost:8188")
 
         assert result["status"] == "cleared"
 
     def test_clear_queue_passes_clear_flag(self):
-        """Should pass clear=True to the API."""
-        with patch("cli_anything.comfyui.core.queue.api_delete", return_value={}) as mock_del:
+        """Should POST clear=True to /queue (ComfyUI has no DELETE /queue)."""
+        with patch("cli_anything.comfyui.core.queue.api_post", return_value={}) as mock_post:
             queue_mod.clear_queue("http://localhost:8188")
 
-        call_args = mock_del.call_args
+        call_args = mock_post.call_args
+        assert call_args[0][1] == "/queue"
         # data kwarg or positional arg should contain {"clear": True}
         data_arg = call_args[1].get("data") or (call_args[0][2] if len(call_args[0]) > 2 else None)
         assert data_arg == {"clear": True}
@@ -639,7 +640,7 @@ class TestCLIQueue:
 
     def test_queue_clear_with_confirm(self, runner):
         """queue clear --confirm should skip prompt and clear."""
-        with patch("cli_anything.comfyui.core.queue.api_delete", return_value={}):
+        with patch("cli_anything.comfyui.core.queue.api_post", return_value={}):
             result = runner.invoke(cli, ["queue", "clear", "--confirm"])
 
         assert result.exit_code == 0

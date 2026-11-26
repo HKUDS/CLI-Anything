@@ -146,7 +146,7 @@ class TestFullGenerationWorkflow:
         """Clear queue then verify it is empty."""
         empty_status = {"queue_running": [], "queue_pending": []}
 
-        with patch("cli_anything.comfyui.core.queue.api_delete", return_value={}), \
+        with patch("cli_anything.comfyui.core.queue.api_post", return_value={}), \
              patch("cli_anything.comfyui.core.queue.api_get", return_value=empty_status):
 
             result = runner.invoke(cli, ["queue", "clear", "--confirm"])
