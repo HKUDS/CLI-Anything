@@ -314,3 +314,39 @@ def test_windows_junction_plugins_root_workspace_and_global_uninstall(tmp_path: 
         for junc in junctions:
             if junc.exists():
                 os.rmdir(junc)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell lock-ownership test")
+def test_windows_release_lock_does_not_delete_unacquired_foreign_lock(tmp_path: Path) -> None:
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    assert shell, "PowerShell required on Windows"
+
+    lib_ps1 = PLUGIN_SRC / "scripts" / "lib.ps1"
+    foreign_lock = tmp_path / ".cli-anything.lock"
+    foreign_lock.write_text("99999\n", encoding="utf-8")
+
+    # Simulate install.ps1's try/finally when Acquire-CliAnythingInstallLock times out against
+    # a non-open Bash lock file: Release-CliAnythingInstallLock must NOT delete the foreign lock.
+    script = (
+        f'. "{lib_ps1}"; '
+        f'$lockPath = "{foreign_lock}"; '
+        "$lockHandle = $null; "
+        "$threw = $false; "
+        "try { "
+        "  try { $lockHandle = Acquire-CliAnythingInstallLock -LockPath $lockPath -MaxAttempts 2 } "
+        "  catch { $threw = $true } "
+        "} finally { "
+        "  Release-CliAnythingInstallLock -LockHandle $lockHandle -LockPath $lockPath "
+        "}; "
+        "if (-not $threw) { exit 2 }"
+    )
+    proc = subprocess.run(
+        [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert foreign_lock.is_file(), "unacquired foreign lock file was deleted"
+    assert foreign_lock.read_text(encoding="utf-8").strip() == "99999"

@@ -368,7 +368,13 @@ def _is_absolute_pattern(pattern: str) -> bool:
     return s.startswith("/") or bool(re.match(r"^[A-Za-z]:", s))
 
 
-def _glob_matches_relpath(rel_path: str, pattern: str, *, recursive: bool = True) -> bool:
+def _glob_matches_relpath(
+    rel_path: str,
+    pattern: str,
+    *,
+    recursive: bool = True,
+    platform_case: bool = False,
+) -> bool:
     """Match a POSIX relative path against a relative glob pattern (`**` matches 0+ dirs when recursive=True)."""
     if _is_absolute_pattern(pattern):
         return False
@@ -383,10 +389,12 @@ def _glob_matches_relpath(rel_path: str, pattern: str, *, recursive: bool = True
     if not rel_parts or not pat_parts:
         return False
 
+    seg_match = fnmatch.fnmatch if platform_case else fnmatch.fnmatchcase
+
     if not recursive:
         if len(rel_parts) != len(pat_parts):
             return False
-        return all(fnmatch.fnmatchcase(rp, pp) for rp, pp in zip(rel_parts, pat_parts))
+        return all(seg_match(rp, pp) for rp, pp in zip(rel_parts, pat_parts))
 
     memo: dict[tuple[int, int], bool] = {}
 
@@ -399,7 +407,7 @@ def _glob_matches_relpath(rel_path: str, pattern: str, *, recursive: bool = True
         elif pat_parts[pi] == "**":
             # In Python glob(..., recursive=True), `**` matches zero or more path segments.
             res = _match(ri, pi + 1) or (ri < len(rel_parts) and _match(ri + 1, pi))
-        elif ri < len(rel_parts) and fnmatch.fnmatchcase(rel_parts[ri], pat_parts[pi]):
+        elif ri < len(rel_parts) and seg_match(rel_parts[ri], pat_parts[pi]):
             res = _match(ri + 1, pi + 1)
         else:
             res = False
@@ -436,7 +444,7 @@ def _pkg_data_matches_file(
             return False
         if exclusion:
             return fnmatch.fnmatch(rel_path, pat)
-        return _glob_matches_relpath(rel_path, pat, recursive=True)
+        return _glob_matches_relpath(rel_path, pat, recursive=True, platform_case=True)
 
     for pkg_key, patterns in mapping.items():
         if pkg_key in applicable_keys and any(_matches(p) for p in patterns):
@@ -489,7 +497,7 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
             continue
         action = tokens[0]
         if action == "include":
-            if any(_glob_matches_relpath(target_rel, pat, recursive=False) for pat in tokens[1:]):
+            if any(_glob_matches_relpath(target_rel, pat, recursive=False, platform_case=True) for pat in tokens[1:]):
                 selected = True
         elif action == "exclude":
             if any(_glob_matches_relpath(target_rel, pat, recursive=True) for pat in tokens[1:]):
@@ -507,8 +515,10 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
             if d is None:
                 continue
             prefix = f"{d}/**/" if d else "**/"
+            use_platform_case = action == "recursive-include"
             if any(
-                not _is_absolute_pattern(pat) and _glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True)
+                not _is_absolute_pattern(pat)
+                and _glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True, platform_case=use_platform_case)
                 for pat in tokens[2:]
             ):
                 selected = action == "recursive-include"
@@ -520,7 +530,7 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
                 continue
             # setuptools FileList.graft() calls glob(dir) WITHOUT recursive=True, then collects
             # all files recursively beneath each matched directory.
-            if not d or any(_glob_matches_relpath(anc, d, recursive=False) for anc in ancestor_dirs):
+            if not d or any(_glob_matches_relpath(anc, d, recursive=False, platform_case=True) for anc in ancestor_dirs):
                 selected = True
         elif action == "prune":
             if len(tokens) != 2:

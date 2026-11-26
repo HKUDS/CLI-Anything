@@ -1311,6 +1311,27 @@ setup(
     else:
         assert r_case["ok"] is True, r_case["checks"]
 
+    # 7b. Platform-aware package_data inclusion glob (`skills/*.MD` matches `skills/SKILL.md` on Windows, not POSIX).
+    (h_fnm / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-fnmapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.fnmapp": ["skills/*.MD"]},
+    entry_points={"console_scripts": ["cli-anything-fnmapp=cli_anything.fnmapp.fnmapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_inc_case = verify_harness.verify_harness(h_fnm, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    if sys.platform == "win32":
+        assert r_inc_case["ok"] is True, r_inc_case["checks"]
+    else:
+        assert r_inc_case["ok"] is False
+        assert {c["id"]: c for c in r_inc_case["checks"]}["package-data-skills"]["status"] == "warn"
+
     # 8. Absolute globs in package_data or MANIFEST.in must NOT be treated as package-relative.
     h_abs = _create_valid_harness(tmp_path / "abs_glob", "absapp")
     (h_abs / "setup.py").write_text(

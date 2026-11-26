@@ -82,10 +82,11 @@ function Release-CliAnythingInstallLock {
         $LockHandle,
         [string]$LockPath
     )
-    if ($null -ne $LockHandle) {
-        try { $LockHandle.Close() } catch {}
-        try { $LockHandle.Dispose() } catch {}
+    if ($null -eq $LockHandle) {
+        return
     }
+    try { $LockHandle.Close() } catch {}
+    try { $LockHandle.Dispose() } catch {}
     if (-not [string]::IsNullOrWhiteSpace($LockPath) -and (Test-Path -LiteralPath $LockPath)) {
         Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
     }
