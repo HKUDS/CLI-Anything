@@ -424,3 +424,206 @@ def test_list_harnesses_skips_unreadable_namespace_dir(tmp_path: Path, monkeypat
     found = list_harnesses.scan_generated(tmp_path)
     assert "goodapp" in found
     assert "lockedapp" not in found
+
+
+def test_verify_respects_pep621_precedence_for_console_scripts(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "pep621app")
+    # Accompanying [project] omitting scripts without dynamic = ["scripts"] causes setuptools to drop setup.py entry_points.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-pep621app"
+version = "1.0.0"
+requires-python = ">=3.10"
+""",
+        encoding="utf-8",
+    )
+    dropped = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    dropped_checks = {c["id"]: c for c in dropped["checks"]}
+    assert dropped["ok"] is False
+    assert dropped_checks["console-script"]["status"] == "fail"
+    assert "project.dynamic" in dropped_checks["console-script"]["detail"]
+
+    # Marking only entry-points (not scripts) dynamic still drops setup.py console_scripts in setuptools.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-pep621app"
+version = "1.0.0"
+requires-python = ">=3.10"
+dynamic = ["entry-points"]
+""",
+        encoding="utf-8",
+    )
+    ep_only = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    ep_checks = {c["id"]: c for c in ep_only["checks"]}
+    assert ep_only["ok"] is False
+    assert ep_checks["console-script"]["status"] == "fail"
+
+    # Marking scripts dynamic allows setuptools to retain setup.py console_scripts.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-pep621app"
+version = "1.0.0"
+requires-python = ">=3.10"
+dynamic = ["scripts"]
+""",
+        encoding="utf-8",
+    )
+    kept = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert kept["ok"] is True, kept["checks"]
+
+
+def test_verify_rejects_empty_setuptools_find_include_list(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "emptyinc")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[project]
+name = "cli-anything-emptyinc"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-emptyinc = "cli_anything.emptyinc.emptyinc_cli:main"
+
+[tool.setuptools.packages.find]
+include = []
+
+[tool.setuptools.package-data]
+"cli_anything.emptyinc" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks = {c["id"]: c for c in result["checks"]}
+    assert result["ok"] is False
+    assert checks["namespace-packages"]["status"] == "fail"
+
+    # Omitting include altogether still defaults to full PEP 420 discovery.
+    (harness / "pyproject.toml").write_text(
+        """[project]
+name = "cli-anything-emptyinc"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-emptyinc = "cli_anything.emptyinc.emptyinc_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+"cli_anything.emptyinc" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    omitted = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert omitted["ok"] is True, omitted["checks"]
+
+
+def test_verify_accepts_hatch_and_poetry_pyproject_namespace(tmp_path: Path) -> None:
+    hatch_harness = _create_valid_harness(tmp_path / "hatch_case", "hatchapp")
+    (hatch_harness / "setup.py").unlink()
+    (hatch_harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-hatchapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-hatchapp = "cli_anything.hatchapp.hatchapp_cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cli_anything"]
+package-data = {"cli_anything.hatchapp" = ["skills/*.md"]}
+""",
+        encoding="utf-8",
+    )
+    hatch_res = verify_harness.verify_harness(
+        hatch_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert hatch_res["ok"] is True, hatch_res["checks"]
+
+    poetry_harness = _create_valid_harness(tmp_path / "poetry_case", "poetryapp")
+    (poetry_harness / "setup.py").unlink()
+    (poetry_harness / "pyproject.toml").write_text(
+        """[tool.poetry]
+name = "cli-anything-poetryapp"
+version = "1.0.0"
+packages = [{include = "cli_anything"}]
+include = ["cli_anything/poetryapp/skills/*.md"]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-poetryapp = "cli_anything.poetryapp.poetryapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    poetry_res = verify_harness.verify_harness(
+        poetry_harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    poetry_checks = {c["id"]: c for c in poetry_res["checks"]}
+    assert poetry_res["ok"] is True, poetry_res["checks"]
+    assert poetry_checks["namespace-packages"]["status"] == "pass"
+    assert poetry_checks["console-script"]["status"] == "pass"
+
+
+def test_pyproject_py310_fallback_matches_tomllib_semantics() -> None:
+    samples = [
+        """[project]
+name = "cli-anything-a"
+version = "1.0.0"
+""",
+        """[project]
+name = "cli-anything-a"
+version = "1.0.0"
+dynamic = [
+    "scripts",
+]
+""",
+        """[tool.setuptools.packages.find]
+include = []
+""",
+        """[tool.setuptools.packages.find]
+where = ["."]
+""",
+        """[tool.hatch.build.targets.wheel]
+packages = ["cli_anything"]
+""",
+        """[tool.poetry]
+packages = [
+    {include = "cli_anything"},
+]
+
+[tool.poetry.scripts]
+cli-anything-a = "cli_anything.a.a_cli:main"
+""",
+    ]
+    for sample in samples:
+        assert verify_harness._inspect_pyproject_toml_fallback(sample) == verify_harness._inspect_pyproject_toml(sample)

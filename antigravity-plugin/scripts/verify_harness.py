@@ -307,9 +307,7 @@ def _inspect_setup_py(text: str) -> dict[str, Any]:
                     info["namespace_ok"] = True
                 else:
                     inc_vals = _const_str_list(_resolve(inc_kw))
-                    if inc_vals is None or any(
-                        v.startswith("cli_anything") or v == "*" for v in inc_vals
-                    ):
+                    if inc_vals is None or any(_matches_namespace_include(v) for v in inc_vals):
                         info["namespace_ok"] = True
             elif fname == "find_packages":
                 info["uses_regular_find_packages"] = True
@@ -342,12 +340,166 @@ def _inspect_setup_py(text: str) -> dict[str, Any]:
     return info
 
 
+def _matches_namespace_include(pattern: str) -> bool:
+    """Return True if a setuptools find include glob covers cli_anything.* subpackages."""
+    return pattern == "*" or pattern == "cli_anything*" or pattern.startswith("cli_anything.")
+
+
+def _strip_toml_comment(line: str) -> str:
+    """Remove an unquoted TOML `# ...` comment from a line."""
+    in_quote: str | None = None
+    escaped = False
+    for idx, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if in_quote == '"' and ch == "\\":
+            escaped = True
+            continue
+        if ch in {'"', "'"}:
+            if in_quote is None:
+                in_quote = ch
+            elif in_quote == ch:
+                in_quote = None
+        elif ch == "#" and in_quote is None:
+            return line[:idx]
+    return line
+
+
+def _bracket_balance(line: str) -> int:
+    """Return net square-bracket depth change outside quoted TOML strings."""
+    in_quote: str | None = None
+    escaped = False
+    delta = 0
+    for ch in line:
+        if escaped:
+            escaped = False
+            continue
+        if in_quote == '"' and ch == "\\":
+            escaped = True
+            continue
+        if ch in {'"', "'"}:
+            if in_quote is None:
+                in_quote = ch
+            elif in_quote == ch:
+                in_quote = None
+        elif in_quote is None:
+            if ch == "[":
+                delta += 1
+            elif ch == "]":
+                delta -= 1
+    return delta
+
+
+def _inspect_pyproject_toml_fallback(text: str) -> dict[str, Any]:
+    """Python 3.10 stdlib fallback parser for pyproject.toml without tomllib."""
+    info: dict[str, Any] = {
+        "namespace_ok": False,
+        "namespaces_disabled": False,
+        "declares_packages": False,
+        "has_project_table": False,
+        "scripts_dynamic": False,
+        "console_scripts": [],
+    }
+
+    logical_lines: list[str] = []
+    pending = ""
+    depth = 0
+    for raw in text.splitlines():
+        cleaned = _strip_toml_comment(raw).strip()
+        if not cleaned:
+            continue
+        if depth > 0:
+            pending = f"{pending} {cleaned}"
+            depth += _bracket_balance(cleaned)
+            if depth <= 0:
+                logical_lines.append(pending)
+                pending = ""
+                depth = 0
+        elif cleaned.startswith("[") and cleaned.endswith("]") and "=" not in cleaned:
+            logical_lines.append(cleaned)
+        else:
+            line_depth = _bracket_balance(cleaned)
+            if line_depth > 0:
+                pending = cleaned
+                depth = line_depth
+            else:
+                logical_lines.append(cleaned)
+    if pending:
+        logical_lines.append(pending)
+
+    section = ""
+    saw_find = False
+    find_has_include = False
+    find_include_ok = False
+    script_sections = {
+        "project.scripts",
+        "project.entry-points.console_scripts",
+        'project.entry-points."console_scripts"',
+        "project.entry-points.'console_scripts'",
+        "tool.poetry.scripts",
+    }
+
+    for line in logical_lines:
+        if line.startswith("[") and line.endswith("]") and "=" not in line:
+            section = line[1:-1].strip()
+            if section == "project" or section.startswith("project."):
+                info["has_project_table"] = True
+            if section == "tool.setuptools.packages.find":
+                info["declares_packages"] = True
+                saw_find = True
+            continue
+
+        if section == "project" and re.match(r"^dynamic\s*=", line):
+            rhs = line.split("=", 1)[1]
+            if "scripts" in re.findall(r"""["']([^"']+)["']""", rhs):
+                info["scripts_dynamic"] = True
+        elif section == "tool.setuptools.packages.find":
+            if re.match(r"^namespaces\s*=\s*false\b", line):
+                info["declares_packages"] = True
+                info["namespaces_disabled"] = True
+            elif re.match(r"^include\s*=", line):
+                find_has_include = True
+                rhs = line.split("=", 1)[1]
+                vals = re.findall(r"""["']([^"']+)["']""", rhs)
+                if any(_matches_namespace_include(v) for v in vals):
+                    find_include_ok = True
+        elif section == "tool.setuptools" and re.match(r"^packages\s*=", line):
+            info["declares_packages"] = True
+            rhs = line.split("=", 1)[1]
+            vals = re.findall(r"""["']([^"']+)["']""", rhs)
+            if any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", v) for v in vals):
+                info["namespace_ok"] = True
+        elif section == "tool.hatch.build.targets.wheel" and re.match(r"^packages\s*=", line):
+            info["declares_packages"] = True
+            rhs = line.split("=", 1)[1]
+            vals = re.findall(r"""["']([^"']+)["']""", rhs)
+            if any("cli_anything" in v for v in vals):
+                info["namespace_ok"] = True
+        elif section == "tool.poetry" and re.match(r"^packages\s*=", line):
+            info["declares_packages"] = True
+            rhs = line.split("=", 1)[1]
+            if re.search(r"""include\s*=\s*["'][^"']*cli_anything[^"']*["']""", rhs):
+                info["namespace_ok"] = True
+        elif section in script_sections and "=" in line:
+            key = line.split("=", 1)[0].strip().strip('"').strip("'")
+            if key:
+                info["console_scripts"].append(key)
+
+    if saw_find and not info["namespaces_disabled"] and (not find_has_include or find_include_ok):
+        info["namespace_ok"] = True
+
+    return info
+
+
 def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
     """Inspect pyproject.toml for PEP 420 namespace packaging and console scripts."""
     info: dict[str, Any] = {
         "namespace_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
+        "has_project_table": False,
+        "scripts_dynamic": False,
         "console_scripts": [],
     }
     try:
@@ -355,42 +507,14 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
 
         data = tomllib.loads(text)
     except ImportError:
-        # Python 3.10 stdlib fallback: inspect TOML sections without third-party dependencies.
-        section = ""
-        for raw in text.splitlines():
-            line = raw.split("#", 1)[0].strip()
-            if not line:
-                continue
-            if line.startswith("[") and line.endswith("]"):
-                section = line[1:-1].strip()
-                if section == "tool.setuptools.packages.find":
-                    info["declares_packages"] = True
-                    info["namespace_ok"] = True
-                continue
-            if section == "tool.setuptools.packages.find" and re.match(r"^namespaces\s*=\s*false\b", line):
-                info["declares_packages"] = True
-                info["namespaces_disabled"] = True
-                info["namespace_ok"] = False
-            elif section == "tool.setuptools" and re.match(r"^packages\s*=", line):
-                info["declares_packages"] = True
-                if re.search(r'["\']cli_anything\.[A-Za-z0-9_]+["\']', line):
-                    info["namespace_ok"] = True
-            elif section == "tool.setuptools" and re.search(r'["\']cli_anything\.[A-Za-z0-9_]+["\']', line):
-                info["declares_packages"] = True
-                info["namespace_ok"] = True
-            elif section in {"tool.hatch.build.targets.wheel", "tool.poetry"} and "cli_anything" in line:
-                info["declares_packages"] = True
-                info["namespace_ok"] = True
-            elif section in {"project.scripts", "tool.poetry.scripts"} and "=" in line:
-                key = line.split("=", 1)[0].strip().strip('"').strip("'")
-                if key:
-                    info["console_scripts"].append(key)
-        return info
+        return _inspect_pyproject_toml_fallback(text)
     except Exception:
         return info
 
-    tool = data.get("tool", {}) if isinstance(data, dict) else {}
-    setuptools_cfg = tool.get("setuptools", {}) if isinstance(tool, dict) else {}
+    tool = data.get("tool") if isinstance(data, dict) else None
+    tool_dict = tool if isinstance(tool, dict) else {}
+
+    setuptools_cfg = tool_dict.get("setuptools")
     if isinstance(setuptools_cfg, dict):
         pkgs = setuptools_cfg.get("packages")
         if isinstance(pkgs, dict) and isinstance(pkgs.get("find"), dict):
@@ -398,10 +522,12 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
             find_cfg = pkgs["find"]
             if find_cfg.get("namespaces") is False:
                 info["namespaces_disabled"] = True
+            elif "include" not in find_cfg:
+                info["namespace_ok"] = True
             else:
-                includes = find_cfg.get("include")
-                if not includes or any(
-                    isinstance(v, str) and (v.startswith("cli_anything") or v == "*")
+                includes = find_cfg["include"]
+                if isinstance(includes, list) and any(
+                    isinstance(v, str) and _matches_namespace_include(v)
                     for v in includes
                 ):
                     info["namespace_ok"] = True
@@ -413,23 +539,32 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
             ):
                 info["namespace_ok"] = True
 
-    hatch_pkgs = (
-        tool.get("hatch", {}).get("build", {}).get("targets", {}).get("wheel", {}).get("packages")
-        if isinstance(tool, dict)
-        else None
-    )
-    if isinstance(hatch_pkgs, list) and any(isinstance(p, str) and "cli_anything" in p for p in hatch_pkgs):
-        info["namespace_ok"] = True
+    hatch_cfg = tool_dict.get("hatch")
+    hatch_build = hatch_cfg.get("build") if isinstance(hatch_cfg, dict) else None
+    hatch_targets = hatch_build.get("targets") if isinstance(hatch_build, dict) else None
+    hatch_wheel = hatch_targets.get("wheel") if isinstance(hatch_targets, dict) else None
+    hatch_pkgs = hatch_wheel.get("packages") if isinstance(hatch_wheel, dict) else None
+    if isinstance(hatch_pkgs, list):
+        info["declares_packages"] = True
+        if any(isinstance(p, str) and "cli_anything" in p for p in hatch_pkgs):
+            info["namespace_ok"] = True
 
-    poetry_pkgs = tool.get("poetry", {}).get("packages") if isinstance(tool, dict) else None
-    if isinstance(poetry_pkgs, list) and any(
-        isinstance(p, dict) and "cli_anything" in str(p.get("include", ""))
-        for p in poetry_pkgs
-    ):
-        info["namespace_ok"] = True
+    poetry_cfg = tool_dict.get("poetry")
+    poetry_pkgs = poetry_cfg.get("packages") if isinstance(poetry_cfg, dict) else None
+    if isinstance(poetry_pkgs, list):
+        info["declares_packages"] = True
+        if any(
+            isinstance(p, dict) and "cli_anything" in str(p.get("include", ""))
+            for p in poetry_pkgs
+        ):
+            info["namespace_ok"] = True
 
-    project_cfg = data.get("project", {}) if isinstance(data, dict) else {}
+    project_cfg = data.get("project") if isinstance(data, dict) else None
     if isinstance(project_cfg, dict):
+        info["has_project_table"] = True
+        dynamic = project_cfg.get("dynamic")
+        if isinstance(dynamic, list) and "scripts" in dynamic:
+            info["scripts_dynamic"] = True
         scripts = project_cfg.get("scripts")
         if isinstance(scripts, dict):
             info["console_scripts"].extend(str(k) for k in scripts.keys())
@@ -437,7 +572,7 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
         if isinstance(ep, dict) and isinstance(ep.get("console_scripts"), dict):
             info["console_scripts"].extend(str(k) for k in ep["console_scripts"].keys())
 
-    poetry_scripts = tool.get("poetry", {}).get("scripts") if isinstance(tool, dict) else None
+    poetry_scripts = poetry_cfg.get("scripts") if isinstance(poetry_cfg, dict) else None
     if isinstance(poetry_scripts, dict):
         info["console_scripts"].extend(str(k) for k in poetry_scripts.keys())
 
@@ -468,6 +603,8 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "namespace_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
+        "has_project_table": False,
+        "scripts_dynamic": False,
         "console_scripts": [],
     }
 
@@ -517,7 +654,12 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
-    declared_scripts = list(setup_info["console_scripts"]) + list(pyproj_info["console_scripts"])
+    # Under PEP 621 / setuptools >= 61, a [project] table supersedes setup.py entry_points
+    # unless "scripts" is explicitly listed in project.dynamic.
+    if pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"]:
+        declared_scripts = list(pyproj_info["console_scripts"])
+    else:
+        declared_scripts = list(pyproj_info["console_scripts"]) + list(setup_info["console_scripts"])
     matching_scripts = [
         s
         for s in declared_scripts
@@ -533,12 +675,19 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
     else:
+        if pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"] and setup_info["console_scripts"]:
+            detail = (
+                "pyproject.toml defines [project] without scripts (and without 'scripts' in project.dynamic), "
+                "so setup.py console_scripts are ignored by setuptools"
+            )
+        else:
+            detail = f"{pkg_file.name} does not declare console_scripts entry point cli-anything-{software_slug}"
         checks.append(
             CheckResult(
                 "console-script",
                 "packaging",
                 FAIL,
-                f"{pkg_file.name} does not declare console_scripts entry point cli-anything-{software_slug}",
+                detail,
             )
         )
 
