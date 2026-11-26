@@ -1,6 +1,6 @@
 ---
 name: cli-anything-unity2020
-description: Use the CLI-Anything Unity Editor bridge to inspect and edit an open Unity project, verify compilation, render camera PNGs, or run Editor jobs.
+description: Use the Unity Legacy CLI bridge (cli-anything-unity2020) to inspect and edit an open Unity project, verify compilation, render camera PNGs, or run Editor jobs.
 ---
 
 # Unity Legacy CLI
