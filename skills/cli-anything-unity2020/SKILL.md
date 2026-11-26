@@ -3,7 +3,9 @@ name: cli-anything-unity2020
 description: Use the CLI-Anything Unity Editor bridge to inspect and edit an open Unity project, verify compilation, render camera PNGs, or run Editor jobs.
 ---
 
-# Unity Editor CLI
+# Unity Legacy CLI
+
+Unity Legacy CLI is the harness name. In this monorepo it installs and runs as `cli-anything-unity2020`; the [standalone release](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) ships the same bridge as `unity-legacy-cli`.
 
 Install the Python harness and run `cli-anything-unity2020 bridge-path` to locate its bridge package. In Unity Package Manager, choose **Add package from disk** and select that `package.json`. Wait for script compilation. Full clean-project validation covers Unity 2020.3.45f1 on Windows. The 2022.3.21f1 run verified compilation, basic reads and scene creation. Editing and rendering on 2022.3 remain experimental. Unity 2020.3 is the package's declared minimum.
 

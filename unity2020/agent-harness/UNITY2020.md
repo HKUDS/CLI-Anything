@@ -1,4 +1,4 @@
-# Unity Editor harness architecture
+# Unity Legacy CLI harness architecture
 
 The Python package provides one-shot Click commands and an interactive REPL. It resolves a Unity project from `--project` or the nearest ancestor with `ProjectSettings/ProjectVersion.txt`. Each request is published atomically in a unique directory under that project's `Library/UnityCli`. The Unity package dispatches supported requests on the Editor thread and atomically publishes the JSON reply. The Python client removes its request directory on success or timeout.
 

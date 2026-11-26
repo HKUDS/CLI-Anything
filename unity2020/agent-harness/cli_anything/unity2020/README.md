@@ -1,6 +1,17 @@
-# Unity Editor CLI
+# Unity Legacy CLI
 
 Control a running Unity Editor via a local, Editor-only Unity package. The bridge works on the Unity Editor thread and exchanges JSON requests through the project's `Library/UnityCli` directory. There is no port or service to configure.
+
+## Upstream harness and standalone release
+
+Unity Legacy CLI ships as two distributions of the same bridge and JSON protocol:
+
+| Distribution | Install | Command |
+| --- | --- | --- |
+| CLI-Anything monorepo harness (this directory) | `pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity2020/agent-harness` | `cli-anything-unity2020` |
+| [Standalone repository](https://github.com/key-zxy/unity-legacy-cli), release [v0.3.1](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) | `python -m pip install <wheel from the release>` | `unity-legacy-cli` |
+
+The monorepo keeps the canonical identity that CLI-Hub and the repository layout expect: the `unity2020` slug, the `cli-anything-unity2020` package and command name, and the `skills/cli-anything-unity2020/SKILL.md` skill. The standalone release installs from the wheel attached to its GitHub release, not from PyPI, and documents its own version matrix. Both distributions keep the Unity package ID `com.cli-anything.unity2020`, so a project that already has that bridge at the same version works with either command.
 
 ## Compatibility
 
@@ -30,6 +41,8 @@ cli-anything-unity2020 --project /path/to/UnityProject --json console read --typ
 ```
 
 From within a Unity project, omit `--project` to use the nearest project root. Place global options such as `--json` and `--timeout` before the command. The REPL opens when run without a command in an interactive terminal.
+
+To run the [standalone release](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) instead, install its wheel and replace `cli-anything-unity2020` with `unity-legacy-cli`; the bridge steps and command groups are identical.
 
 ## Supported operations
 

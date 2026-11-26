@@ -1,8 +1,8 @@
 {
   "name": "com.cli-anything.unity2020",
   "version": "0.3.1",
-  "displayName": "CLI-Anything Unity Editor Bridge",
-  "description": "Editor-only local transport for the CLI-Anything Unity harness.",
+  "displayName": "Unity Legacy CLI Editor Bridge",
+  "description": "Editor-only local bridge for Unity Legacy CLI.",
   "unity": "2020.3",
   "license": "Apache-2.0",
   "dependencies": {
