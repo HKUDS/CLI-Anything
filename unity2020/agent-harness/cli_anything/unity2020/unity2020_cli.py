@@ -72,7 +72,7 @@ def emit_result(ctx, result):
 
 
 @click.group(invoke_without_command=True)
-@click.version_option(package_name="cli-anything-unity2020")
+@click.version_option(package_name="unity-legacy-cli")
 @click.option("--project", type=click.Path(exists=True, file_okay=False, path_type=Path),
               help="Unity project directory. Defaults to the nearest project above the current directory.")
 @click.option("--json", "json_mode", is_flag=True, help="Return a compact JSON result with an ok field.")
@@ -116,7 +116,7 @@ def repl(ctx):
 
     from .utils.repl_skin import ReplSkin
 
-    skin = ReplSkin("unity2020", version=version("cli-anything-unity2020"))
+    skin = ReplSkin("unity2020", version=version("unity-legacy-cli"))
     skin.print_banner()
     session = skin.create_prompt_session()
     defaults = ["--timeout", str(timeout)]

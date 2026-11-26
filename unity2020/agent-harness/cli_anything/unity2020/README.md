@@ -4,14 +4,14 @@ Control a running Unity Editor via a local, Editor-only Unity package. The bridg
 
 ## Upstream harness and standalone release
 
-Unity Legacy CLI ships as two distributions of the same bridge and JSON protocol:
+Unity Legacy CLI ships as two distributions of the same bridge, the same JSON protocol and the same `unity-legacy-cli` command:
 
-| Distribution | Install | Command |
-| --- | --- | --- |
-| CLI-Anything monorepo harness (this directory) | `pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity2020/agent-harness` | `cli-anything-unity2020` |
-| [Standalone repository](https://github.com/key-zxy/unity-legacy-cli), release [v0.3.1](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) | `python -m pip install <wheel from the release>` | `unity-legacy-cli` |
+| Distribution | Install |
+| --- | --- |
+| CLI-Anything monorepo harness (this directory) | `pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity2020/agent-harness` |
+| [Standalone repository](https://github.com/key-zxy/unity-legacy-cli), release [v0.3.1](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) | `python -m pip install <wheel from the release>` |
 
-The monorepo keeps the canonical identity that CLI-Hub and the repository layout expect: the `unity2020` slug, the `cli-anything-unity2020` package and command name, and the `skills/cli-anything-unity2020/SKILL.md` skill. The standalone release installs from the wheel attached to its GitHub release, not from PyPI, and documents its own version matrix. Both distributions keep the Unity package ID `com.cli-anything.unity2020`, so a project that already has that bridge at the same version works with either command.
+The monorepo keeps the canonical layout that CLI-Hub and repository checks expect: the `unity2020` slug, the `skills/cli-anything-unity2020/SKILL.md` skill identity and the `cli_anything.unity2020` Python module. Both distributions declare the Python distribution name `unity-legacy-cli`, so install one source at a time; installing the other replaces it. The standalone release installs from the wheel attached to its GitHub release, not from PyPI, and documents its own version matrix. Both keep the Unity package ID `com.cli-anything.unity2020`, so a project that already has that bridge at the same version works with either install source.
 
 ## Compatibility
 
@@ -29,20 +29,20 @@ Requires Python 3.10+ and an open Unity project. From a checkout of CLI-Anything
 
 ```console
 python -m pip install ./unity2020/agent-harness
-cli-anything-unity2020 bridge-path
+unity-legacy-cli bridge-path
 ```
 
 Open **Window → Package Manager** in Unity, choose **Add package from disk**, and select the printed `package.json`. Keep the Python installation at that path while the Unity project uses it. Unity resolves the official Newtonsoft JSON, uGUI and Test Framework packages declared by the bridge. The Editor bridge stays out of player builds.
 
 ```console
-cli-anything-unity2020 --project /path/to/UnityProject --json status
-cli-anything-unity2020 --project /path/to/UnityProject --json scene hierarchy --limit 50
-cli-anything-unity2020 --project /path/to/UnityProject --json console read --type error
+unity-legacy-cli --project /path/to/UnityProject --json status
+unity-legacy-cli --project /path/to/UnityProject --json scene hierarchy --limit 50
+unity-legacy-cli --project /path/to/UnityProject --json console read --type error
 ```
 
 From within a Unity project, omit `--project` to use the nearest project root. Place global options such as `--json` and `--timeout` before the command. The REPL opens when run without a command in an interactive terminal.
 
-To run the [standalone release](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) instead, install its wheel and replace `cli-anything-unity2020` with `unity-legacy-cli`; the bridge steps and command groups are identical.
+The [standalone release](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) installs the same `unity-legacy-cli` command from its wheel; the bridge steps and command groups are identical, so install only one source.
 
 ## Supported operations
 

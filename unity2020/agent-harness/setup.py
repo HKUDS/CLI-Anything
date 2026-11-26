@@ -1,9 +1,9 @@
 from setuptools import find_namespace_packages, setup
 
 setup(
-    name="cli-anything-unity2020",
+    name="unity-legacy-cli",
     version="0.3.1",
-    description="Local command-line control of the Unity Editor",
+    description="Unity Legacy CLI: local command-line control of the Unity Editor",
     license="Apache-2.0",
     packages=find_namespace_packages(include=["cli_anything.*"], exclude=["*.tests", "*.bridge", "*.bridge.*", "*.skills"]),
     package_data={"cli_anything.unity2020": [
@@ -12,5 +12,5 @@ setup(
     ]},
     python_requires=">=3.10",
     install_requires=["click>=8", "prompt-toolkit>=3,<4"],
-    entry_points={"console_scripts": ["cli-anything-unity2020=cli_anything.unity2020.unity2020_cli:cli"]},
+    entry_points={"console_scripts": ["unity-legacy-cli=cli_anything.unity2020.unity2020_cli:cli"]},
 )

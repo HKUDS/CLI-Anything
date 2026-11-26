@@ -11,7 +11,7 @@ import pytest
 
 
 def _resolve_cli():
-    name = "cli-anything-unity2020"
+    name = "unity-legacy-cli"
     executable = shutil.which(name)
     if executable:
         print(f"Using installed command: {executable}")

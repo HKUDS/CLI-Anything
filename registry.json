@@ -1522,8 +1522,11 @@
       "requires": "Licensed Unity Editor with the included bridge, Python 3.10+",
       "homepage": "https://unity.com/products/unity-engine",
       "source_url": null,
+      "install_strategy": "command",
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity2020/agent-harness",
-      "entry_point": "cli-anything-unity2020",
+      "uninstall_cmd": "pip uninstall -y unity-legacy-cli",
+      "update_cmd": "pip install --upgrade --force-reinstall git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity2020/agent-harness",
+      "entry_point": "unity-legacy-cli",
       "skill_md": "skills/cli-anything-unity2020/SKILL.md",
       "category": "gamedev",
       "contributors": [
