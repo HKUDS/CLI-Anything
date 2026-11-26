@@ -24,8 +24,9 @@ cli-hub list -c image
 # Search by name, description, or category
 cli-hub search "3d modeling"
 
-# Show details for a CLI
+# Show details for a CLI (text or JSON)
 cli-hub info gimp
+cli-hub info gimp --json
 
 # Install a CLI harness
 cli-hub install gimp
@@ -97,11 +98,12 @@ cli-hub is designed to be agent-friendly. AI coding agents can:
 
 ## JSON output
 
-All listing commands support `--json` for machine-readable output:
+Commands support `--json` for machine-readable output:
 
 ```bash
 cli-hub list --json
 cli-hub search blender --json
+cli-hub info gimp --json
 ```
 
 ## Analytics
