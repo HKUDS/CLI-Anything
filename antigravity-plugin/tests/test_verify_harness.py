@@ -2184,3 +2184,163 @@ cli-anything-pyreqapp = "cli_anything.pyreqapp.pyreqapp_cli:main"
     assert verify_harness.verify_harness(
         harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
     )["ok"] is True
+
+
+def test_verify_requires_discovery_to_select_runtime_subpackages(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 1. Narrowed pyproject.toml include = ["cli_anything.rtapp"] omits core/utils -> must fail.
+    harness = _create_valid_harness(tmp_path / "narrow_inc", "rtapp")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-rtapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-rtapp = "cli_anything.rtapp.rtapp_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.rtapp"]
+
+[tool.setuptools.package-data]
+"cli_anything.rtapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_narrow = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_narrow["ok"] is False
+    ns_check = {c["id"]: c for c in r_narrow["checks"]}["namespace-packages"]
+    assert ns_check["status"] == "fail"
+    assert "cli_anything.rtapp.core" in ns_check["detail"]
+    assert "cli_anything.rtapp.utils" in ns_check["detail"]
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_narrow_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_narrow_310["ok"] is False
+        assert {c["id"]: c for c in r_narrow_310["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 2. Explicit packages = ["cli_anything.rtapp"] without core/utils -> must fail.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-rtapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-rtapp = "cli_anything.rtapp.rtapp_cli:main"
+
+[tool.setuptools]
+packages = ["cli_anything.rtapp"]
+
+[tool.setuptools.package-data]
+"cli_anything.rtapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_explicit_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_explicit_missing["ok"] is False
+    assert {c["id"]: c for c in r_explicit_missing["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 3. setup.py excluding core or utils -> must fail; excluding only tests -> passes.
+    (harness / "pyproject.toml").unlink()
+    for excl_pat in ("cli_anything.*.core*", "cli_anything.*.utils*"):
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-rtapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"], exclude=["{excl_pat}"]),
+    package_data={{"cli_anything.rtapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-rtapp=cli_anything.rtapp.rtapp_cli:main"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        r_excl = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_excl["ok"] is False, excl_pat
+        assert {c["id"]: c for c in r_excl["checks"]}["namespace-packages"]["status"] == "fail"
+
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-rtapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"], exclude=["cli_anything.*.tests*"]),
+    package_data={"cli_anything.rtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-rtapp=cli_anything.rtapp.rtapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_inspects_declared_cli_target_instead_of_aggregating_unrelated_cli_files(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "legacy_cli_case", "declapp")
+    pkg = harness / "cli_anything" / "declapp"
+    active_cli = pkg / "declapp_cli.py"
+    orig_cli = active_cli.read_text(encoding="utf-8")
+
+    # Save valid CLI as an unused legacy_cli.py and remove --json ONLY from the declared active CLI.
+    (pkg / "legacy_cli.py").write_text(orig_cli, encoding="utf-8")
+    active_cli.write_text(
+        orig_cli.replace('@click.option("--json", "use_json", is_flag=True)\n', "").replace(
+            "use_json, ", ""
+        ),
+        encoding="utf-8",
+    )
+    r_masked = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_masked["ok"] is False
+    assert {c["id"]: c for c in r_masked["checks"]}["json-flag"]["status"] == "fail"
+
+    # Restoring --json on the declared active CLI passes even if unused legacy_cli.py lacks --json.
+    active_cli.write_text(orig_cli, encoding="utf-8")
+    (pkg / "legacy_cli.py").write_text("def old_helper():\n    return None\n", encoding="utf-8")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # Pointing console_scripts to a separate module without --json also fails even when declapp_cli.py has it.
+    (pkg / "entry_mod.py").write_text(
+        "import click\n\n@click.group(invoke_without_command=True)\ndef main():\n    pass\n",
+        encoding="utf-8",
+    )
+    (harness / "setup.py").write_text(
+        (harness / "setup.py").read_text(encoding="utf-8").replace(
+            "cli_anything.declapp.declapp_cli:main",
+            "cli_anything.declapp.entry_mod:main",
+        ),
+        encoding="utf-8",
+    )
+    r_custom = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_custom["ok"] is False
+    assert {c["id"]: c for c in r_custom["checks"]}["json-flag"]["status"] == "fail"

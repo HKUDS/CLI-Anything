@@ -466,6 +466,37 @@ def _apply_find_package_dir(
     return out
 
 
+def _collect_runtime_subpackages(pkg_dir: Path, target_pkg: str) -> list[str]:
+    """Collect runtime subpackage dotted names under pkg_dir (excluding tests/ and skills/)."""
+    skip_top = {"tests", "skills"}
+    skip_dirs = {"__pycache__", ".pytest_cache", ".venv", "venv", "build", "dist", ".git"}
+    found: list[str] = []
+
+    def _walk(cur: Path, prefix: str, depth: int) -> None:
+        try:
+            entries = sorted(cur.iterdir())
+        except OSError:
+            return
+        for child in entries:
+            if not child.is_dir():
+                continue
+            name = child.name
+            if name.startswith(".") or name in skip_dirs or name.endswith(".egg-info"):
+                continue
+            if depth == 0 and name in skip_top:
+                continue
+            if not name.isidentifier() or keyword.iskeyword(name):
+                continue
+            sub_pkg = f"{prefix}.{name}"
+            has_py = any(p.is_file() for p in child.glob("*.py"))
+            if (depth == 0 and name in {"core", "utils"}) or has_py:
+                found.append(sub_pkg)
+            _walk(child, sub_pkg, depth + 1)
+
+    _walk(pkg_dir, target_pkg, 0)
+    return found
+
+
 def _validate_console_script_target(
     target_spec: str,
     harness: Path,
@@ -474,24 +505,24 @@ def _validate_console_script_target(
     parent_selected: bool = False,
     pkg_spec: dict[str, Any] | None = None,
     base_package_dir: dict[str, str] | None = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, Path | None]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
     spec = target_spec.strip()
     m = re.match(r"^(?P<module>[^:\s\[]+)\s*:\s*(?P<attr>[^:\s\[]+)(?:\s*\[[^\]]*\])?\s*$", spec)
     if not m:
-        return False, "expected 'module.path:callable'"
+        return False, "expected 'module.path:callable'", None
 
     module_path = m.group("module")
     attr_path = m.group("attr")
     mod_parts = module_path.split(".")
     attr_parts = attr_path.split(".")
     if not all(p.isidentifier() and not keyword.iskeyword(p) for p in mod_parts):
-        return False, f"invalid module path '{module_path}'"
+        return False, f"invalid module path '{module_path}'", None
     if not all(p.isidentifier() and not keyword.iskeyword(p) for p in attr_parts):
-        return False, f"invalid callable path '{attr_path}'"
+        return False, f"invalid callable path '{attr_path}'", None
 
     if target_pkg and module_path != target_pkg and not module_path.startswith(f"{target_pkg}."):
-        return False, f"module '{module_path}' is outside harness package '{target_pkg}'"
+        return False, f"module '{module_path}' is outside harness package '{target_pkg}'", None
 
     parent_pkg = ".".join(mod_parts[:-1])
     candidates = [p for p in (target_pkg, parent_pkg, module_path) if p]
@@ -516,7 +547,7 @@ def _validate_console_script_target(
         owner_pkg = parent_pkg
     else:
         src_hint = parent_dir_rel or "."
-        return False, f"module '{module_path}' not found in effective package source directory '{src_hint}'"
+        return False, f"module '{module_path}' not found in effective package source directory '{src_hint}'", None
 
     if target_pkg and parent_selected and owner_pkg != target_pkg and pkg_spec is not None:
         if pkg_spec["kind"] == "find":
@@ -528,15 +559,15 @@ def _validate_console_script_target(
                 wheres=pkg_spec["wheres"],
                 require_init=False,
             ):
-                return False, f"package '{owner_pkg}' is not selected by packaging discovery"
+                return False, f"package '{owner_pkg}' is not selected by packaging discovery", None
         elif pkg_spec["kind"] == "explicit":
             if owner_pkg not in pkg_spec["packages"]:
-                return False, f"package '{owner_pkg}' is not listed in packaging packages"
+                return False, f"package '{owner_pkg}' is not listed in packaging packages", None
 
     ok_sym, sym_err = _module_defines_symbol(mod_file, attr_parts[0])
     if not ok_sym:
-        return False, sym_err or f"callable '{attr_parts[0]}' not found in '{module_path}'"
-    return True, ""
+        return False, sym_err or f"callable '{attr_parts[0]}' not found in '{module_path}'", None
+    return True, "", mod_file
 
 
 def _package_exists_under(root: Path, target_pkg: str, *, require_init: bool = True) -> bool:
@@ -1653,7 +1684,7 @@ def _check_packaging(
     harness: Path,
     software_slug: str,
     module: Path | None,
-) -> tuple[list[CheckResult], Path | None]:
+) -> tuple[list[CheckResult], Path | None, list[Path]]:
     checks: list[CheckResult] = []
     setup_py = harness / "setup.py"
     pyproject = harness / "pyproject.toml"
@@ -1661,7 +1692,7 @@ def _check_packaging(
     has_pyproject = pyproject.is_file()
     pkg_file = setup_py if has_setup else (pyproject if has_pyproject else None)
     if pkg_file is None:
-        return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")], module
+        return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")], module, []
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
@@ -1690,59 +1721,6 @@ def _check_packaging(
     )
 
     uses_setup_py = has_setup and (not has_pyproject or pyproj_info["backend_kind"] == "setuptools")
-
-    # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py.
-    # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py at all.
-    if pyproj_info["namespaces_disabled"]:
-        checks.append(
-            CheckResult(
-                "namespace-packages",
-                "packaging",
-                FAIL,
-                "pyproject.toml sets [tool.setuptools.packages.find] namespaces = false (overrides setup.py and breaks PEP 420 discovery)",
-            )
-        )
-    elif pyproj_info["declares_packages"]:
-        if pyproj_info["namespace_ok"]:
-            checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured in pyproject.toml"))
-        else:
-            checks.append(
-                CheckResult(
-                    "namespace-packages",
-                    "packaging",
-                    FAIL,
-                    f"pyproject.toml package discovery/packages does not select {target_pkg_label}",
-                )
-            )
-    elif has_pyproject and pyproj_info["backend_kind"] != "setuptools":
-        checks.append(
-            CheckResult(
-                "namespace-packages",
-                "packaging",
-                FAIL,
-                f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring {target_pkg_label} namespace packages",
-            )
-        )
-    elif uses_setup_py and setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
-        checks.append(
-            CheckResult(
-                "namespace-packages",
-                "packaging",
-                FAIL,
-                "setup.py uses find_packages() instead of find_namespace_packages() (PEP 420 cli_anything/ has no __init__.py)",
-            )
-        )
-    elif uses_setup_py and setup_info["namespace_ok"]:
-        checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured"))
-    else:
-        checks.append(
-            CheckResult(
-                "namespace-packages",
-                "packaging",
-                FAIL,
-                f"{pkg_file.name} does not declare namespace packaging for {target_pkg_label}",
-            )
-        )
 
     # Determine which packages are selected by discovery and their effective package_dir mapping.
     if pyproj_info["namespaces_disabled"]:
@@ -1778,6 +1756,104 @@ def _check_packaging(
         [p for p in (target_pkg, f"{target_pkg}.skills" if target_pkg else None) if p],
     )
 
+    effective_module = module
+    if target_pkg and parent_selected:
+        raw_target_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
+        cand_module = (harness / raw_target_dir) if raw_target_dir else module
+        if cand_module is not None and cand_module.is_dir():
+            effective_module = cand_module
+
+    missing_runtime_subpkgs: list[str] = []
+    if parent_selected and target_pkg and effective_module is not None and eff_pkg_spec is not None:
+        for sub_pkg in _collect_runtime_subpackages(effective_module, target_pkg):
+            if eff_pkg_spec["kind"] == "find":
+                sub_selected = _find_selects_package(
+                    sub_pkg,
+                    eff_pkg_spec["includes"],
+                    eff_pkg_spec["excludes"],
+                    harness=harness,
+                    wheres=eff_pkg_spec["wheres"],
+                    require_init=False,
+                )
+            elif eff_pkg_spec["kind"] == "explicit":
+                sub_selected = sub_pkg in eff_pkg_spec["packages"]
+            else:
+                sub_selected = True
+            if not sub_selected:
+                missing_runtime_subpkgs.append(sub_pkg)
+
+    # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py.
+    # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py at all.
+    if pyproj_info["namespaces_disabled"]:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "pyproject.toml sets [tool.setuptools.packages.find] namespaces = false (overrides setup.py and breaks PEP 420 discovery)",
+            )
+        )
+    elif pyproj_info["declares_packages"]:
+        if pyproj_info["namespace_ok"] and not missing_runtime_subpkgs:
+            checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured in pyproject.toml"))
+        elif pyproj_info["namespace_ok"] and missing_runtime_subpkgs:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"pyproject.toml package discovery/packages does not select required runtime subpackage(s): {', '.join(missing_runtime_subpkgs)}",
+                )
+            )
+        else:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"pyproject.toml package discovery/packages does not select {target_pkg_label}",
+                )
+            )
+    elif has_pyproject and pyproj_info["backend_kind"] != "setuptools":
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring {target_pkg_label} namespace packages",
+            )
+        )
+    elif uses_setup_py and setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "setup.py uses find_packages() instead of find_namespace_packages() (PEP 420 cli_anything/ has no __init__.py)",
+            )
+        )
+    elif uses_setup_py and setup_info["namespace_ok"]:
+        if not missing_runtime_subpkgs:
+            checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured"))
+        else:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"setup.py package discovery/packages does not select required runtime subpackage(s): {', '.join(missing_runtime_subpkgs)}",
+                )
+            )
+    else:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"{pkg_file.name} does not declare namespace packaging for {target_pkg_label}",
+            )
+        )
+
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
@@ -1792,10 +1868,12 @@ def _check_packaging(
         for name, target in declared_scripts
         if name in expected_prefixes or re.match(r"^cli-anything-[a-z0-9_-]+$", name)
     ]
+    primary_cli_files: list[Path] = []
+    all_resolved_cli_files: list[Path] = []
     if matching_scripts:
         invalid_targets: list[str] = []
         for cmd_name, target_spec in matching_scripts:
-            ok_target, reason = _validate_console_script_target(
+            ok_target, reason, mod_file = _validate_console_script_target(
                 target_spec,
                 harness,
                 target_pkg,
@@ -1805,6 +1883,11 @@ def _check_packaging(
             )
             if not ok_target:
                 invalid_targets.append(f"{cmd_name}={target_spec} ({reason})")
+            elif mod_file is not None:
+                if mod_file not in all_resolved_cli_files:
+                    all_resolved_cli_files.append(mod_file)
+                if cmd_name in expected_prefixes and mod_file not in primary_cli_files:
+                    primary_cli_files.append(mod_file)
         if not invalid_targets:
             first_name, first_target = matching_scripts[0]
             checks.append(
@@ -1850,6 +1933,7 @@ def _check_packaging(
                 detail,
             )
         )
+    declared_cli_files = primary_cli_files or all_resolved_cli_files
 
     skill_data_ok = False
     if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
@@ -1984,36 +2068,31 @@ def _check_packaging(
             CheckResult("python-requires", "packaging", WARN, "python_requires not declared", severity="warn")
         )
 
-    effective_module = module
-    if target_pkg and parent_selected:
-        raw_target_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
-        cand_module = (harness / raw_target_dir) if raw_target_dir else module
-        if cand_module is not None and cand_module.is_dir():
-            effective_module = cand_module
-
-    return checks, effective_module
+    return checks, effective_module, declared_cli_files
 
 
 def _check_cli_surface(
     module: Path,
     canonical_repl_skin: Path | None,
+    *,
+    cli_entry_files: list[Path] | None = None,
 ) -> list[CheckResult]:
     checks: list[CheckResult] = []
-    cli_files = sorted(module.glob("*_cli.py"))
-    cli_text = "\n".join(_read_text(p) for p in cli_files)
+    cli_files = list(cli_entry_files) if cli_entry_files else sorted(module.glob("*_cli.py"))
 
     if cli_files:
-        if "click" in cli_text and ("@click.group" in cli_text or "click.group" in cli_text):
+        cli_texts = [_read_text(p) for p in cli_files]
+        if all("click" in t and ("@click.group" in t or "click.group" in t) for t in cli_texts):
             checks.append(CheckResult("click-groups", "cli", PASS, "uses Click command groups"))
         else:
             checks.append(CheckResult("click-groups", "cli", FAIL, "CLI does not declare a Click command group"))
 
-        if '"--json"' in cli_text or "'--json'" in cli_text:
+        if all('"--json"' in t or "'--json'" in t for t in cli_texts):
             checks.append(CheckResult("json-flag", "cli", PASS, "--json output flag declared"))
         else:
             checks.append(CheckResult("json-flag", "cli", FAIL, "missing --json flag in CLI entry point"))
 
-        if "invoke_without_command=True" in cli_text:
+        if all("invoke_without_command=True" in t for t in cli_texts):
             checks.append(CheckResult("repl-default", "cli", PASS, "default REPL mode configured (invoke_without_command=True)"))
         else:
             checks.append(
@@ -2027,11 +2106,12 @@ def _check_cli_surface(
             )
 
         has_session = (module / "core" / "session.py").is_file()
-        has_project_flag = '"--project"' in cli_text or "'--project'" in cli_text
-        if has_session and has_project_flag:
-            has_dry_run = '"--dry-run"' in cli_text or "'--dry-run'" in cli_text
-            has_autosave = "result_callback" in cli_text or "call_on_close" in cli_text
-            if has_dry_run and has_autosave:
+        session_clis = [t for t in cli_texts if '"--project"' in t or "'--project'" in t]
+        if has_session and session_clis:
+            if all(
+                ('"--dry-run"' in t or "'--dry-run'" in t) and ("result_callback" in t or "call_on_close" in t)
+                for t in session_clis
+            ):
                 checks.append(CheckResult("auto-save-dry-run", "cli", PASS, "auto-save and --dry-run implemented"))
             else:
                 checks.append(
@@ -2313,7 +2393,9 @@ def verify_harness(
     repl_skin_ref = _find_canonical_repl_skin(canonical_repl_skin, repo_root)
 
     checks, module = _check_layout(harness)
-    pkg_checks, effective_module = _check_packaging(harness, _slugify(software_dir_name), module)
+    pkg_checks, effective_module, declared_cli_files = _check_packaging(
+        harness, _slugify(software_dir_name), module
+    )
     checks.extend(pkg_checks)
     active_module = effective_module or module
     if active_module is not None:
@@ -2348,7 +2430,13 @@ def verify_harness(
                         "effective package source directory missing <software>_cli.py entry file",
                     )
                 )
-        checks.extend(_check_cli_surface(active_module, repl_skin_ref))
+        checks.extend(
+            _check_cli_surface(
+                active_module,
+                repl_skin_ref,
+                cli_entry_files=declared_cli_files,
+            )
+        )
         checks.extend(_check_docs_and_tests(harness, software_dir_name, active_module, repo_root))
     checks.extend(_check_code_quality(harness))
 
