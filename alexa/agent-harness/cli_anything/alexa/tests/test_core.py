@@ -594,3 +594,46 @@ def test_empty_cache_is_valid(home, monkeypatch):
 
 def test_missing_cache_is_none(home):
     assert backend.cached_devices() is None
+
+
+# ── seventh Codex review round (commit f493d03) ───────────────────────
+
+def test_actions_act_as_device_owner(monkeypatch):
+    import asyncio
+    _FakeAPI.calls = []
+    monkeypatch.setattr(backend, "_alexapy", lambda: _FakeAlexapy)
+    shared = {"serial": "S9", "type": "T", "owner_customer_id": "OWNER2"}
+    asyncio.run(backend._execute(object(), {}, act.speak(shared, "hi")))
+    assert _FakeAPI.calls[0][3]["customer_id"] == "OWNER2"
+    _FakeAPI.calls = []
+    asyncio.run(backend._execute(object(), {}, act.speak({"serial": "S1", "type": "T"}, "hi")))
+    assert _FakeAPI.calls[0][3]["customer_id"] is None  # alexapy falls back to the logged-in user
+
+
+def test_session_closed_when_startup_raises(home, monkeypatch):
+    import asyncio
+    closed = []
+
+    class FakeLogin:
+        customer_id = "C"
+
+        def __init__(self, **kw):
+            pass
+
+        async def load_cookie(self):
+            return {}
+
+        async def login(self, cookies=None):
+            raise ConnectionError("network down")
+
+        async def close(self):
+            closed.append(True)
+
+    class FakeAlexapy:
+        AlexaLogin = FakeLogin
+
+    monkeypatch.setattr(backend, "_alexapy", lambda: FakeAlexapy)
+    backend.save_account({"email": "a@b.c", "domain": "amazon.com", "oauth": {"refresh_token": "x"}})
+    with pytest.raises(ConnectionError):
+        asyncio.run(backend._open_session())
+    assert closed == [True]

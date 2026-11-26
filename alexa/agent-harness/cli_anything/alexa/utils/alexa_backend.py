@@ -258,17 +258,20 @@ async def _open_session():
         oauth=account["oauth"],
         uuid=account.get("uuid"),
     )
-    await login.login(cookies=await login.load_cookie())
-    if not await login.test_loggedin(rebuild_session=False):
-        await login.close()
-        raise NotLoggedIn("Amazon session expired or was revoked. Run: cli-anything-alexa auth login")
-    # Tokens may rotate; persist the latest ones.
-    account["oauth"] = _oauth_from(login)
-    account["customer_id"] = login.customer_id or account.get("customer_id")
-    if getattr(login, "reported_account_domain", None):
-        account["reported_domain"] = login.reported_account_domain
-    save_account(account)
-    await login.save_cookiefile()
+    try:
+        await login.login(cookies=await login.load_cookie())
+        if not await login.test_loggedin(rebuild_session=False):
+            raise NotLoggedIn("Amazon session expired or was revoked. Run: cli-anything-alexa auth login")
+        # Tokens may rotate; persist the latest ones.
+        account["oauth"] = _oauth_from(login)
+        account["customer_id"] = login.customer_id or account.get("customer_id")
+        if getattr(login, "reported_account_domain", None):
+            account["reported_domain"] = login.reported_account_domain
+        save_account(account)
+        await login.save_cookiefile()
+    except BaseException:
+        await login.close()  # never leak the aiohttp session on a failed start
+        raise
     return login, account
 
 
@@ -405,26 +408,30 @@ async def _execute(login, account, action: dict[str, Any]) -> dict[str, Any]:
         first = action["devices"][0]
         api = alexapy.AlexaAPI(_DeviceAdapter(first, locale), login)
         await api.send_announcement(action["text"], title=action["title"],
+                                    customer_id=first.get("owner_customer_id") or None,
                                     targets=[d["serial"] for d in action["devices"]], queue_delay=0)
         return {"sent": True}
 
     api = alexapy.AlexaAPI(_DeviceAdapter(action["device"], locale), login)
+    # In shared households a device may belong to another member; act as its owner.
+    cid = action["device"].get("owner_customer_id") or None
     if op == "speak":
-        await api.send_tts(action["text"], queue_delay=0)
+        await api.send_tts(action["text"], customer_id=cid, queue_delay=0)
     elif op == "command":
-        await api.run_custom(action["text"], queue_delay=0)
+        await api.run_custom(action["text"], customer_id=cid, queue_delay=0)
     elif op == "routine":
-        await api.run_routine(action["utterance"], queue_delay=0)
+        await api.run_routine(action["utterance"], customer_id=cid, queue_delay=0)
     elif op == "sequence":
-        await api.send_sequence(action["sequence"], queue_delay=0)
+        await api.send_sequence(action["sequence"], customer_id=cid, queue_delay=0)
     elif op == "music":
-        await api.play_music(action["provider"], action["query"], timer=action.get("timer"), queue_delay=0)
+        await api.play_music(action["provider"], action["query"], customer_id=cid,
+                             timer=action.get("timer"), queue_delay=0)
     elif op == "volume":
-        await api.set_volume(action["level"] / 100.0, queue_delay=0)
+        await api.set_volume(action["level"] / 100.0, customer_id=cid, queue_delay=0)
     elif op == "media":
         mop = action["media_op"]
         if mop == "stop":
-            await api.stop(queue_delay=0)
+            await api.stop(customer_id=cid, queue_delay=0)
         else:
             await getattr(api, mop)()
     else:
