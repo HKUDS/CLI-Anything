@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import argparse
 import ast
+import fnmatch
 import json
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 PASS = "pass"
 WARN = "warn"
@@ -269,7 +270,69 @@ def _parse_ini_console_scripts(ini_text: str) -> list[str]:
     return scripts
 
 
-def _inspect_setup_py(text: str) -> dict[str, Any]:
+def _find_selects_package(
+    target_pkg: str | None,
+    includes: list[str] | None,
+    excludes: list[str] | None,
+) -> bool:
+    """Mirror setuptools PEP420PackageFinder include/exclude fnmatch semantics."""
+    pkg = target_pkg or "cli_anything._harness"
+    included = True if includes is None else any(
+        fnmatch.fnmatchcase(pkg, pat) for pat in includes
+    )
+    if not included:
+        return False
+    if excludes is not None and any(fnmatch.fnmatchcase(pkg, pat) for pat in excludes):
+        return False
+    return True
+
+
+def _explicit_packages_cover(target_pkg: str | None, packages: list[str]) -> bool:
+    if target_pkg:
+        return target_pkg in packages
+    return any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", p) for p in packages)
+
+
+def _hatch_packages_cover(target_pkg: str | None, packages: list[str]) -> bool:
+    mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
+    for raw in packages:
+        norm = raw.strip().strip("/").replace("\\", "/")
+        if norm == "cli_anything" or norm.endswith("/cli_anything"):
+            return True
+        if mod and (norm == f"cli_anything/{mod}" or norm.endswith(f"/cli_anything/{mod}")):
+            return True
+        if not mod and ("cli_anything/" in norm):
+            return True
+    return False
+
+
+def _poetry_packages_cover(target_pkg: str | None, includes: list[str]) -> bool:
+    mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
+    for raw in includes:
+        norm = raw.strip().strip("/").replace("\\", "/")
+        if norm == "cli_anything":
+            return True
+        if mod and norm in {f"cli_anything/{mod}", f"cli_anything.{mod}"}:
+            return True
+        if not mod and (norm.startswith("cli_anything/") or norm.startswith("cli_anything.")):
+            return True
+    return False
+
+
+def _classify_build_backend(build_backend: str | None) -> str:
+    if not build_backend:
+        return "setuptools"  # PEP 517 default when [build-system].build-backend is omitted
+    norm = build_backend.strip().lower()
+    if norm == "setuptools" or norm.startswith("setuptools."):
+        return "setuptools"
+    if norm == "hatchling" or norm.startswith("hatchling."):
+        return "hatch"
+    if norm == "poetry" or norm.startswith("poetry."):
+        return "poetry"
+    return "other"
+
+
+def _inspect_setup_py(text: str, target_pkg: str | None = None) -> dict[str, Any]:
     """Inspect setup.py via AST for PEP 420 namespace packaging and console_scripts."""
     info: dict[str, Any] = {
         "namespace_ok": False,
@@ -303,17 +366,31 @@ def _inspect_setup_py(text: str) -> dict[str, Any]:
             fname = _call_func_name(node.func)
             if fname == "find_namespace_packages":
                 inc_kw = next((kw.value for kw in node.keywords if kw.arg == "include"), None)
-                if inc_kw is None:
-                    info["namespace_ok"] = True
-                else:
+                exc_kw = next((kw.value for kw in node.keywords if kw.arg == "exclude"), None)
+                if exc_kw is None and len(node.args) >= 2:
+                    exc_kw = node.args[1]
+                if inc_kw is None and len(node.args) >= 3:
+                    inc_kw = node.args[2]
+
+                includes: list[str] | None = None
+                if inc_kw is not None:
                     inc_vals = _const_str_list(_resolve(inc_kw))
-                    if inc_vals is None or any(_matches_namespace_include(v) for v in inc_vals):
-                        info["namespace_ok"] = True
+                    if inc_vals is not None:
+                        includes = inc_vals
+
+                excludes: list[str] | None = None
+                if exc_kw is not None:
+                    exc_vals = _const_str_list(_resolve(exc_kw))
+                    if exc_vals is not None:
+                        excludes = exc_vals
+
+                if _find_selects_package(target_pkg, includes, excludes):
+                    info["namespace_ok"] = True
             elif fname == "find_packages":
                 info["uses_regular_find_packages"] = True
         else:
             explicit = _const_str_list(node)
-            if explicit and any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", pkg) for pkg in explicit):
+            if explicit and _explicit_packages_cover(target_pkg, explicit):
                 info["namespace_ok"] = True
 
     def _extract_entry_points(expr: ast.AST) -> None:
@@ -340,11 +417,6 @@ def _inspect_setup_py(text: str) -> dict[str, Any]:
     return info
 
 
-def _matches_namespace_include(pattern: str) -> bool:
-    """Return True if a setuptools find include glob covers cli_anything.* subpackages."""
-    return pattern == "*" or pattern == "cli_anything*" or pattern.startswith("cli_anything.")
-
-
 def _strip_toml_comment(line: str) -> str:
     """Remove an unquoted TOML `# ...` comment from a line."""
     in_quote: str | None = None
@@ -366,8 +438,8 @@ def _strip_toml_comment(line: str) -> str:
     return line
 
 
-def _bracket_balance(line: str) -> int:
-    """Return net square-bracket depth change outside quoted TOML strings."""
+def _delimiter_balance(line: str) -> int:
+    """Return net square/curly bracket depth change outside quoted TOML strings."""
     in_quote: str | None = None
     escaped = False
     delta = 0
@@ -384,16 +456,97 @@ def _bracket_balance(line: str) -> int:
             elif in_quote == ch:
                 in_quote = None
         elif in_quote is None:
-            if ch == "[":
+            if ch in {"[", "{"}:
                 delta += 1
-            elif ch == "]":
+            elif ch in {"]", "}"}:
                 delta -= 1
     return delta
 
 
-def _inspect_pyproject_toml_fallback(text: str) -> dict[str, Any]:
+def _parse_inline_table_items(rhs: str) -> list[tuple[str, str]]:
+    """Parse top-level `key = raw_value` pairs from a TOML inline table `{...}`."""
+    s = rhs.strip()
+    if not (s.startswith("{") and s.endswith("}")):
+        return []
+    inner = s[1:-1]
+    entries: list[str] = []
+    buf: list[str] = []
+    in_quote: str | None = None
+    escaped = False
+    brace_depth = 0
+    bracket_depth = 0
+    for ch in inner:
+        if escaped:
+            buf.append(ch)
+            escaped = False
+            continue
+        if in_quote == '"' and ch == "\\":
+            buf.append(ch)
+            escaped = True
+            continue
+        if ch in {'"', "'"}:
+            if in_quote is None:
+                in_quote = ch
+            elif in_quote == ch:
+                in_quote = None
+            buf.append(ch)
+            continue
+        if in_quote is None:
+            if ch == "{":
+                brace_depth += 1
+            elif ch == "}":
+                brace_depth -= 1
+            elif ch == "[":
+                bracket_depth += 1
+            elif ch == "]":
+                bracket_depth -= 1
+            elif ch == "," and brace_depth == 0 and bracket_depth == 0:
+                entries.append("".join(buf).strip())
+                buf = []
+                continue
+        buf.append(ch)
+    tail = "".join(buf).strip()
+    if tail:
+        entries.append(tail)
+
+    items: list[tuple[str, str]] = []
+    for entry in entries:
+        # Split on the first unquoted '='
+        eq_idx = -1
+        q: str | None = None
+        esc = False
+        for i, ch in enumerate(entry):
+            if esc:
+                esc = False
+                continue
+            if q == '"' and ch == "\\":
+                esc = True
+                continue
+            if ch in {'"', "'"}:
+                if q is None:
+                    q = ch
+                elif q == ch:
+                    q = None
+            elif ch == "=" and q is None:
+                eq_idx = i
+                break
+        if eq_idx != -1:
+            key = entry[:eq_idx].strip().strip('"').strip("'")
+            val = entry[eq_idx + 1 :].strip()
+            if key:
+                items.append((key, val))
+    return items
+
+
+def _extract_toml_str_list(rhs: str) -> list[str]:
+    return re.findall(r"""["']([^"']+)["']""", rhs)
+
+
+def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -> dict[str, Any]:
     """Python 3.10 stdlib fallback parser for pyproject.toml without tomllib."""
     info: dict[str, Any] = {
+        "build_backend": None,
+        "backend_kind": "setuptools",
         "namespace_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
@@ -411,7 +564,7 @@ def _inspect_pyproject_toml_fallback(text: str) -> dict[str, Any]:
             continue
         if depth > 0:
             pending = f"{pending} {cleaned}"
-            depth += _bracket_balance(cleaned)
+            depth += _delimiter_balance(cleaned)
             if depth <= 0:
                 logical_lines.append(pending)
                 pending = ""
@@ -419,7 +572,7 @@ def _inspect_pyproject_toml_fallback(text: str) -> dict[str, Any]:
         elif cleaned.startswith("[") and cleaned.endswith("]") and "=" not in cleaned:
             logical_lines.append(cleaned)
         else:
-            line_depth = _bracket_balance(cleaned)
+            line_depth = _delimiter_balance(cleaned)
             if line_depth > 0:
                 pending = cleaned
                 depth = line_depth
@@ -429,15 +582,26 @@ def _inspect_pyproject_toml_fallback(text: str) -> dict[str, Any]:
         logical_lines.append(pending)
 
     section = ""
-    saw_find = False
-    find_has_include = False
-    find_include_ok = False
-    script_sections = {
+    build_backend: str | None = None
+
+    # Track backend-specific declarations separately so we apply only the active backend at the end.
+    setuptools_find_seen = False
+    setuptools_namespaces_disabled = False
+    setuptools_find_includes: list[str] | None = None
+    setuptools_find_excludes: list[str] | None = None
+    setuptools_explicit_pkgs: list[str] | None = None
+
+    hatch_pkgs: list[str] | None = None
+    poetry_pkg_includes: list[str] | None = None
+
+    project_scripts: list[str] = []
+    poetry_scripts: list[str] = []
+
+    project_script_sections = {
         "project.scripts",
         "project.entry-points.console_scripts",
         'project.entry-points."console_scripts"',
         "project.entry-points.'console_scripts'",
-        "tool.poetry.scripts",
     }
 
     for line in logical_lines:
@@ -446,55 +610,115 @@ def _inspect_pyproject_toml_fallback(text: str) -> dict[str, Any]:
             if section == "project" or section.startswith("project."):
                 info["has_project_table"] = True
             if section == "tool.setuptools.packages.find":
-                info["declares_packages"] = True
-                saw_find = True
+                setuptools_find_seen = True
             continue
 
-        if section == "project" and re.match(r"^dynamic\s*=", line):
-            rhs = line.split("=", 1)[1]
-            if "scripts" in re.findall(r"""["']([^"']+)["']""", rhs):
-                info["scripts_dynamic"] = True
-        elif section == "tool.setuptools.packages.find":
-            if re.match(r"^namespaces\s*=\s*false\b", line):
-                info["declares_packages"] = True
-                info["namespaces_disabled"] = True
-            elif re.match(r"^include\s*=", line):
-                find_has_include = True
+        if section == "build-system" and re.match(r"^build-backend\s*=", line):
+            rhs = line.split("=", 1)[1].strip()
+            vals = _extract_toml_str_list(rhs)
+            if vals:
+                build_backend = vals[0].strip() or None
+        elif section == "project":
+            if re.match(r"^dynamic\s*=", line):
                 rhs = line.split("=", 1)[1]
-                vals = re.findall(r"""["']([^"']+)["']""", rhs)
-                if any(_matches_namespace_include(v) for v in vals):
-                    find_include_ok = True
-        elif section == "tool.setuptools" and re.match(r"^packages\s*=", line):
-            info["declares_packages"] = True
-            rhs = line.split("=", 1)[1]
-            vals = re.findall(r"""["']([^"']+)["']""", rhs)
-            if any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", v) for v in vals):
-                info["namespace_ok"] = True
-        elif section == "tool.hatch.build.targets.wheel" and re.match(r"^packages\s*=", line):
-            info["declares_packages"] = True
-            rhs = line.split("=", 1)[1]
-            vals = re.findall(r"""["']([^"']+)["']""", rhs)
-            if any("cli_anything" in v for v in vals):
-                info["namespace_ok"] = True
-        elif section == "tool.poetry" and re.match(r"^packages\s*=", line):
-            info["declares_packages"] = True
-            rhs = line.split("=", 1)[1]
-            if re.search(r"""include\s*=\s*["'][^"']*cli_anything[^"']*["']""", rhs):
-                info["namespace_ok"] = True
-        elif section in script_sections and "=" in line:
+                if "scripts" in _extract_toml_str_list(rhs):
+                    info["scripts_dynamic"] = True
+            elif re.match(r"^scripts\s*=\s*\{", line):
+                rhs = line.split("=", 1)[1]
+                project_scripts.extend(k for k, _ in _parse_inline_table_items(rhs))
+            elif re.match(r"^scripts\.", line) and "=" in line:
+                key = line.split("=", 1)[0].split(".", 1)[1].strip().strip('"').strip("'")
+                if key:
+                    project_scripts.append(key)
+            elif re.match(r"^entry-points\s*=\s*\{", line):
+                rhs = line.split("=", 1)[1]
+                for ep_group, ep_val in _parse_inline_table_items(rhs):
+                    if ep_group == "console_scripts":
+                        project_scripts.extend(k for k, _ in _parse_inline_table_items(ep_val))
+        elif section == "project.entry-points":
+            if re.match(r"""^["']?console_scripts["']?\s*=\s*\{""", line):
+                rhs = line.split("=", 1)[1]
+                project_scripts.extend(k for k, _ in _parse_inline_table_items(rhs))
+        elif section in project_script_sections and "=" in line:
             key = line.split("=", 1)[0].strip().strip('"').strip("'")
             if key:
-                info["console_scripts"].append(key)
+                project_scripts.append(key)
+        elif section == "tool.setuptools.packages.find":
+            if re.match(r"^namespaces\s*=\s*false\b", line):
+                setuptools_namespaces_disabled = True
+            elif re.match(r"^include\s*=", line):
+                setuptools_find_includes = _extract_toml_str_list(line.split("=", 1)[1])
+            elif re.match(r"^exclude\s*=", line):
+                setuptools_find_excludes = _extract_toml_str_list(line.split("=", 1)[1])
+        elif section == "tool.setuptools.packages" and re.match(r"^find\s*=\s*\{", line):
+            setuptools_find_seen = True
+            rhs = line.split("=", 1)[1]
+            for fk, fv in _parse_inline_table_items(rhs):
+                if fk == "namespaces" and re.match(r"^false\b", fv):
+                    setuptools_namespaces_disabled = True
+                elif fk == "include":
+                    setuptools_find_includes = _extract_toml_str_list(fv)
+                elif fk == "exclude":
+                    setuptools_find_excludes = _extract_toml_str_list(fv)
+        elif section == "tool.setuptools" and re.match(r"^packages\s*=", line):
+            rhs = line.split("=", 1)[1].strip()
+            if rhs.startswith("["):
+                setuptools_explicit_pkgs = _extract_toml_str_list(rhs)
+        elif section == "tool.hatch.build.targets.wheel" and re.match(r"^packages\s*=", line):
+            rhs = line.split("=", 1)[1].strip()
+            if rhs.startswith("["):
+                hatch_pkgs = _extract_toml_str_list(rhs)
+        elif section == "tool.poetry":
+            if re.match(r"^packages\s*=", line):
+                rhs = line.split("=", 1)[1].strip()
+                if rhs.startswith("["):
+                    poetry_pkg_includes = re.findall(r"""include\s*=\s*["']([^"']+)["']""", rhs)
+            elif re.match(r"^scripts\s*=\s*\{", line):
+                rhs = line.split("=", 1)[1]
+                poetry_scripts.extend(k for k, _ in _parse_inline_table_items(rhs))
+        elif section == "tool.poetry.scripts" and "=" in line:
+            key = line.split("=", 1)[0].strip().strip('"').strip("'")
+            if key:
+                poetry_scripts.append(key)
 
-    if saw_find and not info["namespaces_disabled"] and (not find_has_include or find_include_ok):
-        info["namespace_ok"] = True
+    backend_kind = _classify_build_backend(build_backend)
+    info["build_backend"] = build_backend
+    info["backend_kind"] = backend_kind
+
+    if backend_kind == "setuptools":
+        if setuptools_find_seen:
+            info["declares_packages"] = True
+            if setuptools_namespaces_disabled:
+                info["namespaces_disabled"] = True
+            elif _find_selects_package(target_pkg, setuptools_find_includes, setuptools_find_excludes):
+                info["namespace_ok"] = True
+        elif setuptools_explicit_pkgs is not None:
+            info["declares_packages"] = True
+            if _explicit_packages_cover(target_pkg, setuptools_explicit_pkgs):
+                info["namespace_ok"] = True
+    elif backend_kind == "hatch":
+        if hatch_pkgs is not None:
+            info["declares_packages"] = True
+            if _hatch_packages_cover(target_pkg, hatch_pkgs):
+                info["namespace_ok"] = True
+    elif backend_kind == "poetry":
+        if poetry_pkg_includes is not None:
+            info["declares_packages"] = True
+            if _poetry_packages_cover(target_pkg, poetry_pkg_includes):
+                info["namespace_ok"] = True
+
+    info["console_scripts"].extend(project_scripts)
+    if backend_kind == "poetry":
+        info["console_scripts"].extend(poetry_scripts)
 
     return info
 
 
-def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
+def _inspect_pyproject_toml(text: str, target_pkg: str | None = None) -> dict[str, Any]:
     """Inspect pyproject.toml for PEP 420 namespace packaging and console scripts."""
     info: dict[str, Any] = {
+        "build_backend": None,
+        "backend_kind": "setuptools",
         "namespace_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
@@ -507,59 +731,77 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
 
         data = tomllib.loads(text)
     except ImportError:
-        return _inspect_pyproject_toml_fallback(text)
+        return _inspect_pyproject_toml_fallback(text, target_pkg=target_pkg)
     except Exception:
         return info
 
-    tool = data.get("tool") if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return info
+
+    build_system = data.get("build-system")
+    raw_backend = build_system.get("build-backend") if isinstance(build_system, dict) else None
+    build_backend = raw_backend.strip() if isinstance(raw_backend, str) and raw_backend.strip() else None
+    backend_kind = _classify_build_backend(build_backend)
+    info["build_backend"] = build_backend
+    info["backend_kind"] = backend_kind
+
+    tool = data.get("tool")
     tool_dict = tool if isinstance(tool, dict) else {}
 
-    setuptools_cfg = tool_dict.get("setuptools")
-    if isinstance(setuptools_cfg, dict):
-        pkgs = setuptools_cfg.get("packages")
-        if isinstance(pkgs, dict) and isinstance(pkgs.get("find"), dict):
-            info["declares_packages"] = True
-            find_cfg = pkgs["find"]
-            if find_cfg.get("namespaces") is False:
-                info["namespaces_disabled"] = True
-            elif "include" not in find_cfg:
-                info["namespace_ok"] = True
-            else:
-                includes = find_cfg["include"]
-                if isinstance(includes, list) and any(
-                    isinstance(v, str) and _matches_namespace_include(v)
-                    for v in includes
-                ):
+    if backend_kind == "setuptools":
+        setuptools_cfg = tool_dict.get("setuptools")
+        if isinstance(setuptools_cfg, dict):
+            pkgs = setuptools_cfg.get("packages")
+            if isinstance(pkgs, dict) and isinstance(pkgs.get("find"), dict):
+                info["declares_packages"] = True
+                find_cfg = pkgs["find"]
+                if find_cfg.get("namespaces") is False:
+                    info["namespaces_disabled"] = True
+                else:
+                    if "include" not in find_cfg:
+                        includes: list[str] | None = None
+                    elif isinstance(find_cfg["include"], list):
+                        includes = [v for v in find_cfg["include"] if isinstance(v, str)]
+                    else:
+                        includes = []
+                    excludes_raw = find_cfg.get("exclude")
+                    excludes = (
+                        [v for v in excludes_raw if isinstance(v, str)]
+                        if isinstance(excludes_raw, list)
+                        else None
+                    )
+                    if _find_selects_package(target_pkg, includes, excludes):
+                        info["namespace_ok"] = True
+            elif isinstance(pkgs, list):
+                info["declares_packages"] = True
+                str_pkgs = [p for p in pkgs if isinstance(p, str)]
+                if _explicit_packages_cover(target_pkg, str_pkgs):
                     info["namespace_ok"] = True
-        elif isinstance(pkgs, list):
+    elif backend_kind == "hatch":
+        hatch_cfg = tool_dict.get("hatch")
+        hatch_build = hatch_cfg.get("build") if isinstance(hatch_cfg, dict) else None
+        hatch_targets = hatch_build.get("targets") if isinstance(hatch_build, dict) else None
+        hatch_wheel = hatch_targets.get("wheel") if isinstance(hatch_targets, dict) else None
+        hatch_pkgs = hatch_wheel.get("packages") if isinstance(hatch_wheel, dict) else None
+        if isinstance(hatch_pkgs, list):
             info["declares_packages"] = True
-            if any(
-                isinstance(p, str) and re.match(r"^cli_anything\.[A-Za-z0-9_]+", p)
-                for p in pkgs
-            ):
+            str_pkgs = [p for p in hatch_pkgs if isinstance(p, str)]
+            if _hatch_packages_cover(target_pkg, str_pkgs):
+                info["namespace_ok"] = True
+    elif backend_kind == "poetry":
+        poetry_cfg = tool_dict.get("poetry")
+        poetry_pkgs = poetry_cfg.get("packages") if isinstance(poetry_cfg, dict) else None
+        if isinstance(poetry_pkgs, list):
+            info["declares_packages"] = True
+            inc_vals = [
+                str(p["include"])
+                for p in poetry_pkgs
+                if isinstance(p, dict) and isinstance(p.get("include"), str)
+            ]
+            if _poetry_packages_cover(target_pkg, inc_vals):
                 info["namespace_ok"] = True
 
-    hatch_cfg = tool_dict.get("hatch")
-    hatch_build = hatch_cfg.get("build") if isinstance(hatch_cfg, dict) else None
-    hatch_targets = hatch_build.get("targets") if isinstance(hatch_build, dict) else None
-    hatch_wheel = hatch_targets.get("wheel") if isinstance(hatch_targets, dict) else None
-    hatch_pkgs = hatch_wheel.get("packages") if isinstance(hatch_wheel, dict) else None
-    if isinstance(hatch_pkgs, list):
-        info["declares_packages"] = True
-        if any(isinstance(p, str) and "cli_anything" in p for p in hatch_pkgs):
-            info["namespace_ok"] = True
-
-    poetry_cfg = tool_dict.get("poetry")
-    poetry_pkgs = poetry_cfg.get("packages") if isinstance(poetry_cfg, dict) else None
-    if isinstance(poetry_pkgs, list):
-        info["declares_packages"] = True
-        if any(
-            isinstance(p, dict) and "cli_anything" in str(p.get("include", ""))
-            for p in poetry_pkgs
-        ):
-            info["namespace_ok"] = True
-
-    project_cfg = data.get("project") if isinstance(data, dict) else None
+    project_cfg = data.get("project")
     if isinstance(project_cfg, dict):
         info["has_project_table"] = True
         dynamic = project_cfg.get("dynamic")
@@ -572,9 +814,11 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
         if isinstance(ep, dict) and isinstance(ep.get("console_scripts"), dict):
             info["console_scripts"].extend(str(k) for k in ep["console_scripts"].keys())
 
-    poetry_scripts = poetry_cfg.get("scripts") if isinstance(poetry_cfg, dict) else None
-    if isinstance(poetry_scripts, dict):
-        info["console_scripts"].extend(str(k) for k in poetry_scripts.keys())
+    if backend_kind == "poetry":
+        poetry_cfg = tool_dict.get("poetry")
+        poetry_scripts = poetry_cfg.get("scripts") if isinstance(poetry_cfg, dict) else None
+        if isinstance(poetry_scripts, dict):
+            info["console_scripts"].extend(str(k) for k in poetry_scripts.keys())
 
     return info
 
@@ -594,12 +838,16 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     pyproject_text = _read_text(pyproject) if has_pyproject else ""
     combined_text = setup_text + "\n" + pyproject_text
 
-    setup_info = _inspect_setup_py(setup_text) if has_setup else {
+    target_pkg = f"cli_anything.{module.name}" if module is not None else f"cli_anything.{software_slug.replace('-', '_')}"
+
+    setup_info = _inspect_setup_py(setup_text, target_pkg=target_pkg) if has_setup else {
         "namespace_ok": False,
         "uses_regular_find_packages": False,
         "console_scripts": [],
     }
-    pyproj_info = _inspect_pyproject_toml(pyproject_text) if has_pyproject else {
+    pyproj_info = _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg) if has_pyproject else {
+        "build_backend": None,
+        "backend_kind": "setuptools",
         "namespace_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
@@ -608,7 +856,10 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "console_scripts": [],
     }
 
+    uses_setup_py = has_setup and (not has_pyproject or pyproj_info["backend_kind"] == "setuptools")
+
     # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py.
+    # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py at all.
     if pyproj_info["namespaces_disabled"]:
         checks.append(
             CheckResult(
@@ -627,10 +878,19 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                     "namespace-packages",
                     "packaging",
                     FAIL,
-                    "pyproject.toml declares package discovery/packages without cli_anything.* namespace coverage",
+                    f"pyproject.toml package discovery/packages does not select {target_pkg}",
                 )
             )
-    elif setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
+    elif has_pyproject and pyproj_info["backend_kind"] != "setuptools":
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring {target_pkg} namespace packages",
+            )
+        )
+    elif uses_setup_py and setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
         checks.append(
             CheckResult(
                 "namespace-packages",
@@ -639,7 +899,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                 "setup.py uses find_packages() instead of find_namespace_packages() (PEP 420 cli_anything/ has no __init__.py)",
             )
         )
-    elif setup_info["namespace_ok"]:
+    elif uses_setup_py and setup_info["namespace_ok"]:
         checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured"))
     else:
         checks.append(
@@ -647,16 +907,16 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                 "namespace-packages",
                 "packaging",
                 FAIL,
-                f"{pkg_file.name} does not declare namespace packaging for cli_anything.*",
+                f"{pkg_file.name} does not declare namespace packaging for {target_pkg}",
             )
         )
 
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
-    # Under PEP 621 / setuptools >= 61, a [project] table supersedes setup.py entry_points
-    # unless "scripts" is explicitly listed in project.dynamic.
-    if pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"]:
+    # Under PEP 517 / PEP 621: non-setuptools backends ignore setup.py, and setuptools >= 61
+    # ignores setup.py entry_points whenever [project] omits "scripts" from project.dynamic.
+    if (not uses_setup_py) or (pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"]):
         declared_scripts = list(pyproj_info["console_scripts"])
     else:
         declared_scripts = list(pyproj_info["console_scripts"]) + list(setup_info["console_scripts"])
@@ -675,7 +935,12 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
     else:
-        if pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"] and setup_info["console_scripts"]:
+        if has_pyproject and pyproj_info["backend_kind"] != "setuptools" and setup_info["console_scripts"]:
+            detail = (
+                f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring console scripts "
+                "(setup.py console_scripts are ignored)"
+            )
+        elif pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"] and setup_info["console_scripts"]:
             detail = (
                 "pyproject.toml defines [project] without scripts (and without 'scripts' in project.dynamic), "
                 "so setup.py console_scripts are ignored by setuptools"

@@ -571,7 +571,11 @@ package-data = {"cli_anything.hatchapp" = ["skills/*.md"]}
     poetry_harness = _create_valid_harness(tmp_path / "poetry_case", "poetryapp")
     (poetry_harness / "setup.py").unlink()
     (poetry_harness / "pyproject.toml").write_text(
-        """[tool.poetry]
+        """[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
 name = "cli-anything-poetryapp"
 version = "1.0.0"
 packages = [{include = "cli_anything"}]
@@ -594,18 +598,244 @@ cli-anything-poetryapp = "cli_anything.poetryapp.poetryapp_cli:main"
     assert poetry_checks["console-script"]["status"] == "pass"
 
 
+def test_verify_applies_setuptools_find_exclusions(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "pyproj_exc", "excapp")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-excapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-excapp = "cli_anything.excapp.excapp_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+exclude = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.excapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    excluded = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    exc_checks = {c["id"]: c for c in excluded["checks"]}
+    assert excluded["ok"] is False
+    assert exc_checks["namespace-packages"]["status"] == "fail"
+
+    # Excluding only tests keeps cli_anything.excapp selected.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-excapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-excapp = "cli_anything.excapp.excapp_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+exclude = ["cli_anything.*.tests*"]
+
+[tool.setuptools.package-data]
+"cli_anything.excapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    kept = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert kept["ok"] is True, kept["checks"]
+
+    # setup.py find_namespace_packages(exclude=...) must also reject full exclusion.
+    setup_harness = _create_valid_harness(tmp_path / "setup_exc", "setupexc")
+    (setup_harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-setupexc",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"], exclude=["cli_anything.*"]),
+    package_data={"cli_anything.setupexc": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-setupexc=cli_anything.setupexc.setupexc_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    setup_res = verify_harness.verify_harness(
+        setup_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    setup_checks = {c["id"]: c for c in setup_res["checks"]}
+    assert setup_res["ok"] is False
+    assert setup_checks["namespace-packages"]["status"] == "fail"
+
+
+def test_verify_restricts_backend_specific_scripts_and_packages_to_build_backend(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "stale_poetry", "staleapp")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-staleapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.staleapp" = ["skills/*.md"]
+
+[tool.poetry.scripts]
+cli-anything-staleapp = "cli_anything.staleapp.staleapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks = {c["id"]: c for c in result["checks"]}
+    assert result["ok"] is False
+    assert checks["namespace-packages"]["status"] == "pass"
+    assert checks["console-script"]["status"] == "fail"
+
+    # A non-setuptools backend (hatchling) must not fall back to setup.py packages or scripts.
+    hatch_stale = _create_valid_harness(tmp_path / "hatch_ignores_setup", "hatchign")
+    (hatch_stale / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-hatchign"
+version = "1.0.0"
+requires-python = ">=3.10"
+""",
+        encoding="utf-8",
+    )
+    hatch_res = verify_harness.verify_harness(
+        hatch_stale, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    hatch_checks = {c["id"]: c for c in hatch_res["checks"]}
+    assert hatch_res["ok"] is False
+    assert hatch_checks["namespace-packages"]["status"] == "fail"
+    assert hatch_checks["console-script"]["status"] == "fail"
+
+
+def test_verify_parses_inline_script_tables_on_py310_fallback(tmp_path: Path, monkeypatch) -> None:
+    harness = _create_valid_harness(tmp_path, "inlineapp")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-inlineapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+scripts = {cli-anything-inlineapp = 'cli_anything.inlineapp.inlineapp_cli:main'}
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.inlineapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+
+    # Simulate Python 3.10 where stdlib tomllib is unavailable.
+    monkeypatch.setitem(sys.modules, "tomllib", None)
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert result["ok"] is True, result["checks"]
+
+
+def test_list_harnesses_merges_installed_and_generated_when_module_differs_from_dist_name(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = tmp_path / "iterm2" / "agent-harness"
+    pkg = harness / "cli_anything" / "iterm2_ctl"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text('"""iTerm2 harness."""\n', encoding="utf-8")
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+PACKAGE_NAME = "cli-anything-iterm2"
+PACKAGE_VERSION = "1.4.2"
+setup(
+    name=PACKAGE_NAME,
+    version=PACKAGE_VERSION,
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    entry_points={"console_scripts": ["cli-anything-iterm2=cli_anything.iterm2_ctl.iterm2_ctl_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+
+    generated = list_harnesses.scan_generated(tmp_path)
+    assert list(generated.keys()) == ["iterm2"]
+    assert generated["iterm2"]["version"] == "1.4.2"
+
+    monkeypatch.setattr(
+        list_harnesses,
+        "scan_installed",
+        lambda *, include_hub=False: {
+            "iterm2": {
+                "name": "iterm2",
+                "status": "installed",
+                "version": "1.4.2",
+                "executable": "/usr/local/bin/cli-anything-iterm2",
+                "source": None,
+            }
+        },
+    )
+    payload = list_harnesses.collect_tools(tmp_path)
+    assert payload["total"] == 1
+    assert payload["installed"] == 1
+    assert payload["generated_only"] == 0
+    assert payload["tools"][0]["name"] == "iterm2"
+    assert payload["tools"][0]["source"] == "./iterm2/agent-harness"
+
+
 def test_pyproject_py310_fallback_matches_tomllib_semantics() -> None:
+    target = "cli_anything.demoapp"
     samples = [
         """[project]
-name = "cli-anything-a"
+name = "cli-anything-demoapp"
 version = "1.0.0"
 """,
         """[project]
-name = "cli-anything-a"
+name = "cli-anything-demoapp"
 version = "1.0.0"
 dynamic = [
     "scripts",
 ]
+""",
+        """[project]
+name = "cli-anything-demoapp"
+version = "1.0.0"
+scripts = {cli-anything-demoapp = 'cli_anything.demoapp.demoapp_cli:main'}
+""",
+        """[project]
+name = "cli-anything-demoapp"
+version = "1.0.0"
+entry-points = { console_scripts = { "cli-anything-demoapp" = "cli_anything.demoapp.demoapp_cli:main" } }
 """,
         """[tool.setuptools.packages.find]
 include = []
@@ -613,17 +843,49 @@ include = []
         """[tool.setuptools.packages.find]
 where = ["."]
 """,
-        """[tool.hatch.build.targets.wheel]
+        """[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+exclude = ["cli_anything.*"]
+""",
+        """[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+exclude = ["cli_anything.*.tests*"]
+""",
+        """[tool.setuptools.packages]
+find = { include = ["cli_anything.*"], exclude = ["cli_anything.*"] }
+""",
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-demoapp"
+version = "1.0.0"
+
+[tool.poetry.scripts]
+cli-anything-demoapp = "cli_anything.demoapp.demoapp_cli:main"
+""",
+        """[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
 packages = ["cli_anything"]
 """,
-        """[tool.poetry]
+        """[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
 packages = [
     {include = "cli_anything"},
 ]
 
 [tool.poetry.scripts]
-cli-anything-a = "cli_anything.a.a_cli:main"
+cli-anything-demoapp = "cli_anything.demoapp.demoapp_cli:main"
 """,
     ]
     for sample in samples:
-        assert verify_harness._inspect_pyproject_toml_fallback(sample) == verify_harness._inspect_pyproject_toml(sample)
+        assert verify_harness._inspect_pyproject_toml_fallback(
+            sample, target_pkg=target
+        ) == verify_harness._inspect_pyproject_toml(sample, target_pkg=target), sample
