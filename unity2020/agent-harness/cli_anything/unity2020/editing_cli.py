@@ -78,6 +78,23 @@ def _property_value(text):
         return text
 
 
+def _exact_number_text(text):
+    """Return the literal when the whole argument is one JSON number.
+
+    ``json.loads`` turns a fractional literal into a binary double, which loses
+    digits for wide types such as ``decimal``. The bridge prefers this literal
+    over the parsed token when the target needs every typed digit.
+    """
+    stripped = text.strip()
+    try:
+        value = json.loads(stripped)
+    except ValueError:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return stripped
+
+
 def _require_target(object_id, path, command):
     if object_id is None and not path:
         raise click.BadParameter(
@@ -298,6 +315,7 @@ def register(cli, run):
             ComponentType=component_type,
             Property=property_name,
             Value=_property_value(value),
+            ValueText=_exact_number_text(value),
             Index=index,
         ))
 

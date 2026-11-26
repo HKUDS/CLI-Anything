@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -488,6 +489,7 @@ namespace CliAnything.Unity
                 }
                 matchWidthOrHeight = Mathf.Clamp01(GetFloat(args, "MatchWidthOrHeight") ?? 0.5f);
             }
+            var sortingOrder = GetInt(args, "SortingOrder") ?? 0;
 
             var gameObject = new GameObject(name, typeof(RectTransform));
             Undo.RegisterCreatedObjectUndo(gameObject, UndoCreateCanvas);
@@ -506,7 +508,7 @@ namespace CliAnything.Unity
             {
                 canvas.worldCamera = worldCamera;
             }
-            canvas.sortingOrder = GetInt(args, "SortingOrder") ?? 0;
+            canvas.sortingOrder = sortingOrder;
 
             var scaler = gameObject.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = scalerMode;
@@ -1513,7 +1515,7 @@ namespace CliAnything.Unity
         private static float? GetFloat(JObject args, string name)
         {
             var token = args[name];
-            return token == null || token.Type == JTokenType.Null ? (float?)null : token.Value<float>();
+            return token == null || token.Type == JTokenType.Null ? (float?)null : FiniteFloat(token, name);
         }
 
         private static bool? GetBool(JObject args, string name)
@@ -1547,12 +1549,48 @@ namespace CliAnything.Unity
             {
                 return null;
             }
-            var values = token.ToObject<float[]>();
-            if (values == null || values.Length != length)
+            var items = token as JArray;
+            if (items == null || items.Count != length)
             {
                 throw new ArgumentException(name + " must be an array of " + length + " numbers.");
             }
+            var values = new float[length];
+            for (var index = 0; index < length; index++)
+            {
+                values[index] = FiniteFloat(items[index], name);
+            }
             return values;
+        }
+
+        private static float FiniteFloat(JToken token, string name)
+        {
+            double value;
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                throw new ArgumentException(name + " must be a number.");
+            }
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                value = token.Value<double>();
+            }
+            else if (token.Type == JTokenType.String &&
+                double.TryParse(token.Value<string>(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            {
+                value = parsed;
+            }
+            else
+            {
+                throw new ArgumentException(name + " must be a number.");
+            }
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                throw new ArgumentException(name + " must be a finite number.");
+            }
+            if (value < -float.MaxValue || value > float.MaxValue)
+            {
+                throw new ArgumentException(name + " must be within the Unity float range.");
+            }
+            return (float)value;
         }
 
         private static int[] GetIntArray(JObject args, string name, int length)

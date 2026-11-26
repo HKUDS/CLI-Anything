@@ -788,6 +788,7 @@ namespace CliAnything.Unity
         private static object CreateMaterial(JObject args)
         {
             RequireIdleEditor();
+            RequireEditMode("creating a material");
             var saveAsset = GetIsolatedAssetSaver();
             var assetPath = NormalizeAssetPath(GetString(args, "AssetPath"), ".mat", "AssetPath");
             var shaderName = GetString(args, "Shader");

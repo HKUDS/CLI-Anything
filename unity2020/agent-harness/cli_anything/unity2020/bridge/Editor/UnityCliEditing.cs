@@ -292,6 +292,14 @@ namespace CliAnything.Unity
             {
                 throw new InvalidOperationException("Parent GameObject is not in a loaded scene.");
             }
+
+            // Parse every optional transform before creating anything so a rejected
+            // request never leaves a new GameObject behind in the scene.
+            var position = GetVector3(args, "Position");
+            var rotation = GetVector3(args, "Rotation");
+            var scale = GetVector3(args, "Scale");
+            var active = GetBool(args, "Active", true);
+
             GameObject gameObject;
             if (!string.IsNullOrEmpty(prefabPath))
             {
@@ -332,22 +340,19 @@ namespace CliAnything.Unity
             {
                 gameObject.transform.SetParent(parent, false);
             }
-            var position = GetVector3(args, "Position");
             if (position.HasValue)
             {
                 gameObject.transform.position = position.Value;
             }
-            var rotation = GetVector3(args, "Rotation");
             if (rotation.HasValue)
             {
                 gameObject.transform.eulerAngles = rotation.Value;
             }
-            var scale = GetVector3(args, "Scale");
             if (scale.HasValue)
             {
                 gameObject.transform.localScale = scale.Value;
             }
-            gameObject.SetActive(GetBool(args, "Active", true));
+            gameObject.SetActive(active);
 
             MarkDirty(gameObject);
             return Ok(DescribeGameObject(gameObject));
@@ -445,23 +450,29 @@ namespace CliAnything.Unity
                 throw new InvalidOperationException("GameObject scene is not loaded: " + GetPath(original.transform));
             }
 
+            // Validate the optional name and offset before duplicating so a rejected
+            // request never leaves an extra copy in the scene.
+            var name = GetString(args, "NewName");
+            if (!string.IsNullOrEmpty(name))
+            {
+                RequireGameObjectName(name, "NewName");
+            }
+            var offset = GetVector3(args, "Offset");
+
             var copy = InstantiateForDuplicate(original, scene);
             if (copy == null)
             {
                 throw new InvalidOperationException("Unity did not duplicate the GameObject: " + GetPath(original.transform));
             }
             Undo.RegisterCreatedObjectUndo(copy, UndoDuplicateGameObject);
-            var name = GetString(args, "NewName");
             if (!string.IsNullOrEmpty(name))
             {
-                RequireGameObjectName(name, "NewName");
                 copy.name = name;
             }
             else
             {
                 copy.name = GameObjectUtility.GetUniqueNameForSibling(original.transform.parent, original.name);
             }
-            var offset = GetVector3(args, "Offset");
             if (offset.HasValue)
             {
                 copy.transform.localPosition += offset.Value;
@@ -590,7 +601,7 @@ namespace CliAnything.Unity
 
             var member = FindWritableMember(component.GetType(), propertyName);
             var memberType = member is PropertyInfo property ? property.PropertyType : ((FieldInfo)member).FieldType;
-            var converted = ConvertPropertyValue(token, memberType, propertyName);
+            var converted = ConvertPropertyValue(token, memberType, propertyName, GetString(args, "ValueText"));
             var before = GetMemberValue(member, component);
             Undo.RecordObject(component, UndoSetComponent);
             try
@@ -1142,6 +1153,11 @@ namespace CliAnything.Unity
 
         private static object ConvertPropertyValue(JToken token, Type target, string label)
         {
+            return ConvertPropertyValue(token, target, label, null);
+        }
+
+        private static object ConvertPropertyValue(JToken token, Type target, string label, string exactText)
+        {
             if (target == typeof(string))
             {
                 if (token.Type != JTokenType.String)
@@ -1243,7 +1259,7 @@ namespace CliAnything.Unity
             }
             if (IsNumeric(target))
             {
-                return ConvertNumber(token, target, label);
+                return ConvertNumber(token, target, label, exactText);
             }
             if (typeof(UnityEngine.Object).IsAssignableFrom(target))
             {
@@ -1270,14 +1286,27 @@ namespace CliAnything.Unity
                 type == typeof(long) || type == typeof(ulong);
         }
 
-        private static object ConvertNumber(JToken token, Type target, string label)
+        private static object ConvertNumber(JToken token, Type target, string label, string exactText = null)
         {
+            if (target == typeof(decimal) && !string.IsNullOrEmpty(exactText) &&
+                (token.Type == JTokenType.Integer || token.Type == JTokenType.Float))
+            {
+                if (!decimal.TryParse(exactText, NumberStyles.Float, CultureInfo.InvariantCulture, out var exactDecimal))
+                {
+                    throw new ArgumentException(label + " is out of range for " + target.Name + ".");
+                }
+                return exactDecimal;
+            }
             if (target == typeof(float) || target == typeof(double))
             {
                 var floating = ReadDouble(token, target, label);
                 if (double.IsNaN(floating) || double.IsInfinity(floating))
                 {
                     throw new ArgumentException(label + " requires a finite number for " + target.Name + ".");
+                }
+                if (target == typeof(float) && (floating < -float.MaxValue || floating > float.MaxValue))
+                {
+                    throw new ArgumentException(label + " is out of range for a Unity float.");
                 }
                 return Convert.ChangeType(floating, target, CultureInfo.InvariantCulture);
             }
@@ -1361,6 +1390,10 @@ namespace CliAnything.Unity
                 if (double.IsNaN(value) || double.IsInfinity(value))
                 {
                     throw new ArgumentException(label + " requires finite numbers.");
+                }
+                if (value < -float.MaxValue || value > float.MaxValue)
+                {
+                    throw new ArgumentException(label + " requires numbers within the Unity float range.");
                 }
             }
             return values;

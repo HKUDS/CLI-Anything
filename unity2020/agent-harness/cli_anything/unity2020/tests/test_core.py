@@ -6,6 +6,7 @@ from time import monotonic, sleep
 import pytest
 from click.testing import CliRunner
 
+from cli_anything.unity2020.editing_cli import _exact_number_text
 from cli_anything.unity2020.unity2020_cli import EditorError, ask_editor, cli, find_project
 
 
@@ -83,3 +84,45 @@ def test_concurrent_requests_are_isolated(project):
         assert second.result()["data"] == 2
         worker.result()
     assert list(queue.iterdir()) == []
+
+
+def test_exact_number_text_is_limited_to_bare_numbers():
+    assert _exact_number_text(" 0.25 ") == "0.25"
+    assert _exact_number_text("123456789012345678901234567890") == "123456789012345678901234567890"
+    assert _exact_number_text("[1.5, 2]") is None
+    assert _exact_number_text("true") is None
+    assert _exact_number_text('"1.5"') is None
+    assert _exact_number_text("hello") is None
+
+
+def test_component_set_requests_the_typed_number_text(project):
+    (project / "Temp").mkdir()
+    (project / "Temp/UnityLockfile").touch()
+    queue = project / "Library/UnityCli"
+    captured = {}
+
+    def reply():
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
+            for request in queue.glob("request-*/request.json"):
+                text = request.read_text(encoding="utf-8")
+                captured["payload"] = json.loads(text)
+                captured["text"] = text
+                pending = request.with_name("response.tmp")
+                pending.write_text(json.dumps({"ok": True, "data": {}}), encoding="utf-8")
+                pending.replace(request.with_name("response.json"))
+                return
+            sleep(0.02)
+        raise AssertionError("no request arrived")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        worker = pool.submit(reply)
+        result = CliRunner().invoke(cli, [
+            "--project", str(project), "--json", "component", "set",
+            "--id", "1", "--component", "Probe", "--property", "Amount",
+            "--value", "1234567890.123456789012345678",
+        ])
+        worker.result()
+    assert result.exit_code == 0, result.output
+    assert captured["payload"]["ValueText"] == "1234567890.123456789012345678"
+    assert '"1234567890.123456789012345678"' in captured["text"]
