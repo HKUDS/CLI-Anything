@@ -376,6 +376,95 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
     return False, f"attribute '{symbol}' not defined or imported in {py_file.name}"
 
 
+def _norm_pkg_dir_value(raw: str) -> str:
+    """Normalize a package_dir / where path like setuptools (preserving bare '.')."""
+    cleaned = raw.strip().replace("\\", "/")
+    if not cleaned:
+        return ""
+    return PurePosixPath(cleaned).as_posix()
+
+
+def _get_package_dir_rel(package: str, package_dir: dict[str, str]) -> str:
+    """Mirror distutils.command.build_py.get_package_dir() returning a POSIX relative path."""
+    parts = [p for p in package.split(".") if p]
+    if not package_dir:
+        return "/".join(parts)
+    tail: list[str] = []
+    while parts:
+        key = ".".join(parts)
+        if key in package_dir:
+            pdir = _norm_pkg_dir_value(package_dir[key])
+            return "/".join([pdir, *tail]) if pdir else "/".join(tail)
+        tail.insert(0, parts.pop())
+    root_dir = package_dir.get("")
+    if root_dir is not None:
+        pdir = _norm_pkg_dir_value(root_dir)
+        return "/".join([pdir, *tail]) if pdir else "/".join(tail)
+    return "/".join(tail)
+
+
+def _apply_find_package_dir(
+    harness: Path | None,
+    base_pkg_dir: dict[str, str],
+    pkg_spec: dict[str, Any] | None,
+    candidate_pkgs: Iterable[str],
+    *,
+    init_required_pkgs: set[str] | None = None,
+) -> dict[str, str]:
+    """Mirror setuptools.config.expand.find_packages() fill_package_dir behavior."""
+    out = dict(base_pkg_dir)
+    if not pkg_spec or pkg_spec.get("kind") != "find" or not pkg_spec.get("from_pyproject"):
+        return out
+    wheres = pkg_spec.get("wheres")
+    if not wheres:
+        return out
+
+    search: list[str] = []
+    for raw_w in wheres:
+        norm_w = _norm_pkg_dir_value(raw_w) or "."
+        if norm_w not in search:
+            search.append(norm_w)
+
+    def _is_harness_root(rel: str) -> bool:
+        if rel in {"", "."}:
+            return True
+        if harness is not None:
+            try:
+                return (harness / rel).resolve() == harness.resolve()
+            except OSError:
+                return False
+        return False
+
+    if len(search) == 1 and not _is_harness_root(search[0]):
+        out.setdefault("", search[0])
+
+    if harness is None:
+        return out
+
+    includes = pkg_spec.get("includes")
+    excludes = pkg_spec.get("excludes")
+    req_set = init_required_pkgs or set()
+    pkgs_list = [p for p in dict.fromkeys(candidate_pkgs) if p]
+
+    for path in search:
+        if _is_harness_root(path):
+            continue
+        for pkg in pkgs_list:
+            if not _find_selects_package(
+                pkg,
+                includes,
+                excludes,
+                harness=harness,
+                wheres=[path],
+                require_init=pkg in req_set,
+            ):
+                continue
+            if _norm_pkg_dir_value(out.get("", "")) != path:
+                pkg_sub = pkg.replace(".", "/")
+                out[pkg] = f"{path}/{pkg_sub}" if path not in {"", "."} else pkg_sub
+    return out
+
+
 def _validate_console_script_target(
     target_spec: str,
     harness: Path,
@@ -383,6 +472,7 @@ def _validate_console_script_target(
     *,
     parent_selected: bool = False,
     pkg_spec: dict[str, Any] | None = None,
+    base_package_dir: dict[str, str] | None = None,
 ) -> tuple[bool, str]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
     spec = target_spec.strip()
@@ -402,16 +492,31 @@ def _validate_console_script_target(
     if target_pkg and module_path != target_pkg and not module_path.startswith(f"{target_pkg}."):
         return False, f"module '{module_path}' is outside harness package '{target_pkg}'"
 
-    pkg_init = harness.joinpath(*mod_parts, "__init__.py")
-    mod_py = harness.joinpath(*mod_parts[:-1], f"{mod_parts[-1]}.py")
+    parent_pkg = ".".join(mod_parts[:-1])
+    candidates = [p for p in (target_pkg, parent_pkg, module_path) if p]
+    eff_pkg_dir = _apply_find_package_dir(
+        harness,
+        base_package_dir or {},
+        pkg_spec,
+        candidates,
+        init_required_pkgs={target_pkg} if target_pkg else set(),
+    )
+
+    pkg_dir_rel = _get_package_dir_rel(module_path, eff_pkg_dir)
+    pkg_init = (harness / pkg_dir_rel / "__init__.py") if pkg_dir_rel else (harness / "__init__.py")
+
+    parent_dir_rel = _get_package_dir_rel(parent_pkg, eff_pkg_dir) if parent_pkg else ""
+    mod_py = (harness / parent_dir_rel / f"{mod_parts[-1]}.py") if parent_dir_rel else (harness / f"{mod_parts[-1]}.py")
+
     if pkg_init.is_file():
         mod_file = pkg_init
         owner_pkg = module_path
     elif mod_py.is_file():
         mod_file = mod_py
-        owner_pkg = ".".join(mod_parts[:-1])
+        owner_pkg = parent_pkg
     else:
-        return False, f"module '{module_path}' not found under harness"
+        src_hint = parent_dir_rel or "."
+        return False, f"module '{module_path}' not found in effective package source directory '{src_hint}'"
 
     if target_pkg and parent_selected and owner_pkg != target_pkg and pkg_spec is not None:
         if pkg_spec["kind"] == "find":
@@ -479,11 +584,12 @@ def _explicit_packages_cover(target_pkg: str | None, packages: list[str]) -> boo
     return any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", p) for p in packages)
 
 
-def _hatch_packages_cover(
+def _hatch_packages_dir(
     target_pkg: str | None,
     packages: list[str],
     harness: Path | None = None,
-) -> bool:
+) -> dict[str, str] | None:
+    """Return effective package_dir mapping if Hatch wheel packages cover target_pkg, else None."""
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
     for raw in packages:
         norm = raw.strip().strip("/").replace("\\", "/")
@@ -491,39 +597,42 @@ def _hatch_packages_cover(
             continue
         if norm == "cli_anything" or norm.endswith("/cli_anything"):
             if harness is None or not mod:
-                return True
+                return {} if norm == "cli_anything" else {"cli_anything": norm}
             if (harness / norm / mod / "__init__.py").is_file():
-                return True
+                return {} if norm == "cli_anything" else {"cli_anything": norm}
         elif mod and (norm == f"cli_anything/{mod}" or norm.endswith(f"/cli_anything/{mod}")):
             if harness is None or (harness / norm / "__init__.py").is_file():
-                return True
+                return {} if norm == f"cli_anything/{mod}" else {target_pkg: norm}  # type: ignore[dict-item]
         elif not mod and ("cli_anything/" in norm):
-            return True
-    return False
+            return {}
+    return None
 
 
-def _poetry_packages_cover(
+def _poetry_packages_dir(
     target_pkg: str | None,
     entries: list[tuple[str, str]],
     harness: Path | None = None,
-) -> bool:
+) -> dict[str, str] | None:
+    """Return effective package_dir mapping if Poetry packages cover target_pkg, else None."""
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
     for raw_inc, raw_from in entries:
         norm = raw_inc.strip().strip("/").replace("\\", "/")
-        base_root = (harness / raw_from) if (harness is not None and raw_from) else harness
+        norm_from = _norm_pkg_dir_value(raw_from)
+        base_root = (harness / norm_from) if (harness is not None and norm_from not in {"", "."}) else harness
+        pkg_dir = {"": norm_from} if norm_from not in {"", "."} else {}
         if norm == "cli_anything":
             if base_root is None or not target_pkg:
-                return True
+                return pkg_dir
             if _package_exists_under(base_root, target_pkg):
-                return True
+                return pkg_dir
         elif mod and norm in {f"cli_anything/{mod}", f"cli_anything.{mod}"}:
             if base_root is None or not target_pkg:
-                return True
+                return pkg_dir
             if _package_exists_under(base_root, target_pkg):
-                return True
+                return pkg_dir
         elif not mod and (norm.startswith("cli_anything/") or norm.startswith("cli_anything.")):
-            return True
-    return False
+            return pkg_dir
+    return None
 
 
 def _is_absolute_pattern(pattern: str) -> bool:
@@ -685,16 +794,25 @@ def _setuptools_translate_pattern(glob_pat: str) -> re.Pattern[str]:
     return re.compile(pat, flags=re.MULTILINE | re.DOTALL)
 
 
-def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool:
-    """Evaluate MANIFEST.in directives in order (mirroring setuptools egg_info.FileList)."""
-    if harness is None or not target_pkg:
+def _manifest_covers_skill(
+    harness: Path | None,
+    expected_manifest_rel: str | None,
+) -> bool:
+    """Evaluate MANIFEST.in directives in order (mirroring setuptools egg_info.FileList + build_py).
+
+    Tracks the exact relative paths emitted by inclusion directives (e.g. `./...` from
+    `recursive-include . <pat>` vs prefix-free paths from `include`/`global-include`/`graft`)
+    so regex-backed exclusions and `build_py.analyze_manifest()` path matching mirror setuptools.
+    """
+    if harness is None or not expected_manifest_rel:
         return False
     manifest = harness / "MANIFEST.in"
     if not manifest.is_file():
         return False
 
-    target_rel = f"{target_pkg.replace('.', '/')}/skills/SKILL.md"
-    target_dir_parts = target_rel.split("/")[:-1]
+    expected_norm = expected_manifest_rel.strip().replace("\\", "/")
+    canonical_rel = PurePosixPath(expected_norm).as_posix()
+    target_dir_parts = canonical_rel.split("/")[:-1]
     ancestor_dirs = ["/".join(target_dir_parts[: i + 1]) for i in range(len(target_dir_parts))]
 
     # Join backslash-continued lines and strip `#` comments.
@@ -714,49 +832,55 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
     if pending:
         logical_lines.append(pending.strip())
 
-    def _norm_dir(dir_token: str) -> str | None:
-        if _is_absolute_pattern(dir_token):
-            return None
-        d = dir_token.strip().replace("\\", "/")
-        while d.startswith("./"):
-            d = d[2:]
-        d = d.strip("/")
-        return "" if d in {"", "."} else d
-
-    selected = False
+    selected_paths: set[str] = set()
     for line in logical_lines:
         tokens = line.split()
         if len(tokens) < 2:
             continue
         action = tokens[0]
         if action == "include":
-            if any(_glob_matches_relpath(target_rel, pat, recursive=False, platform_case=True) for pat in tokens[1:]):
-                selected = True
+            for pat in tokens[1:]:
+                p = _normalize_manifest_path(pat)
+                if p is not None and p != "." and _glob_matches_relpath(
+                    canonical_rel, p, recursive=False, platform_case=True
+                ):
+                    selected_paths.add(canonical_rel)
+                    break
         elif action == "exclude":
             for pat in tokens[1:]:
                 p = _normalize_manifest_path(pat)
-                if p is not None and _setuptools_translate_pattern(p).match(target_rel):
-                    selected = False
-                    break
-        elif action in {"global-include", "global-exclude"}:
+                if p is not None and selected_paths:
+                    rx = _setuptools_translate_pattern(p)
+                    selected_paths = {fp for fp in selected_paths if not rx.match(fp)}
+        elif action == "global-include":
             for pat in tokens[1:]:
                 p = _normalize_manifest_path(pat)
-                if p is not None and _setuptools_translate_pattern(f"**/{p}").match(target_rel):
-                    selected = action == "global-include"
+                if p is not None and _setuptools_translate_pattern(f"**/{p}").match(canonical_rel):
+                    selected_paths.add(canonical_rel)
                     break
+        elif action == "global-exclude":
+            for pat in tokens[1:]:
+                p = _normalize_manifest_path(pat)
+                if p is not None and selected_paths:
+                    rx = _setuptools_translate_pattern(f"**/{p}")
+                    selected_paths = {fp for fp in selected_paths if not rx.match(fp)}
         elif action == "recursive-include":
             if len(tokens) < 3:
                 continue
-            d = _norm_dir(tokens[1])
+            d = _normalize_manifest_path(tokens[1])
             if d is None:
                 continue
-            prefix = f"{d}/**/" if d else "**/"
-            if any(
-                not _is_absolute_pattern(pat)
-                and _glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True, platform_case=True)
-                for pat in tokens[2:]
-            ):
-                selected = True
+            # glob(os.path.join('.', '**', pat), recursive=True) preserves the leading './' prefix,
+            # whereas non-dot directories emit prefix-free paths.
+            emitted = f"./{canonical_rel}" if d == "." else canonical_rel
+            prefix = "**/" if d == "." else f"{d}/**/"
+            for pat in tokens[2:]:
+                p = _normalize_manifest_path(pat)
+                if p is not None and _glob_matches_relpath(
+                    canonical_rel, f"{prefix}{p}", recursive=True, platform_case=True
+                ):
+                    selected_paths.add(emitted)
+                    break
         elif action == "recursive-exclude":
             if len(tokens) < 3:
                 continue
@@ -765,29 +889,32 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
                 continue
             for pat in tokens[2:]:
                 p = _normalize_manifest_path(pat)
-                if p is not None and _setuptools_translate_pattern(f"{d}/**/{p}").match(target_rel):
-                    selected = False
-                    break
+                if p is not None and selected_paths:
+                    rx = _setuptools_translate_pattern(f"{d}/**/{p}")
+                    selected_paths = {fp for fp in selected_paths if not rx.match(fp)}
         elif action == "graft":
             if len(tokens) != 2:
                 continue
-            d = _norm_dir(tokens[1])
+            d = _normalize_manifest_path(tokens[1])
             if d is None:
                 continue
-            # setuptools FileList.graft() calls glob(dir) WITHOUT recursive=True, then collects
-            # all files recursively beneath each matched directory.
-            if not d or any(_glob_matches_relpath(anc, d, recursive=False, platform_case=True) for anc in ancestor_dirs):
-                selected = True
+            # setuptools FileList.graft() calls glob(dir) WITHOUT recursive=True, then
+            # distutils.filelist.findall(match_dir) (which strips './' when match_dir == '.').
+            if d == "." or any(
+                _glob_matches_relpath(anc, d, recursive=False, platform_case=True) for anc in ancestor_dirs
+            ):
+                selected_paths.add(canonical_rel)
         elif action == "prune":
             if len(tokens) != 2:
                 continue
             d = _normalize_manifest_path(tokens[1])
             if d is None:
                 continue
-            if _setuptools_translate_pattern(f"{d}/**").match(target_rel):
-                selected = False
+            if selected_paths:
+                rx = _setuptools_translate_pattern(f"{d}/**")
+                selected_paths = {fp for fp in selected_paths if not rx.match(fp)}
 
-    return selected
+    return expected_norm in selected_paths
 
 
 def _classify_build_backend(build_backend: str | None) -> str:
@@ -814,6 +941,7 @@ def _inspect_setup_py(
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
         "pkg_spec": None,
+        "package_dir": {},
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -882,6 +1010,7 @@ def _inspect_setup_py(
                     "includes": includes,
                     "excludes": excludes,
                     "wheres": wheres,
+                    "from_pyproject": False,
                 }
                 if _find_selects_package(
                     target_pkg,
@@ -934,11 +1063,22 @@ def _inspect_setup_py(
                     if vals is not None:
                         dest[k.value] = vals
 
+    def _extract_str_mapping(expr: ast.AST, dest: dict[str, str]) -> None:
+        node = _resolve(expr)
+        if isinstance(node, ast.Dict):
+            for k, v in zip(node.keys, node.values):
+                if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                    val = _resolve(v)
+                    if isinstance(val, ast.Constant) and isinstance(val.value, str):
+                        dest[k.value] = val.value
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _call_func_name(node.func) == "setup":
             for kw in node.keywords:
                 if kw.arg == "packages":
                     _check_packages_expr(kw.value)
+                elif kw.arg == "package_dir":
+                    _extract_str_mapping(kw.value, info["package_dir"])
                 elif kw.arg == "entry_points":
                     _extract_entry_points(kw.value)
                 elif kw.arg == "package_data":
@@ -1287,6 +1427,8 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "namespaces_disabled": False,
         "declares_packages": False,
         "pkg_spec": None,
+        "declares_package_dir": False,
+        "package_dir": {},
         "has_project_table": False,
         "scripts_dynamic": False,
         "reserved_console_scripts_ep": False,
@@ -1354,6 +1496,12 @@ def _inspect_pyproject_data(
         if isinstance(setuptools_cfg, dict):
             if isinstance(setuptools_cfg.get("include-package-data"), bool):
                 info["include_package_data"] = setuptools_cfg["include-package-data"]
+            pkg_dir_cfg = setuptools_cfg.get("package-dir")
+            if isinstance(pkg_dir_cfg, dict):
+                info["declares_package_dir"] = True
+                for pk, pv in pkg_dir_cfg.items():
+                    if isinstance(pk, str) and isinstance(pv, str):
+                        info["package_dir"][pk] = pv
             pkg_data_cfg = setuptools_cfg.get("package-data")
             if isinstance(pkg_data_cfg, dict):
                 info["declares_package_data"] = True
@@ -1399,6 +1547,7 @@ def _inspect_pyproject_data(
                         "includes": includes,
                         "excludes": excludes,
                         "wheres": wheres,
+                        "from_pyproject": True,
                     }
                     if _find_selects_package(
                         target_pkg,
@@ -1434,8 +1583,10 @@ def _inspect_pyproject_data(
         if isinstance(hatch_pkgs, list):
             info["declares_packages"] = True
             str_pkgs = [p for p in hatch_pkgs if isinstance(p, str)]
-            if _hatch_packages_cover(target_pkg, str_pkgs, harness=harness):
+            hatch_pkg_dir = _hatch_packages_dir(target_pkg, str_pkgs, harness=harness)
+            if hatch_pkg_dir is not None:
                 info["namespace_ok"] = True
+                info["package_dir"].update(hatch_pkg_dir)
     elif backend_kind == "poetry":
         poetry_cfg = tool_dict.get("poetry")
         poetry_deps = poetry_cfg.get("dependencies") if isinstance(poetry_cfg, dict) else None
@@ -1452,8 +1603,10 @@ def _inspect_pyproject_data(
                 for p in poetry_pkgs
                 if isinstance(p, dict) and isinstance(p.get("include"), str)
             ]
-            if _poetry_packages_cover(target_pkg, pkg_entries, harness=harness):
+            poetry_pkg_dir = _poetry_packages_dir(target_pkg, pkg_entries, harness=harness)
+            if poetry_pkg_dir is not None:
                 info["namespace_ok"] = True
+                info["package_dir"].update(poetry_pkg_dir)
 
     project_cfg = data.get("project")
     if isinstance(project_cfg, dict):
@@ -1515,6 +1668,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
         "pkg_spec": None,
+        "package_dir": {},
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -1582,7 +1736,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
 
-    # Determine which setuptools packages are actually selected by discovery.
+    # Determine which packages are selected by discovery and their effective package_dir mapping.
     if pyproj_info["namespaces_disabled"]:
         parent_selected = False
         skills_subpkg_selected = False
@@ -1599,6 +1753,23 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         parent_selected = False
         skills_subpkg_selected = False
         eff_pkg_spec = None
+
+    if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
+        eff_base_package_dir = dict(pyproj_info["package_dir"])
+    elif pyproj_info["declares_package_dir"]:
+        eff_base_package_dir = dict(pyproj_info["package_dir"])
+    elif uses_setup_py:
+        eff_base_package_dir = dict(setup_info["package_dir"])
+    else:
+        eff_base_package_dir = {}
+
+    eff_package_dir = _apply_find_package_dir(
+        harness,
+        eff_base_package_dir,
+        eff_pkg_spec,
+        [p for p in (target_pkg, f"{target_pkg}.skills" if target_pkg else None) if p],
+        init_required_pkgs={target_pkg} if target_pkg else set(),
+    )
 
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
@@ -1623,6 +1794,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                 target_pkg,
                 parent_selected=parent_selected,
                 pkg_spec=eff_pkg_spec,
+                base_package_dir=eff_base_package_dir,
             )
             if not ok_target:
                 invalid_targets.append(f"{cmd_name}={target_spec} ({reason})")
@@ -1675,7 +1847,16 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     skill_data_ok = False
     if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
         # Hatch and Poetry include non-Python assets inside declared package directories automatically.
-        skill_data_ok = bool(pyproj_info["namespace_ok"])
+        if pyproj_info["namespace_ok"] and target_pkg:
+            raw_pkg_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
+            skill_path = (
+                (harness / raw_pkg_dir / "skills" / "SKILL.md")
+                if raw_pkg_dir
+                else (harness / "skills" / "SKILL.md")
+            )
+            skill_data_ok = skill_path.is_file()
+        else:
+            skill_data_ok = bool(pyproj_info["namespace_ok"])
     else:
         if pyproj_info["declares_package_data"]:
             eff_pkg_data = pyproj_info["package_data"]
@@ -1709,14 +1890,6 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
 
         # Mirror setuptools build_py: analyze_manifest() assigns SKILL.md to the deepest
         # selected package containing it, and exclude_data_files() runs per supplying package.
-        manifest_has_skill = eff_include_pkg_data and _manifest_covers_skill(harness, target_pkg)
-        manifest_owner: str | None = None
-        if manifest_has_skill and target_pkg:
-            if skills_subpkg_selected:
-                manifest_owner = f"{target_pkg}.skills"
-            elif parent_selected:
-                manifest_owner = target_pkg
-
         suppliers: list[tuple[str, str]] = []
         if target_pkg:
             if parent_selected:
@@ -1724,7 +1897,25 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             if skills_subpkg_selected:
                 suppliers.append((f"{target_pkg}.skills", "SKILL.md"))
 
+        manifest_owner: str | None = None
+        if target_pkg:
+            if skills_subpkg_selected:
+                skills_dir_rel = _get_package_dir_rel(f"{target_pkg}.skills", eff_package_dir)
+                skills_file = (
+                    (harness / skills_dir_rel / "SKILL.md")
+                    if skills_dir_rel
+                    else (harness / "SKILL.md")
+                )
+                if skills_file.is_file():
+                    manifest_owner = f"{target_pkg}.skills"
+            if manifest_owner is None and parent_selected:
+                manifest_owner = target_pkg
+
         for pkg_name, rel_path in suppliers:
+            raw_pkg_dir = _get_package_dir_rel(pkg_name, eff_package_dir)
+            skill_path = (harness / raw_pkg_dir / rel_path) if raw_pkg_dir else (harness / rel_path)
+            if not skill_path.is_file():
+                continue
             from_pd = _pkg_data_matches_file(
                 eff_pkg_data,
                 pkg_name,
@@ -1732,7 +1923,12 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                 allow_star_wildcard=eff_pkg_star,
                 exclusion=False,
             )
-            from_manifest = manifest_owner == pkg_name
+            expected_manifest_rel = f"{raw_pkg_dir}/{rel_path}" if raw_pkg_dir else rel_path
+            from_manifest = (
+                manifest_owner == pkg_name
+                and eff_include_pkg_data
+                and _manifest_covers_skill(harness, expected_manifest_rel)
+            )
             if not (from_pd or from_manifest):
                 continue
             excluded = _pkg_data_matches_file(

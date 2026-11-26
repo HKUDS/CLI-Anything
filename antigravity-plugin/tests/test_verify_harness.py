@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -1683,6 +1684,294 @@ setup(
     (harness / "MANIFEST.in").write_text(
         "recursive-include cli_anything [A-Z]*.md\n", encoding="utf-8"
     )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_resolves_script_targets_and_skills_from_effective_package_dir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "src_layout", "srcapp")
+    shutil.copytree(harness / "cli_anything", harness / "src" / "cli_anything")
+    (harness / "empty").mkdir()
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-srcapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-srcapp = "cli_anything.srcapp.srcapp_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.srcapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+
+    # Valid when src/ contains the target module and SKILL.md.
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # Removing src/.../srcapp_cli.py while leaving flat cli_anything/.../srcapp_cli.py MUST fail.
+    src_cli = harness / "src" / "cli_anything" / "srcapp" / "srcapp_cli.py"
+    saved_cli = src_cli.read_text(encoding="utf-8")
+    src_cli.unlink()
+
+    r_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing["ok"] is False
+    assert {c["id"]: c for c in r_missing["checks"]}["console-script"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_missing_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_missing_310["ok"] is False
+        assert {c["id"]: c for c in r_missing_310["checks"]}["console-script"]["status"] == "fail"
+
+    # Multi-root `where = ["empty", "src"]` also resolves from `src/` (not flat `cli_anything/`).
+    (harness / "pyproject.toml").write_text(
+        (harness / "pyproject.toml").read_text(encoding="utf-8").replace(
+            'where = ["src"]', 'where = ["empty", "src"]'
+        ),
+        encoding="utf-8",
+    )
+    r_multi_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_multi_missing["ok"] is False
+    assert {c["id"]: c for c in r_multi_missing["checks"]}["console-script"]["status"] == "fail"
+
+    # Restore src CLI; removing src SKILL.md while flat SKILL.md remains must warn on package-data-skills.
+    src_cli.write_text(saved_cli, encoding="utf-8")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    src_skill = harness / "src" / "cli_anything" / "srcapp" / "skills" / "SKILL.md"
+    saved_skill = src_skill.read_text(encoding="utf-8")
+    src_skill.unlink()
+    r_missing_skill = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing_skill["ok"] is False
+    assert {c["id"]: c for c in r_missing_skill["checks"]}["package-data-skills"]["status"] == "warn"
+    src_skill.write_text(saved_skill, encoding="utf-8")
+
+    # Hatch `packages = ["src/cli_anything"]` and Poetry `from = "src"` also resolve from `src/`.
+    src_cli.unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-srcapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-srcapp = "cli_anything.srcapp.srcapp_cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cli_anything"]
+""",
+        encoding="utf-8",
+    )
+    r_hatch_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_hatch_missing["ok"] is False
+    assert {c["id"]: c for c in r_hatch_missing["checks"]}["console-script"]["status"] == "fail"
+
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-srcapp"
+version = "1.0.0"
+packages = [{include = "cli_anything", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-srcapp = "cli_anything.srcapp.srcapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    r_poetry_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_poetry_missing["ok"] is False
+    assert {c["id"]: c for c in r_poetry_missing["checks"]}["console-script"]["status"] == "fail"
+
+    # setup.py with explicit package_dir={"": "src"} resolves from `src/` too.
+    (harness / "pyproject.toml").unlink()
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-srcapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(where="src", include=["cli_anything.*"]),
+    package_dir={"": "src"},
+    package_data={"cli_anything.srcapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-srcapp=cli_anything.srcapp.srcapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_setup_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_setup_missing["ok"] is False
+    assert {c["id"]: c for c in r_setup_missing["checks"]}["console-script"]["status"] == "fail"
+    src_cli.write_text(saved_cli, encoding="utf-8")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_manifest_preserves_dot_prefix_for_ordered_exclusions_and_build_py(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "dot_manifest", "dotapp")
+
+    # 1. Without package_dir={"": "."}, `recursive-include . *.md` emits `./cli_anything/...` which
+    #    setuptools build_py does not match against prefix-free package dirs (and `recursive-exclude . SKILL.md`
+    #    removes it as well).
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-dotapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-dotapp=cli_anything.dotapp.dotapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    for manifest_text in (
+        "recursive-include . *.md\n",
+        "recursive-include . *.md\nrecursive-exclude . SKILL.md\n",
+    ):
+        (harness / "MANIFEST.in").write_text(manifest_text, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, manifest_text
+        assert {c["id"]: c for c in res["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 2. With package_dir={"": "."}, build_py expects `./cli_anything/...`: `recursive-include . *.md`
+    #    succeeds, while `recursive-exclude . SKILL.md` or `prune .` removes the emitted `./` path.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-dotapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"": "."},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-dotapp=cli_anything.dotapp.dotapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    (harness / "MANIFEST.in").write_text("recursive-include . *.md\n", encoding="utf-8")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    for excl_manifest in (
+        "recursive-include . *.md\nrecursive-exclude . SKILL.md\n",
+        "recursive-include . *.md\nprune .\n",
+    ):
+        (harness / "MANIFEST.in").write_text(excl_manifest, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, excl_manifest
+        assert {c["id"]: c for c in res["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 3. `graft .` calls findall(".") which strips `./`, so `prune cli_anything/dotapp/skills`
+    #    removes it while `prune .` does not.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-dotapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-dotapp=cli_anything.dotapp.dotapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    (harness / "MANIFEST.in").write_text("graft .\nprune .\n", encoding="utf-8")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    (harness / "MANIFEST.in").write_text(
+        "graft .\nprune cli_anything/dotapp/skills\n", encoding="utf-8"
+    )
+    res_graft_pruned = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_graft_pruned["ok"] is False
+    assert {c["id"]: c for c in res_graft_pruned["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 4. With `where = ["src"]`, MANIFEST.in must cover `src/cli_anything/...` (not flat `cli_anything/...`).
+    shutil.copytree(harness / "cli_anything", harness / "src" / "cli_anything")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-dotapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-dotapp = "cli_anything.dotapp.dotapp_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cli_anything.*"]
+""",
+        encoding="utf-8",
+    )
+    (harness / "MANIFEST.in").write_text("recursive-include cli_anything *.md\n", encoding="utf-8")
+    r_wrong_root = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_wrong_root["ok"] is False
+    assert {c["id"]: c for c in r_wrong_root["checks"]}["package-data-skills"]["status"] == "warn"
+
+    (harness / "MANIFEST.in").write_text("recursive-include src *.md\n", encoding="utf-8")
     assert verify_harness.verify_harness(
         harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
     )["ok"] is True
