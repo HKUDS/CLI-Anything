@@ -16,6 +16,7 @@ import ast
 import fnmatch
 import json
 import keyword
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -403,16 +404,59 @@ def _get_package_dir_rel(package: str, package_dir: dict[str, str]) -> str:
     return "/".join(tail)
 
 
+def _find_discovered_packages(
+    root: Path,
+    includes: list[str] | None,
+    excludes: list[str] | None,
+) -> list[str]:
+    """Mirror setuptools.discovery.PEP420PackageFinder.find()."""
+    if not root.is_dir():
+        return []
+    inc_patterns = ["*"] if includes is None else includes
+    exc_patterns = ["ez_setup", "*__pycache__"] + (list(excludes) if excludes else [])
+    found: list[str] = []
+
+    for cur_root, dirs, _ in os.walk(str(root), followlinks=True):
+        all_dirs = sorted(dirs)
+        dirs[:] = []
+        for d in all_dirs:
+            if "." in d:
+                continue
+            full_path = os.path.join(cur_root, d)
+            rel_path = os.path.relpath(full_path, str(root))
+            package = rel_path.replace(os.path.sep, ".")
+            is_excluded = any(fnmatch.fnmatchcase(package, pat) for pat in exc_patterns)
+            is_included = any(fnmatch.fnmatchcase(package, pat) for pat in inc_patterns)
+            if is_included and not is_excluded:
+                found.append(package)
+            if f"{package}*" in exc_patterns or f"{package}.*" in exc_patterns:
+                continue
+            dirs.append(d)
+    return found
+
+
+def _remove_nested_packages(packages: list[str]) -> list[str]:
+    """Mirror setuptools.discovery.remove_nested_packages()."""
+    pkgs = sorted(packages, key=len)
+    top_level = pkgs[:]
+    size = len(pkgs)
+    for i, name in enumerate(reversed(pkgs)):
+        if any(name.startswith(f"{other}.") for other in top_level):
+            top_level.pop(size - i - 1)
+    return top_level
+
+
 def _apply_find_package_dir(
     harness: Path | None,
     base_pkg_dir: dict[str, str],
     pkg_spec: dict[str, Any] | None,
-    candidate_pkgs: Iterable[str],
 ) -> dict[str, str]:
-    """Mirror setuptools.config.expand.find_packages() fill_package_dir behavior.
+    """Mirror setuptools.config.expand.find_packages() + construct_package_dir().
 
-    PEP420PackageFinder selects any matching directory under each `where` root (even without
-    `__init__.py`) and later roots overwrite earlier entries in `fill_package_dir`.
+    For each non-root `where` entry not already covered by `package_dir[""]`, discovers
+    selected packages via PEP 420 finder semantics, collapses nested descendants to their
+    top-most selected ancestors (`remove_nested_packages`), and updates `package_dir` so
+    later roots override ancestor mappings identically to setuptools.
     """
     out = dict(base_pkg_dir)
     if not pkg_spec or pkg_spec.get("kind") != "find" or not pkg_spec.get("from_pyproject"):
@@ -445,24 +489,15 @@ def _apply_find_package_dir(
 
     includes = pkg_spec.get("includes")
     excludes = pkg_spec.get("excludes")
-    pkgs_list = [p for p in dict.fromkeys(candidate_pkgs) if p]
 
     for path in search:
-        if _is_harness_root(path):
+        if _norm_pkg_dir_value(out.get("", "")) == path or _is_harness_root(path):
             continue
-        for pkg in pkgs_list:
-            if not _find_selects_package(
-                pkg,
-                includes,
-                excludes,
-                harness=harness,
-                wheres=[path],
-                require_init=False,
-            ):
-                continue
-            if _norm_pkg_dir_value(out.get("", "")) != path:
-                pkg_sub = pkg.replace(".", "/")
-                out[pkg] = f"{path}/{pkg_sub}" if path not in {"", "."} else pkg_sub
+        pkgs = _find_discovered_packages(harness / path, includes, excludes)
+        if pkgs:
+            for top_pkg in _remove_nested_packages(pkgs):
+                pkg_sub = top_pkg.replace(".", "/")
+                out[top_pkg] = f"{path}/{pkg_sub}" if path not in {"", "."} else pkg_sub
     return out
 
 
@@ -525,12 +560,10 @@ def _validate_console_script_target(
         return False, f"module '{module_path}' is outside harness package '{target_pkg}'", None
 
     parent_pkg = ".".join(mod_parts[:-1])
-    candidates = [p for p in (target_pkg, parent_pkg, module_path) if p]
     eff_pkg_dir = _apply_find_package_dir(
         harness,
         base_package_dir or {},
         pkg_spec,
-        candidates,
     )
 
     pkg_dir_rel = _get_package_dir_rel(module_path, eff_pkg_dir)
@@ -1206,6 +1239,8 @@ class _TomlFallbackParser:
         if self.pos < self.n and self.text[self.pos] == "#":
             while self.pos < self.n and self.text[self.pos] != "\n":
                 self.pos += 1
+        if self.pos < self.n and self.text[self.pos] not in {"\r", "\n"}:
+            raise ValueError(f"Unexpected trailing content in TOML at pos {self.pos}")
         if self.pos < self.n and self.text[self.pos] == "\r":
             self.pos += 1
         if self.pos < self.n and self.text[self.pos] == "\n":
@@ -1387,6 +1422,8 @@ class _TomlFallbackParser:
         while self.pos < self.n and self.text[self.pos] not in {",", "]", "}", "#", "\r", "\n"}:
             self.pos += 1
         raw = self.text[start : self.pos].strip()
+        if not raw:
+            raise ValueError(f"Missing TOML value at pos {start}")
         if raw == "true":
             return True
         if raw == "false":
@@ -1399,7 +1436,10 @@ class _TomlFallbackParser:
         try:
             return float(cleaned)
         except ValueError:
+            pass
+        if re.match(r"^\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}|$)", raw) or re.match(r"^\d{2}:\d{2}:\d{2}", raw):
             return raw
+        raise ValueError(f"Invalid TOML scalar value: {raw!r}")
 
     @staticmethod
     def _ensure_table(root: dict[str, Any], keys: list[str]) -> dict[str, Any]:
@@ -1441,6 +1481,8 @@ class _TomlFallbackParser:
             cur = cur[-1]
         if not isinstance(cur, dict):
             raise ValueError(f"Cannot assign into non-table at {keys!r}")
+        if keys[-1] in cur:
+            raise ValueError(f"Duplicate TOML key {keys[-1]!r}")
         cur[keys[-1]] = value
 
 
@@ -1451,6 +1493,7 @@ def _loads_toml_fallback(text: str) -> dict[str, Any]:
 
 def _empty_pyproject_info() -> dict[str, Any]:
     return {
+        "parse_error": None,
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
@@ -1482,8 +1525,10 @@ def _inspect_pyproject_toml_fallback(
     """Python 3.10 stdlib fallback path using the stdlib TOML parser + shared inspection logic."""
     try:
         data = _loads_toml_fallback(text)
-    except Exception:
-        return _empty_pyproject_info()
+    except Exception as exc:
+        info = _empty_pyproject_info()
+        info["parse_error"] = str(exc) or exc.__class__.__name__
+        return info
     return _inspect_pyproject_data(data, target_pkg=target_pkg, harness=harness)
 
 
@@ -1499,8 +1544,10 @@ def _inspect_pyproject_toml(
         data = tomllib.loads(text)
     except ImportError:
         return _inspect_pyproject_toml_fallback(text, target_pkg=target_pkg, harness=harness)
-    except Exception:
-        return _empty_pyproject_info()
+    except Exception as exc:
+        info = _empty_pyproject_info()
+        info["parse_error"] = str(exc) or exc.__class__.__name__
+        return info
     return _inspect_pyproject_data(data, target_pkg=target_pkg, harness=harness)
 
 
@@ -1720,6 +1767,17 @@ def _check_packaging(
         else _empty_pyproject_info()
     )
 
+    if has_pyproject and pyproj_info["parse_error"]:
+        checks.append(
+            CheckResult(
+                "pyproject-toml-syntax",
+                "packaging",
+                FAIL,
+                f"invalid pyproject.toml: {pyproj_info['parse_error']}",
+            )
+        )
+        return checks, module, []
+
     uses_setup_py = has_setup and (not has_pyproject or pyproj_info["backend_kind"] == "setuptools")
 
     # Determine which packages are selected by discovery and their effective package_dir mapping.
@@ -1753,18 +1811,26 @@ def _check_packaging(
         harness,
         eff_base_package_dir,
         eff_pkg_spec,
-        [p for p in (target_pkg, f"{target_pkg}.skills" if target_pkg else None) if p],
     )
 
     effective_module = module
+    missing_effective_dir: str | None = None
     if target_pkg and parent_selected:
         raw_target_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
         cand_module = (harness / raw_target_dir) if raw_target_dir else module
         if cand_module is not None and cand_module.is_dir():
             effective_module = cand_module
+        elif raw_target_dir:
+            missing_effective_dir = raw_target_dir
 
     missing_runtime_subpkgs: list[str] = []
-    if parent_selected and target_pkg and effective_module is not None and eff_pkg_spec is not None:
+    if (
+        parent_selected
+        and not missing_effective_dir
+        and target_pkg
+        and effective_module is not None
+        and eff_pkg_spec is not None
+    ):
         for sub_pkg in _collect_runtime_subpackages(effective_module, target_pkg):
             if eff_pkg_spec["kind"] == "find":
                 sub_selected = _find_selects_package(
@@ -1794,7 +1860,16 @@ def _check_packaging(
             )
         )
     elif pyproj_info["declares_packages"]:
-        if pyproj_info["namespace_ok"] and not missing_runtime_subpkgs:
+        if pyproj_info["namespace_ok"] and missing_effective_dir:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"effective package directory '{missing_effective_dir}' for {target_pkg_label} does not exist",
+                )
+            )
+        elif pyproj_info["namespace_ok"] and not missing_runtime_subpkgs:
             checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured in pyproject.toml"))
         elif pyproj_info["namespace_ok"] and missing_runtime_subpkgs:
             checks.append(
@@ -1833,7 +1908,16 @@ def _check_packaging(
             )
         )
     elif uses_setup_py and setup_info["namespace_ok"]:
-        if not missing_runtime_subpkgs:
+        if missing_effective_dir:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"effective package directory '{missing_effective_dir}' for {target_pkg_label} does not exist",
+                )
+            )
+        elif not missing_runtime_subpkgs:
             checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured"))
         else:
             checks.append(

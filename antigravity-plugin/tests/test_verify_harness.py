@@ -2344,3 +2344,110 @@ def test_verify_inspects_declared_cli_target_instead_of_aggregating_unrelated_cl
     )
     assert r_custom["ok"] is False
     assert {c["id"]: c for c in r_custom["checks"]}["json-flag"]["status"] == "fail"
+
+
+def test_verify_rejects_malformed_pyproject_toml_even_with_valid_setup_py(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "bad_toml", "badtomlapp")
+    malformed_samples = [
+        "[project\nname = \"cli-anything-badtomlapp\"\n",
+        "[project] trailing_garbage\nname = \"cli-anything-badtomlapp\"\n",
+        "[project]\nname = \"a\"\nname = \"b\"\n",
+        "[project]\nname = \n",
+    ]
+    for sample in malformed_samples:
+        (harness / "pyproject.toml").write_text(sample, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, sample
+        checks = {c["id"]: c for c in res["checks"]}
+        assert checks["pyproject-toml-syntax"]["status"] == "fail", sample
+
+        with monkeypatch.context() as mp:
+            mp.setitem(sys.modules, "tomllib", None)
+            res_310 = verify_harness.verify_harness(
+                harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+            )
+            assert res_310["ok"] is False, sample
+            assert {c["id"]: c for c in res_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+
+def test_verify_derives_package_dir_from_selected_top_level_ancestors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "ancestor_override", "ancapp")
+    shutil.copytree(harness / "cli_anything", harness / "src1" / "cli_anything")
+    # src2 contains ONLY cli_anything/otherapp (no ancapp!).
+    (harness / "src2" / "cli_anything" / "otherapp").mkdir(parents=True)
+    (harness / "src2" / "cli_anything" / "otherapp" / "__init__.py").write_text("", encoding="utf-8")
+    (harness / "setup.py").unlink()
+
+    # With default includes (["*"]), setuptools selects top-level `cli_anything` in both src1 and src2,
+    # so construct_package_dir() maps `cli_anything -> src2/cli_anything`, making `src2/cli_anything/ancapp`
+    # missing and breaking wheel builds.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-ancapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-ancapp = "cli_anything.ancapp.ancapp_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src1", "src2"]
+
+[tool.setuptools.package-data]
+"cli_anything.ancapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_override = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_override["ok"] is False
+    checks_ov = {c["id"]: c for c in r_override["checks"]}
+    assert checks_ov["namespace-packages"]["status"] == "fail"
+    assert checks_ov["console-script"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_override_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_override_310["ok"] is False
+        assert {c["id"]: c for c in r_override_310["checks"]}["console-script"]["status"] == "fail"
+
+    # With include = ["cli_anything.*"], `cli_anything` itself is NOT selected, so `cli_anything.ancapp`
+    # stays mapped to `src1/cli_anything/ancapp` while `cli_anything.otherapp` maps to `src2`.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-ancapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-ancapp = "cli_anything.ancapp.ancapp_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src1", "src2"]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.ancapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
