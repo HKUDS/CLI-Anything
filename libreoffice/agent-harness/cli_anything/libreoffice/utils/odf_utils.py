@@ -460,7 +460,7 @@ def create_styles_xml(doc_type: str, project: Dict[str, Any]) -> str:
     # Master styles
     master_styles = ET.SubElement(root, _ns("office", "master-styles"))
     mp = ET.SubElement(master_styles, _ns("style", "master-page"))
-    mp.set(_nsattr("style", "name"), "Default")
+    mp.set(_nsattr("style", "name"), "Standard" if doc_type == "writer" else "Default")
     if doc_type == "writer":
         mp.set(_nsattr("style", "page-layout-name"), "PM1")
 
