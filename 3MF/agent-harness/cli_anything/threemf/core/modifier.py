@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 import numpy as np
-
-from cli_anything.threemf.core.parser import MeshData, ThreeMFData
 from cli_anything.threemf.core.inspector import (
     DetectedHole,
     InspectParams,
     inspect_mesh,
 )
+from cli_anything.threemf.core.parser import MeshData, ThreeMFData
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -55,7 +55,8 @@ def resize_holes(
     ------
     ValueError
         If *threemf_data* is ``None``, *mesh_index* is out of range,
-        *target_diameter* is non-positive, or any *hole_id* is unknown.
+        *target_diameter* is not finite and positive, or any *hole_id* is
+        unknown.
     """
 
     _validate_resize_inputs(threemf_data, hole_ids, target_diameter, mesh_index)
@@ -116,8 +117,7 @@ def resize_single_hole(
 
     if mesh_data is None:
         raise ValueError("mesh_data must not be None")
-    if target_diameter <= 0:
-        raise ValueError(f"target_diameter must be positive, got {target_diameter}")
+    _validate_target_diameter(target_diameter)
 
     old_radius = hole.diameter / 2.0
     new_radius = target_diameter / 2.0
@@ -166,10 +166,16 @@ def _validate_resize_inputs(
             f"mesh_index {mesh_index} out of range "
             f"(0..{len(threemf_data.meshes) - 1})"
         )
-    if target_diameter <= 0:
-        raise ValueError(f"target_diameter must be positive, got {target_diameter}")
+    _validate_target_diameter(target_diameter)
     if not hole_ids:
         raise ValueError("hole_ids must not be empty")
+
+
+def _validate_target_diameter(target_diameter: float) -> None:
+    if not math.isfinite(target_diameter) or target_diameter <= 0:
+        raise ValueError(
+            f"target_diameter must be finite and positive, got {target_diameter}"
+        )
 
 
 def _perpendicular_axes(axis: int) -> tuple[int, int]:

@@ -14,16 +14,15 @@ Usage:
     cli-anything-3mf
 """
 
-import sys
-import os
 import json
+import math
+import os
 import shlex
-import click
+import sys
 from typing import Optional
 
-from cli_anything.threemf.core import parser
-from cli_anything.threemf.core import inspector
-from cli_anything.threemf.core import modifier
+import click
+from cli_anything.threemf.core import inspector, modifier, parser
 from cli_anything.threemf.core import repair as repair_mod
 from cli_anything.threemf.utils import threemf_backend as backend
 
@@ -218,10 +217,10 @@ def resize(file, hole_ids, diameter, output_path, planes, min_diameter, min_conf
     Hole IDs come from `inspect`. Pass the SAME detection options here as you
     gave `inspect` (especially --axis), otherwise the IDs won't line up.
     """
+    if not math.isfinite(diameter) or diameter <= 0:
+        raise ValueError("Diameter must be finite and positive")
     if os.path.exists(output_path) and not overwrite:
         raise FileExistsError(f"Output file exists: {output_path}. Use --overwrite to replace.")
-    if diameter <= 0:
-        raise ValueError("Diameter must be positive")
 
     data = parser.parse_3mf(file)
     params = inspector.InspectParams(
