@@ -230,27 +230,250 @@ def _check_layout(harness: Path) -> tuple[list[CheckResult], Path | None]:
     return checks, module
 
 
+def _call_func_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _const_str_list(node: ast.AST) -> list[str] | None:
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        out: list[str] = []
+        for elt in node.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                out.append(elt.value)
+            else:
+                return None
+        return out
+    return None
+
+
+def _parse_ini_console_scripts(ini_text: str) -> list[str]:
+    scripts: list[str] = []
+    in_section = False
+    for raw in ini_text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_section = line[1:-1].strip() == "console_scripts"
+            continue
+        if in_section and "=" in line:
+            scripts.append(line.split("=", 1)[0].strip())
+    return scripts
+
+
+def _inspect_setup_py(text: str) -> dict[str, Any]:
+    """Inspect setup.py via AST for PEP 420 namespace packaging and console_scripts."""
+    info: dict[str, Any] = {
+        "namespace_ok": False,
+        "uses_regular_find_packages": False,
+        "console_scripts": [],
+    }
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return info
+
+    # Collect simple module-level assignments so setup(packages=PKGS, entry_points=EPS) resolves cleanly.
+    bindings: dict[str, ast.AST] = {}
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+            bindings[stmt.targets[0].id] = stmt.value
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
+            bindings[stmt.target.id] = stmt.value
+
+    def _resolve(node: ast.AST) -> ast.AST:
+        seen: set[str] = set()
+        cur = node
+        while isinstance(cur, ast.Name) and cur.id in bindings and cur.id not in seen:
+            seen.add(cur.id)
+            cur = bindings[cur.id]
+        return cur
+
+    def _check_packages_expr(expr: ast.AST) -> None:
+        node = _resolve(expr)
+        if isinstance(node, ast.Call):
+            fname = _call_func_name(node.func)
+            if fname == "find_namespace_packages":
+                inc_kw = next((kw.value for kw in node.keywords if kw.arg == "include"), None)
+                if inc_kw is None:
+                    info["namespace_ok"] = True
+                else:
+                    inc_vals = _const_str_list(_resolve(inc_kw))
+                    if inc_vals is None or any(
+                        v.startswith("cli_anything") or v == "*" for v in inc_vals
+                    ):
+                        info["namespace_ok"] = True
+            elif fname == "find_packages":
+                info["uses_regular_find_packages"] = True
+        else:
+            explicit = _const_str_list(node)
+            if explicit and any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", pkg) for pkg in explicit):
+                info["namespace_ok"] = True
+
+    def _extract_entry_points(expr: ast.AST) -> None:
+        node = _resolve(expr)
+        if isinstance(node, ast.Dict):
+            for k, v in zip(node.keys, node.values):
+                if isinstance(k, ast.Constant) and k.value == "console_scripts":
+                    vals = _const_str_list(_resolve(v))
+                    if vals:
+                        for spec in vals:
+                            if "=" in spec:
+                                info["console_scripts"].append(spec.split("=", 1)[0].strip())
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            info["console_scripts"].extend(_parse_ini_console_scripts(node.value))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _call_func_name(node.func) == "setup":
+            for kw in node.keywords:
+                if kw.arg == "packages":
+                    _check_packages_expr(kw.value)
+                elif kw.arg == "entry_points":
+                    _extract_entry_points(kw.value)
+
+    return info
+
+
+def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
+    """Inspect pyproject.toml for PEP 420 namespace packaging and console scripts."""
+    info: dict[str, Any] = {
+        "namespace_ok": False,
+        "namespaces_disabled": False,
+        "console_scripts": [],
+    }
+    try:
+        import tomllib  # Python 3.11+
+
+        data = tomllib.loads(text)
+    except ImportError:
+        # Python 3.10 stdlib fallback: inspect TOML sections without third-party dependencies.
+        section = ""
+        for raw in text.splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                section = line[1:-1].strip()
+                if section == "tool.setuptools.packages.find":
+                    info["namespace_ok"] = True
+                continue
+            if section == "tool.setuptools.packages.find" and re.match(r"^namespaces\s*=\s*false\b", line):
+                info["namespaces_disabled"] = True
+                info["namespace_ok"] = False
+            elif section == "tool.setuptools" and re.search(r'["\']cli_anything\.[A-Za-z0-9_]+["\']', line):
+                info["namespace_ok"] = True
+            elif section in {"tool.hatch.build.targets.wheel", "tool.poetry"} and "cli_anything" in line:
+                info["namespace_ok"] = True
+            elif section in {"project.scripts", "tool.poetry.scripts"} and "=" in line:
+                key = line.split("=", 1)[0].strip().strip('"').strip("'")
+                if key:
+                    info["console_scripts"].append(key)
+        return info
+    except Exception:
+        return info
+
+    tool = data.get("tool", {}) if isinstance(data, dict) else {}
+    setuptools_cfg = tool.get("setuptools", {}) if isinstance(tool, dict) else {}
+    if isinstance(setuptools_cfg, dict):
+        pkgs = setuptools_cfg.get("packages")
+        if isinstance(pkgs, dict) and isinstance(pkgs.get("find"), dict):
+            find_cfg = pkgs["find"]
+            if find_cfg.get("namespaces") is False:
+                info["namespaces_disabled"] = True
+            else:
+                includes = find_cfg.get("include")
+                if not includes or any(
+                    isinstance(v, str) and (v.startswith("cli_anything") or v == "*")
+                    for v in includes
+                ):
+                    info["namespace_ok"] = True
+        elif isinstance(pkgs, list):
+            if any(
+                isinstance(p, str) and re.match(r"^cli_anything\.[A-Za-z0-9_]+", p)
+                for p in pkgs
+            ):
+                info["namespace_ok"] = True
+
+    hatch_pkgs = (
+        tool.get("hatch", {}).get("build", {}).get("targets", {}).get("wheel", {}).get("packages")
+        if isinstance(tool, dict)
+        else None
+    )
+    if isinstance(hatch_pkgs, list) and any(isinstance(p, str) and "cli_anything" in p for p in hatch_pkgs):
+        info["namespace_ok"] = True
+
+    poetry_pkgs = tool.get("poetry", {}).get("packages") if isinstance(tool, dict) else None
+    if isinstance(poetry_pkgs, list) and any(
+        isinstance(p, dict) and "cli_anything" in str(p.get("include", ""))
+        for p in poetry_pkgs
+    ):
+        info["namespace_ok"] = True
+
+    project_cfg = data.get("project", {}) if isinstance(data, dict) else {}
+    if isinstance(project_cfg, dict):
+        scripts = project_cfg.get("scripts")
+        if isinstance(scripts, dict):
+            info["console_scripts"].extend(str(k) for k in scripts.keys())
+        ep = project_cfg.get("entry-points")
+        if isinstance(ep, dict) and isinstance(ep.get("console_scripts"), dict):
+            info["console_scripts"].extend(str(k) for k in ep["console_scripts"].keys())
+
+    poetry_scripts = tool.get("poetry", {}).get("scripts") if isinstance(tool, dict) else None
+    if isinstance(poetry_scripts, dict):
+        info["console_scripts"].extend(str(k) for k in poetry_scripts.keys())
+
+    return info
+
+
 def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> list[CheckResult]:
     checks: list[CheckResult] = []
     setup_py = harness / "setup.py"
     pyproject = harness / "pyproject.toml"
-    pkg_file = setup_py if setup_py.is_file() else (pyproject if pyproject.is_file() else None)
+    has_setup = setup_py.is_file()
+    has_pyproject = pyproject.is_file()
+    pkg_file = setup_py if has_setup else (pyproject if has_pyproject else None)
     if pkg_file is None:
         return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")]
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
-    text = _read_text(pkg_file)
+    setup_text = _read_text(setup_py) if has_setup else ""
+    pyproject_text = _read_text(pyproject) if has_pyproject else ""
+    combined_text = setup_text + "\n" + pyproject_text
 
-    has_explicit_ns_pkg = bool(
-        pkg_file.name == "pyproject.toml"
-        and re.search(r'["\']cli_anything\.[a-zA-Z0-9_]+["\']', text)
-    )
-    if (
-        "find_namespace_packages" in text
-        or "packages.find" in text
-        or "cli_anything.*" in text
-        or has_explicit_ns_pkg
-    ):
+    setup_info = _inspect_setup_py(setup_text) if has_setup else {
+        "namespace_ok": False,
+        "uses_regular_find_packages": False,
+        "console_scripts": [],
+    }
+    pyproj_info = _inspect_pyproject_toml(pyproject_text) if has_pyproject else {
+        "namespace_ok": False,
+        "namespaces_disabled": False,
+        "console_scripts": [],
+    }
+
+    if setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "setup.py uses find_packages() instead of find_namespace_packages() (PEP 420 cli_anything/ has no __init__.py)",
+            )
+        )
+    elif pyproj_info["namespaces_disabled"] and not setup_info["namespace_ok"]:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "pyproject.toml sets [tool.setuptools.packages.find] namespaces = false (breaks PEP 420 discovery)",
+            )
+        )
+    elif setup_info["namespace_ok"] or pyproj_info["namespace_ok"]:
         checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured"))
     else:
         checks.append(
@@ -265,8 +488,21 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
-    if any(ep in text for ep in expected_prefixes) or re.search(r"cli-anything-[a-z0-9_-]+\s*=", text):
-        checks.append(CheckResult("console-script", "packaging", PASS, "console_scripts entry point declared"))
+    declared_scripts = list(setup_info["console_scripts"]) + list(pyproj_info["console_scripts"])
+    matching_scripts = [
+        s
+        for s in declared_scripts
+        if s in expected_prefixes or re.match(r"^cli-anything-[a-z0-9_-]+$", s)
+    ]
+    if matching_scripts:
+        checks.append(
+            CheckResult(
+                "console-script",
+                "packaging",
+                PASS,
+                f"console_scripts entry point declared: {matching_scripts[0]}",
+            )
+        )
     else:
         checks.append(
             CheckResult(
@@ -277,7 +513,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
 
-    if "skills/*.md" in text or "skills" in text and ("package_data" in text or "include_package_data" in text):
+    if "skills/*.md" in combined_text or ("skills" in combined_text and ("package_data" in combined_text or "include_package_data" in combined_text or "package-data" in combined_text)):
         checks.append(CheckResult("package-data-skills", "packaging", PASS, "packaged SKILL.md included in package data"))
     else:
         checks.append(
@@ -290,7 +526,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
 
-    if "python_requires" in text or "requires-python" in text:
+    if "python_requires" in combined_text or "requires-python" in combined_text:
         checks.append(CheckResult("python-requires", "packaging", PASS, "Python version requirement specified"))
     else:
         checks.append(

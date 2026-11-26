@@ -306,3 +306,66 @@ def test_verify_detects_standalone_canonical_skill_drift(tmp_path: Path) -> None
     checks_drift = {c["id"]: c for c in drift_res["checks"]}
     assert drift_res["ok"] is False
     assert checks_drift["root-skill-mirror"]["status"] == "warn"
+
+
+def test_verify_rejects_regular_find_packages_with_namespace_glob(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "regpkg")
+    setup_py = harness / "setup.py"
+    setup_py.write_text(
+        setup_py.read_text(encoding="utf-8").replace("find_namespace_packages", "find_packages"),
+        encoding="utf-8",
+    )
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks = {c["id"]: c for c in result["checks"]}
+    assert result["ok"] is False
+    assert checks["namespace-packages"]["status"] == "fail"
+    assert "find_packages()" in checks["namespace-packages"]["detail"]
+
+
+def test_verify_rejects_missing_console_scripts_even_when_distribution_name_matches(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "nocmd")
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-nocmd",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.nocmd": ["skills/*.md"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks = {c["id"]: c for c in result["checks"]}
+    assert result["ok"] is False
+    assert checks["namespace-packages"]["status"] == "pass"
+    assert checks["console-script"]["status"] == "fail"
+
+
+def test_verify_rejects_pyproject_namespaces_false_and_missing_scripts(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "badtoml")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[project]
+name = "cli-anything-badtoml"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+namespaces = false
+""",
+        encoding="utf-8",
+    )
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks = {c["id"]: c for c in result["checks"]}
+    assert result["ok"] is False
+    assert checks["namespace-packages"]["status"] == "fail"
+    assert checks["console-script"]["status"] == "fail"
