@@ -7,13 +7,14 @@ Or publish to PyPI: python -m build && twine upload dist/*
 """
 
 from setuptools import setup, find_namespace_packages
+from cli_anything.gimp import __version__
 
 with open("cli_anything/gimp/README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
     name="cli-anything-gimp",
-    version="1.0.0",
+    version=__version__,
     author="cli-anything contributors",
     author_email="",
     description="CLI harness for GIMP - Raster image processing via gimp -i -b (batch mode). Recommended: gimp (apt install gimp)",

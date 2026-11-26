@@ -26,6 +26,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from cli_anything.gimp.core.session import Session
+from cli_anything.gimp import __version__
 from cli_anything.gimp.core import project as proj_mod
 from cli_anything.gimp.core import layers as layer_mod
 from cli_anything.gimp.core import filters as filt_mod
@@ -742,7 +743,7 @@ def repl(project_path):
     global _repl_mode
     _repl_mode = True
 
-    skin = ReplSkin("gimp", version="1.0.0")
+    skin = ReplSkin("gimp", version=__version__)
 
     if project_path:
         sess = get_session()

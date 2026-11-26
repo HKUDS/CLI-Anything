@@ -1,0 +1,48 @@
+name: Check GIMP wheel contents
+
+on:
+  pull_request:
+    paths:
+      - "gimp/agent-harness/**"
+      - ".github/workflows/check-gimp-wheel.yml"
+  push:
+    branches: [main]
+    paths:
+      - "gimp/agent-harness/**"
+      - ".github/workflows/check-gimp-wheel.yml"
+
+jobs:
+  verify-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build GIMP wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel gimp/agent-harness
+
+      - name: Verify packaged version and fixes
+        run: |
+          python - <<'PY'
+          from email.parser import Parser
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheel_path = next(Path("gimp/agent-harness/dist").glob("cli_anything_gimp-*.whl"))
+          with ZipFile(wheel_path) as wheel:
+              names = wheel.namelist()
+              metadata_path = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = Parser().parsestr(wheel.read(metadata_path).decode("utf-8"))
+              gimp_cli = wheel.read("cli_anything/gimp/gimp_cli.py").decode("utf-8")
+              renderer = wheel.read("cli_anything/gimp/core/export.py").decode("utf-8")
+
+          assert metadata["Version"] == "1.0.1", metadata["Version"]
+          assert "def auto_save_on_exit(" in gimp_cli
+          assert "def _apply_draw_ops(" in renderer
+          print("Wheel contains the release version, auto-save callback, and draw-op renderer.")
+          PY
