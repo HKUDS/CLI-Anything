@@ -1502,3 +1502,187 @@ cli-anything-demoapp = "cli_anything.demoapp.demoapp_cli:main"
         assert verify_harness._inspect_pyproject_toml_fallback(
             sample, target_pkg=target, harness=harness
         ) == verify_harness._inspect_pyproject_toml(sample, target_pkg=target, harness=harness), sample
+
+
+def test_verify_validates_console_script_targets_in_setup_and_pyproject(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 1. setup.py pointing to a nonexistent module fails strict verification.
+    h_missing_mod = _create_valid_harness(tmp_path / "missing_mod", "tapp")
+    (h_missing_mod / "setup.py").write_text(
+        (h_missing_mod / "setup.py")
+        .read_text(encoding="utf-8")
+        .replace("cli_anything.tapp.tapp_cli:main", "cli_anything.tapp.missing_cli:main"),
+        encoding="utf-8",
+    )
+    r_missing_mod = verify_harness.verify_harness(
+        h_missing_mod, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing_mod["ok"] is False
+    assert {c["id"]: c for c in r_missing_mod["checks"]}["console-script"]["status"] == "fail"
+
+    # 2. setup.py pointing to a nonexistent callable in an existing module fails.
+    (h_missing_mod / "setup.py").write_text(
+        (h_missing_mod / "setup.py")
+        .read_text(encoding="utf-8")
+        .replace("cli_anything.tapp.missing_cli:main", "cli_anything.tapp.tapp_cli:missing_fn"),
+        encoding="utf-8",
+    )
+    r_missing_fn = verify_harness.verify_harness(
+        h_missing_mod, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing_fn["ok"] is False
+    assert {c["id"]: c for c in r_missing_fn["checks"]}["console-script"]["status"] == "fail"
+
+    # 3. setup.py omitting `:callable` or targeting another harness package fails.
+    for bad_target in (
+        "cli_anything.tapp.tapp_cli",
+        "cli_anything.otherapp.otherapp_cli:main",
+    ):
+        (h_missing_mod / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-tapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.tapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-tapp={bad_target}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        r_bad = verify_harness.verify_harness(
+            h_missing_mod, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_bad["ok"] is False
+        assert {c["id"]: c for c in r_bad["checks"]}["console-script"]["status"] == "fail"
+
+    # 4. pyproject.toml [project.scripts] invalid target fails on both tomllib and Python 3.10 fallback.
+    h_pyproj = _create_valid_harness(tmp_path / "pyproj_bad_target", "papp")
+    (h_pyproj / "setup.py").unlink()
+    (h_pyproj / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-papp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-papp = "cli_anything.papp.missing_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.papp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_pyproj = verify_harness.verify_harness(
+        h_pyproj, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_pyproj["ok"] is False
+    assert {c["id"]: c for c in r_pyproj["checks"]}["console-script"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_pyproj_310 = verify_harness.verify_harness(
+            h_pyproj, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_pyproj_310["ok"] is False
+        assert {c["id"]: c for c in r_pyproj_310["checks"]}["console-script"]["status"] == "fail"
+
+    # 5. Dotted Click command attribute (`cli.main`) and Poetry inline table callable both pass.
+    (h_pyproj / "pyproject.toml").write_text(
+        (h_pyproj / "pyproject.toml")
+        .read_text(encoding="utf-8")
+        .replace("cli_anything.papp.missing_cli:main", "cli_anything.papp.papp_cli:cli.main"),
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        h_pyproj, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 6. Target in a nested subpackage excluded from packaging discovery fails.
+    sub_dir = h_missing_mod / "cli_anything" / "tapp" / "sub"
+    sub_dir.mkdir()
+    (sub_dir / "__init__.py").write_text("", encoding="utf-8")
+    (sub_dir / "entry.py").write_text("def run():\n    pass\n", encoding="utf-8")
+    (h_missing_mod / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-tapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"], exclude=["cli_anything.*.sub"]),
+    package_data={"cli_anything.tapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-tapp=cli_anything.tapp.sub.entry:run"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_sub_excl = verify_harness.verify_harness(
+        h_missing_mod, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_sub_excl["ok"] is False
+    assert {c["id"]: c for c in r_sub_excl["checks"]}["console-script"]["status"] == "fail"
+
+
+def test_verify_manifest_preserves_setuptools_character_class_escaping(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "charapp")
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-charapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-charapp=cli_anything.charapp.charapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+
+    # Setuptools translate_pattern escapes '-' inside [...], so [A-Z] does NOT match 'S' in SKILL.md.
+    (harness / "MANIFEST.in").write_text("global-include [A-Z]*.md\n", encoding="utf-8")
+    r_range = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_range["ok"] is False
+    assert {c["id"]: c for c in r_range["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # Literal character class `[S]` DOES match `SKILL.md`.
+    (harness / "MANIFEST.in").write_text("global-include [S]KILL.md\n", encoding="utf-8")
+    r_lit = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_lit["ok"] is True, r_lit["checks"]
+
+    # Regex-backed exclusions (`global-exclude`, `exclude`, `recursive-exclude`, `prune`) also escape '-'.
+    for excl_line in (
+        "global-exclude [A-Z]*.md",
+        "exclude cli_anything/charapp/skills/[A-Z]*.md",
+        "recursive-exclude cli_anything [A-Z]*.md",
+        "prune cli_anything/[a-z]*/skills",
+    ):
+        (harness / "MANIFEST.in").write_text(
+            f"recursive-include cli_anything *.md\n{excl_line}\n",
+            encoding="utf-8",
+        )
+        r_kept = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_kept["ok"] is True, (excl_line, r_kept["checks"])
+
+    # By contrast, glob-backed `include` / `recursive-include` treat [A-Z] as a range.
+    (harness / "MANIFEST.in").write_text(
+        "recursive-include cli_anything [A-Z]*.md\n", encoding="utf-8"
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True

@@ -15,10 +15,11 @@ import argparse
 import ast
 import fnmatch
 import json
+import keyword
 import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 PASS = "pass"
@@ -255,8 +256,8 @@ def _const_str_list(node: ast.AST) -> list[str] | None:
     return None
 
 
-def _parse_ini_console_scripts(ini_text: str) -> list[str]:
-    scripts: list[str] = []
+def _parse_ini_console_scripts(ini_text: str) -> list[tuple[str, str]]:
+    scripts: list[tuple[str, str]] = []
     in_section = False
     for raw in ini_text.splitlines():
         line = raw.strip()
@@ -266,8 +267,171 @@ def _parse_ini_console_scripts(ini_text: str) -> list[str]:
             in_section = line[1:-1].strip() == "console_scripts"
             continue
         if in_section and "=" in line:
-            scripts.append(line.split("=", 1)[0].strip())
+            name, target = line.split("=", 1)
+            scripts.append((name.strip(), target.strip()))
     return scripts
+
+
+def _collect_target_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    if isinstance(node, ast.Name):
+        names.add(node.id)
+    elif isinstance(node, (ast.Tuple, ast.List)):
+        for elt in node.elts:
+            names.update(_collect_target_names(elt))
+    elif isinstance(node, ast.Starred):
+        names.update(_collect_target_names(node.value))
+    return names
+
+
+def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None]:
+    """Check statically whether py_file defines or imports `symbol` at module scope."""
+    try:
+        tree = ast.parse(_read_text(py_file), filename=str(py_file))
+    except SyntaxError as exc:
+        return False, f"syntax error in {py_file.name}: {exc.msg}"
+
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
+
+    def _is_dunder_main_guard(test: ast.AST) -> bool:
+        if (
+            isinstance(test, ast.Compare)
+            and len(test.ops) == 1
+            and isinstance(test.ops[0], ast.Eq)
+            and len(test.comparators) == 1
+        ):
+            left, right = test.left, test.comparators[0]
+            return (
+                isinstance(left, ast.Name)
+                and left.id == "__name__"
+                and isinstance(right, ast.Constant)
+                and right.value == "__main__"
+            ) or (
+                isinstance(right, ast.Name)
+                and right.id == "__name__"
+                and isinstance(left, ast.Constant)
+                and left.value == "__main__"
+            )
+        return False
+
+    def _scan_stmts(stmts: list[ast.stmt]) -> bool:
+        for stmt in stmts:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if stmt.name == symbol:
+                    return True
+            elif isinstance(stmt, ast.Assign):
+                for tgt in stmt.targets:
+                    if symbol in _collect_target_names(tgt):
+                        return True
+            elif isinstance(stmt, ast.AnnAssign):
+                if stmt.value is not None and symbol in _collect_target_names(stmt.target):
+                    return True
+            elif isinstance(stmt, ast.Import):
+                for alias in stmt.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    if bound == symbol:
+                        return True
+            elif isinstance(stmt, ast.ImportFrom):
+                for alias in stmt.names:
+                    if alias.name == "*":
+                        return True
+                    bound = alias.asname or alias.name
+                    if bound == symbol:
+                        return True
+            elif isinstance(stmt, ast.If):
+                if _is_dunder_main_guard(stmt.test):
+                    if _scan_stmts(stmt.orelse):
+                        return True
+                elif _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse):
+                    return True
+            elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+                if symbol in _collect_target_names(stmt.target):
+                    return True
+                if _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse):
+                    return True
+            elif isinstance(stmt, ast.While):
+                if _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse):
+                    return True
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+                for item in stmt.items:
+                    if item.optional_vars is not None and symbol in _collect_target_names(item.optional_vars):
+                        return True
+                if _scan_stmts(stmt.body):
+                    return True
+            elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
+                if _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse) or _scan_stmts(stmt.finalbody):
+                    return True
+                for handler in stmt.handlers:
+                    if handler.name == symbol or _scan_stmts(handler.body):
+                        return True
+            elif match_cls and isinstance(stmt, match_cls):
+                for case in stmt.cases:
+                    if _scan_stmts(case.body):
+                        return True
+        return False
+
+    if _scan_stmts(tree.body):
+        return True, None
+    return False, f"attribute '{symbol}' not defined or imported in {py_file.name}"
+
+
+def _validate_console_script_target(
+    target_spec: str,
+    harness: Path,
+    target_pkg: str | None,
+    *,
+    parent_selected: bool = False,
+    pkg_spec: dict[str, Any] | None = None,
+) -> tuple[bool, str]:
+    """Validate that a console_scripts target resolves to an importable harness callable."""
+    spec = target_spec.strip()
+    m = re.match(r"^(?P<module>[^:\s\[]+)\s*:\s*(?P<attr>[^:\s\[]+)(?:\s*\[[^\]]*\])?\s*$", spec)
+    if not m:
+        return False, "expected 'module.path:callable'"
+
+    module_path = m.group("module")
+    attr_path = m.group("attr")
+    mod_parts = module_path.split(".")
+    attr_parts = attr_path.split(".")
+    if not all(p.isidentifier() and not keyword.iskeyword(p) for p in mod_parts):
+        return False, f"invalid module path '{module_path}'"
+    if not all(p.isidentifier() and not keyword.iskeyword(p) for p in attr_parts):
+        return False, f"invalid callable path '{attr_path}'"
+
+    if target_pkg and module_path != target_pkg and not module_path.startswith(f"{target_pkg}."):
+        return False, f"module '{module_path}' is outside harness package '{target_pkg}'"
+
+    pkg_init = harness.joinpath(*mod_parts, "__init__.py")
+    mod_py = harness.joinpath(*mod_parts[:-1], f"{mod_parts[-1]}.py")
+    if pkg_init.is_file():
+        mod_file = pkg_init
+        owner_pkg = module_path
+    elif mod_py.is_file():
+        mod_file = mod_py
+        owner_pkg = ".".join(mod_parts[:-1])
+    else:
+        return False, f"module '{module_path}' not found under harness"
+
+    if target_pkg and parent_selected and owner_pkg != target_pkg and pkg_spec is not None:
+        if pkg_spec["kind"] == "find":
+            if not _find_selects_package(
+                owner_pkg,
+                pkg_spec["includes"],
+                pkg_spec["excludes"],
+                harness=harness,
+                wheres=pkg_spec["wheres"],
+                require_init=False,
+            ):
+                return False, f"package '{owner_pkg}' is not selected by packaging discovery"
+        elif pkg_spec["kind"] == "explicit":
+            if owner_pkg not in pkg_spec["packages"]:
+                return False, f"package '{owner_pkg}' is not listed in packaging packages"
+
+    ok_sym, sym_err = _module_defines_symbol(mod_file, attr_parts[0])
+    if not ok_sym:
+        return False, sym_err or f"callable '{attr_parts[0]}' not found in '{module_path}'"
+    return True, ""
 
 
 def _package_exists_under(root: Path, target_pkg: str, *, require_init: bool = True) -> bool:
@@ -452,6 +616,75 @@ def _pkg_data_matches_file(
     return False
 
 
+def _normalize_manifest_path(token: str) -> str | None:
+    """Mirror distutils.util.convert_path on POSIX paths, rejecting absolute patterns."""
+    if _is_absolute_pattern(token):
+        return None
+    norm = token.strip().replace("\\", "/")
+    if not norm:
+        return None
+    return PurePosixPath(norm).as_posix()
+
+
+def _setuptools_translate_pattern(glob_pat: str) -> re.Pattern[str]:
+    """Mirror setuptools.command.egg_info.translate_pattern() on POSIX-normalized paths.
+
+    Unlike fnmatch/glob, setuptools escapes '-' inside character classes so '[A-Z]'
+    matches literal 'A', '-', or 'Z' rather than a character range, and matching is
+    always case-sensitive across platforms.
+    """
+    pat = ""
+    chunks = glob_pat.split("/")
+    sep = "/"
+    valid_char = "[^/]"
+
+    for c, chunk in enumerate(chunks):
+        last_chunk = c == len(chunks) - 1
+        if chunk == "**":
+            if last_chunk:
+                pat += ".*"
+            else:
+                pat += f"(?:{valid_char}+{sep})*"
+            continue
+
+        i = 0
+        chunk_len = len(chunk)
+        while i < chunk_len:
+            char = chunk[i]
+            if char == "*":
+                pat += valid_char + "*"
+            elif char == "?":
+                pat += valid_char
+            elif char == "[":
+                inner_i = i + 1
+                if inner_i < chunk_len and chunk[inner_i] == "!":
+                    inner_i += 1
+                if inner_i < chunk_len and chunk[inner_i] == "]":
+                    inner_i += 1
+                while inner_i < chunk_len and chunk[inner_i] != "]":
+                    inner_i += 1
+                if inner_i >= chunk_len:
+                    pat += re.escape(char)
+                else:
+                    inner = chunk[i + 1 : inner_i]
+                    char_class = ""
+                    if inner[0] == "!":
+                        char_class = "^"
+                        inner = inner[1:]
+                    char_class += re.escape(inner)
+                    pat += f"[{char_class}]"
+                    i = inner_i
+            else:
+                pat += re.escape(char)
+            i += 1
+
+        if not last_chunk:
+            pat += sep
+
+    pat += r"\Z"
+    return re.compile(pat, flags=re.MULTILINE | re.DOTALL)
+
+
 def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool:
     """Evaluate MANIFEST.in directives in order (mirroring setuptools egg_info.FileList)."""
     if harness is None or not target_pkg:
@@ -500,28 +733,41 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
             if any(_glob_matches_relpath(target_rel, pat, recursive=False, platform_case=True) for pat in tokens[1:]):
                 selected = True
         elif action == "exclude":
-            if any(_glob_matches_relpath(target_rel, pat, recursive=True) for pat in tokens[1:]):
-                selected = False
+            for pat in tokens[1:]:
+                p = _normalize_manifest_path(pat)
+                if p is not None and _setuptools_translate_pattern(p).match(target_rel):
+                    selected = False
+                    break
         elif action in {"global-include", "global-exclude"}:
-            if any(
-                not _is_absolute_pattern(pat) and _glob_matches_relpath(target_rel, f"**/{pat}", recursive=True)
-                for pat in tokens[1:]
-            ):
-                selected = action == "global-include"
-        elif action in {"recursive-include", "recursive-exclude"}:
+            for pat in tokens[1:]:
+                p = _normalize_manifest_path(pat)
+                if p is not None and _setuptools_translate_pattern(f"**/{p}").match(target_rel):
+                    selected = action == "global-include"
+                    break
+        elif action == "recursive-include":
             if len(tokens) < 3:
                 continue
             d = _norm_dir(tokens[1])
             if d is None:
                 continue
             prefix = f"{d}/**/" if d else "**/"
-            use_platform_case = action == "recursive-include"
             if any(
                 not _is_absolute_pattern(pat)
-                and _glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True, platform_case=use_platform_case)
+                and _glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True, platform_case=True)
                 for pat in tokens[2:]
             ):
-                selected = action == "recursive-include"
+                selected = True
+        elif action == "recursive-exclude":
+            if len(tokens) < 3:
+                continue
+            d = _normalize_manifest_path(tokens[1])
+            if d is None:
+                continue
+            for pat in tokens[2:]:
+                p = _normalize_manifest_path(pat)
+                if p is not None and _setuptools_translate_pattern(f"{d}/**/{p}").match(target_rel):
+                    selected = False
+                    break
         elif action == "graft":
             if len(tokens) != 2:
                 continue
@@ -535,11 +781,10 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
         elif action == "prune":
             if len(tokens) != 2:
                 continue
-            d = _norm_dir(tokens[1])
+            d = _normalize_manifest_path(tokens[1])
             if d is None:
                 continue
-            dir_glob = f"{d}/**/*" if d else "**/*"
-            if _glob_matches_relpath(target_rel, dir_glob, recursive=True):
+            if _setuptools_translate_pattern(f"{d}/**").match(target_rel):
                 selected = False
 
     return selected
@@ -568,6 +813,7 @@ def _inspect_setup_py(
         "namespace_ok": False,
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
+        "pkg_spec": None,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -631,6 +877,12 @@ def _inspect_setup_py(
                     if exc_vals is not None:
                         excludes = exc_vals
 
+                info["pkg_spec"] = {
+                    "kind": "find",
+                    "includes": includes,
+                    "excludes": excludes,
+                    "wheres": wheres,
+                }
                 if _find_selects_package(
                     target_pkg,
                     includes,
@@ -652,6 +904,8 @@ def _inspect_setup_py(
                 info["uses_regular_find_packages"] = True
         else:
             explicit = _const_str_list(node)
+            if explicit is not None:
+                info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
             if explicit and _explicit_packages_cover(target_pkg, explicit):
                 info["namespace_ok"] = True
             if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
@@ -666,7 +920,8 @@ def _inspect_setup_py(
                     if vals:
                         for spec in vals:
                             if "=" in spec:
-                                info["console_scripts"].append(spec.split("=", 1)[0].strip())
+                                name, target = spec.split("=", 1)
+                                info["console_scripts"].append((name.strip(), target.strip()))
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             info["console_scripts"].extend(_parse_ini_console_scripts(node.value))
 
@@ -1031,6 +1286,7 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "skills_subpkg_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
+        "pkg_spec": None,
         "has_project_table": False,
         "scripts_dynamic": False,
         "reserved_console_scripts_ep": False,
@@ -1138,6 +1394,12 @@ def _inspect_pyproject_data(
                         if isinstance(excludes_raw, list)
                         else None
                     )
+                    info["pkg_spec"] = {
+                        "kind": "find",
+                        "includes": includes,
+                        "excludes": excludes,
+                        "wheres": wheres,
+                    }
                     if _find_selects_package(
                         target_pkg,
                         includes,
@@ -1158,6 +1420,7 @@ def _inspect_pyproject_data(
             elif isinstance(pkgs, list):
                 info["declares_packages"] = True
                 str_pkgs = [p for p in pkgs if isinstance(p, str)]
+                info["pkg_spec"] = {"kind": "explicit", "packages": str_pkgs}
                 if _explicit_packages_cover(target_pkg, str_pkgs):
                     info["namespace_ok"] = True
                 if target_pkg and f"{target_pkg}.skills" in str_pkgs:
@@ -1203,7 +1466,9 @@ def _inspect_pyproject_data(
             info["scripts_dynamic"] = True
         scripts = project_cfg.get("scripts")
         if isinstance(scripts, dict):
-            info["console_scripts"].extend(str(k) for k in scripts.keys())
+            for k, v in scripts.items():
+                target_val = v.strip() if isinstance(v, str) else ""
+                info["console_scripts"].append((str(k).strip(), target_val))
         ep = project_cfg.get("entry-points")
         if isinstance(ep, dict) and "console_scripts" in ep:
             # PEP 621 reserves console_scripts for [project.scripts]; setuptools drops
@@ -1214,7 +1479,15 @@ def _inspect_pyproject_data(
         poetry_cfg = tool_dict.get("poetry")
         poetry_scripts = poetry_cfg.get("scripts") if isinstance(poetry_cfg, dict) else None
         if isinstance(poetry_scripts, dict):
-            info["console_scripts"].extend(str(k) for k in poetry_scripts.keys())
+            for k, v in poetry_scripts.items():
+                if isinstance(v, str):
+                    target_val = v.strip()
+                elif isinstance(v, dict):
+                    raw_ref = v.get("callable") or v.get("reference")
+                    target_val = raw_ref.strip() if isinstance(raw_ref, str) else ""
+                else:
+                    target_val = ""
+                info["console_scripts"].append((str(k).strip(), target_val))
 
     return info
 
@@ -1241,30 +1514,18 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "namespace_ok": False,
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
+        "pkg_spec": None,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
         "include_package_data": None,
         "has_python_requires": False,
     }
-    pyproj_info = _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg, harness=harness) if has_pyproject else {
-        "build_backend": None,
-        "backend_kind": "setuptools",
-        "namespace_ok": False,
-        "skills_subpkg_ok": False,
-        "namespaces_disabled": False,
-        "declares_packages": False,
-        "has_project_table": False,
-        "scripts_dynamic": False,
-        "reserved_console_scripts_ep": False,
-        "console_scripts": [],
-        "declares_package_data": False,
-        "package_data": {},
-        "declares_exclude_package_data": False,
-        "exclude_package_data": {},
-        "include_package_data": None,
-        "has_python_requires": False,
-    }
+    pyproj_info = (
+        _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg, harness=harness)
+        if has_pyproject
+        else _empty_pyproject_info()
+    )
 
     uses_setup_py = has_setup and (not has_pyproject or pyproj_info["backend_kind"] == "setuptools")
 
@@ -1321,6 +1582,24 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
 
+    # Determine which setuptools packages are actually selected by discovery.
+    if pyproj_info["namespaces_disabled"]:
+        parent_selected = False
+        skills_subpkg_selected = False
+        eff_pkg_spec = None
+    elif pyproj_info["declares_packages"]:
+        parent_selected = bool(pyproj_info["namespace_ok"])
+        skills_subpkg_selected = bool(pyproj_info["skills_subpkg_ok"])
+        eff_pkg_spec = pyproj_info["pkg_spec"]
+    elif uses_setup_py:
+        parent_selected = bool(setup_info["namespace_ok"])
+        skills_subpkg_selected = bool(setup_info["skills_subpkg_ok"])
+        eff_pkg_spec = setup_info["pkg_spec"]
+    else:
+        parent_selected = False
+        skills_subpkg_selected = False
+        eff_pkg_spec = None
+
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
@@ -1331,19 +1610,41 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     else:
         declared_scripts = list(pyproj_info["console_scripts"]) + list(setup_info["console_scripts"])
     matching_scripts = [
-        s
-        for s in declared_scripts
-        if s in expected_prefixes or re.match(r"^cli-anything-[a-z0-9_-]+$", s)
+        (name, target)
+        for name, target in declared_scripts
+        if name in expected_prefixes or re.match(r"^cli-anything-[a-z0-9_-]+$", name)
     ]
     if matching_scripts:
-        checks.append(
-            CheckResult(
-                "console-script",
-                "packaging",
-                PASS,
-                f"console_scripts entry point declared: {matching_scripts[0]}",
+        invalid_targets: list[str] = []
+        for cmd_name, target_spec in matching_scripts:
+            ok_target, reason = _validate_console_script_target(
+                target_spec,
+                harness,
+                target_pkg,
+                parent_selected=parent_selected,
+                pkg_spec=eff_pkg_spec,
             )
-        )
+            if not ok_target:
+                invalid_targets.append(f"{cmd_name}={target_spec} ({reason})")
+        if not invalid_targets:
+            first_name, first_target = matching_scripts[0]
+            checks.append(
+                CheckResult(
+                    "console-script",
+                    "packaging",
+                    PASS,
+                    f"console_scripts entry point declared: {first_name}={first_target}",
+                )
+            )
+        else:
+            checks.append(
+                CheckResult(
+                    "console-script",
+                    "packaging",
+                    FAIL,
+                    f"console_scripts target invalid: {'; '.join(invalid_targets)}",
+                )
+            )
     else:
         if pyproj_info["reserved_console_scripts_ep"]:
             detail = (
@@ -1405,20 +1706,6 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             eff_include_pkg_data = True
         else:
             eff_include_pkg_data = False
-
-        # Determine which setuptools packages are actually selected by discovery.
-        if pyproj_info["namespaces_disabled"]:
-            parent_selected = False
-            skills_subpkg_selected = False
-        elif pyproj_info["declares_packages"]:
-            parent_selected = bool(pyproj_info["namespace_ok"])
-            skills_subpkg_selected = bool(pyproj_info["skills_subpkg_ok"])
-        elif uses_setup_py:
-            parent_selected = bool(setup_info["namespace_ok"])
-            skills_subpkg_selected = bool(setup_info["skills_subpkg_ok"])
-        else:
-            parent_selected = False
-            skills_subpkg_selected = False
 
         # Mirror setuptools build_py: analyze_manifest() assigns SKILL.md to the deepest
         # selected package containing it, and exclude_data_files() runs per supplying package.
