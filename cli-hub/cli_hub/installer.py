@@ -193,7 +193,7 @@ def _pip_install(cli):
 
 
 def _pip_uninstall(cli):
-    pkg_name = f"cli-anything-{cli['name']}"
+    pkg_name = cli.get("pip_package") or f"cli-anything-{cli['name']}"
     result = subprocess.run(
         [sys.executable, "-m", "pip", "uninstall", "-y", pkg_name],
         capture_output=True, text=True

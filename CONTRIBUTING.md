@@ -67,6 +67,7 @@ Include an entry in `registry.json` as part of your PR. Each field is described 
 | `source_url` | Yes | For standalone repos: URL to your repo (e.g. `"https://github.com/user/repo"`). For in-repo harnesses: `null` (the hub auto-links to `<name>/agent-harness/`). |
 | `install_cmd` | Yes | Full pip install command. PyPI: `"pip install cli-anything-my-software"`. In-repo: `"pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=my-software/agent-harness"`. |
 | `entry_point` | Yes | CLI command name (e.g. `"cli-anything-my-software"`). |
+| `pip_package` | No | Python distribution name for pip uninstall when it differs from `cli-anything-<name>` (e.g. `"cli-anything-ccswitch"` for `cc-switch`). |
 | `skill_md` | Yes | Path to canonical SKILL.md. For standalone repos: full URL (e.g. `"https://github.com/user/repo/blob/main/.../SKILL.md"`). For in-repo: relative path under the repo-root `skills/` tree (e.g. `"skills/cli-anything-my-software/SKILL.md"`). Set to `null` if not yet available. |
 | `category` | Yes | One of the existing categories (check `registry.json` for examples). |
 | `contributors` | Yes | Array of `{"name": "...", "url": "..."}` objects listing all contributors. |
