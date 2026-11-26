@@ -967,6 +967,106 @@ cli-anything-resept = "cli_anything.resept.resept_cli:main"
         assert "reserved" in checks_py310["console-script"]["detail"]
 
 
+def test_verify_checks_package_data_skills_against_actual_harness_package(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 1. Copied package_data key for another package must warn (and fail strict).
+    harness = _create_valid_harness(tmp_path / "wrong_key", "pdapp")
+    (harness / "setup.py").write_text(
+        (harness / "setup.py").read_text(encoding="utf-8").replace(
+            '"cli_anything.pdapp"', '"cli_anything.otherapp"'
+        ),
+        encoding="utf-8",
+    )
+    wrong = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert wrong["ok"] is False
+    assert {c["id"]: c for c in wrong["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 2. Root-only '*.md' does not include skills/SKILL.md under setuptools.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-pdapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.pdapp": ["*.md"]},
+    entry_points={"console_scripts": ["cli-anything-pdapp=cli_anything.pdapp.pdapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    root_only = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert root_only["ok"] is False
+    assert {c["id"]: c for c in root_only["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 3. Subpackage key cli_anything.pdapp.skills with SKILL.md passes.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-pdapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.pdapp.skills": ["SKILL.md"]},
+    entry_points={"console_scripts": ["cli-anything-pdapp=cli_anything.pdapp.pdapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    subpkg_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert subpkg_ok["ok"] is True, subpkg_ok["checks"]
+
+    # 4. pyproject.toml [tool.setuptools.package-data] targeting another package overrides setup.py.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-pdapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+dynamic = ["scripts"]
+
+[tool.setuptools.package-data]
+"cli_anything.otherapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    pyproj_wrong = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert pyproj_wrong["ok"] is False
+    assert {c["id"]: c for c in pyproj_wrong["checks"]}["package-data-skills"]["status"] == "warn"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        pyproj_wrong_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert pyproj_wrong_310["ok"] is False
+        assert {c["id"]: c for c in pyproj_wrong_310["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # Fixing the pyproject.toml package-data key passes strict verification.
+    (harness / "pyproject.toml").write_text(
+        (harness / "pyproject.toml").read_text(encoding="utf-8").replace(
+            '"cli_anything.otherapp"', '"cli_anything.pdapp"'
+        ),
+        encoding="utf-8",
+    )
+    pyproj_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert pyproj_ok["ok"] is True, pyproj_ok["checks"]
+
+
 def test_pyproject_py310_fallback_matches_tomllib_semantics(tmp_path: Path) -> None:
     harness = _create_valid_harness(tmp_path, "demoapp")
     (harness / "empty-src").mkdir()

@@ -174,6 +174,53 @@ def test_posix_single_letter_root_path_is_not_rewritten_to_windows_drive() -> No
         assert mnt_proc.stdout.strip() == "/mnt/c/custom/plugins/cli-anything"
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Case-sensitive Linux filesystem test")
+def test_linux_uninstall_preserves_distinct_case_discovery_pointer(tmp_path: Path) -> None:
+    upper = tmp_path / "Case" / "plugins"
+    lower = tmp_path / "case" / "plugins"
+    upper.mkdir(parents=True)
+    lower.mkdir(parents=True)
+    # Skip cleanly if running on a case-insensitive mount (e.g. NTFS /mnt/c).
+    if os.path.samefile(upper, lower):
+        pytest.skip("Mount is case-insensitive")
+
+    home = tmp_path / "home"
+    home.mkdir(parents=True)
+    env_upper = os.environ.copy()
+    env_upper["HOME"] = str(home)
+    env_upper["ANTIGRAVITY_PLUGINS_HOME"] = str(upper)
+
+    env_lower = os.environ.copy()
+    env_lower["HOME"] = str(home)
+    env_lower["ANTIGRAVITY_PLUGINS_HOME"] = str(lower)
+
+    r1 = subprocess.run(
+        ["bash", str(PLUGIN_SRC / "scripts" / "install.sh")],
+        env=env_upper, capture_output=True, text=True, check=False,
+    )
+    assert r1.returncode == 0, r1.stdout + r1.stderr
+
+    r2 = subprocess.run(
+        ["bash", str(PLUGIN_SRC / "scripts" / "install.sh")],
+        env=env_lower, capture_output=True, text=True, check=False,
+    )
+    assert r2.returncode == 0, r2.stdout + r2.stderr
+
+    pointer = home / ".gemini" / "cli-anything-generator.root"
+    assert pointer.read_text(encoding="utf-8").strip() == str((lower / "cli-anything").resolve())
+
+    # Uninstalling the Uppercase install must NOT remove the lowercase discovery pointer.
+    u1 = subprocess.run(
+        ["bash", str(PLUGIN_SRC / "scripts" / "uninstall.sh")],
+        env=env_upper, capture_output=True, text=True, check=False,
+    )
+    assert u1.returncode == 0, u1.stdout + u1.stderr
+    assert not (upper / "cli-anything").exists()
+    assert (lower / "cli-anything" / "plugin.json").is_file()
+    assert pointer.is_file()
+    assert pointer.read_text(encoding="utf-8").strip() == str((lower / "cli-anything").resolve())
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows junction plugins root test")
 def test_windows_junction_plugins_root_workspace_and_global_uninstall(tmp_path: Path) -> None:
     shell = shutil.which("pwsh") or shutil.which("powershell")

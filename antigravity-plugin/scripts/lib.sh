@@ -1,13 +1,38 @@
 # Shared helpers for CLI-Anything Google Antigravity plugin install/uninstall (bash).
 # shellcheck shell=bash
 
-normalize_path_key() {
-  printf '%s' "${1}" | tr '[:upper:]' '[:lower:]' | tr '\\' '/' | sed 's:/*$::'
-}
-
 is_wsl_host() {
   [[ -n "${WSL_DISTRO_NAME:-}" || -n "${WSL_INTEROP:-}" ]] && return 0
   grep -qiE 'microsoft|wsl' /proc/sys/kernel/osrelease 2>/dev/null
+}
+
+is_case_insensitive_path() {
+  local p="${1}"
+  case "${p}" in
+    [A-Za-z]:/*|[A-Za-z]:\\*|\\\\*) return 0 ;;
+  esac
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*|Darwin) return 0 ;;
+    Linux)
+      if is_wsl_host && [[ "${p}" =~ ^/mnt/[a-zA-Z](/|$) ]]; then
+        return 0
+      fi
+      ;;
+  esac
+  return 1
+}
+
+normalize_path_key() {
+  local p="${1}"
+  p="$(printf '%s' "${p}" | tr '\\' '/')"
+  if [[ "${p}" != "/" ]]; then
+    p="$(printf '%s' "${p}" | sed 's:/*$::')"
+  fi
+  if is_case_insensitive_path "${1}"; then
+    printf '%s' "${p}" | tr '[:upper:]' '[:lower:]'
+  else
+    printf '%s' "${p}"
+  fi
 }
 
 # Convert Git Bash / MSYS / Cygwin / WSL-mounted Windows paths to Windows host paths.
