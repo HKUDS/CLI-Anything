@@ -400,30 +400,39 @@ def _package_data_covers_skill(
     target_pkg: str | None,
     *,
     allow_star_wildcard: bool,
+    exclusion: bool = False,
 ) -> bool:
-    """Return True if package_data/exclude_package_data rules match skills/SKILL.md for target_pkg.
+    """Return True if package_data or exclude_package_data rules match skills/SKILL.md.
 
-    Setuptools treats `""` as the all-packages wildcard in `setup.py`, whereas `"*"` is only
-    normalized to `""` when loaded from TOML `[tool.setuptools.package-data]` / `exclude-package-data`.
+    In setuptools:
+    - `package_data` expands via `glob(..., recursive=True)` (segment-wise, `**` matches 0+ dirs).
+    - `exclude_package_data` filters via `fnmatch.filter()` (where `*` also matches `/`).
+    - In `setup.py`, only `""` is the all-packages wildcard; TOML normalizes `"*"` to `""`.
     """
     wildcard_keys = {"", "*"} if allow_star_wildcard else {""}
+
+    def _matches(rel: str, raw_pat: str) -> bool:
+        pat = raw_pat.strip().replace("\\", "/")
+        while pat.startswith("./"):
+            pat = pat[2:]
+        if not pat:
+            return False
+        if exclusion:
+            return fnmatch.fnmatchcase(rel, pat)
+        return _glob_matches_relpath(rel, pat, recursive=True)
+
     for pkg_key, patterns in package_data.items():
         if pkg_key in wildcard_keys or (target_pkg and pkg_key == target_pkg):
-            if any(_glob_matches_relpath("skills/SKILL.md", p, recursive=True) for p in patterns):
+            if any(_matches("skills/SKILL.md", p) for p in patterns):
                 return True
         elif target_pkg and pkg_key == f"{target_pkg}.skills":
-            if any(_glob_matches_relpath("SKILL.md", p, recursive=True) for p in patterns):
+            if any(_matches("SKILL.md", p) for p in patterns):
                 return True
     return False
 
 
-def _path_suffixes(rel_path: str) -> list[str]:
-    parts = [p for p in rel_path.split("/") if p]
-    return ["/".join(parts[i:]) for i in range(len(parts))]
-
-
 def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool:
-    """Evaluate MANIFEST.in directives in order to determine if target_pkg's SKILL.md is selected."""
+    """Evaluate MANIFEST.in directives in order (mirroring setuptools egg_info.FileList)."""
     if harness is None or not target_pkg:
         return False
     manifest = harness / "MANIFEST.in"
@@ -431,7 +440,6 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
         return False
 
     target_rel = f"{target_pkg.replace('.', '/')}/skills/SKILL.md"
-    target_suffixes = _path_suffixes(target_rel)
 
     # Join backslash-continued lines and strip `#` comments.
     logical_lines: list[str] = []
@@ -450,16 +458,12 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
     if pending:
         logical_lines.append(pending.strip())
 
-    def _dir_contains(dir_token: str) -> str | None:
+    def _norm_dir(dir_token: str) -> str:
         d = dir_token.strip().replace("\\", "/")
         while d.startswith("./"):
             d = d[2:]
         d = d.strip("/")
-        if d in {"", "."}:
-            return target_rel
-        if target_rel.startswith(d + "/"):
-            return target_rel[len(d) + 1 :]
-        return None
+        return "" if d in {"", "."} else d
 
     selected = False
     for line in logical_lines:
@@ -467,30 +471,28 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
         if len(tokens) < 2:
             continue
         action = tokens[0]
-        if action in {"include", "exclude"}:
+        if action == "include":
             if any(_glob_matches_relpath(target_rel, pat, recursive=False) for pat in tokens[1:]):
-                selected = action == "include"
+                selected = True
+        elif action == "exclude":
+            if any(_glob_matches_relpath(target_rel, pat, recursive=True) for pat in tokens[1:]):
+                selected = False
         elif action in {"global-include", "global-exclude"}:
-            if any(
-                _glob_matches_relpath(suf, pat, recursive=False)
-                for pat in tokens[1:]
-                for suf in target_suffixes
-            ):
+            if any(_glob_matches_relpath(target_rel, f"**/{pat}", recursive=True) for pat in tokens[1:]):
                 selected = action == "global-include"
         elif action in {"recursive-include", "recursive-exclude"}:
             if len(tokens) < 3:
                 continue
-            sub = _dir_contains(tokens[1])
-            if sub is not None:
-                sub_suffixes = _path_suffixes(sub)
-                if any(
-                    _glob_matches_relpath(suf, pat, recursive=False)
-                    for pat in tokens[2:]
-                    for suf in sub_suffixes
-                ):
-                    selected = action == "recursive-include"
+            d = _norm_dir(tokens[1])
+            prefix = f"{d}/**/" if d else "**/"
+            if any(_glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True) for pat in tokens[2:]):
+                selected = action == "recursive-include"
         elif action in {"graft", "prune"}:
-            if len(tokens) == 2 and _dir_contains(tokens[1]) is not None:
+            if len(tokens) != 2:
+                continue
+            d = _norm_dir(tokens[1])
+            dir_glob = f"{d}/**/*" if d else "**/*"
+            if _glob_matches_relpath(target_rel, dir_glob, recursive=True):
                 selected = action == "graft"
 
     return selected
@@ -1379,7 +1381,10 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         )
         included_by_manifest = eff_include_pkg_data and _manifest_covers_skill(harness, target_pkg)
         excluded_by_pd = _package_data_covers_skill(
-            eff_excl_data, target_pkg, allow_star_wildcard=eff_excl_star
+            eff_excl_data,
+            target_pkg,
+            allow_star_wildcard=eff_excl_star,
+            exclusion=True,
         )
         skill_data_ok = (included_by_pd or included_by_manifest) and not excluded_by_pd
 

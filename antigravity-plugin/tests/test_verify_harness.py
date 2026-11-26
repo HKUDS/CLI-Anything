@@ -1186,6 +1186,50 @@ setup(
     r_man_ok = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
     assert r_man_ok["ok"] is True, r_man_ok["checks"]
 
+    # Wildcard directory prune `prune cli_anything/*/skills` excludes the skill.
+    (h_man / "MANIFEST.in").write_text(
+        "recursive-include cli_anything/manapp/skills *.md\nprune cli_anything/*/skills\n",
+        encoding="utf-8",
+    )
+    r_wild_prune = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_wild_prune["ok"] is False
+    assert {c["id"]: c for c in r_wild_prune["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # Wildcard directory graft / recursive-include selects the skill.
+    (h_man / "MANIFEST.in").write_text(
+        "graft cli_anything/*/skills\n",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)["ok"] is True
+
+    (h_man / "MANIFEST.in").write_text(
+        "recursive-include cli_anything/*/skills *.md\nrecursive-exclude cli_anything/*/skills *.md\n",
+        encoding="utf-8",
+    )
+    r_wild_rexcl = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_wild_rexcl["ok"] is False
+    assert {c["id"]: c for c in r_wild_rexcl["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 4. setup.py exclude_package_data uses fnmatch semantics where `*.md` matches `skills/SKILL.md`.
+    h_fnm = _create_valid_harness(tmp_path / "excl_fnmatch", "fnmapp")
+    (h_fnm / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-fnmapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.fnmapp": ["skills/*.md"]},
+    exclude_package_data={"cli_anything.fnmapp": ["*.md"]},
+    entry_points={"console_scripts": ["cli-anything-fnmapp=cli_anything.fnmapp.fnmapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_fnm = verify_harness.verify_harness(h_fnm, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_fnm["ok"] is False
+    assert {c["id"]: c for c in r_fnm["checks"]}["package-data-skills"]["status"] == "warn"
+
 
 def test_pyproject_py310_fallback_matches_tomllib_semantics(tmp_path: Path) -> None:
     harness = _create_valid_harness(tmp_path, "demoapp")
