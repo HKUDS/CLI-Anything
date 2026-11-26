@@ -1,0 +1,64 @@
+name: Check Antigravity Plugin
+
+on:
+  pull_request:
+    paths:
+      - 'antigravity-plugin/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-antigravity-plugin.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'antigravity-plugin/**'
+      - 'cli-anything-plugin/**'
+      - 'docs/PREVIEW_PROTOCOL.md'
+      - '.github/workflows/check-antigravity-plugin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-installer-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pytest
+        run: python3 -m pip install --quiet pytest
+
+      - name: Test Antigravity plugin installer (bash)
+        run: bash antigravity-plugin/tests/test_install.sh
+
+      - name: Test verifier, lister, PEP 420 guard, and install race
+        run: python3 -m pytest antigravity-plugin/tests/test_verify_harness.py antigravity-plugin/tests/test_install_race.py -v
+
+  test-installer-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pytest
+        run: python -m pip install --quiet pytest
+
+      - name: Test Antigravity plugin installer (PowerShell)
+        shell: pwsh
+        run: ./antigravity-plugin/tests/test_install.ps1
+
+      - name: Test verifier, lister, PEP 420 guard, and install race
+        shell: pwsh
+        run: python -m pytest antigravity-plugin/tests/test_verify_harness.py antigravity-plugin/tests/test_install_race.py -v

@@ -1,0 +1,17 @@
+{
+  "pep420-namespace-guard": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "write_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -S ./scripts/pep420_guard.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

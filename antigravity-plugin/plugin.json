@@ -1,0 +1,27 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "cli-anything",
+  "displayName": "CLI-Anything",
+  "version": "1.0.0",
+  "description": "Build, refine, test, validate, and list stateful CLI-Anything harnesses for any GUI application in Google Antigravity via 5 slash commands.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "/cli-anything ./your-software",
+    "/cli-anything-validate ./your-software",
+    "/cli-anything-list"
+  ],
+  "author": {
+    "name": "cli-anything contributors",
+    "url": "https://github.com/HKUDS/CLI-Anything"
+  },
+  "homepage": "https://github.com/HKUDS/CLI-Anything",
+  "repository": "https://github.com/HKUDS/CLI-Anything",
+  "license": "Apache-2.0",
+  "keywords": [
+    "cli-anything",
+    "harness",
+    "agent-native",
+    "cli-generator",
+    "testing"
+  ]
+}

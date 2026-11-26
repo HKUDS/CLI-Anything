@@ -11,6 +11,7 @@ cli-anything-skill:
   - changed-files:
       - any-glob-to-any-file:
           - "cli-anything-plugin/**"
+          - "antigravity-plugin/**"
           - "codex-skill/**"
           - "cli-hub-meta-skill/**"
           - "openclaw-skill/**"

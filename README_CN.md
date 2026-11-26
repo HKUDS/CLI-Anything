@@ -59,7 +59,7 @@ CLI 是人类和 AI Agent 共通的万能接口：
 
 - **Python 3.10+**
 - 目标软件已安装（如 GIMP、Blender、LibreOffice 或你自己的应用）
-- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [Cursor](#-cursor) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [更多平台](#-更多平台即将支持)
+- 支持的 AI 编程工具之一：[Claude Code](#-claude-code) | [Cursor](#-cursor) | [Google Antigravity](#-google-antigravity) | [OpenClaw](#-openclaw) | [OpenCode](#-opencode) | [Codex](#-codex) | [Qodercli](#-qodercli) | [GitHub Copilot CLI](#-github-copilot-cli) | [更多平台](#-更多平台即将支持)
 
 ### 选择你的平台
 
@@ -313,6 +313,63 @@ bash CLI-Anything/cursor-plugin/tests/test_install.sh
 
 <details>
 
+<summary><h4 id="-google-antigravity">⚡ Google Antigravity <sup><code>社区贡献</code></sup></h4></summary>
+
+Google Antigravity 同时提供两条能力：
+
+| 轨道 | 用途 | 安装 |
+|------|------|------|
+| **生成器** | 5 个斜杠命令（`/cli-anything`、`/cli-anything-refine`、`/cli-anything-test`、`/cli-anything-validate`、`/cli-anything-list`）、glob 作用域规则、只读 `cli-anything-auditor` 子代理及 `verify_harness.py` | `antigravity-plugin/` 原生插件 |
+| **消费端** | 从 CLI-Hub 发现/安装/使用已发布 CLI 与矩阵 | `npx skills` + `cli-hub`（不变） |
+
+**生成器 — 安装 Google Antigravity 插件**
+
+```bash
+git clone https://github.com/HKUDS/CLI-Anything.git
+bash CLI-Anything/antigravity-plugin/scripts/install.sh
+```
+
+Windows PowerShell：
+
+```powershell
+.\CLI-Anything\antigravity-plugin\scripts\install.ps1
+```
+
+也可直接通过 Antigravity CLI 安装独立同步的社区版镜像：
+
+```bash
+agy plugin install https://github.com/DIIIUA/cli-anything-antigravity
+```
+
+支持 `--force`/`-Force` 升级、`--dry-run`/`-DryRun` 预演以及 `--workspace`/`-Workspace` 项目级安装（`<workspace>/.agents/plugins/cli-anything`）。默认全局安装到 `~/.gemini/config/plugins/cli-anything`（可通过指向名为 `plugins` 目录的 `ANTIGRAVITY_PLUGINS_HOME` 覆盖）。Antigravity 会在下一轮自动发现插件，直接使用斜杠命令：
+
+```text
+/cli-anything ./gimp
+/cli-anything-refine ./shotcut "picture-in-picture workflows"
+/cli-anything-test ./libreoffice
+/cli-anything-validate ./libreoffice
+/cli-anything-list
+```
+
+**消费端 — Hub / skills（与生成器插件相互独立）**
+
+```bash
+npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
+pip install cli-anything-hub
+```
+
+本地验证安装器与契约校验脚本：
+
+```bash
+bash CLI-Anything/antigravity-plugin/tests/test_install.sh
+python3 -m pytest CLI-Anything/antigravity-plugin/tests/test_verify_harness.py CLI-Anything/antigravity-plugin/tests/test_install_race.py -v
+```
+
+更多说明见 [`antigravity-plugin/README.md`](antigravity-plugin/README.md)。
+</details>
+
+<details>
+
 <summary><h4 id="-codex">⚡ Codex <sup><code>实验性</code></sup> <sup><code>社区贡献</code></sup></h4></summary>
 
 **第一步：安装 Skill**
@@ -390,6 +447,7 @@ copilot plugin install ./cli-anything-plugin
 CLI-Anything 的设计是平台无关的，计划支持更多 AI 编程工具：
 
 - **Cursor** — 已通过 `cursor-plugin/` 提供生成器插件，消费端继续用 Hub/skills
+- **Google Antigravity** — 已通过 `antigravity-plugin/` 提供原生生成器插件，消费端继续用 Hub/skills
 - **Codex** — 已通过 `codex-skill/` 提供接入
 - **Windsurf** — 即将支持
 - **你喜欢的工具** — 欢迎贡献！参考 `opencode-commands/` 目录的实现。
@@ -820,6 +878,15 @@ cli-anything/
 │   ├── rules/                            # 阶段门禁规则
 │   ├── scripts/                          # 安装脚本与 vendor 辅助文件
 │   └── tests/                            # 安装器回归测试
+├── 🪐 antigravity-plugin/                # Google Antigravity 原生生成器插件
+│   ├── plugin.json                       # Antigravity 插件清单（v1 schema）
+│   ├── skills/                           # 5 个斜杠命令 skill（/cli-anything*）
+│   ├── rules/                            # Glob 作用域规则护栏
+│   ├── agents/                           # 只读 cli-anything-auditor 子代理
+│   ├── hooks.json                        # 可选 PEP 420 PreToolUse 守卫
+│   ├── references/                       # Antigravity 工具链手册与排错指南
+│   ├── scripts/                          # 安装器、verify_harness.py、list_harnesses.py
+│   └── tests/                            # 安装、并发竞态与契约校验测试
 ├── 🤖 codex-skill/                      # 可独立安装的 Codex skill
 │   ├── SKILL.md                         # Codex 工作流入口
 │   ├── agents/                          # Codex 界面元数据
