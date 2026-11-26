@@ -1517,7 +1517,7 @@
     {
       "name": "unity-legacy",
       "display_name": "Unity Legacy CLI",
-      "version": "0.3.1",
+      "version": "0.3.3",
       "description": "Control a running Unity Editor with local JSON commands for scenes, assets, rendering, tests and build jobs. Upstream harness for the standalone unity-legacy-cli release.",
       "requires": "Licensed Unity Editor with the included bridge, Python 3.10+",
       "homepage": "https://unity.com/products/unity-engine",
