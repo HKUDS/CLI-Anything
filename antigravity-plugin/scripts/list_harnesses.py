@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import configparser
 import json
 import os
 import re
@@ -168,8 +169,25 @@ def _extract_pyproject_metadata(text: str) -> tuple[str | None, str | None, str]
     return proj_name, proj_version, backend_kind
 
 
+def _extract_setup_cfg_metadata(text: str) -> tuple[str | None, str | None]:
+    """Extract (name, version) from setup.cfg [metadata]."""
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.optionxform = str  # type: ignore[assignment]
+    try:
+        cp.read_string(text)
+    except configparser.Error:
+        return None, None
+    if not cp.has_section("metadata"):
+        return None, None
+    name = cp.get("metadata", "name", fallback="").strip() or None
+    ver = cp.get("metadata", "version", fallback="").strip() or None
+    if ver and ver.startswith(("attr:", "file:")):
+        ver = None
+    return name, ver
+
+
 def _extract_packaging_metadata(harness_dir: Path) -> tuple[str | None, str | None]:
-    """Return (public_dist_name, version) from pyproject.toml and/or setup.py."""
+    """Return (public_dist_name, version) from pyproject.toml, setup.py, and/or setup.cfg."""
     dist_name: str | None = None
     version: str | None = None
     backend_kind = "setuptools"
@@ -177,7 +195,7 @@ def _extract_packaging_metadata(harness_dir: Path) -> tuple[str | None, str | No
     pyproj = harness_dir / "pyproject.toml"
     if pyproj.is_file():
         try:
-            pyproj_text = pyproj.read_text(encoding="utf-8", errors="replace")
+            pyproj_text = pyproj.read_text(encoding="utf-8-sig", errors="replace")
         except OSError:
             pyproj_text = ""
         if pyproj_text:
@@ -186,7 +204,7 @@ def _extract_packaging_metadata(harness_dir: Path) -> tuple[str | None, str | No
     setup_py = harness_dir / "setup.py"
     if backend_kind == "setuptools" and (dist_name is None or version is None) and setup_py.is_file():
         try:
-            setup_text = setup_py.read_text(encoding="utf-8", errors="replace")
+            setup_text = setup_py.read_text(encoding="utf-8-sig", errors="replace")
         except OSError:
             setup_text = ""
         if setup_text:
@@ -199,6 +217,19 @@ def _extract_packaging_metadata(harness_dir: Path) -> tuple[str | None, str | No
                 match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', setup_text)
                 if match:
                     version = match.group(1)
+
+    setup_cfg = harness_dir / "setup.cfg"
+    if backend_kind == "setuptools" and (dist_name is None or version is None) and setup_cfg.is_file():
+        try:
+            cfg_text = setup_cfg.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError:
+            cfg_text = ""
+        if cfg_text:
+            c_name, c_ver = _extract_setup_cfg_metadata(cfg_text)
+            if dist_name is None:
+                dist_name = c_name
+            if version is None:
+                version = c_ver
 
     return dist_name, version
 

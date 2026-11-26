@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import configparser
 import fnmatch
 import json
 import keyword
@@ -459,7 +460,7 @@ def _apply_find_package_dir(
     later roots override ancestor mappings identically to setuptools.
     """
     out = dict(base_pkg_dir)
-    if not pkg_spec or pkg_spec.get("kind") != "find" or not pkg_spec.get("from_pyproject"):
+    if not pkg_spec or pkg_spec.get("kind") != "find" or not pkg_spec.get("fills_package_dir"):
         return out
     wheres = pkg_spec.get("wheres")
     if not wheres:
@@ -1004,6 +1005,7 @@ def _inspect_setup_py(
         "namespace_ok": False,
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
+        "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
         "console_scripts": [],
@@ -1069,12 +1071,13 @@ def _inspect_setup_py(
                     if exc_vals is not None:
                         excludes = exc_vals
 
+                info["declares_packages"] = True
                 info["pkg_spec"] = {
                     "kind": "find",
                     "includes": includes,
                     "excludes": excludes,
                     "wheres": wheres,
-                    "from_pyproject": False,
+                    "fills_package_dir": False,
                 }
                 if _find_selects_package(
                     target_pkg,
@@ -1094,10 +1097,12 @@ def _inspect_setup_py(
                 ):
                     info["skills_subpkg_ok"] = True
             elif fname == "find_packages":
+                info["declares_packages"] = True
                 info["uses_regular_find_packages"] = True
         else:
             explicit = _const_str_list(node)
             if explicit is not None:
+                info["declares_packages"] = bool(explicit)
                 info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
             if explicit and _explicit_packages_cover(target_pkg, explicit):
                 info["namespace_ok"] = True
@@ -1626,7 +1631,7 @@ def _inspect_pyproject_data(
                         "includes": includes,
                         "excludes": excludes,
                         "wheres": wheres,
-                        "from_pyproject": True,
+                        "fills_package_dir": True,
                     }
                     if _find_selects_package(
                         target_pkg,
@@ -1727,6 +1732,140 @@ def _inspect_pyproject_data(
     return info
 
 
+def _empty_setup_cfg_info() -> dict[str, Any]:
+    return {
+        "parse_error": None,
+        "namespace_ok": False,
+        "skills_subpkg_ok": False,
+        "uses_regular_find_packages": False,
+        "declares_packages": False,
+        "pkg_spec": None,
+        "package_dir": {},
+        "console_scripts": [],
+        "package_data": {},
+        "exclude_package_data": {},
+        "include_package_data": None,
+        "has_python_requires": False,
+    }
+
+
+def _parse_setup_cfg_list(raw: str) -> list[str]:
+    """Mirror setuptools setup.cfg list parsing (newline- or comma-separated)."""
+    if "\n" in raw:
+        items = [ln.strip() for ln in raw.splitlines()]
+        return [it for it in items if it and not it.startswith(("#", ";"))]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _inspect_setup_cfg(
+    text: str,
+    target_pkg: str | None = None,
+    harness: Path | None = None,
+) -> dict[str, Any]:
+    """Inspect setuptools setup.cfg for packages, package_dir, package_data, exclusions, and scripts."""
+    info = _empty_setup_cfg_info()
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.optionxform = str  # type: ignore[assignment]
+    try:
+        cp.read_string(text)
+    except configparser.Error as exc:
+        info["parse_error"] = str(exc) or exc.__class__.__name__
+        return info
+
+    if cp.has_section("options"):
+        opts = cp["options"]
+        py_req = opts.get("python_requires", "").strip()
+        if py_req:
+            info["has_python_requires"] = True
+
+        if "include_package_data" in opts:
+            raw_inc = opts["include_package_data"].strip().lower()
+            if raw_inc in {"true", "1", "yes", "on"}:
+                info["include_package_data"] = True
+            elif raw_inc in {"false", "0", "no", "off"}:
+                info["include_package_data"] = False
+
+        if "package_dir" in opts:
+            raw_pd = opts["package_dir"]
+            entries = raw_pd.splitlines() if "\n" in raw_pd else raw_pd.split(",")
+            for entry in entries:
+                s = entry.strip()
+                if not s or s.startswith(("#", ";")) or "=" not in s:
+                    continue
+                k, v = s.split("=", 1)
+                info["package_dir"][k.strip()] = v.strip()
+
+        if "packages" in opts:
+            raw_pkgs = opts["packages"].strip()
+            if raw_pkgs:
+                info["declares_packages"] = True
+                if raw_pkgs == "find_namespace:":
+                    find_sec = cp["options.packages.find"] if cp.has_section("options.packages.find") else {}
+                    if "where" in find_sec:
+                        w_val = find_sec["where"].strip()
+                        wheres: list[str] | None = [w_val] if w_val else ["."]
+                    else:
+                        wheres = None
+                    includes: list[str] | None = (
+                        _parse_setup_cfg_list(find_sec["include"]) if "include" in find_sec else None
+                    )
+                    excludes: list[str] | None = (
+                        _parse_setup_cfg_list(find_sec["exclude"]) if "exclude" in find_sec else None
+                    )
+                    info["pkg_spec"] = {
+                        "kind": "find",
+                        "includes": includes,
+                        "excludes": excludes,
+                        "wheres": wheres,
+                        "fills_package_dir": True,
+                    }
+                    if _find_selects_package(
+                        target_pkg,
+                        includes,
+                        excludes,
+                        harness=harness,
+                        wheres=wheres,
+                    ):
+                        info["namespace_ok"] = True
+                    if target_pkg and _find_selects_package(
+                        f"{target_pkg}.skills",
+                        includes,
+                        excludes,
+                        harness=harness,
+                        wheres=wheres,
+                        require_init=False,
+                    ):
+                        info["skills_subpkg_ok"] = True
+                elif raw_pkgs == "find:":
+                    info["uses_regular_find_packages"] = True
+                else:
+                    explicit = _parse_setup_cfg_list(raw_pkgs)
+                    info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
+                    if explicit and _explicit_packages_cover(target_pkg, explicit):
+                        info["namespace_ok"] = True
+                    if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
+                        info["skills_subpkg_ok"] = True
+
+    if cp.has_section("options.package_data"):
+        for k, v in cp.items("options.package_data"):
+            info["package_data"][k.strip()] = _parse_setup_cfg_list(v)
+
+    if cp.has_section("options.exclude_package_data"):
+        for k, v in cp.items("options.exclude_package_data"):
+            info["exclude_package_data"][k.strip()] = _parse_setup_cfg_list(v)
+
+    if cp.has_section("options.entry_points"):
+        raw_cs = cp.get("options.entry_points", "console_scripts", fallback="")
+        for ln in raw_cs.splitlines():
+            s = ln.strip()
+            if not s or s.startswith(("#", ";")) or "=" not in s:
+                continue
+            name, target = s.split("=", 1)
+            info["console_scripts"].append((name.strip(), target.strip()))
+
+    return info
+
+
 def _check_packaging(
     harness: Path,
     software_slug: str,
@@ -1735,16 +1874,18 @@ def _check_packaging(
     checks: list[CheckResult] = []
     setup_py = harness / "setup.py"
     pyproject = harness / "pyproject.toml"
+    setup_cfg = harness / "setup.cfg"
     has_setup = setup_py.is_file()
     has_pyproject = pyproject.is_file()
-    pkg_file = setup_py if has_setup else (pyproject if has_pyproject else None)
+    has_setup_cfg = setup_cfg.is_file()
+    pkg_file = setup_py if has_setup else (pyproject if has_pyproject else (setup_cfg if has_setup_cfg else None))
     if pkg_file is None:
         return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")], module, []
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
     pyproject_text = _read_text(pyproject) if has_pyproject else ""
-    combined_text = setup_text + "\n" + pyproject_text
+    setup_cfg_text = _read_text(setup_cfg) if has_setup_cfg else ""
 
     target_pkg = f"cli_anything.{module.name}" if module is not None else None
     target_pkg_label = target_pkg or f"cli_anything.{software_slug.replace('-', '_')}"
@@ -1753,6 +1894,7 @@ def _check_packaging(
         "namespace_ok": False,
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
+        "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
         "console_scripts": [],
@@ -1778,32 +1920,61 @@ def _check_packaging(
         )
         return checks, module, []
 
-    uses_setup_py = has_setup and (not has_pyproject or pyproj_info["backend_kind"] == "setuptools")
+    uses_setuptools = not has_pyproject or pyproj_info["backend_kind"] == "setuptools"
+    uses_setup_py = has_setup and uses_setuptools
+    uses_setup_cfg = has_setup_cfg and uses_setuptools
 
-    # Determine which packages are selected by discovery and their effective package_dir mapping.
+    setup_cfg_info = (
+        _inspect_setup_cfg(setup_cfg_text, target_pkg=target_pkg, harness=harness)
+        if uses_setup_cfg
+        else _empty_setup_cfg_info()
+    )
+    if uses_setup_cfg and setup_cfg_info["parse_error"]:
+        checks.append(
+            CheckResult(
+                "setup-cfg-syntax",
+                "packaging",
+                FAIL,
+                f"invalid setup.cfg: {setup_cfg_info['parse_error']}",
+            )
+        )
+        return checks, module, []
+
+    # Determine effective package selection (setuptools precedence: pyproject.toml > setup.py > setup.cfg).
     if pyproj_info["namespaces_disabled"]:
         parent_selected = False
         skills_subpkg_selected = False
         eff_pkg_spec = None
+        pkg_source = "pyproject"
     elif pyproj_info["declares_packages"]:
         parent_selected = bool(pyproj_info["namespace_ok"])
         skills_subpkg_selected = bool(pyproj_info["skills_subpkg_ok"])
         eff_pkg_spec = pyproj_info["pkg_spec"]
-    elif uses_setup_py:
+        pkg_source = "pyproject"
+    elif uses_setup_py and setup_info["declares_packages"]:
         parent_selected = bool(setup_info["namespace_ok"])
         skills_subpkg_selected = bool(setup_info["skills_subpkg_ok"])
         eff_pkg_spec = setup_info["pkg_spec"]
+        pkg_source = "setup_py"
+    elif uses_setup_cfg and setup_cfg_info["declares_packages"]:
+        parent_selected = bool(setup_cfg_info["namespace_ok"])
+        skills_subpkg_selected = bool(setup_cfg_info["skills_subpkg_ok"])
+        eff_pkg_spec = setup_cfg_info["pkg_spec"]
+        pkg_source = "setup_cfg"
     else:
         parent_selected = False
         skills_subpkg_selected = False
         eff_pkg_spec = None
+        pkg_source = "none"
 
     if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
         eff_base_package_dir = dict(pyproj_info["package_dir"])
     elif pyproj_info["declares_package_dir"]:
         eff_base_package_dir = dict(pyproj_info["package_dir"])
-    elif uses_setup_py:
+    elif uses_setup_py and setup_info["package_dir"]:
         eff_base_package_dir = dict(setup_info["package_dir"])
+    elif uses_setup_cfg and setup_cfg_info["package_dir"]:
+        eff_base_package_dir = dict(setup_cfg_info["package_dir"])
     else:
         eff_base_package_dir = {}
 
@@ -1848,8 +2019,8 @@ def _check_packaging(
             if not sub_selected:
                 missing_runtime_subpkgs.append(sub_pkg)
 
-    # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py.
-    # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py at all.
+    # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py/setup.cfg.
+    # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py or setup.cfg at all.
     if pyproj_info["namespaces_disabled"]:
         checks.append(
             CheckResult(
@@ -1898,7 +2069,7 @@ def _check_packaging(
                 f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring {target_pkg_label} namespace packages",
             )
         )
-    elif uses_setup_py and setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
+    elif pkg_source == "setup_py" and setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
         checks.append(
             CheckResult(
                 "namespace-packages",
@@ -1907,7 +2078,7 @@ def _check_packaging(
                 "setup.py uses find_packages() instead of find_namespace_packages() (PEP 420 cli_anything/ has no __init__.py)",
             )
         )
-    elif uses_setup_py and setup_info["namespace_ok"]:
+    elif pkg_source == "setup_py" and setup_info["namespace_ok"]:
         if missing_effective_dir:
             checks.append(
                 CheckResult(
@@ -1928,6 +2099,36 @@ def _check_packaging(
                     f"setup.py package discovery/packages does not select required runtime subpackage(s): {', '.join(missing_runtime_subpkgs)}",
                 )
             )
+    elif pkg_source == "setup_cfg" and setup_cfg_info["uses_regular_find_packages"] and not setup_cfg_info["namespace_ok"]:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "setup.cfg uses packages = find: instead of find_namespace: (PEP 420 cli_anything/ has no __init__.py)",
+            )
+        )
+    elif pkg_source == "setup_cfg" and setup_cfg_info["namespace_ok"]:
+        if missing_effective_dir:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"effective package directory '{missing_effective_dir}' for {target_pkg_label} does not exist",
+                )
+            )
+        elif not missing_runtime_subpkgs:
+            checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured in setup.cfg"))
+        else:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"setup.cfg package discovery/packages does not select required runtime subpackage(s): {', '.join(missing_runtime_subpkgs)}",
+                )
+            )
     else:
         checks.append(
             CheckResult(
@@ -1941,12 +2142,17 @@ def _check_packaging(
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
-    # Under PEP 517 / PEP 621: non-setuptools backends ignore setup.py, and setuptools >= 61
-    # ignores setup.py entry_points whenever [project] omits "scripts" from project.dynamic.
-    if (not uses_setup_py) or (pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"]):
+    # Under PEP 517 / PEP 621: non-setuptools backends ignore setup.py/setup.cfg, and setuptools >= 61
+    # ignores legacy entry_points whenever [project] omits "scripts" from project.dynamic.
+    legacy_scripts = (
+        list(setup_info["console_scripts"])
+        if (uses_setup_py and setup_info["console_scripts"])
+        else (list(setup_cfg_info["console_scripts"]) if uses_setup_cfg else [])
+    )
+    if (not uses_setuptools) or (pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"]):
         declared_scripts = list(pyproj_info["console_scripts"])
     else:
-        declared_scripts = list(pyproj_info["console_scripts"]) + list(setup_info["console_scripts"])
+        declared_scripts = list(pyproj_info["console_scripts"]) + legacy_scripts
     matching_scripts = [
         (name, target)
         for name, target in declared_scripts
@@ -1997,15 +2203,15 @@ def _check_packaging(
                 "pyproject.toml declares reserved [project.entry-points.console_scripts] instead of [project.scripts] "
                 "(rejected/dropped under PEP 621 / setuptools)"
             )
-        elif has_pyproject and pyproj_info["backend_kind"] != "setuptools" and setup_info["console_scripts"]:
+        elif has_pyproject and pyproj_info["backend_kind"] != "setuptools" and (setup_info["console_scripts"] or setup_cfg_info["console_scripts"]):
             detail = (
                 f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring console scripts "
-                "(setup.py console_scripts are ignored)"
+                "(setup.py/setup.cfg console_scripts are ignored)"
             )
-        elif pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"] and setup_info["console_scripts"]:
+        elif pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"] and (setup_info["console_scripts"] or setup_cfg_info["console_scripts"]):
             detail = (
                 "pyproject.toml defines [project] without scripts (and without 'scripts' in project.dynamic), "
-                "so setup.py console_scripts are ignored by setuptools"
+                "so legacy console_scripts are ignored by setuptools"
             )
         else:
             detail = f"{pkg_file.name} does not declare console_scripts entry point cli-anything-{software_slug}"
@@ -2036,9 +2242,12 @@ def _check_packaging(
         if pyproj_info["declares_package_data"]:
             eff_pkg_data = pyproj_info["package_data"]
             eff_pkg_star = True
-        elif uses_setup_py:
+        elif uses_setup_py and setup_info["package_data"]:
             eff_pkg_data = setup_info["package_data"]
             eff_pkg_star = False
+        elif uses_setup_cfg and setup_cfg_info["package_data"]:
+            eff_pkg_data = setup_cfg_info["package_data"]
+            eff_pkg_star = True
         else:
             eff_pkg_data = {}
             eff_pkg_star = False
@@ -2046,17 +2255,24 @@ def _check_packaging(
         if pyproj_info["declares_exclude_package_data"]:
             eff_excl_data = pyproj_info["exclude_package_data"]
             eff_excl_star = True
-        elif uses_setup_py:
+        elif uses_setup_py and setup_info["exclude_package_data"]:
             eff_excl_data = setup_info["exclude_package_data"]
             eff_excl_star = False
+        elif uses_setup_cfg and setup_cfg_info["exclude_package_data"]:
+            eff_excl_data = setup_cfg_info["exclude_package_data"]
+            eff_excl_star = True
         else:
             eff_excl_data = {}
             eff_excl_star = False
 
         if pyproj_info["include_package_data"] is not None:
             eff_include_pkg_data = bool(pyproj_info["include_package_data"])
-        elif uses_setup_py and setup_info["include_package_data"] is not None:
-            eff_include_pkg_data = bool(setup_info["include_package_data"])
+        elif uses_setup_py and setup_info["include_package_data"] is True:
+            eff_include_pkg_data = True
+        elif uses_setup_cfg and setup_cfg_info["include_package_data"] is not None:
+            eff_include_pkg_data = bool(setup_cfg_info["include_package_data"])
+        elif uses_setup_py and setup_info["include_package_data"] is False:
+            eff_include_pkg_data = False
         elif pyproj_info["has_project_table"]:
             # Setuptools >= 61 defaults include-package-data to True for PEP 621 [project] tables.
             eff_include_pkg_data = True
@@ -2130,20 +2346,23 @@ def _check_packaging(
             )
         )
 
-    # Under PEP 621 / setuptools >= 61, [project] ignores legacy setup.py python_requires
+    # Under PEP 621 / setuptools >= 61, [project] ignores legacy setup.py/setup.cfg python_requires
     # unless "requires-python" is explicitly declared in project.dynamic.
-    can_use_setup_py_req = uses_setup_py and (
+    has_legacy_py_req = (uses_setup_py and setup_info["has_python_requires"]) or (
+        uses_setup_cfg and setup_cfg_info["has_python_requires"]
+    )
+    can_use_legacy_py_req = uses_setuptools and (
         not pyproj_info["has_project_table"] or pyproj_info["requires_python_dynamic"]
     )
-    if pyproj_info["has_python_requires"] or (can_use_setup_py_req and setup_info["has_python_requires"]):
+    if pyproj_info["has_python_requires"] or (can_use_legacy_py_req and has_legacy_py_req):
         checks.append(CheckResult("python-requires", "packaging", PASS, "Python version requirement specified"))
-    elif pyproj_info["has_project_table"] and not pyproj_info["requires_python_dynamic"] and setup_info["has_python_requires"]:
+    elif pyproj_info["has_project_table"] and not pyproj_info["requires_python_dynamic"] and has_legacy_py_req:
         checks.append(
             CheckResult(
                 "python-requires",
                 "packaging",
                 WARN,
-                "pyproject.toml defines [project] without requires-python (and without 'requires-python' in project.dynamic), so setup.py python_requires is ignored by setuptools",
+                "pyproject.toml defines [project] without requires-python (and without 'requires-python' in project.dynamic), so legacy python_requires is ignored by setuptools",
                 severity="warn",
             )
         )

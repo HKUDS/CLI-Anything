@@ -2451,3 +2451,150 @@ include = ["cli_anything.*"]
     assert verify_harness.verify_harness(
         harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
     )["ok"] is True
+
+
+def test_verify_includes_setup_cfg_packaging_metadata_and_precedence(
+    tmp_path: Path,
+) -> None:
+    # 1. Valid setup.py + setup.cfg [options.exclude_package_data] excluding skills/*.md -> warn/fail strict.
+    harness = _create_valid_harness(tmp_path / "cfg_excl", "cfgapp")
+    (harness / "setup.cfg").write_text(
+        "[options.exclude_package_data]\ncli_anything.cfgapp = skills/*.md\n",
+        encoding="utf-8",
+    )
+    r_excl = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_excl["ok"] is False
+    assert {c["id"]: c for c in r_excl["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # Wildcard `*` in setup.cfg [options.exclude_package_data] also excludes skills/*.md.
+    (harness / "setup.cfg").write_text(
+        "[options.exclude_package_data]\n* = skills/*.md\n",
+        encoding="utf-8",
+    )
+    r_star_excl = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_star_excl["ok"] is False
+    assert {c["id"]: c for c in r_star_excl["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 2. pyproject.toml package-data without exclude-package-data still inherits setup.cfg exclusions;
+    #    explicit [tool.setuptools.exclude-package-data] overrides setup.cfg.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-cfgapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-cfgapp = "cli_anything.cfgapp.cfgapp_cli:main"
+
+[tool.setuptools.package-data]
+"cli_anything.cfgapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_pyproj_inherit = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_pyproj_inherit["ok"] is False
+    assert {c["id"]: c for c in r_pyproj_inherit["checks"]}["package-data-skills"]["status"] == "warn"
+
+    (harness / "pyproject.toml").write_text(
+        (harness / "pyproject.toml").read_text(encoding="utf-8")
+        + '\n[tool.setuptools.exclude-package-data]\n"cli_anything.cfgapp" = ["*.txt"]\n',
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 3. Pure setup.cfg declarative packaging (setup() with no kwargs) passes strict verification.
+    (harness / "pyproject.toml").unlink()
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    (harness / "setup.cfg").write_text(
+        """[metadata]
+name = cli-anything-cfgapp
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+
+[options.package_data]
+* = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgapp = cli_anything.cfgapp.cfgapp_cli:main
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 4. Malformed setup.cfg fails packaging verification with setup-cfg-syntax error.
+    (harness / "setup.cfg").write_text("[options\npackages = find_namespace:\n", encoding="utf-8")
+    r_bad_cfg = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_bad_cfg["ok"] is False
+    assert {c["id"]: c for c in r_bad_cfg["checks"]}["setup-cfg-syntax"]["status"] == "fail"
+
+
+def test_list_harnesses_strips_utf8_bom_from_setup_py_and_pyproject(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = tmp_path / "iterm2" / "agent-harness"
+    pkg = harness / "cli_anything" / "iterm2_ctl"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text('"""iTerm2 harness."""\n', encoding="utf-8")
+    # UTF-8 BOM-prefixed setup.py must parse cleanly and merge with the installed dist entry.
+    (harness / "setup.py").write_bytes(
+        b"\xef\xbb\xbf"
+        b'from setuptools import find_namespace_packages, setup\n'
+        b'setup(\n'
+        b'    name="cli-anything-iterm2",\n'
+        b'    version="1.4.2",\n'
+        b'    packages=find_namespace_packages(include=["cli_anything.*"]),\n'
+        b'    entry_points={"console_scripts": ["cli-anything-iterm2=cli_anything.iterm2_ctl.iterm2_ctl_cli:main"]},\n'
+        b')\n'
+    )
+
+    monkeypatch.setattr(
+        list_harnesses,
+        "scan_installed",
+        lambda *, include_hub=False: {
+            "iterm2": {
+                "name": "iterm2",
+                "status": "installed",
+                "version": "1.4.2",
+                "executable": "/usr/local/bin/cli-anything-iterm2",
+                "source": None,
+            }
+        },
+    )
+    payload = list_harnesses.collect_tools(tmp_path)
+    assert payload["total"] == 1
+    assert payload["installed"] == 1
+    assert payload["generated_only"] == 0
+    assert payload["tools"][0]["name"] == "iterm2"
+    assert payload["tools"][0]["source"] == "./iterm2/agent-harness"
+
+    # BOM-prefixed pyproject.toml also merges cleanly.
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_bytes(
+        b'\xef\xbb\xbf[project]\nname = "cli-anything-iterm2"\nversion = "1.4.2"\n'
+    )
+    payload_toml = list_harnesses.collect_tools(tmp_path)
+    assert payload_toml["total"] == 1
+    assert payload_toml["tools"][0]["source"] == "./iterm2/agent-harness"
