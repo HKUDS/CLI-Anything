@@ -79,7 +79,10 @@ def scan_generated(base_path: Path, max_depth: int | None = None) -> dict[str, d
     base = base_path.resolve()
     generated: dict[str, dict[str, object]] = {}
 
-    for root, dirs, _files in os.walk(base, followlinks=False):
+    def _on_walk_error(exc: OSError) -> None:
+        print(f"Warning: skipping unreadable directory {getattr(exc, 'filename', '')}: {exc}", file=sys.stderr)
+
+    for root, dirs, _files in os.walk(base, followlinks=False, onerror=_on_walk_error):
         root_path = Path(root)
         try:
             rel_parts = root_path.relative_to(base).parts
@@ -95,8 +98,19 @@ def scan_generated(base_path: Path, max_depth: int | None = None) -> dict[str, d
 
         if root_path.name == "agent-harness" and (root_path / "cli_anything").is_dir():
             ns_dir = root_path / "cli_anything"
-            for pkg in sorted(ns_dir.iterdir()):
-                if pkg.is_dir() and (pkg / "__init__.py").is_file():
+            try:
+                entries = sorted(ns_dir.iterdir())
+            except OSError as exc:
+                print(f"Warning: skipping unreadable namespace directory {ns_dir}: {exc}", file=sys.stderr)
+                dirs[:] = []
+                continue
+            for pkg in entries:
+                try:
+                    is_valid_pkg = pkg.is_dir() and (pkg / "__init__.py").is_file()
+                except OSError as exc:
+                    print(f"Warning: skipping unreadable package directory {pkg}: {exc}", file=sys.stderr)
+                    continue
+                if is_valid_pkg:
                     software = pkg.name.replace("_", "-")
                     try:
                         display_src = str(root_path.relative_to(base)).replace("\\", "/")

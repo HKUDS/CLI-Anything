@@ -114,7 +114,11 @@ def _iter_python_files(root: Path) -> list[Path]:
     skip_dirs = {"__pycache__", ".pytest_cache", ".venv", "venv", "build", "dist", ".git"}
     files: list[Path] = []
     for path in sorted(root.rglob("*.py")):
-        if any(part in skip_dirs or part.endswith(".egg-info") for part in path.parts):
+        try:
+            rel_parts = path.relative_to(root).parts[:-1]
+        except ValueError:
+            rel_parts = ()
+        if any(part in skip_dirs or part.endswith(".egg-info") for part in rel_parts):
             continue
         files.append(path)
     return files
@@ -343,6 +347,7 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
     info: dict[str, Any] = {
         "namespace_ok": False,
         "namespaces_disabled": False,
+        "declares_packages": False,
         "console_scripts": [],
     }
     try:
@@ -359,14 +364,22 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
             if line.startswith("[") and line.endswith("]"):
                 section = line[1:-1].strip()
                 if section == "tool.setuptools.packages.find":
+                    info["declares_packages"] = True
                     info["namespace_ok"] = True
                 continue
             if section == "tool.setuptools.packages.find" and re.match(r"^namespaces\s*=\s*false\b", line):
+                info["declares_packages"] = True
                 info["namespaces_disabled"] = True
                 info["namespace_ok"] = False
+            elif section == "tool.setuptools" and re.match(r"^packages\s*=", line):
+                info["declares_packages"] = True
+                if re.search(r'["\']cli_anything\.[A-Za-z0-9_]+["\']', line):
+                    info["namespace_ok"] = True
             elif section == "tool.setuptools" and re.search(r'["\']cli_anything\.[A-Za-z0-9_]+["\']', line):
+                info["declares_packages"] = True
                 info["namespace_ok"] = True
             elif section in {"tool.hatch.build.targets.wheel", "tool.poetry"} and "cli_anything" in line:
+                info["declares_packages"] = True
                 info["namespace_ok"] = True
             elif section in {"project.scripts", "tool.poetry.scripts"} and "=" in line:
                 key = line.split("=", 1)[0].strip().strip('"').strip("'")
@@ -381,6 +394,7 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
     if isinstance(setuptools_cfg, dict):
         pkgs = setuptools_cfg.get("packages")
         if isinstance(pkgs, dict) and isinstance(pkgs.get("find"), dict):
+            info["declares_packages"] = True
             find_cfg = pkgs["find"]
             if find_cfg.get("namespaces") is False:
                 info["namespaces_disabled"] = True
@@ -392,6 +406,7 @@ def _inspect_pyproject_toml(text: str) -> dict[str, Any]:
                 ):
                     info["namespace_ok"] = True
         elif isinstance(pkgs, list):
+            info["declares_packages"] = True
             if any(
                 isinstance(p, str) and re.match(r"^cli_anything\.[A-Za-z0-9_]+", p)
                 for p in pkgs
@@ -452,10 +467,33 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     pyproj_info = _inspect_pyproject_toml(pyproject_text) if has_pyproject else {
         "namespace_ok": False,
         "namespaces_disabled": False,
+        "declares_packages": False,
         "console_scripts": [],
     }
 
-    if setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
+    # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py.
+    if pyproj_info["namespaces_disabled"]:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "pyproject.toml sets [tool.setuptools.packages.find] namespaces = false (overrides setup.py and breaks PEP 420 discovery)",
+            )
+        )
+    elif pyproj_info["declares_packages"]:
+        if pyproj_info["namespace_ok"]:
+            checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured in pyproject.toml"))
+        else:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    "pyproject.toml declares package discovery/packages without cli_anything.* namespace coverage",
+                )
+            )
+    elif setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
         checks.append(
             CheckResult(
                 "namespace-packages",
@@ -464,16 +502,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                 "setup.py uses find_packages() instead of find_namespace_packages() (PEP 420 cli_anything/ has no __init__.py)",
             )
         )
-    elif pyproj_info["namespaces_disabled"] and not setup_info["namespace_ok"]:
-        checks.append(
-            CheckResult(
-                "namespace-packages",
-                "packaging",
-                FAIL,
-                "pyproject.toml sets [tool.setuptools.packages.find] namespaces = false (breaks PEP 420 discovery)",
-            )
-        )
-    elif setup_info["namespace_ok"] or pyproj_info["namespace_ok"]:
+    elif setup_info["namespace_ok"]:
         checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured"))
     else:
         checks.append(

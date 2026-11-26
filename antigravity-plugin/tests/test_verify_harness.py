@@ -369,3 +369,58 @@ namespaces = false
     assert result["ok"] is False
     assert checks["namespace-packages"]["status"] == "fail"
     assert checks["console-script"]["status"] == "fail"
+
+
+def test_verify_honors_pyproject_namespaces_false_even_with_valid_setup_py(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "bothcfg")
+    # Add pyproject.toml overriding setup.py with namespaces = false (mirrors setuptools precedence)
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+namespaces = false
+""",
+        encoding="utf-8",
+    )
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks = {c["id"]: c for c in result["checks"]}
+    assert result["ok"] is False
+    assert checks["namespace-packages"]["status"] == "fail"
+
+
+def test_verify_scans_python_files_under_ancestor_named_build(tmp_path: Path) -> None:
+    build_parent = tmp_path / "build"
+    build_parent.mkdir()
+    harness = _create_valid_harness(build_parent, "underbuild")
+    cli_file = harness / "cli_anything" / "underbuild" / "underbuild_cli.py"
+    cli_file.write_text("def broken(:\n", encoding="utf-8")
+
+    result = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks = {c["id"]: c for c in result["checks"]}
+    assert result["ok"] is False
+    assert checks["python-syntax"]["status"] == "fail"
+
+
+def test_list_harnesses_skips_unreadable_namespace_dir(tmp_path: Path, monkeypatch) -> None:
+    _create_valid_harness(tmp_path, "goodapp")
+    bad_harness = _create_valid_harness(tmp_path, "lockedapp")
+    locked_ns = (bad_harness / "cli_anything").resolve()
+
+    orig_iterdir = Path.iterdir
+
+    def _guarded_iterdir(self: Path):
+        if self.resolve() == locked_ns:
+            raise PermissionError(13, "Permission denied", str(self))
+        return orig_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", _guarded_iterdir)
+    found = list_harnesses.scan_generated(tmp_path)
+    assert "goodapp" in found
+    assert "lockedapp" not in found
