@@ -1218,33 +1218,37 @@ class TestScriptStrategy:
 
     # ── Full install flow ──────────────────────────────────────────────
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_success(self, mock_get_cli, mock_run):
+    def test_install_jimeng_success(self, mock_get_cli, mock_popen):
         """install_cli('jimeng') succeeds and invokes the pipe command via shell."""
         mock_get_cli.return_value = JIMENG_CLI
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_process = MagicMock(returncode=0)
+        mock_process.communicate.return_value = ("", "")
+        mock_popen.return_value = mock_process
 
         success, msg = install_cli("jimeng")
 
         assert success, f"Expected success but got: {msg}"
         assert "Jimeng" in msg
 
-        mock_run.assert_called_once()
-        _, kwargs = mock_run.call_args
+        mock_popen.assert_called_once()
+        _, kwargs = mock_popen.call_args
         assert kwargs.get("shell") is True
-        assert "| bash" in mock_run.call_args[0][0]
+        assert "| bash" in mock_popen.call_args[0][0]
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_failure_propagated(self, mock_get_cli, mock_run):
+    def test_install_jimeng_failure_propagated(self, mock_get_cli, mock_popen):
         """A non-zero exit from the curl|bash script surfaces as failure."""
         mock_get_cli.return_value = JIMENG_CLI
-        mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="curl: (6) Could not resolve host"
+        mock_process = MagicMock(returncode=1)
+        mock_process.communicate.return_value = (
+            "", "curl: (6) Could not resolve host"
         )
+        mock_popen.return_value = mock_process
 
         success, msg = install_cli("jimeng")
 
@@ -1262,14 +1266,16 @@ class TestScriptStrategy:
         # Should mention the CLI name or explain no command available — never crash
         assert msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_recorded_in_installed_json(self, mock_get_cli, mock_run):
+    def test_install_jimeng_recorded_in_installed_json(self, mock_get_cli, mock_popen):
         """After a successful install, jimeng appears in installed.json."""
         installed_file = Path(tempfile.mktemp())
         mock_get_cli.return_value = JIMENG_CLI
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_process = MagicMock(returncode=0)
+        mock_process.communicate.return_value = ("", "")
+        mock_popen.return_value = mock_process
 
         with patch("cli_hub.installer.INSTALLED_FILE", installed_file):
             success, _ = install_cli("jimeng")
