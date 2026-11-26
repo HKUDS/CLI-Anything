@@ -1431,6 +1431,7 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "package_dir": {},
         "has_project_table": False,
         "scripts_dynamic": False,
+        "requires_python_dynamic": False,
         "reserved_console_scripts_ep": False,
         "console_scripts": [],
         "declares_package_data": False,
@@ -1615,8 +1616,11 @@ def _inspect_pyproject_data(
         if isinstance(req_py, str) and req_py.strip():
             info["has_python_requires"] = True
         dynamic = project_cfg.get("dynamic")
-        if isinstance(dynamic, list) and "scripts" in dynamic:
-            info["scripts_dynamic"] = True
+        if isinstance(dynamic, list):
+            if "scripts" in dynamic:
+                info["scripts_dynamic"] = True
+            if "requires-python" in dynamic:
+                info["requires_python_dynamic"] = True
         scripts = project_cfg.get("scripts")
         if isinstance(scripts, dict):
             for k, v in scripts.items():
@@ -1645,7 +1649,11 @@ def _inspect_pyproject_data(
     return info
 
 
-def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> list[CheckResult]:
+def _check_packaging(
+    harness: Path,
+    software_slug: str,
+    module: Path | None,
+) -> tuple[list[CheckResult], Path | None]:
     checks: list[CheckResult] = []
     setup_py = harness / "setup.py"
     pyproject = harness / "pyproject.toml"
@@ -1653,7 +1661,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     has_pyproject = pyproject.is_file()
     pkg_file = setup_py if has_setup else (pyproject if has_pyproject else None)
     if pkg_file is None:
-        return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")]
+        return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")], module
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
@@ -1954,14 +1962,36 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
 
-    if pyproj_info["has_python_requires"] or (uses_setup_py and setup_info["has_python_requires"]):
+    # Under PEP 621 / setuptools >= 61, [project] ignores legacy setup.py python_requires
+    # unless "requires-python" is explicitly declared in project.dynamic.
+    can_use_setup_py_req = uses_setup_py and (
+        not pyproj_info["has_project_table"] or pyproj_info["requires_python_dynamic"]
+    )
+    if pyproj_info["has_python_requires"] or (can_use_setup_py_req and setup_info["has_python_requires"]):
         checks.append(CheckResult("python-requires", "packaging", PASS, "Python version requirement specified"))
+    elif pyproj_info["has_project_table"] and not pyproj_info["requires_python_dynamic"] and setup_info["has_python_requires"]:
+        checks.append(
+            CheckResult(
+                "python-requires",
+                "packaging",
+                WARN,
+                "pyproject.toml defines [project] without requires-python (and without 'requires-python' in project.dynamic), so setup.py python_requires is ignored by setuptools",
+                severity="warn",
+            )
+        )
     else:
         checks.append(
             CheckResult("python-requires", "packaging", WARN, "python_requires not declared", severity="warn")
         )
 
-    return checks
+    effective_module = module
+    if target_pkg and parent_selected:
+        raw_target_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
+        cand_module = (harness / raw_target_dir) if raw_target_dir else module
+        if cand_module is not None and cand_module.is_dir():
+            effective_module = cand_module
+
+    return checks, effective_module
 
 
 def _check_cli_surface(
@@ -2283,10 +2313,43 @@ def verify_harness(
     repl_skin_ref = _find_canonical_repl_skin(canonical_repl_skin, repo_root)
 
     checks, module = _check_layout(harness)
-    checks.extend(_check_packaging(harness, _slugify(software_dir_name), module))
-    if module is not None:
-        checks.extend(_check_cli_surface(module, repl_skin_ref))
-        checks.extend(_check_docs_and_tests(harness, software_dir_name, module, repo_root))
+    pkg_checks, effective_module = _check_packaging(harness, _slugify(software_dir_name), module)
+    checks.extend(pkg_checks)
+    active_module = effective_module or module
+    if active_module is not None:
+        if module is not None and active_module.resolve() != module.resolve():
+            # Verify layout invariants on the effective packaged source directory when it differs
+            # from the flat cli_anything/ tree (e.g., where = ["src"] or package_dir = {"": "src"}).
+            if (active_module.parent / "__init__.py").exists():
+                checks.append(
+                    CheckResult(
+                        "effective-namespace-package",
+                        "layout",
+                        FAIL,
+                        f"PEP 420 violation in effective source root: {active_module.parent.relative_to(harness)}/__init__.py must NOT exist",
+                    )
+                )
+            eff_missing_subdirs = [sub for sub in ("core", "utils", "tests") if not (active_module / sub).is_dir()]
+            if eff_missing_subdirs:
+                checks.append(
+                    CheckResult(
+                        "effective-subdirs",
+                        "layout",
+                        FAIL,
+                        f"effective package source directory missing required subdirectories: {', '.join(eff_missing_subdirs)}",
+                    )
+                )
+            if not list(active_module.glob("*_cli.py")):
+                checks.append(
+                    CheckResult(
+                        "effective-cli-entrypoint-file",
+                        "layout",
+                        FAIL,
+                        "effective package source directory missing <software>_cli.py entry file",
+                    )
+                )
+        checks.extend(_check_cli_surface(active_module, repl_skin_ref))
+        checks.extend(_check_docs_and_tests(harness, software_dir_name, active_module, repo_root))
     checks.extend(_check_code_quality(harness))
 
     errors = [c for c in checks if c.status == FAIL and c.severity == "error"]

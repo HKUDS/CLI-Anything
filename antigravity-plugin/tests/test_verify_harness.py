@@ -1896,10 +1896,11 @@ include = ["cli_anything.*"]
         assert r_ns_override_310["ok"] is False
         assert {c["id"]: c for c in r_ns_override_310["checks"]}["console-script"]["status"] == "fail"
 
-    # Once src2 also provides nsapp_cli.py, strict verification passes.
-    shutil.copy2(
-        ns_harness / "src1" / "cli_anything" / "nsapp" / "nsapp_cli.py",
-        ns_harness / "src2" / "cli_anything" / "nsapp" / "nsapp_cli.py",
+    # Once src2 also provides the full package implementation, strict verification passes.
+    shutil.copytree(
+        ns_harness / "src1" / "cli_anything" / "nsapp",
+        ns_harness / "src2" / "cli_anything" / "nsapp",
+        dirs_exist_ok=True,
     )
     assert verify_harness.verify_harness(
         ns_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
@@ -2029,6 +2030,157 @@ include = ["cli_anything.*"]
     assert {c["id"]: c for c in r_wrong_root["checks"]}["package-data-skills"]["status"] == "warn"
 
     (harness / "MANIFEST.in").write_text("recursive-include src *.md\n", encoding="utf-8")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_checks_cli_surface_docs_and_tests_against_effective_package_dir(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "surface_src", "surfapp")
+    shutil.copytree(harness / "cli_anything", harness / "src" / "cli_anything")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-surfapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-surfapp = "cli_anything.surfapp.surfapp_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.surfapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # Removing --json ONLY from src/.../surfapp_cli.py (leaving flat cli_anything/... untouched) MUST fail.
+    src_cli = harness / "src" / "cli_anything" / "surfapp" / "surfapp_cli.py"
+    orig_cli = src_cli.read_text(encoding="utf-8")
+    src_cli.write_text(
+        orig_cli.replace('@click.option("--json", "use_json", is_flag=True)\n', "").replace(
+            "use_json, ", ""
+        ),
+        encoding="utf-8",
+    )
+    r_no_json = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_no_json["ok"] is False
+    assert {c["id"]: c for c in r_no_json["checks"]}["json-flag"]["status"] == "fail"
+    src_cli.write_text(orig_cli, encoding="utf-8")
+
+    # Removing README.md ONLY from src/.../surfapp/ MUST fail readme-md.
+    src_readme = harness / "src" / "cli_anything" / "surfapp" / "README.md"
+    orig_readme = src_readme.read_text(encoding="utf-8")
+    src_readme.unlink()
+    r_no_readme = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_no_readme["ok"] is False
+    assert {c["id"]: c for c in r_no_readme["checks"]}["readme-md"]["status"] == "fail"
+    src_readme.write_text(orig_readme, encoding="utf-8")
+
+    # Adding a forbidden PEP 420 __init__.py inside src/cli_anything/ MUST fail.
+    bad_ns_init = harness / "src" / "cli_anything" / "__init__.py"
+    bad_ns_init.write_text("# forbidden\n", encoding="utf-8")
+    r_bad_ns = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_bad_ns["ok"] is False
+    assert {c["id"]: c for c in r_bad_ns["checks"]}["effective-namespace-package"]["status"] == "fail"
+    bad_ns_init.unlink()
+
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_applies_pep621_precedence_to_python_requires(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "pep621_pyreq", "pyreqapp")
+    # Valid setup.py with python_requires=">=3.10", plus [project] omitting requires-python
+    # without listing "requires-python" in project.dynamic -> setuptools ignores setup.py python_requires.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-pyreqapp"
+version = "1.0.0"
+
+[project.scripts]
+cli-anything-pyreqapp = "cli_anything.pyreqapp.pyreqapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    r_dropped = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks_dropped = {c["id"]: c for c in r_dropped["checks"]}
+    assert r_dropped["ok"] is False
+    assert checks_dropped["python-requires"]["status"] == "warn"
+    assert "project.dynamic" in checks_dropped["python-requires"]["detail"]
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_dropped_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_dropped_310["ok"] is False
+        assert {c["id"]: c for c in r_dropped_310["checks"]}["python-requires"]["status"] == "warn"
+
+    # Declaring "requires-python" in project.dynamic allows setup.py python_requires to apply.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-pyreqapp"
+version = "1.0.0"
+dynamic = ["requires-python"]
+
+[project.scripts]
+cli-anything-pyreqapp = "cli_anything.pyreqapp.pyreqapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # Declaring requires-python directly in [project] also passes.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-pyreqapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pyreqapp = "cli_anything.pyreqapp.pyreqapp_cli:main"
+""",
+        encoding="utf-8",
+    )
     assert verify_harness.verify_harness(
         harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
     )["ok"] is True
