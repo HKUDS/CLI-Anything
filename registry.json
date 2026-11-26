@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "davinci",
+      "display_name": "DaVinci Resolve",
+      "version": "0.1.0",
+      "description": "Manage Resolve projects and media, edit and grade timelines, and queue renders through the official scripting API.",
+      "requires": "DaVinci Resolve Studio with Local external scripting, 64-bit Python 3.10+",
+      "homepage": "https://www.blackmagicdesign.com/products/davinciresolve",
+      "source_url": "https://github.com/abbigupta/cli-anything-davinci",
+      "install_cmd": "pip install git+https://github.com/abbigupta/cli-anything-davinci.git",
+      "entry_point": "cli-anything-davinci",
+      "skill_md": "https://raw.githubusercontent.com/abbigupta/cli-anything-davinci/main/skills/cli-anything-davinci/SKILL.md",
+      "category": "video",
+      "contributors": [
+        {
+          "name": "abbigupta",
+          "url": "https://github.com/abbigupta"
+        }
+      ]
     }
   ]
 }
