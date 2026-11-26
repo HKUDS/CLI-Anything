@@ -356,62 +356,144 @@ def _poetry_packages_cover(
     return False
 
 
-def _package_data_pattern_matches_skill(pattern: str, *, under_skills_subpkg: bool = False) -> bool:
-    """Return True if a setuptools package_data glob selects skills/SKILL.md."""
-    pat = pattern.strip().replace("\\", "/")
-    while pat.startswith("./"):
-        pat = pat[2:]
-    if not pat:
+def _glob_matches_relpath(rel_path: str, pattern: str, *, recursive: bool = True) -> bool:
+    """Match a POSIX relative path against a glob pattern (`**` matches 0+ dirs when recursive=True)."""
+    rel_norm = rel_path.strip().replace("\\", "/")
+    pat_norm = pattern.strip().replace("\\", "/")
+    while rel_norm.startswith("./"):
+        rel_norm = rel_norm[2:]
+    while pat_norm.startswith("./"):
+        pat_norm = pat_norm[2:]
+    rel_parts = [p for p in rel_norm.split("/") if p]
+    pat_parts = [p for p in pat_norm.split("/") if p]
+    if not rel_parts or not pat_parts:
         return False
-    if under_skills_subpkg:
-        if "/" in pat:
+
+    if not recursive:
+        if len(rel_parts) != len(pat_parts):
             return False
-        return fnmatch.fnmatchcase("SKILL.md", pat)
-    if pat in {"**", "skills/**", "**/SKILL.md", "**/*.md"}:
-        return True
-    if pat.startswith("**/"):
-        sub = pat[3:]
-        return fnmatch.fnmatchcase("skills/SKILL.md", sub) or fnmatch.fnmatchcase("SKILL.md", sub)
-    if "/" not in pat:
-        # Setuptools top-level globs like '*.md' only match the package root, not skills/.
-        return False
-    return fnmatch.fnmatchcase("skills/SKILL.md", pat)
+        return all(fnmatch.fnmatchcase(rp, pp) for rp, pp in zip(rel_parts, pat_parts))
+
+    memo: dict[tuple[int, int], bool] = {}
+
+    def _match(ri: int, pi: int) -> bool:
+        key = (ri, pi)
+        if key in memo:
+            return memo[key]
+        if pi == len(pat_parts):
+            res = ri == len(rel_parts)
+        elif pat_parts[pi] == "**":
+            # In Python glob(..., recursive=True), `**` matches zero or more path segments.
+            res = _match(ri, pi + 1) or (ri < len(rel_parts) and _match(ri + 1, pi))
+        elif ri < len(rel_parts) and fnmatch.fnmatchcase(rel_parts[ri], pat_parts[pi]):
+            res = _match(ri + 1, pi + 1)
+        else:
+            res = False
+        memo[key] = res
+        return res
+
+    return _match(0, 0)
 
 
 def _package_data_covers_skill(
     package_data: dict[str, list[str]],
     target_pkg: str | None,
+    *,
+    allow_star_wildcard: bool,
 ) -> bool:
-    """Return True if package_data rules ship skills/SKILL.md for target_pkg."""
+    """Return True if package_data/exclude_package_data rules match skills/SKILL.md for target_pkg.
+
+    Setuptools treats `""` as the all-packages wildcard in `setup.py`, whereas `"*"` is only
+    normalized to `""` when loaded from TOML `[tool.setuptools.package-data]` / `exclude-package-data`.
+    """
+    wildcard_keys = {"", "*"} if allow_star_wildcard else {""}
     for pkg_key, patterns in package_data.items():
-        if pkg_key in {"", "*"} or (target_pkg and pkg_key == target_pkg):
-            if any(_package_data_pattern_matches_skill(p) for p in patterns):
+        if pkg_key in wildcard_keys or (target_pkg and pkg_key == target_pkg):
+            if any(_glob_matches_relpath("skills/SKILL.md", p, recursive=True) for p in patterns):
                 return True
         elif target_pkg and pkg_key == f"{target_pkg}.skills":
-            if any(_package_data_pattern_matches_skill(p, under_skills_subpkg=True) for p in patterns):
+            if any(_glob_matches_relpath("SKILL.md", p, recursive=True) for p in patterns):
                 return True
     return False
 
 
+def _path_suffixes(rel_path: str) -> list[str]:
+    parts = [p for p in rel_path.split("/") if p]
+    return ["/".join(parts[i:]) for i in range(len(parts))]
+
+
 def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool:
-    """Check whether MANIFEST.in includes skills/SKILL.md when include_package_data is enabled."""
-    if harness is None:
+    """Evaluate MANIFEST.in directives in order to determine if target_pkg's SKILL.md is selected."""
+    if harness is None or not target_pkg:
         return False
     manifest = harness / "MANIFEST.in"
     if not manifest.is_file():
         return False
-    text = _read_text(manifest)
-    pkg_rel = target_pkg.replace(".", "/") if target_pkg else "cli_anything"
-    for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if not line:
+
+    target_rel = f"{target_pkg.replace('.', '/')}/skills/SKILL.md"
+    target_suffixes = _path_suffixes(target_rel)
+
+    # Join backslash-continued lines and strip `#` comments.
+    logical_lines: list[str] = []
+    pending = ""
+    for raw in _read_text(manifest).splitlines():
+        line = raw.split("#", 1)[0].rstrip()
+        if pending:
+            line = pending + " " + line.lstrip()
+            pending = ""
+        if line.endswith("\\"):
+            pending = line[:-1].rstrip()
             continue
-        if line.startswith(("include ", "recursive-include ", "global-include ")):
-            if "SKILL.md" in line or "skills/*.md" in line or (pkg_rel in line and "*.md" in line):
-                return True
-            if line.startswith("global-include ") and "*.md" in line:
-                return True
-    return False
+        stripped = line.strip()
+        if stripped:
+            logical_lines.append(stripped)
+    if pending:
+        logical_lines.append(pending.strip())
+
+    def _dir_contains(dir_token: str) -> str | None:
+        d = dir_token.strip().replace("\\", "/")
+        while d.startswith("./"):
+            d = d[2:]
+        d = d.strip("/")
+        if d in {"", "."}:
+            return target_rel
+        if target_rel.startswith(d + "/"):
+            return target_rel[len(d) + 1 :]
+        return None
+
+    selected = False
+    for line in logical_lines:
+        tokens = line.split()
+        if len(tokens) < 2:
+            continue
+        action = tokens[0]
+        if action in {"include", "exclude"}:
+            if any(_glob_matches_relpath(target_rel, pat, recursive=False) for pat in tokens[1:]):
+                selected = action == "include"
+        elif action in {"global-include", "global-exclude"}:
+            if any(
+                _glob_matches_relpath(suf, pat, recursive=False)
+                for pat in tokens[1:]
+                for suf in target_suffixes
+            ):
+                selected = action == "global-include"
+        elif action in {"recursive-include", "recursive-exclude"}:
+            if len(tokens) < 3:
+                continue
+            sub = _dir_contains(tokens[1])
+            if sub is not None:
+                sub_suffixes = _path_suffixes(sub)
+                if any(
+                    _glob_matches_relpath(suf, pat, recursive=False)
+                    for pat in tokens[2:]
+                    for suf in sub_suffixes
+                ):
+                    selected = action == "recursive-include"
+        elif action in {"graft", "prune"}:
+            if len(tokens) == 2 and _dir_contains(tokens[1]) is not None:
+                selected = action == "graft"
+
+    return selected
 
 
 def _classify_build_backend(build_backend: str | None) -> str:
@@ -438,7 +520,8 @@ def _inspect_setup_py(
         "uses_regular_find_packages": False,
         "console_scripts": [],
         "package_data": {},
-        "include_package_data": False,
+        "exclude_package_data": {},
+        "include_package_data": None,
         "has_python_requires": False,
     }
     try:
@@ -526,14 +609,14 @@ def _inspect_setup_py(
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             info["console_scripts"].extend(_parse_ini_console_scripts(node.value))
 
-    def _extract_package_data(expr: ast.AST) -> None:
+    def _extract_pkg_data_mapping(expr: ast.AST, dest: dict[str, list[str]]) -> None:
         node = _resolve(expr)
         if isinstance(node, ast.Dict):
             for k, v in zip(node.keys, node.values):
                 if isinstance(k, ast.Constant) and isinstance(k.value, str):
                     vals = _const_str_list(_resolve(v))
                     if vals is not None:
-                        info["package_data"][k.value] = vals
+                        dest[k.value] = vals
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _call_func_name(node.func) == "setup":
@@ -543,11 +626,13 @@ def _inspect_setup_py(
                 elif kw.arg == "entry_points":
                     _extract_entry_points(kw.value)
                 elif kw.arg == "package_data":
-                    _extract_package_data(kw.value)
+                    _extract_pkg_data_mapping(kw.value, info["package_data"])
+                elif kw.arg == "exclude_package_data":
+                    _extract_pkg_data_mapping(kw.value, info["exclude_package_data"])
                 elif kw.arg == "include_package_data":
                     val = _resolve(kw.value)
-                    if isinstance(val, ast.Constant) and val.value is True:
-                        info["include_package_data"] = True
+                    if isinstance(val, ast.Constant) and isinstance(val.value, bool):
+                        info["include_package_data"] = val.value
                 elif kw.arg == "python_requires":
                     val = _resolve(kw.value)
                     if isinstance(val, ast.Constant) and isinstance(val.value, str) and val.value.strip():
@@ -718,7 +803,9 @@ def _inspect_pyproject_toml_fallback(
         "console_scripts": [],
         "declares_package_data": False,
         "package_data": {},
-        "include_package_data": False,
+        "declares_exclude_package_data": False,
+        "exclude_package_data": {},
+        "include_package_data": None,
         "has_python_requires": False,
     }
 
@@ -760,7 +847,9 @@ def _inspect_pyproject_toml_fallback(
     setuptools_explicit_pkgs: list[str] | None = None
     setuptools_package_data: dict[str, list[str]] = {}
     setuptools_declares_package_data = False
-    setuptools_include_package_data = False
+    setuptools_exclude_package_data: dict[str, list[str]] = {}
+    setuptools_declares_exclude_package_data = False
+    setuptools_include_package_data: bool | None = None
 
     hatch_pkgs: list[str] | None = None
     poetry_pkg_entries: list[tuple[str, str]] | None = None
@@ -786,6 +875,8 @@ def _inspect_pyproject_toml_fallback(
                 setuptools_find_seen = True
             if section == "tool.setuptools.package-data":
                 setuptools_declares_package_data = True
+            if section == "tool.setuptools.exclude-package-data":
+                setuptools_declares_exclude_package_data = True
             continue
 
         if section == "build-system" and re.match(r"^build-backend\s*=", line):
@@ -849,16 +940,28 @@ def _inspect_pyproject_toml_fallback(
                     setuptools_explicit_pkgs = _extract_toml_str_list(rhs)
             elif re.match(r"^include-package-data\s*=\s*true\b", line):
                 setuptools_include_package_data = True
+            elif re.match(r"^include-package-data\s*=\s*false\b", line):
+                setuptools_include_package_data = False
             elif re.match(r"^package-data\s*=\s*\{", line):
                 setuptools_declares_package_data = True
                 rhs = line.split("=", 1)[1]
                 for pk, pv in _parse_inline_table_items(rhs):
                     setuptools_package_data[pk] = _extract_toml_str_list(pv)
+            elif re.match(r"^exclude-package-data\s*=\s*\{", line):
+                setuptools_declares_exclude_package_data = True
+                rhs = line.split("=", 1)[1]
+                for pk, pv in _parse_inline_table_items(rhs):
+                    setuptools_exclude_package_data[pk] = _extract_toml_str_list(pv)
         elif section == "tool.setuptools.package-data" and "=" in line:
             pk = line.split("=", 1)[0].strip().strip('"').strip("'")
             rhs = line.split("=", 1)[1].strip()
             if rhs.startswith("["):
                 setuptools_package_data[pk] = _extract_toml_str_list(rhs)
+        elif section == "tool.setuptools.exclude-package-data" and "=" in line:
+            pk = line.split("=", 1)[0].strip().strip('"').strip("'")
+            rhs = line.split("=", 1)[1].strip()
+            if rhs.startswith("["):
+                setuptools_exclude_package_data[pk] = _extract_toml_str_list(rhs)
         elif section == "tool.hatch.build.targets.wheel" and re.match(r"^packages\s*=", line):
             rhs = line.split("=", 1)[1].strip()
             if rhs.startswith("["):
@@ -886,6 +989,9 @@ def _inspect_pyproject_toml_fallback(
         if setuptools_declares_package_data:
             info["declares_package_data"] = True
             info["package_data"] = setuptools_package_data
+        if setuptools_declares_exclude_package_data:
+            info["declares_exclude_package_data"] = True
+            info["exclude_package_data"] = setuptools_exclude_package_data
         info["include_package_data"] = setuptools_include_package_data
         if setuptools_find_seen:
             info["declares_packages"] = True
@@ -941,7 +1047,9 @@ def _inspect_pyproject_toml(
         "console_scripts": [],
         "declares_package_data": False,
         "package_data": {},
-        "include_package_data": False,
+        "declares_exclude_package_data": False,
+        "exclude_package_data": {},
+        "include_package_data": None,
         "has_python_requires": False,
     }
     try:
@@ -969,14 +1077,20 @@ def _inspect_pyproject_toml(
     if backend_kind == "setuptools":
         setuptools_cfg = tool_dict.get("setuptools")
         if isinstance(setuptools_cfg, dict):
-            if setuptools_cfg.get("include-package-data") is True:
-                info["include_package_data"] = True
+            if isinstance(setuptools_cfg.get("include-package-data"), bool):
+                info["include_package_data"] = setuptools_cfg["include-package-data"]
             pkg_data_cfg = setuptools_cfg.get("package-data")
             if isinstance(pkg_data_cfg, dict):
                 info["declares_package_data"] = True
                 for pk, pv in pkg_data_cfg.items():
                     if isinstance(pk, str) and isinstance(pv, list):
                         info["package_data"][pk] = [x for x in pv if isinstance(x, str)]
+            excl_data_cfg = setuptools_cfg.get("exclude-package-data")
+            if isinstance(excl_data_cfg, dict):
+                info["declares_exclude_package_data"] = True
+                for pk, pv in excl_data_cfg.items():
+                    if isinstance(pk, str) and isinstance(pv, list):
+                        info["exclude_package_data"][pk] = [x for x in pv if isinstance(x, str)]
             pkgs = setuptools_cfg.get("packages")
             if isinstance(pkgs, dict) and isinstance(pkgs.get("find"), dict):
                 info["declares_packages"] = True
@@ -1098,7 +1212,8 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "uses_regular_find_packages": False,
         "console_scripts": [],
         "package_data": {},
-        "include_package_data": False,
+        "exclude_package_data": {},
+        "include_package_data": None,
         "has_python_requires": False,
     }
     pyproj_info = _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg, harness=harness) if has_pyproject else {
@@ -1113,7 +1228,9 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "console_scripts": [],
         "declares_package_data": False,
         "package_data": {},
-        "include_package_data": False,
+        "declares_exclude_package_data": False,
+        "exclude_package_data": {},
+        "include_package_data": None,
         "has_python_requires": False,
     }
 
@@ -1227,15 +1344,44 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         # Hatch and Poetry include non-Python assets inside declared package directories automatically.
         skill_data_ok = bool(pyproj_info["namespace_ok"])
     else:
-        effective_pkg_data = (
-            pyproj_info["package_data"]
-            if pyproj_info["declares_package_data"]
-            else (setup_info["package_data"] if uses_setup_py else {})
+        if pyproj_info["declares_package_data"]:
+            eff_pkg_data = pyproj_info["package_data"]
+            eff_pkg_star = True
+        elif uses_setup_py:
+            eff_pkg_data = setup_info["package_data"]
+            eff_pkg_star = False
+        else:
+            eff_pkg_data = {}
+            eff_pkg_star = False
+
+        if pyproj_info["declares_exclude_package_data"]:
+            eff_excl_data = pyproj_info["exclude_package_data"]
+            eff_excl_star = True
+        elif uses_setup_py:
+            eff_excl_data = setup_info["exclude_package_data"]
+            eff_excl_star = False
+        else:
+            eff_excl_data = {}
+            eff_excl_star = False
+
+        if pyproj_info["include_package_data"] is not None:
+            eff_include_pkg_data = bool(pyproj_info["include_package_data"])
+        elif uses_setup_py and setup_info["include_package_data"] is not None:
+            eff_include_pkg_data = bool(setup_info["include_package_data"])
+        elif pyproj_info["has_project_table"]:
+            # Setuptools >= 61 defaults include-package-data to True for PEP 621 [project] tables.
+            eff_include_pkg_data = True
+        else:
+            eff_include_pkg_data = False
+
+        included_by_pd = _package_data_covers_skill(
+            eff_pkg_data, target_pkg, allow_star_wildcard=eff_pkg_star
         )
-        if _package_data_covers_skill(effective_pkg_data, target_pkg):
-            skill_data_ok = True
-        elif (pyproj_info["include_package_data"] or (uses_setup_py and setup_info["include_package_data"])) and _manifest_covers_skill(harness, target_pkg):
-            skill_data_ok = True
+        included_by_manifest = eff_include_pkg_data and _manifest_covers_skill(harness, target_pkg)
+        excluded_by_pd = _package_data_covers_skill(
+            eff_excl_data, target_pkg, allow_star_wildcard=eff_excl_star
+        )
+        skill_data_ok = (included_by_pd or included_by_manifest) and not excluded_by_pd
 
     if skill_data_ok:
         checks.append(CheckResult("package-data-skills", "packaging", PASS, f"packaged SKILL.md included in package data for {target_pkg_label}"))

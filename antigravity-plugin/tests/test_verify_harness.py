@@ -1067,6 +1067,126 @@ dynamic = ["scripts"]
     assert pyproj_ok["ok"] is True, pyproj_ok["checks"]
 
 
+def test_verify_handles_recursive_glob_setup_star_key_exclude_and_manifest_order(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 1. Recursive glob `skills/**/*.md` matches `skills/SKILL.md` (zero intermediate dirs).
+    h_glob = _create_valid_harness(tmp_path / "rec_glob", "globapp")
+    (h_glob / "setup.py").write_text(
+        (h_glob / "setup.py").read_text(encoding="utf-8").replace("skills/*.md", "skills/**/*.md"),
+        encoding="utf-8",
+    )
+    res_glob = verify_harness.verify_harness(
+        h_glob, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_glob["ok"] is True, res_glob["checks"]
+
+    # 2. setup.py `package_data={"*": ["skills/*.md"]}` is NOT a wildcard in setuptools -> must warn.
+    h_star = _create_valid_harness(tmp_path / "setup_star", "starapp")
+    (h_star / "setup.py").write_text(
+        (h_star / "setup.py").read_text(encoding="utf-8").replace('"cli_anything.starapp"', '"*"'),
+        encoding="utf-8",
+    )
+    res_star = verify_harness.verify_harness(
+        h_star, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_star["ok"] is False
+    assert {c["id"]: c for c in res_star["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # Empty string `""` IS the setup.py wildcard -> passes.
+    (h_star / "setup.py").write_text(
+        (h_star / "setup.py").read_text(encoding="utf-8").replace('"*"', '""'),
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        h_star, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # TOML `[tool.setuptools.package-data]` `"*"` IS normalized by setuptools -> passes (tomllib & py310).
+    (h_star / "setup.py").unlink()
+    (h_star / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-starapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-starapp = "cli_anything.starapp.starapp_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"*" = ["skills/**/*.md"]
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        h_star, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        assert verify_harness.verify_harness(
+            h_star, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )["ok"] is True
+
+    # Adding `[tool.setuptools.exclude-package-data]` excluding skills/*.md must warn.
+    (h_star / "pyproject.toml").write_text(
+        (h_star / "pyproject.toml").read_text(encoding="utf-8")
+        + '\n[tool.setuptools.exclude-package-data]\n"*" = ["skills/*.md"]\n',
+        encoding="utf-8",
+    )
+    res_excl = verify_harness.verify_harness(
+        h_star, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_excl["ok"] is False
+    assert {c["id"]: c for c in res_excl["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 3. MANIFEST.in with include_package_data=True evaluates concrete target path and ordered exclusions.
+    h_man = _create_valid_harness(tmp_path / "manifest_case", "manapp")
+    (h_man / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-manapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-manapp=cli_anything.manapp.manapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    # Unrelated include for another app -> warn
+    (h_man / "MANIFEST.in").write_text(
+        "include cli_anything/otherapp/skills/SKILL.md\n", encoding="utf-8"
+    )
+    r_other = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_other["ok"] is False
+    assert {c["id"]: c for c in r_other["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # Matching recursive-include followed by prune -> warn
+    (h_man / "MANIFEST.in").write_text(
+        "recursive-include cli_anything *.md\nprune cli_anything/manapp/skills\n",
+        encoding="utf-8",
+    )
+    r_pruned = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_pruned["ok"] is False
+    assert {c["id"]: c for c in r_pruned["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # Matching recursive-include without exclusion -> pass
+    (h_man / "MANIFEST.in").write_text(
+        "recursive-include cli_anything *.md\n",
+        encoding="utf-8",
+    )
+    r_man_ok = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_man_ok["ok"] is True, r_man_ok["checks"]
+
+
 def test_pyproject_py310_fallback_matches_tomllib_semantics(tmp_path: Path) -> None:
     harness = _create_valid_harness(tmp_path, "demoapp")
     (harness / "empty-src").mkdir()
@@ -1124,6 +1244,23 @@ version = "1.0.0"
 
 [tool.poetry.scripts]
 cli-anything-demoapp = "cli_anything.demoapp.demoapp_cli:main"
+""",
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-demoapp"
+version = "1.0.0"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.package-data]
+"*" = ["skills/**/*.md"]
+
+[tool.setuptools.exclude-package-data]
+"cli_anything.demoapp" = ["skills/*.txt"]
 """,
         """[build-system]
 requires = ["hatchling"]
