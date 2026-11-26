@@ -1,7 +1,7 @@
 """Editing commands for the Unity 2020.3 CLI.
 
 Adds the mutating ``scene``, ``gameobject``, ``component``, ``prefab`` and
-``asset`` subcommands to groups created by :mod:`unity2020_cli`. Every command
+``asset`` subcommands to groups created by :mod:`unity_legacy_cli`. Every command
 requires Edit Mode, refuses to touch dirty scenes or assets unless the caller
 opts in, and relies on the C# side for Undo registration and validation.
 
@@ -102,7 +102,7 @@ def _require_target(object_id, path, command):
 
 
 def register(cli, run):
-    """Attach editing subcommands to the groups created by ``unity2020_cli``."""
+    """Attach editing subcommands to the groups created by ``unity_legacy_cli``."""
     scene = cli.commands["scene"]
     gameobject = cli.commands["gameobject"]
     component = cli.commands["component"]

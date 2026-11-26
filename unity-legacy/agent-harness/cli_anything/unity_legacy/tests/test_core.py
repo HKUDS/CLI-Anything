@@ -6,8 +6,8 @@ from time import monotonic, sleep
 import pytest
 from click.testing import CliRunner
 
-from cli_anything.unity2020.editing_cli import _exact_number_text
-from cli_anything.unity2020.unity2020_cli import EditorError, ask_editor, cli, find_project
+from cli_anything.unity_legacy.editing_cli import _exact_number_text
+from cli_anything.unity_legacy.unity_legacy_cli import EditorError, ask_editor, cli, find_project
 
 
 @pytest.fixture

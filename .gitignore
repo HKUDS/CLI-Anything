@@ -49,7 +49,7 @@
 /cli-hub-skill/
 
 # Step 4: Allow each software dir (top level only)
-!/unity2020/
+!/unity-legacy/
 !/gimp/
 !/blender/
 !/inkscape/
@@ -109,8 +109,8 @@
 !/cc-switch/
 !/siyuan/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
-/unity2020/*
-/unity2020/.*
+/unity-legacy/*
+/unity-legacy/.*
 /gimp/*
 /gimp/.*
 /blender/*
@@ -347,5 +347,5 @@ assets/gen_typing_gif.py
 !/intelwatch/agent-harness/
 !/jumpserver/
 !/jumpserver/agent-harness/
-!/unity2020/agent-harness/
+!/unity-legacy/agent-harness/
 !/cli_anything/jumpserver/

@@ -2,17 +2,6 @@
 
 Control a running Unity Editor via a local, Editor-only Unity package. The bridge works on the Unity Editor thread and exchanges JSON requests through the project's `Library/UnityCli` directory. There is no port or service to configure.
 
-## Upstream harness and standalone release
-
-Unity Legacy CLI ships as two distributions of the same bridge, the same JSON protocol and the same `unity-legacy-cli` command:
-
-| Distribution | Install |
-| --- | --- |
-| CLI-Anything monorepo harness (this directory) | `pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity2020/agent-harness` |
-| [Standalone repository](https://github.com/key-zxy/unity-legacy-cli), release [v0.3.1](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) | `python -m pip install <wheel from the release>` |
-
-The monorepo keeps the canonical layout that CLI-Hub and repository checks expect: the `unity2020` slug, the `skills/cli-anything-unity2020/SKILL.md` skill identity and the `cli_anything.unity2020` Python module. Both distributions declare the Python distribution name `unity-legacy-cli`, so install one source at a time; installing the other replaces it. The standalone release installs from the wheel attached to its GitHub release, not from PyPI, and documents its own version matrix. Both keep the Unity package ID `com.cli-anything.unity2020`, so a project that already has that bridge at the same version works with either install source.
-
 ## Compatibility
 
 | Unity version | Validation and feature notes |
@@ -25,10 +14,16 @@ Other Editor patches, Unity 6, macOS and Linux are unverified. Feature availabil
 
 ## Install
 
-Requires Python 3.10+ and an open Unity project. From a checkout of CLI-Anything, install the Python package and locate the bridge.
+Requires Python 3.10+ and an open Unity project. Unity Legacy CLI ships as two distributions of the same bridge, JSON protocol and `unity-legacy-cli` command. Both declare the Python distribution name `unity-legacy-cli`, so install one source at a time; installing the other replaces it.
+
+| Distribution | Install |
+| --- | --- |
+| CLI-Anything monorepo harness (this directory) | `python -m pip install ./unity-legacy/agent-harness` from a CLI-Anything checkout, or `pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity-legacy/agent-harness` |
+| [Standalone repository](https://github.com/key-zxy/unity-legacy-cli), release [v0.3.2](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.2) | `python -m pip install <wheel from the release>` |
+
+Both keep the Unity package ID `com.cli-anything.unity2020`, so a project that already has that bridge at the same version works with either install source. Then locate the bridge.
 
 ```console
-python -m pip install ./unity2020/agent-harness
 unity-legacy-cli bridge-path
 ```
 
@@ -41,8 +36,6 @@ unity-legacy-cli --project /path/to/UnityProject --json console read --type erro
 ```
 
 From within a Unity project, omit `--project` to use the nearest project root. Place global options such as `--json` and `--timeout` before the command. The REPL opens when run without a command in an interactive terminal.
-
-The [standalone release](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.1) installs the same `unity-legacy-cli` command from its wheel; the bridge steps and command groups are identical, so install only one source.
 
 ## Supported operations
 
@@ -64,7 +57,13 @@ Only run commands and open projects you trust. Processes with write access to th
 ## Test
 
 ```console
-python -m pytest unity2020/agent-harness/cli_anything/unity2020/tests/test_core.py -v
+python -m pytest cli_anything/unity_legacy/tests/test_core.py -v
 ```
 
 Set `CLI_ANYTHING_UNITY_PROJECT` to a disposable Unity project with the bridge installed and the Editor running in Edit Mode. Run `test_full_e2e.py` with `CLI_ANYTHING_FORCE_INSTALLED=1` to require the installed executable. The test writes scenes, prefabs and PNGs in the specified project.
+
+See the [bridge architecture](ARCHITECTURE.md) and [test results](cli_anything/unity_legacy/tests/TEST.md).
+
+## Credits
+
+Maintained by [key-zxy](https://github.com/key-zxy). This harness is the upstream source of the [standalone Unity Legacy CLI](https://github.com/key-zxy/unity-legacy-cli) and uses the Apache-2.0-licensed CLI-Anything REPL skin. The contribution is [CLI-Anything PR #715](https://github.com/HKUDS/CLI-Anything/pull/715).

@@ -75,7 +75,7 @@ def _resolve_cli():
         return [executable]
     if os.environ.get("CLI_ANYTHING_FORCE_INSTALLED") == "1":
         raise RuntimeError(f"{name} not found on PATH. Install the harness first.")
-    return [sys.executable, "-m", "cli_anything.unity2020.unity2020_cli"]
+    return [sys.executable, "-m", "cli_anything.unity_legacy.unity_legacy_cli"]
 
 
 @pytest.fixture

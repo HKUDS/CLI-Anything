@@ -116,7 +116,7 @@ def repl(ctx):
 
     from .utils.repl_skin import ReplSkin
 
-    skin = ReplSkin("unity2020", version=version("unity-legacy-cli"))
+    skin = ReplSkin("unity-legacy", version=version("unity-legacy-cli"))
     skin.print_banner()
     session = skin.create_prompt_session()
     defaults = ["--timeout", str(timeout)]
