@@ -27,6 +27,9 @@ cli-hub search "3d modeling"
 # Show details for a CLI
 cli-hub info gimp
 
+# Show details and local installation status as JSON
+cli-hub info gimp --json
+
 # Install a CLI harness
 cli-hub install gimp
 
@@ -97,12 +100,15 @@ cli-hub is designed to be agent-friendly. AI coding agents can:
 
 ## JSON output
 
-All listing commands support `--json` for machine-readable output:
+Use `--json` for machine-readable output:
 
 ```bash
 cli-hub list --json
 cli-hub search blender --json
+cli-hub info gimp --json
 ```
+
+`info --json` includes the registry fields and an `installed` boolean based on CLI-Hub's local installation records.
 
 ## Analytics
 
