@@ -1230,6 +1230,87 @@ setup(
     assert r_fnm["ok"] is False
     assert {c["id"]: c for c in r_fnm["checks"]}["package-data-skills"]["status"] == "warn"
 
+    # 5. graft **/skills must NOT match cli_anything/<pkg>/skills (graft uses non-recursive glob).
+    (h_man / "MANIFEST.in").write_text("graft **/skills\n", encoding="utf-8")
+    r_graft_rec = verify_harness.verify_harness(h_man, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_graft_rec["ok"] is False
+    assert {c["id"]: c for c in r_graft_rec["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 6. Subpackage package_data is only credited when discovery selects cli_anything.<pkg>.skills,
+    #    and manifest ownership + exclude_package_data are evaluated per supplying package.
+    h_sub = _create_valid_harness(tmp_path / "subpkg_excl", "subapp")
+    (h_sub / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-subapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"], exclude=["cli_anything.*.skills"]),
+    package_data={"cli_anything.subapp.skills": ["*.md"]},
+    entry_points={"console_scripts": ["cli-anything-subapp=cli_anything.subapp.subapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_sub_excl = verify_harness.verify_harness(h_sub, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_sub_excl["ok"] is False
+    assert {c["id"]: c for c in r_sub_excl["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # When namespace discovery selects cli_anything.subapp.skills, manifest SKILL.md belongs to that
+    # subpackage so a parent-only exclude_package_data does not remove it.
+    (h_sub / "MANIFEST.in").write_text("recursive-include cli_anything *.md\n", encoding="utf-8")
+    (h_sub / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-subapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    include_package_data=True,
+    exclude_package_data={"cli_anything.subapp": ["*.md"]},
+    entry_points={"console_scripts": ["cli-anything-subapp=cli_anything.subapp.subapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_parent_excl_only = verify_harness.verify_harness(h_sub, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_parent_excl_only["ok"] is True, r_parent_excl_only["checks"]
+
+    # Once cli_anything.subapp.skills is excluded from discovery, SKILL.md belongs to the parent
+    # package and the same parent exclusion removes it.
+    (h_sub / "setup.py").write_text(
+        (h_sub / "setup.py").read_text(encoding="utf-8").replace(
+            'include=["cli_anything.*"]',
+            'include=["cli_anything.*"], exclude=["cli_anything.*.skills"]',
+        ),
+        encoding="utf-8",
+    )
+    r_parent_owns_and_excl = verify_harness.verify_harness(h_sub, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert r_parent_owns_and_excl["ok"] is False
+    assert {c["id"]: c for c in r_parent_owns_and_excl["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 7. Platform-aware fnmatch exclusion (case-insensitive on Windows, case-sensitive on POSIX).
+    (h_fnm / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-fnmapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.fnmapp": ["skills/*.md"]},
+    exclude_package_data={"cli_anything.fnmapp": ["skills/skill.md"]},
+    entry_points={"console_scripts": ["cli-anything-fnmapp=cli_anything.fnmapp.fnmapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_case = verify_harness.verify_harness(h_fnm, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    if sys.platform == "win32":
+        assert r_case["ok"] is False
+        assert {c["id"]: c for c in r_case["checks"]}["package-data-skills"]["status"] == "warn"
+    else:
+        assert r_case["ok"] is True, r_case["checks"]
+
 
 def test_pyproject_py310_fallback_matches_tomllib_semantics(tmp_path: Path) -> None:
     harness = _create_valid_harness(tmp_path, "demoapp")

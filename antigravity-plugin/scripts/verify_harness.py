@@ -270,10 +270,12 @@ def _parse_ini_console_scripts(ini_text: str) -> list[str]:
     return scripts
 
 
-def _package_exists_under(root: Path, target_pkg: str) -> bool:
-    """Return True if `root/<pkg_parts>/__init__.py` exists on disk."""
+def _package_exists_under(root: Path, target_pkg: str, *, require_init: bool = True) -> bool:
+    """Return True if `root/<pkg_parts>` exists on disk (requiring `__init__.py` unless PEP 420 dir)."""
     pkg_dir = root.joinpath(*target_pkg.split("."))
-    return pkg_dir.is_dir() and (pkg_dir / "__init__.py").is_file()
+    if not pkg_dir.is_dir():
+        return False
+    return (pkg_dir / "__init__.py").is_file() if require_init else True
 
 
 def _find_selects_package(
@@ -283,6 +285,7 @@ def _find_selects_package(
     *,
     harness: Path | None = None,
     wheres: list[str] | None = None,
+    require_init: bool = True,
 ) -> bool:
     """Mirror setuptools PEP420PackageFinder where/include/exclude semantics."""
     pkg = target_pkg or "cli_anything._harness"
@@ -297,9 +300,12 @@ def _find_selects_package(
         if not wheres:
             return False
         if harness is not None and target_pkg:
-            return any(_package_exists_under(harness / root_rel, target_pkg) for root_rel in wheres)
+            return any(
+                _package_exists_under(harness / root_rel, target_pkg, require_init=require_init)
+                for root_rel in wheres
+            )
     elif harness is not None and target_pkg:
-        return _package_exists_under(harness, target_pkg)
+        return _package_exists_under(harness, target_pkg, require_init=require_init)
     return True
 
 
@@ -395,39 +401,36 @@ def _glob_matches_relpath(rel_path: str, pattern: str, *, recursive: bool = True
     return _match(0, 0)
 
 
-def _package_data_covers_skill(
-    package_data: dict[str, list[str]],
-    target_pkg: str | None,
+def _pkg_data_matches_file(
+    mapping: dict[str, list[str]],
+    pkg_name: str,
+    rel_path: str,
     *,
     allow_star_wildcard: bool,
     exclusion: bool = False,
 ) -> bool:
-    """Return True if package_data or exclude_package_data rules match skills/SKILL.md.
+    """Return True if package_data or exclude_package_data rules for pkg_name match rel_path.
 
     In setuptools:
     - `package_data` expands via `glob(..., recursive=True)` (segment-wise, `**` matches 0+ dirs).
-    - `exclude_package_data` filters via `fnmatch.filter()` (where `*` also matches `/`).
+    - `exclude_package_data` filters via `fnmatch.filter()` (platform `normcase`, `*` matches `/`).
     - In `setup.py`, only `""` is the all-packages wildcard; TOML normalizes `"*"` to `""`.
     """
-    wildcard_keys = {"", "*"} if allow_star_wildcard else {""}
+    applicable_keys = {pkg_name, "", "*"} if allow_star_wildcard else {pkg_name, ""}
 
-    def _matches(rel: str, raw_pat: str) -> bool:
+    def _matches(raw_pat: str) -> bool:
         pat = raw_pat.strip().replace("\\", "/")
         while pat.startswith("./"):
             pat = pat[2:]
         if not pat:
             return False
         if exclusion:
-            return fnmatch.fnmatchcase(rel, pat)
-        return _glob_matches_relpath(rel, pat, recursive=True)
+            return fnmatch.fnmatch(rel_path, pat)
+        return _glob_matches_relpath(rel_path, pat, recursive=True)
 
-    for pkg_key, patterns in package_data.items():
-        if pkg_key in wildcard_keys or (target_pkg and pkg_key == target_pkg):
-            if any(_matches("skills/SKILL.md", p) for p in patterns):
-                return True
-        elif target_pkg and pkg_key == f"{target_pkg}.skills":
-            if any(_matches("SKILL.md", p) for p in patterns):
-                return True
+    for pkg_key, patterns in mapping.items():
+        if pkg_key in applicable_keys and any(_matches(p) for p in patterns):
+            return True
     return False
 
 
@@ -440,6 +443,8 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
         return False
 
     target_rel = f"{target_pkg.replace('.', '/')}/skills/SKILL.md"
+    target_dir_parts = target_rel.split("/")[:-1]
+    ancestor_dirs = ["/".join(target_dir_parts[: i + 1]) for i in range(len(target_dir_parts))]
 
     # Join backslash-continued lines and strip `#` comments.
     logical_lines: list[str] = []
@@ -487,13 +492,21 @@ def _manifest_covers_skill(harness: Path | None, target_pkg: str | None) -> bool
             prefix = f"{d}/**/" if d else "**/"
             if any(_glob_matches_relpath(target_rel, f"{prefix}{pat}", recursive=True) for pat in tokens[2:]):
                 selected = action == "recursive-include"
-        elif action in {"graft", "prune"}:
+        elif action == "graft":
+            if len(tokens) != 2:
+                continue
+            d = _norm_dir(tokens[1])
+            # setuptools FileList.graft() calls glob(dir) WITHOUT recursive=True, then collects
+            # all files recursively beneath each matched directory.
+            if not d or any(_glob_matches_relpath(anc, d, recursive=False) for anc in ancestor_dirs):
+                selected = True
+        elif action == "prune":
             if len(tokens) != 2:
                 continue
             d = _norm_dir(tokens[1])
             dir_glob = f"{d}/**/*" if d else "**/*"
             if _glob_matches_relpath(target_rel, dir_glob, recursive=True):
-                selected = action == "graft"
+                selected = False
 
     return selected
 
@@ -519,6 +532,7 @@ def _inspect_setup_py(
     """Inspect setup.py via AST for PEP 420 namespace packaging and console_scripts."""
     info: dict[str, Any] = {
         "namespace_ok": False,
+        "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
         "console_scripts": [],
         "package_data": {},
@@ -591,12 +605,23 @@ def _inspect_setup_py(
                     wheres=wheres,
                 ):
                     info["namespace_ok"] = True
+                if target_pkg and _find_selects_package(
+                    f"{target_pkg}.skills",
+                    includes,
+                    excludes,
+                    harness=harness,
+                    wheres=wheres,
+                    require_init=False,
+                ):
+                    info["skills_subpkg_ok"] = True
             elif fname == "find_packages":
                 info["uses_regular_find_packages"] = True
         else:
             explicit = _const_str_list(node)
             if explicit and _explicit_packages_cover(target_pkg, explicit):
                 info["namespace_ok"] = True
+            if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
+                info["skills_subpkg_ok"] = True
 
     def _extract_entry_points(expr: ast.AST) -> None:
         node = _resolve(expr)
@@ -797,6 +822,7 @@ def _inspect_pyproject_toml_fallback(
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
+        "skills_subpkg_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
         "has_project_table": False,
@@ -999,18 +1025,30 @@ def _inspect_pyproject_toml_fallback(
             info["declares_packages"] = True
             if setuptools_namespaces_disabled:
                 info["namespaces_disabled"] = True
-            elif _find_selects_package(
-                target_pkg,
-                setuptools_find_includes,
-                setuptools_find_excludes,
-                harness=harness,
-                wheres=setuptools_find_wheres,
-            ):
-                info["namespace_ok"] = True
+            else:
+                if _find_selects_package(
+                    target_pkg,
+                    setuptools_find_includes,
+                    setuptools_find_excludes,
+                    harness=harness,
+                    wheres=setuptools_find_wheres,
+                ):
+                    info["namespace_ok"] = True
+                if target_pkg and _find_selects_package(
+                    f"{target_pkg}.skills",
+                    setuptools_find_includes,
+                    setuptools_find_excludes,
+                    harness=harness,
+                    wheres=setuptools_find_wheres,
+                    require_init=False,
+                ):
+                    info["skills_subpkg_ok"] = True
         elif setuptools_explicit_pkgs is not None:
             info["declares_packages"] = True
             if _explicit_packages_cover(target_pkg, setuptools_explicit_pkgs):
                 info["namespace_ok"] = True
+            if target_pkg and f"{target_pkg}.skills" in setuptools_explicit_pkgs:
+                info["skills_subpkg_ok"] = True
     elif backend_kind == "hatch":
         if hatch_pkgs is not None:
             info["declares_packages"] = True
@@ -1041,6 +1079,7 @@ def _inspect_pyproject_toml(
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
+        "skills_subpkg_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
         "has_project_table": False,
@@ -1129,11 +1168,22 @@ def _inspect_pyproject_toml(
                         wheres=wheres,
                     ):
                         info["namespace_ok"] = True
+                    if target_pkg and _find_selects_package(
+                        f"{target_pkg}.skills",
+                        includes,
+                        excludes,
+                        harness=harness,
+                        wheres=wheres,
+                        require_init=False,
+                    ):
+                        info["skills_subpkg_ok"] = True
             elif isinstance(pkgs, list):
                 info["declares_packages"] = True
                 str_pkgs = [p for p in pkgs if isinstance(p, str)]
                 if _explicit_packages_cover(target_pkg, str_pkgs):
                     info["namespace_ok"] = True
+                if target_pkg and f"{target_pkg}.skills" in str_pkgs:
+                    info["skills_subpkg_ok"] = True
     elif backend_kind == "hatch":
         hatch_cfg = tool_dict.get("hatch")
         hatch_build = hatch_cfg.get("build") if isinstance(hatch_cfg, dict) else None
@@ -1211,6 +1261,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
 
     setup_info = _inspect_setup_py(setup_text, target_pkg=target_pkg, harness=harness) if has_setup else {
         "namespace_ok": False,
+        "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
         "console_scripts": [],
         "package_data": {},
@@ -1222,6 +1273,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
+        "skills_subpkg_ok": False,
         "namespaces_disabled": False,
         "declares_packages": False,
         "has_project_table": False,
@@ -1376,17 +1428,58 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         else:
             eff_include_pkg_data = False
 
-        included_by_pd = _package_data_covers_skill(
-            eff_pkg_data, target_pkg, allow_star_wildcard=eff_pkg_star
-        )
-        included_by_manifest = eff_include_pkg_data and _manifest_covers_skill(harness, target_pkg)
-        excluded_by_pd = _package_data_covers_skill(
-            eff_excl_data,
-            target_pkg,
-            allow_star_wildcard=eff_excl_star,
-            exclusion=True,
-        )
-        skill_data_ok = (included_by_pd or included_by_manifest) and not excluded_by_pd
+        # Determine which setuptools packages are actually selected by discovery.
+        if pyproj_info["namespaces_disabled"]:
+            parent_selected = False
+            skills_subpkg_selected = False
+        elif pyproj_info["declares_packages"]:
+            parent_selected = bool(pyproj_info["namespace_ok"])
+            skills_subpkg_selected = bool(pyproj_info["skills_subpkg_ok"])
+        elif uses_setup_py:
+            parent_selected = bool(setup_info["namespace_ok"])
+            skills_subpkg_selected = bool(setup_info["skills_subpkg_ok"])
+        else:
+            parent_selected = False
+            skills_subpkg_selected = False
+
+        # Mirror setuptools build_py: analyze_manifest() assigns SKILL.md to the deepest
+        # selected package containing it, and exclude_data_files() runs per supplying package.
+        manifest_has_skill = eff_include_pkg_data and _manifest_covers_skill(harness, target_pkg)
+        manifest_owner: str | None = None
+        if manifest_has_skill and target_pkg:
+            if skills_subpkg_selected:
+                manifest_owner = f"{target_pkg}.skills"
+            elif parent_selected:
+                manifest_owner = target_pkg
+
+        suppliers: list[tuple[str, str]] = []
+        if target_pkg:
+            if parent_selected:
+                suppliers.append((target_pkg, "skills/SKILL.md"))
+            if skills_subpkg_selected:
+                suppliers.append((f"{target_pkg}.skills", "SKILL.md"))
+
+        for pkg_name, rel_path in suppliers:
+            from_pd = _pkg_data_matches_file(
+                eff_pkg_data,
+                pkg_name,
+                rel_path,
+                allow_star_wildcard=eff_pkg_star,
+                exclusion=False,
+            )
+            from_manifest = manifest_owner == pkg_name
+            if not (from_pd or from_manifest):
+                continue
+            excluded = _pkg_data_matches_file(
+                eff_excl_data,
+                pkg_name,
+                rel_path,
+                allow_star_wildcard=eff_excl_star,
+                exclusion=True,
+            )
+            if not excluded:
+                skill_data_ok = True
+                break
 
     if skill_data_ok:
         checks.append(CheckResult("package-data-skills", "packaging", PASS, f"packaged SKILL.md included in package data for {target_pkg_label}"))
