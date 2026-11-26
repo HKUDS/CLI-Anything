@@ -1,7 +1,9 @@
 """Install, uninstall, and manage CLIs and matrices."""
 
 import json
+import os
 import shlex
+import signal
 import shutil
 import subprocess
 import sys
@@ -70,10 +72,40 @@ _SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
 
 def _run_process(command, *, shell=False, timeout=None):
     """Run a package-manager process and turn common failures into results."""
-    kwargs = {"shell": shell, "text": True}
-    if timeout is None:
-        kwargs["capture_output"] = True
-    else:
+    kwargs = {"shell": shell, "text": True, "capture_output": True}
+    if timeout is not None and shell:
+        process_kwargs = {
+            "shell": True,
+            "text": True,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+        }
+        if os.name != "nt":
+            process_kwargs["start_new_session"] = True
+
+        try:
+            process = subprocess.Popen(command, **process_kwargs)
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _terminate_process_tree(process)
+                stdout, stderr = process.communicate()
+                timeout_message = f"Command timed out after {timeout} seconds."
+                if stderr:
+                    timeout_message = f"{timeout_message}\n{stderr}"
+                return subprocess.CompletedProcess(command, 124, stdout, timeout_message)
+            return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        except FileNotFoundError as exc:
+            parts = shlex.split(command) if isinstance(command, str) else command
+            missing = exc.filename or (parts[0] if parts else "unknown command")
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=127,
+                stdout="",
+                stderr=f"Command not found: {missing}",
+            )
+
+    if timeout is not None:
         kwargs["timeout"] = timeout
 
     try:
@@ -94,6 +126,33 @@ def _run_process(command, *, shell=False, timeout=None):
             stdout="",
             stderr=f"Command timed out after {timeout} seconds.",
         )
+
+
+def _terminate_process_tree(process):
+    """Stop a timed-out installer and any processes it started."""
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def _run_command(cmd, timeout=None):

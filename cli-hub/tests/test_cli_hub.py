@@ -968,7 +968,7 @@ class TestInstaller:
         assert not success
         assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
         assert mock_run.call_args.kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
-        assert "capture_output" not in mock_run.call_args.kwargs
+        assert mock_run.call_args.kwargs["capture_output"] is True
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
@@ -991,7 +991,7 @@ class TestInstaller:
         assert not success
         assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
         assert mock_run.call_args.kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
-        assert "capture_output" not in mock_run.call_args.kwargs
+        assert mock_run.call_args.kwargs["capture_output"] is True
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
