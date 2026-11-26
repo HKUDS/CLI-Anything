@@ -1172,6 +1172,11 @@ class TestModifier:
         with pytest.raises(ValueError, match="positive"):
             resize_holes(_make_threemf_data(), [0], 0.0, mesh_index=0)
 
+    @pytest.mark.parametrize("diameter", [float("nan"), float("inf"), -float("inf")])
+    def test_resize_holes_non_finite_diameter_raises(self, diameter: float) -> None:
+        with pytest.raises(ValueError, match="finite and positive"):
+            resize_holes(_make_threemf_data(), [0], diameter, mesh_index=0)
+
     def test_resize_holes_empty_hole_ids_raises(self) -> None:
         with pytest.raises(ValueError, match="empty"):
             resize_holes(_make_threemf_data(), [], 5.0, mesh_index=0)
@@ -1211,6 +1216,11 @@ class TestModifier:
     def test_resize_single_hole_negative_diameter_raises(self) -> None:
         with pytest.raises(ValueError, match="positive"):
             resize_single_hole(_make_cube_mesh(), _make_fake_hole(), -5.0)
+
+    @pytest.mark.parametrize("diameter", [float("nan"), float("inf"), -float("inf")])
+    def test_resize_single_hole_non_finite_diameter_raises(self, diameter: float) -> None:
+        with pytest.raises(ValueError, match="finite and positive"):
+            resize_single_hole(_make_cube_mesh(), _make_fake_hole(), diameter)
 
     def test_resize_single_hole_none_mesh_raises(self) -> None:
         with pytest.raises((ValueError, AttributeError)):
