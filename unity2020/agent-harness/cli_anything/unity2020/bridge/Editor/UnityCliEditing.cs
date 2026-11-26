@@ -177,7 +177,6 @@ namespace CliAnything.Unity
                 EditorSceneManager.CloseScene(scene, true);
                 throw new InvalidOperationException("Unity created the scene in memory but did not save it to " + assetPath + ".");
             }
-            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
 
             var created = SceneManager.GetSceneByPath(assetPath);
             if (!created.IsValid() || !created.isLoaded)
@@ -1273,19 +1272,34 @@ namespace CliAnything.Unity
 
         private static object ConvertNumber(JToken token, Type target, string label)
         {
-            double value;
-            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            if (target == typeof(float) || target == typeof(double))
             {
-                value = token.Value<double>();
+                var floating = ReadDouble(token, target, label);
+                if (double.IsNaN(floating) || double.IsInfinity(floating))
+                {
+                    throw new ArgumentException(label + " requires a finite number for " + target.Name + ".");
+                }
+                return Convert.ChangeType(floating, target, CultureInfo.InvariantCulture);
             }
-            else if (token.Type == JTokenType.String &&
-                double.TryParse(token.Value<string>(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            if (TryReadExactDecimal(token, target, label, out var exact))
             {
-                value = parsed;
+                if (IsIntegral(target) && exact != decimal.Truncate(exact))
+                {
+                    throw new ArgumentException(label + " requires an integer value for " + target.Name + ".");
+                }
+                try
+                {
+                    return Convert.ChangeType(exact, target, CultureInfo.InvariantCulture);
+                }
+                catch (OverflowException)
+                {
+                    throw new ArgumentException(label + " is out of range for " + target.Name + ".");
+                }
             }
-            else
+            var value = ReadDouble(token, target, label);
+            if (double.IsNaN(value) || double.IsInfinity(value))
             {
-                throw new ArgumentException(label + " requires a number for " + target.Name + ".");
+                throw new ArgumentException(label + " requires a finite number for " + target.Name + ".");
             }
             if (IsIntegral(target) && value != Math.Truncate(value))
             {
@@ -1301,6 +1315,35 @@ namespace CliAnything.Unity
             }
         }
 
+        private static bool TryReadExactDecimal(JToken token, Type target, string label, out decimal value)
+        {
+            value = 0m;
+            if (token.Type == JTokenType.Integer)
+            {
+                if (decimal.TryParse(token.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+                {
+                    return true;
+                }
+                throw new ArgumentException(label + " is out of range for " + target.Name + ".");
+            }
+            return token.Type == JTokenType.String &&
+                decimal.TryParse(token.Value<string>(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static double ReadDouble(JToken token, Type target, string label)
+        {
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                return token.Value<double>();
+            }
+            if (token.Type == JTokenType.String &&
+                double.TryParse(token.Value<string>(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            {
+                return parsed;
+            }
+            throw new ArgumentException(label + " requires a number for " + target.Name + ".");
+        }
+
         private static double[] Numbers(JToken token, string label, params int[] allowedCounts)
         {
             double[] values;
@@ -1312,6 +1355,13 @@ namespace CliAnything.Unity
             {
                 throw new ArgumentException(
                     label + " requires " + string.Join(" or ", allowedCounts) + " numbers, got " + values.Length + ".");
+            }
+            foreach (var value in values)
+            {
+                if (double.IsNaN(value) || double.IsInfinity(value))
+                {
+                    throw new ArgumentException(label + " requires finite numbers.");
+                }
             }
             return values;
         }

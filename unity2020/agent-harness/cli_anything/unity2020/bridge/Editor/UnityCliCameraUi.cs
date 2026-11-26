@@ -763,20 +763,28 @@ namespace CliAnything.Unity
             }
             if (AssetDatabase.IsValidFolder(assetPath))
             {
+                var assetPaths = AssetDatabase.FindAssets("", new[] { assetPath })
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .Where(path => !string.IsNullOrEmpty(path) && !AssetDatabase.IsValidFolder(path))
+                    .OrderBy(path => path, StringComparer.Ordinal)
+                    .ToArray();
+                var uxmlPaths = assetPaths
+                    .Where(path => path.EndsWith(".uxml", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                var ussPaths = assetPaths
+                    .Where(path => path.EndsWith(".uss", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                var uxmlTruncated = uxmlPaths.Length > limit;
+                var ussTruncated = ussPaths.Length > limit;
                 return new
                 {
                     assetPath,
                     folder = true,
-                    uxml = AssetDatabase.FindAssets("t:VisualTreeAsset", new[] { assetPath })
-                        .Select(AssetDatabase.GUIDToAssetPath)
-                        .OrderBy(path => path, StringComparer.Ordinal)
-                        .Select(path => SummarizeAsset(path))
-                        .ToArray(),
-                    uss = AssetDatabase.FindAssets("t:StyleSheet", new[] { assetPath })
-                        .Select(AssetDatabase.GUIDToAssetPath)
-                        .OrderBy(path => path, StringComparer.Ordinal)
-                        .Select(path => SummarizeAsset(path))
-                        .ToArray(),
+                    uxml = uxmlPaths.Take(limit).Select(path => SummarizeAsset(path)).ToArray(),
+                    uss = ussPaths.Take(limit).Select(path => SummarizeAsset(path)).ToArray(),
+                    uxmlTruncated,
+                    ussTruncated,
+                    truncated = uxmlTruncated || ussTruncated,
                     runtimeDocumentSupported = false
                 };
             }
@@ -868,46 +876,125 @@ namespace CliAnything.Unity
                 throw new ArgumentException("Pass UxmlPath and/or UssPath.");
             }
             var force = GetBool(args, "Force") ?? false;
-            var created = new List<string>();
-            foreach (var path in new[] { uxmlPath, ussPath })
-            {
-                if (path == null)
-                {
-                    continue;
-                }
-                if (File.Exists(AssetPathToAbsolute(path)) && !force)
-                {
-                    throw new InvalidOperationException("Asset already exists: " + path + ". Pass Force to overwrite.");
-                }
-            }
 
+            var writes = new List<ToolkitWriteRequest>();
             if (uxmlPath != null)
             {
                 var name = GetString(args, "Name") ?? Path.GetFileNameWithoutExtension(uxmlPath);
-                var label = GetString(args, "Label");
-                WriteAsset(uxmlPath, BuildUxml(name, label), force);
-                created.Add(uxmlPath);
+                writes.Add(new ToolkitWriteRequest(uxmlPath, BuildUxml(name, GetString(args, "Label"))));
             }
             if (ussPath != null)
             {
                 var className = GetString(args, "Name") ?? (uxmlPath == null ? "root" : Path.GetFileNameWithoutExtension(uxmlPath));
-                WriteAsset(ussPath, BuildUss(className), force);
-                created.Add(ussPath);
+                writes.Add(new ToolkitWriteRequest(ussPath, BuildUss(className)));
             }
 
-            var uxmlVerification = uxmlPath == null ? (int?)null : VerifyUxml(uxmlPath);
-            var ussType = ussPath == null ? null : AssetDatabase.GetMainAssetTypeAtPath(ussPath);
-            if (ussPath != null && ussType != typeof(UIElements.StyleSheet))
+            foreach (var write in writes)
             {
-                throw new InvalidOperationException("Unity did not import the USS asset as a StyleSheet: " + ussPath);
+                var absolute = AssetPathToAbsolute(write.AssetPath);
+                if (Directory.Exists(absolute))
+                {
+                    throw new InvalidOperationException("Asset path is a directory: " + write.AssetPath + ".");
+                }
+                if (!force && File.Exists(absolute))
+                {
+                    throw new InvalidOperationException(
+                        "Asset already exists: " + write.AssetPath + ". Pass Force to overwrite.");
+                }
             }
-            return new
+
+            var created = writes.Select(write => write.AssetPath).ToList();
+            var backups = new List<ToolkitWriteBackup>();
+            try
             {
-                created,
-                uxml = uxmlPath == null ? null : new { assetPath = uxmlPath, nodes = uxmlVerification },
-                uss = ussPath == null ? null : new { assetPath = ussPath, importerType = ussType.FullName },
-                runtimeDocumentSupported = false
-            };
+                foreach (var write in writes)
+                {
+                    backups.Add(ToolkitWriteBackup.Capture(write.AssetPath));
+                    WriteAsset(write.AssetPath, write.Content, force);
+                }
+
+                var uxmlVerification = uxmlPath == null ? (int?)null : VerifyUxml(uxmlPath);
+                var ussType = ussPath == null ? null : AssetDatabase.GetMainAssetTypeAtPath(ussPath);
+                if (ussPath != null && ussType != typeof(UIElements.StyleSheet))
+                {
+                    throw new InvalidOperationException("Unity did not import the USS asset as a StyleSheet: " + ussPath);
+                }
+                return new
+                {
+                    created,
+                    uxml = uxmlPath == null ? null : new { assetPath = uxmlPath, nodes = uxmlVerification },
+                    uss = ussPath == null ? null : new { assetPath = ussPath, importerType = ussType.FullName },
+                    runtimeDocumentSupported = false
+                };
+            }
+            catch
+            {
+                foreach (var backup in backups)
+                {
+                    backup.Restore();
+                }
+                throw;
+            }
+        }
+
+        private sealed class ToolkitWriteRequest
+        {
+            public ToolkitWriteRequest(string assetPath, string content)
+            {
+                AssetPath = assetPath;
+                Content = content;
+            }
+
+            public string AssetPath { get; }
+
+            public string Content { get; }
+        }
+
+        private sealed class ToolkitWriteBackup
+        {
+            private string _assetPath;
+            private string _absolutePath;
+            private byte[] _originalBytes;
+            private bool _metaExisted;
+
+            public static ToolkitWriteBackup Capture(string assetPath)
+            {
+                var absolute = AssetPathToAbsolute(assetPath);
+                return new ToolkitWriteBackup
+                {
+                    _assetPath = assetPath,
+                    _absolutePath = absolute,
+                    _originalBytes = File.Exists(absolute) ? File.ReadAllBytes(absolute) : null,
+                    _metaExisted = File.Exists(absolute + ".meta")
+                };
+            }
+
+            public void Restore()
+            {
+                try
+                {
+                    if (_originalBytes != null)
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(_absolutePath));
+                        File.WriteAllBytes(_absolutePath, _originalBytes);
+                        AssetDatabase.ImportAsset(_assetPath, ImportAssetOptions.ForceUpdate);
+                        return;
+                    }
+                    if (File.Exists(_absolutePath))
+                    {
+                        File.Delete(_absolutePath);
+                    }
+                    if (!_metaExisted && File.Exists(_absolutePath + ".meta"))
+                    {
+                        File.Delete(_absolutePath + ".meta");
+                    }
+                    AssetDatabase.Refresh();
+                }
+                catch (Exception exception)
+                {
+                    UnityCliLog.LogError("[Unity CLI] Could not roll back " + _assetPath + ": " + exception.Message);
+                }
+            }
         }
 
         private static int VerifyUxml(string assetPath)

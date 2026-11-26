@@ -79,3 +79,60 @@ def test_edit_save_and_render_in_unity(editor):
     assert header[:8] == b"\x89PNG\r\n\x1a\n"
     assert struct.unpack(">II", header[16:24]) == (160, 90)
     print(f"Unity rendered {output}")
+
+
+def test_edit_rejects_non_finite_values(editor):
+    _, command = editor
+    name = f"CliAnything-{uuid4().hex}"
+    cube = command("gameobject", "create", name, "--primitive", "Cube")["data"]["objectId"]
+    for value in ("NaN", "Infinity", "-Infinity"):
+        failure = command("component", "set", "--id", str(cube), "--component", "Transform",
+                          "--property", "position", "--value", f"[{value},0,0]", expected_code=1)
+        assert "finite" in failure["error"], failure
+    applied = command("component", "set", "--id", str(cube), "--component", "Transform",
+                      "--property", "position", "--value", "[1,2,3]")["data"]
+    assert applied["before"] == [0, 0, 0], applied
+
+    material = f"Assets/{name}.mat"
+    command("material", "create", material, "--shader", "Standard")
+    failure = command("material", "set", material, "--property", "_Metallic", "--value", "NaN",
+                      expected_code=1)
+    assert "finite" in failure["error"], failure
+    failure = command("material", "set", material, "--property", "_Color", "--value", "0,Infinity,0,1",
+                      expected_code=1)
+    assert "finite" in failure["error"], failure
+    properties = command("material", "inspect", "--asset", material)["data"]["material"]["properties"]
+    metallic = next(item for item in properties if item["name"] == "_Metallic")
+    assert metallic["value"]["number"] == 0, metallic
+
+
+def test_ui_toolkit_inspect_is_bounded_and_create_is_atomic(editor):
+    project, command = editor
+    name = f"CliAnything-{uuid4().hex}"
+    folder = f"Assets/{name}"
+    for index in range(3):
+        command("ui", "toolkit", "create", "--uxml", f"{folder}/Entry{index}.uxml",
+                "--uss", f"{folder}/Entry{index}.uss")
+    inspected = command("ui", "toolkit", "inspect", folder, "--limit", "1")["data"]
+    assert len(inspected["uxml"]) == 1, inspected
+    assert len(inspected["uss"]) == 1, inspected
+    assert inspected["uxmlTruncated"] is True, inspected
+    assert inspected["ussTruncated"] is True, inspected
+    assert inspected["truncated"] is True, inspected
+
+    blocked = f"{folder}/Blocked.uss"
+    (project / blocked).mkdir()
+    failure = command("ui", "toolkit", "create", "--uxml", f"{folder}/BlockedPair.uxml",
+                      "--uss", blocked, "--force", expected_code=1)
+    assert "directory" in failure["error"], failure
+    assert not (project / folder / "BlockedPair.uxml").exists()
+
+    pair_uxml = f"{folder}/Pair.uxml"
+    command("ui", "toolkit", "create", "--uxml", pair_uxml, "--uss", f"{folder}/Pair.uss")
+    original = (project / pair_uxml).read_bytes()
+    (project / folder / "Blocker").write_text("not a folder", encoding="utf-8")
+    failure = command("ui", "toolkit", "create", "--uxml", pair_uxml,
+                      "--uss", f"{folder}/Blocker/Nested.uss", "--force", expected_code=1)
+    assert "Blocker" in failure["error"], failure
+    assert (project / pair_uxml).read_bytes() == original
+    assert not (project / folder / "Blocker" / "Nested.uss").exists()

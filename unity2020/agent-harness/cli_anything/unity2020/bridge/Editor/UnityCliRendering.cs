@@ -1007,7 +1007,12 @@ namespace CliAnything.Unity
                     {
                         throw new ArgumentException(propertyName + " is a float property; pass a number.");
                     }
-                    return token.Value<float>();
+                    var scalar = token.Value<float>();
+                    if (float.IsNaN(scalar) || float.IsInfinity(scalar))
+                    {
+                        throw new ArgumentException(propertyName + " requires a finite number.");
+                    }
+                    return scalar;
             }
         }
 
@@ -1101,6 +1106,13 @@ namespace CliAnything.Unity
             if (values == null || !lengths.Contains(values.Length))
             {
                 throw new ArgumentException(propertyName + " expects an array of " + string.Join(" or ", lengths) + " numbers.");
+            }
+            foreach (var value in values)
+            {
+                if (float.IsNaN(value) || float.IsInfinity(value))
+                {
+                    throw new ArgumentException(propertyName + " requires finite numbers.");
+                }
             }
             return values;
         }
@@ -1573,7 +1585,13 @@ namespace CliAnything.Unity
             var animator = animators[index];
             var limit = GetInt(args, "Limit") ?? 200;
             CheckLimit(limit);
-            var controller = animator.runtimeAnimatorController as AnimatorController;
+            var runtimeControllerAsset = animator.runtimeAnimatorController;
+            var overrideController = runtimeControllerAsset as AnimatorOverrideController;
+            var controller = runtimeControllerAsset as AnimatorController;
+            if (controller == null && overrideController != null)
+            {
+                controller = overrideController.runtimeAnimatorController as AnimatorController;
+            }
             var parameters = new List<object>();
             foreach (var parameter in animator.parameters)
             {
@@ -1605,6 +1623,7 @@ namespace CliAnything.Unity
                     parameters
                 },
                 controller = controller == null ? null : ControllerInfo(controller, limit),
+                overrideController = overrideController == null ? null : OverrideControllerInfo(overrideController, limit),
                 live = EditorApplication.isPlaying ? LiveAnimatorInfo(animator) : null
             };
         }
@@ -1641,6 +1660,23 @@ namespace CliAnything.Unity
             };
         }
 
+        private static object OverrideControllerInfo(AnimatorOverrideController controller, int limit)
+        {
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            controller.GetOverrides(pairs);
+            return new
+            {
+                assetPath = AssetPathOf(controller),
+                baseController = AssetRef(controller.runtimeAnimatorController),
+                overrideCount = pairs.Count,
+                overrides = pairs.Take(limit).Select(pair => new
+                {
+                    originalClip = AssetRef(pair.Key),
+                    overrideClip = AssetRef(pair.Value)
+                }).ToArray()
+            };
+        }
+
         private static object AvatarInfo(Avatar avatar)
         {
             if (avatar == null)
@@ -1666,12 +1702,12 @@ namespace CliAnything.Unity
             var totalStates = 0;
             foreach (var layer in controller.layers)
             {
-                var layerStates = new List<object>();
+                var statesBefore = states.Count;
                 if (layer.stateMachine != null)
                 {
-                    CollectStates(layer.stateMachine, layerStates, clips, limit, ref totalStates);
+                    CollectStates(layer.stateMachine, states, clips, limit, ref totalStates);
                 }
-                states.AddRange(layerStates);
+                var layerStateCount = states.Count - statesBefore;
                 layers.Add(new
                 {
                     index = layers.Count,
@@ -1689,7 +1725,7 @@ namespace CliAnything.Unity
                         anyStateTransitionCount = layer.stateMachine.anyStateTransitions.Length,
                         entryTransitionCount = layer.stateMachine.entryTransitions.Length,
                         subStateMachineCount = layer.stateMachine.stateMachines.Length,
-                        stateCount = layerStates.Count
+                        stateCount = layerStateCount
                     }
                 });
             }
