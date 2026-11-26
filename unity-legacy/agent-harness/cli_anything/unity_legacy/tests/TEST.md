@@ -6,7 +6,7 @@
 
 ## Results
 
-The wheel was built and installed into an isolated test environment. The test project manifest specified only the public bridge, which resolved its declared Unity packages.
+The wheel was built and installed into an isolated test environment. The test project manifest specified only the public bridge, which resolved its declared Unity packages. The CLI-Anything harness and the standalone repository ship the same files, so these results cover both install sources.
 
 Unity 2020.3.45f1 on Windows, installed-command mode
 

@@ -1,6 +1,6 @@
 {
   "name": "com.cli-anything.unity2020",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "displayName": "Unity Legacy CLI Editor Bridge",
   "description": "Editor-only local bridge for Unity Legacy CLI.",
   "unity": "2020.3",

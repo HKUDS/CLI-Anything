@@ -6,7 +6,7 @@ Control a running Unity Editor via a local, Editor-only Unity package. The bridg
 
 | Unity version | Validation and feature notes |
 | --- | --- |
-| 2020.3.45f1, Windows | Clean-project Editor compilation and CLI end-to-end coverage. |
+| 2020.3.45f1, Windows | Clean-project Editor compilation and CLI end-to-end coverage, including finite-value validation, bounded UI Toolkit inspection and atomic UXML/USS writes. |
 | 2022.3.21f1, Windows | Experimental. Clean-project Editor compilation, status, batch reads and scene creation passed. The full editing and capture workflow timed out. |
 | Earlier than 2020.3 | Outside the package's declared minimum. The bridge manifest requires Unity 2020.3 or newer. |
 
@@ -19,7 +19,7 @@ Requires Python 3.10+ and an open Unity project. Unity Legacy CLI ships as two d
 | Distribution | Install |
 | --- | --- |
 | CLI-Anything monorepo harness (this directory) | `python -m pip install ./unity-legacy/agent-harness` from a CLI-Anything checkout, or `pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity-legacy/agent-harness` |
-| [Standalone repository](https://github.com/key-zxy/unity-legacy-cli), release [v0.3.2](https://github.com/key-zxy/unity-legacy-cli/releases/tag/v0.3.2) | `python -m pip install <wheel from the release>` |
+| [Standalone repository](https://github.com/key-zxy/unity-legacy-cli) | `python -m pip install <wheel from its latest release>`, or `python -m pip install .` from a checkout of that repository |
 
 Both keep the Unity package ID `com.cli-anything.unity2020`, so a project that already has that bridge at the same version works with either install source. Then locate the bridge.
 

@@ -2,8 +2,10 @@ from setuptools import find_namespace_packages, setup
 
 setup(
     name="unity-legacy-cli",
-    version="0.3.1",
+    version="0.3.3",
     description="Unity Legacy CLI: local command-line control of the Unity Editor",
+    long_description_content_type="text/markdown",
+    url="https://github.com/key-zxy/unity-legacy-cli",
     license="Apache-2.0",
     packages=find_namespace_packages(include=["cli_anything.*"], exclude=["*.tests", "*.bridge", "*.bridge.*", "*.skills"]),
     package_data={"cli_anything.unity_legacy": [
