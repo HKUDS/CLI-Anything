@@ -1,0 +1,13 @@
+{
+  "name": "com.cli-anything.unity2020",
+  "version": "0.3.3",
+  "displayName": "Unity Legacy CLI Editor Bridge",
+  "description": "Editor-only local bridge for Unity Legacy CLI.",
+  "unity": "2020.3",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.0.2",
+    "com.unity.ugui": "1.0.0",
+    "com.unity.test-framework": "1.1.22"
+  }
+}

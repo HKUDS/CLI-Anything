@@ -1513,6 +1513,28 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "unity-legacy",
+      "display_name": "Unity Legacy CLI",
+      "version": "0.3.3",
+      "description": "Control a running Unity Editor with local JSON commands for scenes, assets, rendering, tests and build jobs. Upstream harness for the standalone unity-legacy-cli release.",
+      "requires": "Licensed Unity Editor with the included bridge, Python 3.10+",
+      "homepage": "https://unity.com/products/unity-engine",
+      "source_url": null,
+      "install_strategy": "command",
+      "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity-legacy/agent-harness",
+      "uninstall_cmd": "pip uninstall -y unity-legacy-cli",
+      "update_cmd": "pip install --upgrade --force-reinstall git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=unity-legacy/agent-harness",
+      "entry_point": "unity-legacy-cli",
+      "skill_md": "skills/cli-anything-unity-legacy/SKILL.md",
+      "category": "gamedev",
+      "contributors": [
+        {
+          "name": "key-zxy",
+          "url": "https://github.com/key-zxy"
+        }
+      ]
     }
   ]
 }

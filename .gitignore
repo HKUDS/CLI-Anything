@@ -49,6 +49,7 @@
 /cli-hub-skill/
 
 # Step 4: Allow each software dir (top level only)
+!/unity-legacy/
 !/gimp/
 !/blender/
 !/inkscape/
@@ -108,6 +109,8 @@
 !/cc-switch/
 !/siyuan/
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
+/unity-legacy/*
+/unity-legacy/.*
 /gimp/*
 /gimp/.*
 /blender/*
@@ -344,4 +347,5 @@ assets/gen_typing_gif.py
 !/intelwatch/agent-harness/
 !/jumpserver/
 !/jumpserver/agent-harness/
+!/unity-legacy/agent-harness/
 !/cli_anything/jumpserver/
