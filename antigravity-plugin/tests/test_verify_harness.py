@@ -813,7 +813,123 @@ setup(
     assert payload["tools"][0]["source"] == "./iterm2/agent-harness"
 
 
-def test_pyproject_py310_fallback_matches_tomllib_semantics() -> None:
+def test_verify_honors_discovery_search_roots_in_pyproject_and_setup(tmp_path: Path, monkeypatch) -> None:
+    # 1. pyproject.toml [tool.setuptools.packages.find] where = ["empty-src"] must fail (Python 3.11+ and 3.10 fallback).
+    harness = _create_valid_harness(tmp_path / "pyproj_where", "whereapp")
+    (harness / "empty-src").mkdir()
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-whereapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-whereapp = "cli_anything.whereapp.whereapp_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["empty-src"]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.whereapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    bad_tomllib = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    bad_checks = {c["id"]: c for c in bad_tomllib["checks"]}
+    assert bad_tomllib["ok"] is False
+    assert bad_checks["namespace-packages"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        bad_py310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert bad_py310["ok"] is False
+        assert {c["id"]: c for c in bad_py310["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # Including "." alongside "empty-src" discovers the flat-layout package and passes.
+    (harness / "pyproject.toml").write_text(
+        (harness / "pyproject.toml").read_text(encoding="utf-8").replace(
+            'where = ["empty-src"]', 'where = ["empty-src", "."]'
+        ),
+        encoding="utf-8",
+    )
+    good_multi = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert good_multi["ok"] is True, good_multi["checks"]
+
+    # Explicitly empty where = [] must also fail.
+    (harness / "pyproject.toml").write_text(
+        (harness / "pyproject.toml").read_text(encoding="utf-8").replace(
+            'where = ["empty-src", "."]', "where = []"
+        ),
+        encoding="utf-8",
+    )
+    empty_where = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert empty_where["ok"] is False
+    assert {c["id"]: c for c in empty_where["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 2. setup.py find_namespace_packages(where="empty-src", ...) and positional find_namespace_packages("empty-src", ...)
+    for expr in (
+        'find_namespace_packages(where="empty-src", include=["cli_anything.*"])',
+        'find_namespace_packages("empty-src", include=["cli_anything.*"])',
+    ):
+        sh = _create_valid_harness(tmp_path / f"setup_{abs(hash(expr))}", "swhere")
+        (sh / "empty-src").mkdir()
+        (sh / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-swhere",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages={expr},
+    package_data={{"cli_anything.swhere": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-swhere=cli_anything.swhere.swhere_cli:main"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        sres = verify_harness.verify_harness(sh, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN)
+        assert sres["ok"] is False
+        assert {c["id"]: c for c in sres["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 3. Poetry packages = [{include = "cli_anything", from = "empty-src"}] must also fail when empty-src lacks the package.
+    ph = _create_valid_harness(tmp_path / "poetry_where", "pwhere")
+    (ph / "empty-src").mkdir()
+    (ph / "setup.py").unlink()
+    (ph / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-pwhere"
+version = "1.0.0"
+packages = [{include = "cli_anything", from = "empty-src"}]
+
+[tool.poetry.scripts]
+cli-anything-pwhere = "cli_anything.pwhere.pwhere_cli:main"
+""",
+        encoding="utf-8",
+    )
+    pres = verify_harness.verify_harness(ph, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN)
+    assert {c["id"]: c for c in pres["checks"]}["namespace-packages"]["status"] == "fail"
+
+
+def test_pyproject_py310_fallback_matches_tomllib_semantics(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path, "demoapp")
+    (harness / "empty-src").mkdir()
     target = "cli_anything.demoapp"
     samples = [
         """[project]
@@ -844,6 +960,10 @@ include = []
 where = ["."]
 """,
         """[tool.setuptools.packages.find]
+where = ["empty-src"]
+include = ["cli_anything.*"]
+""",
+        """[tool.setuptools.packages.find]
 include = ["cli_anything.*"]
 exclude = ["cli_anything.*"]
 """,
@@ -852,7 +972,7 @@ include = ["cli_anything.*"]
 exclude = ["cli_anything.*.tests*"]
 """,
         """[tool.setuptools.packages]
-find = { include = ["cli_anything.*"], exclude = ["cli_anything.*"] }
+find = { where = ["empty-src"], include = ["cli_anything.*"] }
 """,
         """[build-system]
 requires = ["setuptools>=68"]
@@ -878,7 +998,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 packages = [
-    {include = "cli_anything"},
+    {include = "cli_anything", from = "empty-src"},
 ]
 
 [tool.poetry.scripts]
@@ -887,5 +1007,5 @@ cli-anything-demoapp = "cli_anything.demoapp.demoapp_cli:main"
     ]
     for sample in samples:
         assert verify_harness._inspect_pyproject_toml_fallback(
-            sample, target_pkg=target
-        ) == verify_harness._inspect_pyproject_toml(sample, target_pkg=target), sample
+            sample, target_pkg=target, harness=harness
+        ) == verify_harness._inspect_pyproject_toml(sample, target_pkg=target, harness=harness), sample

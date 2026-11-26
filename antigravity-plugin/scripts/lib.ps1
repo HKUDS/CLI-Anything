@@ -100,6 +100,39 @@ function Test-CliAnythingInstallPath {
     return ([System.IO.Path]::GetFileName($key) -eq "cli-anything")
 }
 
+function Test-CliAnythingVerifiedSelfInstallDir {
+    param([Parameter(Mandatory = $true)][string]$Dir)
+    $full = [System.IO.Path]::GetFullPath($Dir)
+    if ([System.IO.Path]::GetFileName($full.TrimEnd("\", "/")) -ne "cli-anything") {
+        return $false
+    }
+    $stampFile = Join-Path $full "PLUGIN_ROOT.txt"
+    $manifestFile = Join-Path $full "plugin.json"
+    if (-not ((Test-Path -LiteralPath $stampFile) -and (Test-Path -LiteralPath $manifestFile))) {
+        return $false
+    }
+    $manifestText = Get-Content -LiteralPath $manifestFile -Raw
+    if ($manifestText -notmatch '"name"\s*:\s*"cli-anything"') {
+        return $false
+    }
+    $stamped = (Get-Content -LiteralPath $stampFile -Raw).Trim()
+    if ([string]::IsNullOrWhiteSpace($stamped)) {
+        return $false
+    }
+    $stampNorm = Normalize-CliAnythingPathKey $stamped
+    $fullNorm = Normalize-CliAnythingPathKey $full
+    if ($stampNorm -eq $fullNorm) {
+        return $true
+    }
+    try {
+        $resolvedTarget = (Get-Item -LiteralPath $full).Target
+        if ($resolvedTarget) {
+            return ($stampNorm -eq (Normalize-CliAnythingPathKey ([System.IO.Path]::GetFullPath($resolvedTarget))))
+        }
+    } catch {}
+    return $false
+}
+
 function Get-CliAnythingDiscoveryPointerPath {
     $userGemini = if ($env:USERPROFILE) {
         Join-Path $env:USERPROFILE ".gemini"

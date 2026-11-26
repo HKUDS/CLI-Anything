@@ -81,3 +81,54 @@ def test_concurrent_install_with_force_both_succeed_without_corruption(tmp_path:
     assert (installed / "references" / "HARNESS.md").is_file()
     assert (installed / "scripts" / "verify_harness.py").is_file()
     assert not (plugins / ".cli-anything.lock").exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinked plugins root test")
+def test_symlinked_plugins_root_install_and_uninstall_roundtrip(tmp_path: Path) -> None:
+    # Reproduce ~/.gemini/config/plugins -> <dir>/plugin-storage (basename != 'plugins')
+    # and verify both repo uninstall.sh and self-invoked realpath uninstall.sh succeed cleanly.
+    for mode in ("repo-uninstall", "self-symlink-uninstall", "self-realpath-uninstall"):
+        case_dir = tmp_path / mode
+        home = case_dir / "home"
+        config_dir = home / ".gemini" / "config"
+        config_dir.mkdir(parents=True)
+        storage = case_dir / "plugin-storage"
+        storage.mkdir(parents=True)
+        plugins_link = config_dir / "plugins"
+        plugins_link.symlink_to(storage)
+
+        env = os.environ.copy()
+        env["HOME"] = str(home)
+        env.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+        inst = subprocess.run(
+            ["bash", str(PLUGIN_SRC / "scripts" / "install.sh")],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert inst.returncode == 0, f"[{mode}] install failed:\n{inst.stdout}{inst.stderr}"
+
+        installed = storage / "cli-anything"
+        pointer = home / ".gemini" / "cli-anything-generator.root"
+        assert (installed / "plugin.json").is_file()
+        assert pointer.is_file()
+
+        if mode == "repo-uninstall":
+            uninstall_script = PLUGIN_SRC / "scripts" / "uninstall.sh"
+        elif mode == "self-symlink-uninstall":
+            uninstall_script = plugins_link / "cli-anything" / "scripts" / "uninstall.sh"
+        else:
+            uninstall_script = installed / "scripts" / "uninstall.sh"
+
+        uninst = subprocess.run(
+            ["bash", str(uninstall_script)],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert uninst.returncode == 0, f"[{mode}] uninstall failed:\n{uninst.stdout}{uninst.stderr}"
+        assert not installed.exists(), f"[{mode}] plugin directory was not removed"
+        assert not pointer.exists(), f"[{mode}] discovery pointer was not removed"

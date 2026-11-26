@@ -21,11 +21,13 @@ $discoveryPointer = Get-CliAnythingDiscoveryPointerPath
 $stampFile = Join-Path $pluginSrc "PLUGIN_ROOT.txt"
 $manifest = Join-Path $pluginSrc "plugin.json"
 
+$selfVerified = $false
 if (-not [string]::IsNullOrWhiteSpace($Workspace)) {
     $wsRoot = Resolve-CliAnythingWorkspaceRoot -Raw $Workspace
     $destDir = [System.IO.Path]::GetFullPath((Join-Path $wsRoot ".agents\plugins\cli-anything"))
-} elseif ((Test-Path -LiteralPath $stampFile) -and (Test-Path -LiteralPath $manifest)) {
+} elseif (Test-CliAnythingVerifiedSelfInstallDir -Dir $pluginSrc) {
     $destDir = [System.IO.Path]::GetFullPath($pluginSrc)
+    $selfVerified = $true
 } else {
     if ($env:ANTIGRAVITY_PLUGINS_HOME) {
         $pluginsHome = Resolve-CliAnythingPluginsHome -Raw $env:ANTIGRAVITY_PLUGINS_HOME
@@ -39,7 +41,7 @@ if (-not [string]::IsNullOrWhiteSpace($Workspace)) {
     $destDir = [System.IO.Path]::GetFullPath((Join-Path $pluginsHome "cli-anything"))
 }
 
-if (-not (Test-CliAnythingInstallPath -Path $destDir)) {
+if ((-not $selfVerified) -and (-not (Test-CliAnythingInstallPath -Path $destDir))) {
     throw "Refusing to uninstall unexpected path: $destDir"
 }
 

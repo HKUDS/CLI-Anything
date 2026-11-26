@@ -270,12 +270,21 @@ def _parse_ini_console_scripts(ini_text: str) -> list[str]:
     return scripts
 
 
+def _package_exists_under(root: Path, target_pkg: str) -> bool:
+    """Return True if `root/<pkg_parts>/__init__.py` exists on disk."""
+    pkg_dir = root.joinpath(*target_pkg.split("."))
+    return pkg_dir.is_dir() and (pkg_dir / "__init__.py").is_file()
+
+
 def _find_selects_package(
     target_pkg: str | None,
     includes: list[str] | None,
     excludes: list[str] | None,
+    *,
+    harness: Path | None = None,
+    wheres: list[str] | None = None,
 ) -> bool:
-    """Mirror setuptools PEP420PackageFinder include/exclude fnmatch semantics."""
+    """Mirror setuptools PEP420PackageFinder where/include/exclude semantics."""
     pkg = target_pkg or "cli_anything._harness"
     included = True if includes is None else any(
         fnmatch.fnmatchcase(pkg, pat) for pat in includes
@@ -284,6 +293,13 @@ def _find_selects_package(
         return False
     if excludes is not None and any(fnmatch.fnmatchcase(pkg, pat) for pat in excludes):
         return False
+    if wheres is not None:
+        if not wheres:
+            return False
+        if harness is not None and target_pkg:
+            return any(_package_exists_under(harness / root_rel, target_pkg) for root_rel in wheres)
+    elif harness is not None and target_pkg:
+        return _package_exists_under(harness, target_pkg)
     return True
 
 
@@ -293,28 +309,49 @@ def _explicit_packages_cover(target_pkg: str | None, packages: list[str]) -> boo
     return any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", p) for p in packages)
 
 
-def _hatch_packages_cover(target_pkg: str | None, packages: list[str]) -> bool:
+def _hatch_packages_cover(
+    target_pkg: str | None,
+    packages: list[str],
+    harness: Path | None = None,
+) -> bool:
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
     for raw in packages:
         norm = raw.strip().strip("/").replace("\\", "/")
+        if not norm:
+            continue
         if norm == "cli_anything" or norm.endswith("/cli_anything"):
-            return True
-        if mod and (norm == f"cli_anything/{mod}" or norm.endswith(f"/cli_anything/{mod}")):
-            return True
-        if not mod and ("cli_anything/" in norm):
+            if harness is None or not mod:
+                return True
+            if (harness / norm / mod / "__init__.py").is_file():
+                return True
+        elif mod and (norm == f"cli_anything/{mod}" or norm.endswith(f"/cli_anything/{mod}")):
+            if harness is None or (harness / norm / "__init__.py").is_file():
+                return True
+        elif not mod and ("cli_anything/" in norm):
             return True
     return False
 
 
-def _poetry_packages_cover(target_pkg: str | None, includes: list[str]) -> bool:
+def _poetry_packages_cover(
+    target_pkg: str | None,
+    entries: list[tuple[str, str]],
+    harness: Path | None = None,
+) -> bool:
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
-    for raw in includes:
-        norm = raw.strip().strip("/").replace("\\", "/")
+    for raw_inc, raw_from in entries:
+        norm = raw_inc.strip().strip("/").replace("\\", "/")
+        base_root = (harness / raw_from) if (harness is not None and raw_from) else harness
         if norm == "cli_anything":
-            return True
-        if mod and norm in {f"cli_anything/{mod}", f"cli_anything.{mod}"}:
-            return True
-        if not mod and (norm.startswith("cli_anything/") or norm.startswith("cli_anything.")):
+            if base_root is None or not target_pkg:
+                return True
+            if _package_exists_under(base_root, target_pkg):
+                return True
+        elif mod and norm in {f"cli_anything/{mod}", f"cli_anything.{mod}"}:
+            if base_root is None or not target_pkg:
+                return True
+            if _package_exists_under(base_root, target_pkg):
+                return True
+        elif not mod and (norm.startswith("cli_anything/") or norm.startswith("cli_anything.")):
             return True
     return False
 
@@ -332,7 +369,11 @@ def _classify_build_backend(build_backend: str | None) -> str:
     return "other"
 
 
-def _inspect_setup_py(text: str, target_pkg: str | None = None) -> dict[str, Any]:
+def _inspect_setup_py(
+    text: str,
+    target_pkg: str | None = None,
+    harness: Path | None = None,
+) -> dict[str, Any]:
     """Inspect setup.py via AST for PEP 420 namespace packaging and console_scripts."""
     info: dict[str, Any] = {
         "namespace_ok": False,
@@ -365,12 +406,24 @@ def _inspect_setup_py(text: str, target_pkg: str | None = None) -> dict[str, Any
         if isinstance(node, ast.Call):
             fname = _call_func_name(node.func)
             if fname == "find_namespace_packages":
-                inc_kw = next((kw.value for kw in node.keywords if kw.arg == "include"), None)
+                where_kw = next((kw.value for kw in node.keywords if kw.arg == "where"), None)
                 exc_kw = next((kw.value for kw in node.keywords if kw.arg == "exclude"), None)
+                inc_kw = next((kw.value for kw in node.keywords if kw.arg == "include"), None)
+                if where_kw is None and len(node.args) >= 1:
+                    where_kw = node.args[0]
                 if exc_kw is None and len(node.args) >= 2:
                     exc_kw = node.args[1]
                 if inc_kw is None and len(node.args) >= 3:
                     inc_kw = node.args[2]
+
+                wheres: list[str] | None = ["."]
+                if where_kw is not None:
+                    resolved_where = _resolve(where_kw)
+                    if isinstance(resolved_where, ast.Constant) and isinstance(resolved_where.value, str):
+                        wheres = [resolved_where.value]
+                    else:
+                        # Dynamic where expression (e.g., os.path.dirname(__file__)); avoid false failures.
+                        wheres = None
 
                 includes: list[str] | None = None
                 if inc_kw is not None:
@@ -384,7 +437,13 @@ def _inspect_setup_py(text: str, target_pkg: str | None = None) -> dict[str, Any
                     if exc_vals is not None:
                         excludes = exc_vals
 
-                if _find_selects_package(target_pkg, includes, excludes):
+                if _find_selects_package(
+                    target_pkg,
+                    includes,
+                    excludes,
+                    harness=harness,
+                    wheres=wheres,
+                ):
                     info["namespace_ok"] = True
             elif fname == "find_packages":
                 info["uses_regular_find_packages"] = True
@@ -542,7 +601,30 @@ def _extract_toml_str_list(rhs: str) -> list[str]:
     return re.findall(r"""["']([^"']+)["']""", rhs)
 
 
-def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -> dict[str, Any]:
+def _parse_poetry_packages_fallback(rhs: str) -> list[tuple[str, str]]:
+    """Extract (include, from_dir) pairs from a TOML array of inline tables."""
+    entries: list[tuple[str, str]] = []
+    for table_match in re.finditer(r"\{[^{}]*\}", rhs):
+        inc = ""
+        from_dir = "."
+        for k, v in _parse_inline_table_items(table_match.group(0)):
+            vals = _extract_toml_str_list(v)
+            if not vals:
+                continue
+            if k == "include":
+                inc = vals[0]
+            elif k == "from":
+                from_dir = vals[0]
+        if inc:
+            entries.append((inc, from_dir))
+    return entries
+
+
+def _inspect_pyproject_toml_fallback(
+    text: str,
+    target_pkg: str | None = None,
+    harness: Path | None = None,
+) -> dict[str, Any]:
     """Python 3.10 stdlib fallback parser for pyproject.toml without tomllib."""
     info: dict[str, Any] = {
         "build_backend": None,
@@ -587,12 +669,13 @@ def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -
     # Track backend-specific declarations separately so we apply only the active backend at the end.
     setuptools_find_seen = False
     setuptools_namespaces_disabled = False
+    setuptools_find_wheres: list[str] | None = None
     setuptools_find_includes: list[str] | None = None
     setuptools_find_excludes: list[str] | None = None
     setuptools_explicit_pkgs: list[str] | None = None
 
     hatch_pkgs: list[str] | None = None
-    poetry_pkg_includes: list[str] | None = None
+    poetry_pkg_entries: list[tuple[str, str]] | None = None
 
     project_scripts: list[str] = []
     poetry_scripts: list[str] = []
@@ -646,6 +729,8 @@ def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -
         elif section == "tool.setuptools.packages.find":
             if re.match(r"^namespaces\s*=\s*false\b", line):
                 setuptools_namespaces_disabled = True
+            elif re.match(r"^where\s*=", line):
+                setuptools_find_wheres = _extract_toml_str_list(line.split("=", 1)[1])
             elif re.match(r"^include\s*=", line):
                 setuptools_find_includes = _extract_toml_str_list(line.split("=", 1)[1])
             elif re.match(r"^exclude\s*=", line):
@@ -656,6 +741,8 @@ def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -
             for fk, fv in _parse_inline_table_items(rhs):
                 if fk == "namespaces" and re.match(r"^false\b", fv):
                     setuptools_namespaces_disabled = True
+                elif fk == "where":
+                    setuptools_find_wheres = _extract_toml_str_list(fv)
                 elif fk == "include":
                     setuptools_find_includes = _extract_toml_str_list(fv)
                 elif fk == "exclude":
@@ -672,7 +759,7 @@ def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -
             if re.match(r"^packages\s*=", line):
                 rhs = line.split("=", 1)[1].strip()
                 if rhs.startswith("["):
-                    poetry_pkg_includes = re.findall(r"""include\s*=\s*["']([^"']+)["']""", rhs)
+                    poetry_pkg_entries = _parse_poetry_packages_fallback(rhs)
             elif re.match(r"^scripts\s*=\s*\{", line):
                 rhs = line.split("=", 1)[1]
                 poetry_scripts.extend(k for k, _ in _parse_inline_table_items(rhs))
@@ -690,7 +777,13 @@ def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -
             info["declares_packages"] = True
             if setuptools_namespaces_disabled:
                 info["namespaces_disabled"] = True
-            elif _find_selects_package(target_pkg, setuptools_find_includes, setuptools_find_excludes):
+            elif _find_selects_package(
+                target_pkg,
+                setuptools_find_includes,
+                setuptools_find_excludes,
+                harness=harness,
+                wheres=setuptools_find_wheres,
+            ):
                 info["namespace_ok"] = True
         elif setuptools_explicit_pkgs is not None:
             info["declares_packages"] = True
@@ -699,12 +792,12 @@ def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -
     elif backend_kind == "hatch":
         if hatch_pkgs is not None:
             info["declares_packages"] = True
-            if _hatch_packages_cover(target_pkg, hatch_pkgs):
+            if _hatch_packages_cover(target_pkg, hatch_pkgs, harness=harness):
                 info["namespace_ok"] = True
     elif backend_kind == "poetry":
-        if poetry_pkg_includes is not None:
+        if poetry_pkg_entries is not None:
             info["declares_packages"] = True
-            if _poetry_packages_cover(target_pkg, poetry_pkg_includes):
+            if _poetry_packages_cover(target_pkg, poetry_pkg_entries, harness=harness):
                 info["namespace_ok"] = True
 
     info["console_scripts"].extend(project_scripts)
@@ -714,7 +807,11 @@ def _inspect_pyproject_toml_fallback(text: str, target_pkg: str | None = None) -
     return info
 
 
-def _inspect_pyproject_toml(text: str, target_pkg: str | None = None) -> dict[str, Any]:
+def _inspect_pyproject_toml(
+    text: str,
+    target_pkg: str | None = None,
+    harness: Path | None = None,
+) -> dict[str, Any]:
     """Inspect pyproject.toml for PEP 420 namespace packaging and console scripts."""
     info: dict[str, Any] = {
         "build_backend": None,
@@ -731,7 +828,7 @@ def _inspect_pyproject_toml(text: str, target_pkg: str | None = None) -> dict[st
 
         data = tomllib.loads(text)
     except ImportError:
-        return _inspect_pyproject_toml_fallback(text, target_pkg=target_pkg)
+        return _inspect_pyproject_toml_fallback(text, target_pkg=target_pkg, harness=harness)
     except Exception:
         return info
 
@@ -758,6 +855,15 @@ def _inspect_pyproject_toml(text: str, target_pkg: str | None = None) -> dict[st
                 if find_cfg.get("namespaces") is False:
                     info["namespaces_disabled"] = True
                 else:
+                    if "where" not in find_cfg:
+                        wheres: list[str] | None = None
+                    elif isinstance(find_cfg["where"], list):
+                        wheres = [v for v in find_cfg["where"] if isinstance(v, str)]
+                    elif isinstance(find_cfg["where"], str):
+                        wheres = [find_cfg["where"]]
+                    else:
+                        wheres = []
+
                     if "include" not in find_cfg:
                         includes: list[str] | None = None
                     elif isinstance(find_cfg["include"], list):
@@ -770,7 +876,13 @@ def _inspect_pyproject_toml(text: str, target_pkg: str | None = None) -> dict[st
                         if isinstance(excludes_raw, list)
                         else None
                     )
-                    if _find_selects_package(target_pkg, includes, excludes):
+                    if _find_selects_package(
+                        target_pkg,
+                        includes,
+                        excludes,
+                        harness=harness,
+                        wheres=wheres,
+                    ):
                         info["namespace_ok"] = True
             elif isinstance(pkgs, list):
                 info["declares_packages"] = True
@@ -786,19 +898,22 @@ def _inspect_pyproject_toml(text: str, target_pkg: str | None = None) -> dict[st
         if isinstance(hatch_pkgs, list):
             info["declares_packages"] = True
             str_pkgs = [p for p in hatch_pkgs if isinstance(p, str)]
-            if _hatch_packages_cover(target_pkg, str_pkgs):
+            if _hatch_packages_cover(target_pkg, str_pkgs, harness=harness):
                 info["namespace_ok"] = True
     elif backend_kind == "poetry":
         poetry_cfg = tool_dict.get("poetry")
         poetry_pkgs = poetry_cfg.get("packages") if isinstance(poetry_cfg, dict) else None
         if isinstance(poetry_pkgs, list):
             info["declares_packages"] = True
-            inc_vals = [
-                str(p["include"])
+            pkg_entries = [
+                (
+                    str(p["include"]),
+                    str(p.get("from", ".")) if isinstance(p.get("from", "."), str) else ".",
+                )
                 for p in poetry_pkgs
                 if isinstance(p, dict) and isinstance(p.get("include"), str)
             ]
-            if _poetry_packages_cover(target_pkg, inc_vals):
+            if _poetry_packages_cover(target_pkg, pkg_entries, harness=harness):
                 info["namespace_ok"] = True
 
     project_cfg = data.get("project")
@@ -838,14 +953,15 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
     pyproject_text = _read_text(pyproject) if has_pyproject else ""
     combined_text = setup_text + "\n" + pyproject_text
 
-    target_pkg = f"cli_anything.{module.name}" if module is not None else f"cli_anything.{software_slug.replace('-', '_')}"
+    target_pkg = f"cli_anything.{module.name}" if module is not None else None
+    target_pkg_label = target_pkg or f"cli_anything.{software_slug.replace('-', '_')}"
 
-    setup_info = _inspect_setup_py(setup_text, target_pkg=target_pkg) if has_setup else {
+    setup_info = _inspect_setup_py(setup_text, target_pkg=target_pkg, harness=harness) if has_setup else {
         "namespace_ok": False,
         "uses_regular_find_packages": False,
         "console_scripts": [],
     }
-    pyproj_info = _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg) if has_pyproject else {
+    pyproj_info = _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg, harness=harness) if has_pyproject else {
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
@@ -878,7 +994,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                     "namespace-packages",
                     "packaging",
                     FAIL,
-                    f"pyproject.toml package discovery/packages does not select {target_pkg}",
+                    f"pyproject.toml package discovery/packages does not select {target_pkg_label}",
                 )
             )
     elif has_pyproject and pyproj_info["backend_kind"] != "setuptools":
@@ -887,7 +1003,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                 "namespace-packages",
                 "packaging",
                 FAIL,
-                f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring {target_pkg} namespace packages",
+                f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring {target_pkg_label} namespace packages",
             )
         )
     elif uses_setup_py and setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:
@@ -907,7 +1023,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
                 "namespace-packages",
                 "packaging",
                 FAIL,
-                f"{pkg_file.name} does not declare namespace packaging for {target_pkg}",
+                f"{pkg_file.name} does not declare namespace packaging for {target_pkg_label}",
             )
         )
 

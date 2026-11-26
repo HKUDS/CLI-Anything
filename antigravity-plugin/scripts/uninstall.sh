@@ -34,11 +34,13 @@ source "${SCRIPT_DIR}/lib.sh"
 PLUGIN_SRC="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DISCOVERY_POINTER="$(discovery_pointer_path)"
 
+SELF_VERIFIED=0
 if [[ -n "${WORKSPACE_PATH}" ]]; then
   WS_ROOT="$(resolve_workspace_root "${WORKSPACE_PATH}")"
   DEST_DIR="${WS_ROOT}/.agents/plugins/cli-anything"
-elif [[ -f "${PLUGIN_SRC}/PLUGIN_ROOT.txt" && -f "${PLUGIN_SRC}/plugin.json" ]]; then
+elif is_verified_self_install_dir "${PLUGIN_SRC}"; then
   DEST_DIR="${PLUGIN_SRC}"
+  SELF_VERIFIED=1
 else
   if [[ -n "${ANTIGRAVITY_PLUGINS_HOME:-}" ]]; then
     PLUGINS_HOME="$(resolve_plugins_home "${ANTIGRAVITY_PLUGINS_HOME}")"
@@ -48,7 +50,7 @@ else
   DEST_DIR="${PLUGINS_HOME}/cli-anything"
 fi
 
-if ! is_cli_anything_install_path "${DEST_DIR}"; then
+if [[ "${SELF_VERIFIED}" -ne 1 ]] && ! is_cli_anything_install_path "${DEST_DIR}"; then
   echo "Refusing to uninstall unexpected path (expected .../plugins/cli-anything): ${DEST_DIR}" >&2
   exit 1
 fi
@@ -56,6 +58,8 @@ fi
 DEST_HOST="$(to_host_path "${DEST_DIR}")"
 if [[ -d "${DEST_DIR}" ]]; then
   DEST_HOST="$(to_host_path "$(cd "${DEST_DIR}" && pwd -P)")"
+elif [[ -d "$(dirname "${DEST_DIR}")" ]]; then
+  DEST_HOST="$(to_host_path "$(cd "$(dirname "${DEST_DIR}")" && pwd -P)/$(basename "${DEST_DIR}")")"
 fi
 
 if [[ -e "${DEST_DIR}" ]]; then
