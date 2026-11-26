@@ -5,15 +5,21 @@ normalize_path_key() {
   printf '%s' "${1}" | tr '[:upper:]' '[:lower:]' | tr '\\' '/' | sed 's:/*$::'
 }
 
-# Convert Git Bash / MSYS / Cygwin / WSL-style paths to Windows host paths for Antigravity tools.
+is_wsl_host() {
+  [[ -n "${WSL_DISTRO_NAME:-}" || -n "${WSL_INTEROP:-}" ]] && return 0
+  grep -qiE 'microsoft|wsl' /proc/sys/kernel/osrelease 2>/dev/null
+}
+
+# Convert Git Bash / MSYS / Cygwin / WSL-mounted Windows paths to Windows host paths.
+# Leaves native Linux and macOS POSIX paths untouched.
 to_host_path() {
   local p="${1}"
-  if command -v cygpath >/dev/null 2>&1; then
-    cygpath -w "${p}"
-    return 0
-  fi
   case "$(uname -s 2>/dev/null || true)" in
-    MINGW*|MSYS*|CYGWIN*|Linux)
+    MINGW*|MSYS*|CYGWIN*)
+      if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "${p}"
+        return 0
+      fi
       if [[ "${p}" =~ ^/([a-zA-Z])/(.*)$ ]]; then
         local drive rest
         drive="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:lower:]' '[:upper:]')"
@@ -21,7 +27,9 @@ to_host_path() {
         printf '%s:\\%s' "${drive}" "${rest}"
         return 0
       fi
-      if [[ "${p}" =~ ^/mnt/([a-zA-Z])/(.*)$ ]]; then
+      ;;
+    Linux)
+      if is_wsl_host && [[ "${p}" =~ ^/mnt/([a-zA-Z])/(.*)$ ]]; then
         local drive rest
         drive="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:lower:]' '[:upper:]')"
         rest="${BASH_REMATCH[2]//\//\\}"
@@ -56,9 +64,13 @@ canonicalize_path() {
   if [[ -n "${pybin}" ]]; then
     local out
     out="$("${pybin}" -c 'import os,sys; print(os.path.abspath(os.path.expanduser(sys.argv[1])))' "${raw}")"
-    if command -v cygpath >/dev/null 2>&1; then
-      out="$(cygpath -u "${out}")"
-    fi
+    case "$(uname -s 2>/dev/null || true)" in
+      MINGW*|MSYS*|CYGWIN*)
+        if command -v cygpath >/dev/null 2>&1; then
+          out="$(cygpath -u "${out}")"
+        fi
+        ;;
+    esac
     printf '%s' "${out}"
   else
     if [[ "${raw}" == "~"* ]]; then

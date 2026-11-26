@@ -634,6 +634,7 @@ def _inspect_pyproject_toml_fallback(
         "declares_packages": False,
         "has_project_table": False,
         "scripts_dynamic": False,
+        "reserved_console_scripts_ep": False,
         "console_scripts": [],
     }
 
@@ -680,8 +681,7 @@ def _inspect_pyproject_toml_fallback(
     project_scripts: list[str] = []
     poetry_scripts: list[str] = []
 
-    project_script_sections = {
-        "project.scripts",
+    reserved_ep_sections = {
         "project.entry-points.console_scripts",
         'project.entry-points."console_scripts"',
         "project.entry-points.'console_scripts'",
@@ -692,6 +692,8 @@ def _inspect_pyproject_toml_fallback(
             section = line[1:-1].strip()
             if section == "project" or section.startswith("project."):
                 info["has_project_table"] = True
+            if section in reserved_ep_sections:
+                info["reserved_console_scripts_ep"] = True
             if section == "tool.setuptools.packages.find":
                 setuptools_find_seen = True
             continue
@@ -715,14 +717,13 @@ def _inspect_pyproject_toml_fallback(
                     project_scripts.append(key)
             elif re.match(r"^entry-points\s*=\s*\{", line):
                 rhs = line.split("=", 1)[1]
-                for ep_group, ep_val in _parse_inline_table_items(rhs):
+                for ep_group, _ep_val in _parse_inline_table_items(rhs):
                     if ep_group == "console_scripts":
-                        project_scripts.extend(k for k, _ in _parse_inline_table_items(ep_val))
+                        info["reserved_console_scripts_ep"] = True
         elif section == "project.entry-points":
-            if re.match(r"""^["']?console_scripts["']?\s*=\s*\{""", line):
-                rhs = line.split("=", 1)[1]
-                project_scripts.extend(k for k, _ in _parse_inline_table_items(rhs))
-        elif section in project_script_sections and "=" in line:
+            if re.match(r"""^["']?console_scripts["']?\s*=""", line):
+                info["reserved_console_scripts_ep"] = True
+        elif section == "project.scripts" and "=" in line:
             key = line.split("=", 1)[0].strip().strip('"').strip("'")
             if key:
                 project_scripts.append(key)
@@ -821,6 +822,7 @@ def _inspect_pyproject_toml(
         "declares_packages": False,
         "has_project_table": False,
         "scripts_dynamic": False,
+        "reserved_console_scripts_ep": False,
         "console_scripts": [],
     }
     try:
@@ -926,8 +928,10 @@ def _inspect_pyproject_toml(
         if isinstance(scripts, dict):
             info["console_scripts"].extend(str(k) for k in scripts.keys())
         ep = project_cfg.get("entry-points")
-        if isinstance(ep, dict) and isinstance(ep.get("console_scripts"), dict):
-            info["console_scripts"].extend(str(k) for k in ep["console_scripts"].keys())
+        if isinstance(ep, dict) and "console_scripts" in ep:
+            # PEP 621 reserves console_scripts for [project.scripts]; setuptools drops
+            # [project.entry-points.console_scripts] and resets legacy setup.py scripts.
+            info["reserved_console_scripts_ep"] = True
 
     if backend_kind == "poetry":
         poetry_cfg = tool_dict.get("poetry")
@@ -969,6 +973,7 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
         "declares_packages": False,
         "has_project_table": False,
         "scripts_dynamic": False,
+        "reserved_console_scripts_ep": False,
         "console_scripts": [],
     }
 
@@ -1051,7 +1056,12 @@ def _check_packaging(harness: Path, software_slug: str, module: Path | None) -> 
             )
         )
     else:
-        if has_pyproject and pyproj_info["backend_kind"] != "setuptools" and setup_info["console_scripts"]:
+        if pyproj_info["reserved_console_scripts_ep"]:
+            detail = (
+                "pyproject.toml declares reserved [project.entry-points.console_scripts] instead of [project.scripts] "
+                "(rejected/dropped under PEP 621 / setuptools)"
+            )
+        elif has_pyproject and pyproj_info["backend_kind"] != "setuptools" and setup_info["console_scripts"]:
             detail = (
                 f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring console scripts "
                 "(setup.py console_scripts are ignored)"

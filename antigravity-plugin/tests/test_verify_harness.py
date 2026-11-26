@@ -927,6 +927,46 @@ cli-anything-pwhere = "cli_anything.pwhere.pwhere_cli:main"
     assert {c["id"]: c for c in pres["checks"]}["namespace-packages"]["status"] == "fail"
 
 
+def test_verify_rejects_reserved_project_entry_points_console_scripts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path, "resept")
+    # Valid legacy setup.py + [project.entry-points.console_scripts] (reserved under PEP 621):
+    # setuptools drops console_scripts and produces no entry_points.txt.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-resept"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.entry-points.console_scripts]
+cli-anything-resept = "cli_anything.resept.resept_cli:main"
+""",
+        encoding="utf-8",
+    )
+    res_tomllib = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    checks_tomllib = {c["id"]: c for c in res_tomllib["checks"]}
+    assert res_tomllib["ok"] is False
+    assert checks_tomllib["console-script"]["status"] == "fail"
+    assert "reserved" in checks_tomllib["console-script"]["detail"]
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        res_py310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        checks_py310 = {c["id"]: c for c in res_py310["checks"]}
+        assert res_py310["ok"] is False
+        assert checks_py310["console-script"]["status"] == "fail"
+        assert "reserved" in checks_py310["console-script"]["detail"]
+
+
 def test_pyproject_py310_fallback_matches_tomllib_semantics(tmp_path: Path) -> None:
     harness = _create_valid_harness(tmp_path, "demoapp")
     (harness / "empty-src").mkdir()

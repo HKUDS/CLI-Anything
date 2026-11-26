@@ -134,6 +134,46 @@ def test_symlinked_plugins_root_install_and_uninstall_roundtrip(tmp_path: Path) 
         assert not pointer.exists(), f"[{mode}] discovery pointer was not removed"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX to_host_path preservation test")
+def test_posix_single_letter_root_path_is_not_rewritten_to_windows_drive() -> None:
+    lib_sh = PLUGIN_SRC / "scripts" / "lib.sh"
+    proc = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{lib_sh}" && printf "%s\\n" "$(to_host_path "/q/custom/plugins/cli-anything")"',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "/q/custom/plugins/cli-anything"
+
+    # On non-WSL native Linux/macOS, /mnt/c/... must also remain untouched POSIX.
+    is_wsl = bool(os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"))
+    if not is_wsl:
+        osrelease = Path("/proc/sys/kernel/osrelease")
+        if osrelease.is_file() and any(
+            tok in osrelease.read_text(encoding="utf-8", errors="ignore").lower()
+            for tok in ("microsoft", "wsl")
+        ):
+            is_wsl = True
+    if not is_wsl:
+        mnt_proc = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f'source "{lib_sh}" && printf "%s\\n" "$(to_host_path "/mnt/c/custom/plugins/cli-anything")"',
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert mnt_proc.returncode == 0, mnt_proc.stderr
+        assert mnt_proc.stdout.strip() == "/mnt/c/custom/plugins/cli-anything"
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows junction plugins root test")
 def test_windows_junction_plugins_root_workspace_and_global_uninstall(tmp_path: Path) -> None:
     shell = shutil.which("pwsh") or shutil.which("powershell")
