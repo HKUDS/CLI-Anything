@@ -14,6 +14,7 @@ from cli_hub.matrix_skill import render_matrix_skill_file
 
 INSTALLED_FILE = Path.home() / ".cli-hub" / "installed.json"
 MATRIX_STATE_FILE = Path.home() / ".cli-hub" / "matrix_state.json"
+INSTALL_TIMEOUT_SECONDS = 600
 
 
 def _load_installed():
@@ -67,7 +68,35 @@ _UV_INSTALL_HINT = (
 _SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
 
 
-def _run_command(cmd):
+def _run_process(command, *, shell=False, timeout=None):
+    """Run a package-manager process and turn common failures into results."""
+    kwargs = {"shell": shell, "text": True}
+    if timeout is None:
+        kwargs["capture_output"] = True
+    else:
+        kwargs["timeout"] = timeout
+
+    try:
+        return subprocess.run(command, check=False, **kwargs)
+    except FileNotFoundError as exc:
+        parts = shlex.split(command) if isinstance(command, str) else command
+        missing = exc.filename or (parts[0] if parts else "unknown command")
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=127,
+            stdout="",
+            stderr=f"Command not found: {missing}",
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=124,
+            stdout="",
+            stderr=f"Command timed out after {timeout} seconds.",
+        )
+
+
+def _run_command(cmd, timeout=None):
     """Run a command string.
 
     Uses shell=True when the command contains shell operators (pipes, &&, etc.)
@@ -75,21 +104,11 @@ def _run_command(cmd):
     Commands come from the trusted registry, not from user input.
     """
     use_shell = any(c in cmd for c in _SHELL_METACHARACTERS)
-    try:
-        return subprocess.run(
-            cmd if use_shell else shlex.split(cmd),
-            capture_output=True,
-            text=True,
-            shell=use_shell,
-        )
-    except FileNotFoundError as exc:
-        missing = exc.filename or shlex.split(cmd)[0]
-        return subprocess.CompletedProcess(
-            args=cmd,
-            returncode=127,
-            stdout="",
-            stderr=f"Command not found: {missing}",
-        )
+    return _run_process(
+        cmd if use_shell else shlex.split(cmd),
+        shell=use_shell,
+        timeout=timeout,
+    )
 
 
 def _command_exists(cmd):
@@ -123,10 +142,11 @@ def _generic_install(cli):
     install_cmd = cli.get("install_cmd")
     if not install_cmd:
         return False, f"No install command is defined for {cli['display_name']}."
-    result = _run_command(install_cmd)
+    result = _run_command(install_cmd, timeout=INSTALL_TIMEOUT_SECONDS)
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"Install failed:\n{result.stderr or result.stdout}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"Install failed:\n{error}"
 
 
 def _generic_uninstall(cli):
@@ -183,13 +203,14 @@ def _bundled_update(cli):
 
 def _pip_install(cli):
     install_cmd = cli["install_cmd"]
-    result = subprocess.run(
+    result = _run_process(
         [sys.executable, "-m", "pip", "install"] + install_cmd.replace("pip install ", "").split(),
-        capture_output=True, text=True
+        timeout=INSTALL_TIMEOUT_SECONDS,
     )
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"pip install failed:\n{result.stderr}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"pip install failed:\n{error}"
 
 
 def _pip_uninstall(cli):
@@ -221,10 +242,11 @@ def _pip_update(cli):
 def _uv_install(cli):
     if _find_uv() is None:
         return False, _UV_INSTALL_HINT
-    result = _run_command(cli["install_cmd"])
+    result = _run_command(cli["install_cmd"], timeout=INSTALL_TIMEOUT_SECONDS)
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"uv install failed:\n{result.stderr or result.stdout}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"uv install failed:\n{error}"
 
 
 def _uv_uninstall(cli):
@@ -263,13 +285,14 @@ def _npm_install(cli):
             "  Linux: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs\n"
             "  Windows: Download from https://nodejs.org"
         )
-    result = subprocess.run(
+    result = _run_process(
         [npm, "install", "-g", cli["npm_package"]],
-        capture_output=True, text=True
+        timeout=INSTALL_TIMEOUT_SECONDS,
     )
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"npm install failed:\n{result.stderr}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"npm install failed:\n{error}"
 
 
 def _npm_uninstall(cli):

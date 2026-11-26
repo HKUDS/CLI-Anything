@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -54,9 +55,10 @@ from cli_hub.installer import (
     _save_installed,
     _run_command,
     _install_strategy,
+    INSTALL_TIMEOUT_SECONDS,
     _UV_INSTALL_HINT,
 )
-from cli_hub.analytics import _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent, detect_invocation_context
+from cli_hub.analytics import _flush_pending, _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent, detect_invocation_context
 from cli_hub.cli import main
 
 
@@ -949,6 +951,51 @@ class TestInstaller:
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
+    def test_install_pip_timeout_is_reported(self, mock_get_cli, mock_run):
+        mock_get_cli.return_value = {
+            "name": "hacker-feeds-cli",
+            "display_name": "Hacker Feeds CLI",
+            "version": "1.0.0",
+            "entry_point": "cli-anything-hacker-feeds-cli",
+            "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git",
+        }
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd="pip install hacker-feeds-cli", timeout=INSTALL_TIMEOUT_SECONDS
+        )
+
+        success, msg = install_cli("hacker-feeds-cli")
+
+        assert not success
+        assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
+        assert mock_run.call_args.kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
+        assert "capture_output" not in mock_run.call_args.kwargs
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_install_command_timeout_is_reported(self, mock_get_cli, mock_run):
+        mock_get_cli.return_value = {
+            "name": "hacker-feeds-cli",
+            "display_name": "Hacker Feeds CLI",
+            "version": "1.0.0",
+            "entry_point": "hacker-feeds-cli",
+            "_source": "public",
+            "install_strategy": "command",
+            "install_cmd": "pip install hacker-feeds-cli",
+        }
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd="pip install hacker-feeds-cli", timeout=INSTALL_TIMEOUT_SECONDS
+        )
+
+        success, msg = install_cli("hacker-feeds-cli")
+
+        assert not success
+        assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
+        assert mock_run.call_args.kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
+        assert "capture_output" not in mock_run.call_args.kwargs
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_uninstall_success(self, mock_get_cli, mock_run):
         mock_get_cli.return_value = SAMPLE_REGISTRY["clis"][0]
         mock_run.return_value = MagicMock(returncode=0)
@@ -1249,6 +1296,16 @@ class TestAnalytics:
     def test_analytics_disabled_by_true(self):
         with patch.dict(os.environ, {"CLI_HUB_NO_ANALYTICS": "true"}):
             assert not _is_enabled()
+
+    @patch("cli_hub.analytics.time.monotonic", side_effect=(0, 0, 2))
+    def test_flush_pending_uses_one_exit_deadline(self, _mock_monotonic):
+        first_thread = MagicMock()
+        second_thread = MagicMock()
+        with patch("cli_hub.analytics._pending_threads", [first_thread, second_thread]):
+            _flush_pending()
+
+        first_thread.join.assert_called_once_with(timeout=3)
+        second_thread.join.assert_called_once_with(timeout=1)
 
     @patch("cli_hub.analytics._send_event")
     def test_track_event_sends_request(self, mock_send):
