@@ -132,3 +132,98 @@ def test_symlinked_plugins_root_install_and_uninstall_roundtrip(tmp_path: Path) 
         assert uninst.returncode == 0, f"[{mode}] uninstall failed:\n{uninst.stdout}{uninst.stderr}"
         assert not installed.exists(), f"[{mode}] plugin directory was not removed"
         assert not pointer.exists(), f"[{mode}] discovery pointer was not removed"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junction plugins root test")
+def test_windows_junction_plugins_root_workspace_and_global_uninstall(tmp_path: Path) -> None:
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    assert shell, "PowerShell required on Windows"
+
+    def _run_ps(script: Path, env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *extra],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    def _mkjunction(link: Path, target: Path) -> None:
+        proc = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 0, f"mklink /J failed: {proc.stdout}{proc.stderr}"
+
+    junctions: list[Path] = []
+    try:
+        # Case 1: Workspace plugins is a junction -> plugin-storage; invoking uninstall via
+        # plugin-storage real path must remove only the workspace copy and leave global intact.
+        c1 = tmp_path / "workspace_case"
+        home1 = c1 / "home"
+        home1.mkdir(parents=True)
+        ws1 = c1 / "ws"
+        (ws1 / ".agents").mkdir(parents=True)
+        ws_storage = c1 / "plugin-storage"
+        ws_storage.mkdir(parents=True)
+        ws_plugins_link = ws1 / ".agents" / "plugins"
+        _mkjunction(ws_plugins_link, ws_storage)
+        junctions.append(ws_plugins_link)
+
+        env1 = os.environ.copy()
+        env1["HOME"] = str(home1)
+        env1["USERPROFILE"] = str(home1)
+        env1.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+        g_inst = _run_ps(PLUGIN_SRC / "scripts" / "install.ps1", env1)
+        assert g_inst.returncode == 0, g_inst.stdout + g_inst.stderr
+        global_installed = home1 / ".gemini" / "config" / "plugins" / "cli-anything"
+        global_pointer = home1 / ".gemini" / "cli-anything-generator.root"
+        assert (global_installed / "plugin.json").is_file()
+        assert global_pointer.is_file()
+
+        w_inst = _run_ps(PLUGIN_SRC / "scripts" / "install.ps1", env1, "-Workspace", str(ws1))
+        assert w_inst.returncode == 0, w_inst.stdout + w_inst.stderr
+        ws_installed = ws_storage / "cli-anything"
+        assert (ws_installed / "plugin.json").is_file()
+
+        w_uninst = _run_ps(ws_installed / "scripts" / "uninstall.ps1", env1)
+        assert w_uninst.returncode == 0, w_uninst.stdout + w_uninst.stderr
+        assert not ws_installed.exists(), "workspace install under junction target was not removed"
+        assert (global_installed / "plugin.json").is_file(), "global install was unexpectedly removed"
+        assert global_pointer.is_file(), "global discovery pointer was unexpectedly removed"
+
+        # Case 2: Global plugins is a junction -> global-storage; invoking uninstall via
+        # global-storage real path must remove both the plugin and the discovery pointer.
+        c2 = tmp_path / "global_case"
+        home2 = c2 / "home"
+        (home2 / ".gemini" / "config").mkdir(parents=True)
+        g_storage = c2 / "global-storage"
+        g_storage.mkdir(parents=True)
+        g_plugins_link = home2 / ".gemini" / "config" / "plugins"
+        _mkjunction(g_plugins_link, g_storage)
+        junctions.append(g_plugins_link)
+
+        env2 = os.environ.copy()
+        env2["HOME"] = str(home2)
+        env2["USERPROFILE"] = str(home2)
+        env2.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+        g2_inst = _run_ps(PLUGIN_SRC / "scripts" / "install.ps1", env2)
+        assert g2_inst.returncode == 0, g2_inst.stdout + g2_inst.stderr
+        g2_installed = g_storage / "cli-anything"
+        g2_pointer = home2 / ".gemini" / "cli-anything-generator.root"
+        assert (g2_installed / "plugin.json").is_file()
+        assert g2_pointer.is_file()
+
+        g2_uninst = _run_ps(g2_installed / "scripts" / "uninstall.ps1", env2)
+        assert g2_uninst.returncode == 0, g2_uninst.stdout + g2_uninst.stderr
+        assert not g2_installed.exists(), "global install under junction target was not removed"
+        assert not g2_pointer.exists(), "global discovery pointer was not removed"
+    finally:
+        for junc in junctions:
+            if junc.exists():
+                os.rmdir(junc)

@@ -100,6 +100,74 @@ function Test-CliAnythingInstallPath {
     return ([System.IO.Path]::GetFileName($key) -eq "cli-anything")
 }
 
+function Resolve-CliAnythingRealPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $current = [System.IO.Path]::GetFullPath($Path)
+    for ($hop = 0; $hop -lt 32; $hop++) {
+        $root = [System.IO.Path]::GetPathRoot($current)
+        if ([string]::IsNullOrEmpty($root)) {
+            return $current
+        }
+        $rel = $current.Substring($root.Length).TrimStart("\", "/")
+        if ([string]::IsNullOrEmpty($rel)) {
+            return $current
+        }
+        $segments = $rel -split '[\\/]+'
+        $built = $root
+        $redirected = $false
+        for ($i = 0; $i -lt $segments.Length; $i++) {
+            $built = Join-Path $built $segments[$i]
+            if (-not (Test-Path -LiteralPath $built)) {
+                break
+            }
+            try {
+                $item = Get-Item -LiteralPath $built -Force -ErrorAction Stop
+            } catch {
+                break
+            }
+            $linkTarget = $null
+            if ($item.PSObject.Properties["LinkTarget"] -and -not [string]::IsNullOrWhiteSpace($item.LinkTarget)) {
+                $linkTarget = [string]$item.LinkTarget
+            } elseif ($item.PSObject.Properties["Target"] -and $null -ne $item.Target) {
+                $rawTarget = $item.Target
+                if ($rawTarget -is [System.Array]) {
+                    if ($rawTarget.Length -gt 0) { $linkTarget = [string]$rawTarget[0] }
+                } else {
+                    $linkTarget = [string]$rawTarget
+                }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($linkTarget)) {
+                if ($linkTarget.StartsWith("\\?\UNC\")) {
+                    $linkTarget = "\\" + $linkTarget.Substring(8)
+                } elseif ($linkTarget.StartsWith("\\?\")) {
+                    $linkTarget = $linkTarget.Substring(4)
+                } elseif ($linkTarget.StartsWith("\??\UNC\")) {
+                    $linkTarget = "\\" + $linkTarget.Substring(8)
+                } elseif ($linkTarget.StartsWith("\??\")) {
+                    $linkTarget = $linkTarget.Substring(4)
+                }
+                if (-not [System.IO.Path]::IsPathRooted($linkTarget)) {
+                    $parentDir = Split-Path -Parent $built
+                    $linkTarget = Join-Path $parentDir $linkTarget
+                }
+                $resolvedPrefix = [System.IO.Path]::GetFullPath($linkTarget)
+                if ($i + 1 -lt $segments.Length) {
+                    $rest = ($segments[($i + 1)..($segments.Length - 1)]) -join "\"
+                    $current = [System.IO.Path]::GetFullPath((Join-Path $resolvedPrefix $rest))
+                } else {
+                    $current = $resolvedPrefix
+                }
+                $redirected = $true
+                break
+            }
+        }
+        if (-not $redirected) {
+            return $current
+        }
+    }
+    return $current
+}
+
 function Test-CliAnythingVerifiedSelfInstallDir {
     param([Parameter(Mandatory = $true)][string]$Dir)
     $full = [System.IO.Path]::GetFullPath($Dir)
@@ -124,13 +192,9 @@ function Test-CliAnythingVerifiedSelfInstallDir {
     if ($stampNorm -eq $fullNorm) {
         return $true
     }
-    try {
-        $resolvedTarget = (Get-Item -LiteralPath $full).Target
-        if ($resolvedTarget) {
-            return ($stampNorm -eq (Normalize-CliAnythingPathKey ([System.IO.Path]::GetFullPath($resolvedTarget))))
-        }
-    } catch {}
-    return $false
+    $stampRealNorm = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $stamped)
+    $fullRealNorm = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $full)
+    return ($stampRealNorm -eq $fullRealNorm) -or ($stampRealNorm -eq $fullNorm) -or ($stampNorm -eq $fullRealNorm)
 }
 
 function Get-CliAnythingDiscoveryPointerPath {

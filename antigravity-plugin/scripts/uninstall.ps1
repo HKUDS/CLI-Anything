@@ -18,9 +18,6 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pluginSrc = Split-Path -Parent $scriptDir
 $discoveryPointer = Get-CliAnythingDiscoveryPointerPath
 
-$stampFile = Join-Path $pluginSrc "PLUGIN_ROOT.txt"
-$manifest = Join-Path $pluginSrc "plugin.json"
-
 $selfVerified = $false
 if (-not [string]::IsNullOrWhiteSpace($Workspace)) {
     $wsRoot = Resolve-CliAnythingWorkspaceRoot -Raw $Workspace
@@ -45,6 +42,8 @@ if ((-not $selfVerified) -and (-not (Test-CliAnythingInstallPath -Path $destDir)
     throw "Refusing to uninstall unexpected path: $destDir"
 }
 
+$destReal = Resolve-CliAnythingRealPath -Path $destDir
+
 if (Test-Path -LiteralPath $destDir) {
     Remove-Item -LiteralPath $destDir -Recurse -Force
     Write-Host "Removed plugin directory: $destDir"
@@ -55,8 +54,10 @@ if (Test-Path -LiteralPath $destDir) {
 if (Test-Path -LiteralPath $discoveryPointer) {
     $pointer = (Get-Content -LiteralPath $discoveryPointer -Raw).Trim()
     $ptrNorm = Normalize-CliAnythingPathKey $pointer
+    $ptrRealNorm = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $pointer)
     $destNorm = Normalize-CliAnythingPathKey $destDir
-    if ($ptrNorm -eq $destNorm) {
+    $destRealNorm = Normalize-CliAnythingPathKey $destReal
+    if (($ptrNorm -eq $destNorm) -or ($ptrNorm -eq $destRealNorm) -or ($ptrRealNorm -eq $destNorm) -or ($ptrRealNorm -eq $destRealNorm)) {
         Remove-Item -LiteralPath $discoveryPointer -Force
         Write-Host "Removed discovery pointer: $discoveryPointer"
     } else {
