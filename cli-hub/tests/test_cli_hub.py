@@ -1772,6 +1772,22 @@ class TestCLI:
         assert "Install: cli-hub install gimp" in result.output
         assert result.exit_code == 0
 
+    @pytest.mark.parametrize("installed", [False, True])
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_cli", return_value={**SAMPLE_REGISTRY["clis"][0], "_source": "harness"})
+    @patch("cli_hub.cli.get_installed")
+    def test_info_json(self, mock_installed, mock_get, mock_detect, mock_visit, mock_first_run, installed):
+        mock_detect.return_value = self.human_detection
+        mock_installed.return_value = {"gimp": {"version": "1.0.0"}} if installed else {}
+
+        result = self.runner.invoke(main, ["info", "gimp", "--json"])
+
+        assert result.exit_code == 0
+        assert json.loads(result.output) == {**mock_get.return_value, "installed": installed}
+        assert "installed" not in mock_get.return_value
+
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
     @patch("cli_hub.cli.detect_invocation_context")
@@ -1780,6 +1796,16 @@ class TestCLI:
         mock_detect.return_value = self.human_detection
         result = self.runner.invoke(main, ["info", "nonexistent"])
         assert result.exit_code == 1
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_cli", return_value=None)
+    def test_info_json_not_found(self, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["info", "nonexistent", "--json"])
+        assert result.exit_code == 1
+        assert "not found" in result.output
 
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
