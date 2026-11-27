@@ -5386,4 +5386,262 @@ count = 01
         assert {c["id"]: c for c in r_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
 
 
+def test_verify_honors_setup_cfg_entry_points_precedence(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cfg_ep_prec", "cfgprec")
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    cfg_py = harness / "setup.cfg"
+
+    base_meta = """[metadata]
+name = cli-anything-cfgprec
+version = 1.0.0
+"""
+    base_tail = """[options.packages.find]
+include = cli_anything.*
+
+[options.package_data]
+cli_anything.cfgprec = skills/*.md
+"""
+
+    # 1. File-backed [options] entry_points (broken) BEFORE valid [options.entry_points] -> FAIL.
+    (harness / "points.ini").write_text(
+        "[console_scripts]\ncli-anything-cfgprec = cli_anything.cfgprec.no_such_module:main\n",
+        encoding="utf-8",
+    )
+    cfg_py.write_text(
+        base_meta
+        + """
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points = file: points.ini
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    r_file_first = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_file_first["ok"] is False
+    cs_ff = {c["id"]: c for c in r_file_first["checks"]}["console-script"]
+    assert cs_ff["status"] == "fail"
+    assert "no_such_module" in cs_ff["detail"]
+
+    # 2. Valid [options.entry_points] BEFORE broken [options] entry_points = file: -> PASS.
+    cfg_py.write_text(
+        base_meta
+        + """
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points = file: points.ini
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 3. Empty [options.entry_points] BEFORE valid [options] entry_points = file: -> PASS.
+    (harness / "points.ini").write_text(
+        "[console_scripts]\ncli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main\n",
+        encoding="utf-8",
+    )
+    cfg_py.write_text(
+        base_meta
+        + """
+[options.entry_points]
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points = file: points.ini
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 4. Empty [options] entry_points = BEFORE valid [options.entry_points] -> PASS.
+    cfg_py.write_text(
+        base_meta
+        + """
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points =
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 5. Missing file in [options] entry_points BEFORE valid [options.entry_points] -> FAIL.
+    cfg_py.write_text(
+        base_meta
+        + """
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points = file: nonexistent_points.ini
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    r_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing["ok"] is False
+    assert {c["id"]: c for c in r_missing["checks"]}["console-script"]["status"] == "fail"
+
+    # 6. Multi-file [options] entry_points = file: a.ini, b.ini -> merges both [console_scripts] sections.
+    (harness / "a.ini").write_text(
+        "[console_scripts]\nhelper = cli_anything.cfgprec.cfgprec_cli:main\n",
+        encoding="utf-8",
+    )
+    (harness / "b.ini").write_text(
+        "[console_scripts]\ncli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main\n",
+        encoding="utf-8",
+    )
+    cfg_py.write_text(
+        base_meta
+        + """
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points = file: a.ini, b.ini
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 7. Non-empty file without [console_scripts] BEFORE valid [options.entry_points] -> FAIL.
+    (harness / "other_only.ini").write_text("[other_group]\nfoo = bar:baz\n", encoding="utf-8")
+    cfg_py.write_text(
+        base_meta
+        + """
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points = file: other_only.ini
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    r_other = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_other["ok"] is False
+    assert {c["id"]: c for c in r_other["checks"]}["console-script"]["status"] == "fail"
+
+    # 8. Inline INI string in [options] entry_points -> PASS.
+    cfg_py.write_text(
+        base_meta
+        + """
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+entry_points =
+    [console_scripts]
+    cli-anything-cfgprec = cli_anything.cfgprec.cfgprec_cli:main
+"""
+        + base_tail,
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_splits_comma_separated_setup_cfg_console_scripts(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cfg_comma_cs", "cfglist")
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    cfg_py = harness / "setup.cfg"
+
+    # 1. Single-line comma-separated console_scripts passes both non-strict and strict verification.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfglist
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+
+[options.package_data]
+cli_anything.cfglist = skills/*.md
+
+[options.entry_points]
+console_scripts = helper = cli_anything.cfglist.cfglist_cli:main, cli-anything-cfglist = cli_anything.cfglist.cfglist_cli:main
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 2. Broken second cli-anything-* target after a comma must fail console-script.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfglist
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+
+[options.package_data]
+cli_anything.cfglist = skills/*.md
+
+[options.entry_points]
+console_scripts = cli-anything-cfglist = cli_anything.cfglist.cfglist_cli:main, cli-anything-broken = cli_anything.cfglist.cfglist_cli:missing_fn
+""",
+        encoding="utf-8",
+    )
+    res_bad = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_bad["ok"] is False
+    cs_bad = {c["id"]: c for c in res_bad["checks"]}["console-script"]
+    assert cs_bad["status"] == "fail"
+    assert "missing_fn" in cs_bad["detail"]
+
+
+
 

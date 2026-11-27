@@ -2868,6 +2868,7 @@ def _inspect_setup_py(
         "package_dir": {},
         "py_modules": [],
         "has_entry_points": False,
+        "entry_points_error": None,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -3105,9 +3106,14 @@ def _empty_pyproject_info() -> dict[str, Any]:
     }
 
 
-def _parse_entry_points_ini_groups(text: str) -> dict[str, dict[str, str]]:
-    """Mirror setuptools.config.expand.entry_points() INI parsing."""
-    parser = configparser.ConfigParser(default_section=None, delimiters=("=",), interpolation=None)  # type: ignore[call-overload]
+def _parse_entry_points_ini_groups(text: str, *, strict: bool = True) -> dict[str, dict[str, str]]:
+    """Mirror setuptools entry_points INI parsing (strict=True for PEP 621 dynamic, strict=False for setup.cfg)."""
+    parser = configparser.ConfigParser(
+        default_section=None,  # type: ignore[arg-type]
+        delimiters=("=",),
+        interpolation=None,
+        strict=strict,
+    )
     parser.optionxform = str  # type: ignore[assignment]
     parser.read_string(text)
     groups = {k: dict(v.items()) for k, v in parser.items()}
@@ -3483,6 +3489,7 @@ def _empty_setup_cfg_info() -> dict[str, Any]:
         "package_dir": {},
         "py_modules": [],
         "has_entry_points": False,
+        "entry_points_error": None,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -3596,26 +3603,68 @@ def _inspect_setup_cfg(
         for k, v in cp.items("options.exclude_package_data"):
             info["exclude_package_data"][k.strip()] = _parse_setup_cfg_list(v)
 
-    if cp.has_section("options.entry_points"):
-        raw_cs = cp.get("options.entry_points", "console_scripts", fallback="")
-        for ln in raw_cs.splitlines():
-            s = ln.strip()
-            if not s or s.startswith(("#", ";")) or "=" not in s:
+    # Mirror setuptools ConfigHandler.parse() / __setitem__(): sections are evaluated in file order,
+    # and the first non-empty entry_points definition (either [options] entry_points or [options.entry_points])
+    # populates Distribution.entry_points while any later definition is skipped.
+    entry_points_populated = False
+    for sec in cp.sections():
+        if entry_points_populated:
+            break
+        if sec == "options" and "entry_points" in cp["options"]:
+            raw_ep_opt = cp["options"]["entry_points"]
+            raw_ep_stripped = raw_ep_opt.strip()
+            if not raw_ep_stripped:
                 continue
-            name, target = s.split("=", 1)
-            info["console_scripts"].append((name.strip(), target.strip()))
-    elif cp.has_section("options") and "entry_points" in cp["options"]:
-        raw_ep_opt = cp["options"]["entry_points"].strip()
-        if raw_ep_opt.startswith("file:"):
-            ep_file = raw_ep_opt[len("file:"):].strip()
-            ep_text, read_err = _read_local_config_files(harness, [ep_file], "setup.cfg [options] entry_points")
-            if not read_err and ep_text is not None:
+            if raw_ep_stripped.startswith("file:"):
+                spec = raw_ep_stripped[len("file:") :]
+                ep_files = [p.strip() for p in spec.split(",") if p.strip()]
+                if not ep_files:
+                    continue
+                ep_text, read_err = _read_local_config_files(
+                    harness, ep_files, "setup.cfg [options] entry_points"
+                )
+                if read_err:
+                    info["has_entry_points"] = True
+                    info["entry_points_error"] = read_err
+                    entry_points_populated = True
+                    continue
+                if not ep_text:
+                    continue
+                entry_points_populated = True
+                info["has_entry_points"] = True
                 try:
-                    groups = _parse_entry_points_ini_groups(ep_text)
-                except configparser.Error:
-                    groups = {}
+                    groups = _parse_entry_points_ini_groups(ep_text, strict=False)
+                except configparser.Error as exc:
+                    info["entry_points_error"] = (
+                        f"invalid INI in setup.cfg [options] entry_points: {exc}"
+                    )
+                    continue
                 for k, v in groups.get("console_scripts", {}).items():
                     info["console_scripts"].append((k.strip(), v.strip()))
+            else:
+                entry_points_populated = True
+                info["has_entry_points"] = True
+                try:
+                    groups = _parse_entry_points_ini_groups(raw_ep_opt, strict=False)
+                except configparser.Error as exc:
+                    info["entry_points_error"] = (
+                        f"invalid INI in setup.cfg [options] entry_points: {exc}"
+                    )
+                    continue
+                for k, v in groups.get("console_scripts", {}).items():
+                    info["console_scripts"].append((k.strip(), v.strip()))
+        elif sec == "options.entry_points":
+            ep_sec_items = list(cp.items("options.entry_points"))
+            if not ep_sec_items:
+                continue
+            entry_points_populated = True
+            info["has_entry_points"] = True
+            raw_cs = cp.get("options.entry_points", "console_scripts", fallback="")
+            for spec in _parse_setup_cfg_list(raw_cs):
+                if not spec or spec.startswith(("#", ";")) or "=" not in spec:
+                    continue
+                name, target = spec.split("=", 1)
+                info["console_scripts"].append((name.strip(), target.strip()))
 
     return info
 
@@ -3660,6 +3709,7 @@ def _check_packaging(
         "package_dir": {},
         "py_modules": [],
         "has_entry_points": False,
+        "entry_points_error": None,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -4115,6 +4165,14 @@ def _check_packaging(
     ]
     primary_cli_files: list[Path] = []
     all_resolved_cli_files: list[Path] = []
+    uses_setup_cfg_scripts = (
+        uses_setuptools
+        and uses_setup_cfg
+        and not (uses_setup_py and setup_info["has_entry_points"])
+        and not pyproj_info["dynamic_scripts_error"]
+        and not pyproj_info["dynamic_scripts_defined"]
+        and not (pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"])
+    )
     if pyproj_info["dynamic_scripts_error"]:
         checks.append(
             CheckResult(
@@ -4122,6 +4180,15 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 str(pyproj_info["dynamic_scripts_error"]),
+            )
+        )
+    elif uses_setup_cfg_scripts and setup_cfg_info["entry_points_error"]:
+        checks.append(
+            CheckResult(
+                "console-script",
+                "packaging",
+                FAIL,
+                str(setup_cfg_info["entry_points_error"]),
             )
         )
     elif matching_scripts:
