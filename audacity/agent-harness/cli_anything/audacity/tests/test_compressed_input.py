@@ -15,6 +15,7 @@ import tempfile
 import types
 import unittest
 import wave
+from unittest import mock
 
 from cli_anything.audacity.core.clips import add_clip, import_audio
 from cli_anything.audacity.core.export import render_mix
@@ -93,6 +94,11 @@ class CompressedInputTests(unittest.TestCase):
 
     def _without_sox(self):
         sox_backend.shutil = types.SimpleNamespace(which=lambda name: None)
+
+    def _without_soxi(self):
+        sox_backend.shutil = types.SimpleNamespace(
+            which=lambda name: "/fake/sox" if name == "sox" else None
+        )
 
     def _project(self, source, **kwargs):
         project = create_project()
@@ -211,6 +217,36 @@ class CompressedInputTests(unittest.TestCase):
             3000,
             "the second half of the clip was left silent",
         )
+
+    def test_probe_fallback_asks_sox_for_plain_mono_pcm(self):
+        """The soxi fallback must produce a WAV every Python can read."""
+        self._without_soxi()
+        duration = sox_backend.probe_duration(self.mp3)
+        self.assertAlmostEqual(duration, FAKE_DURATION, places=2)
+
+        decode_cmds = [
+            cmd for cmd in RECORDED_RUNS
+            if os.path.basename(str(cmd[0])) == "sox"
+        ]
+        self.assertTrue(decode_cmds, "the fallback did not decode through SoX")
+        cmd = decode_cmds[-1]
+        self.assertIn("-c", cmd, "the probe kept the source channel layout")
+        self.assertEqual(cmd[cmd.index("-c") + 1], "1")
+        self.assertIn("-b", cmd, "the probe was not pinned to plain 16-bit PCM")
+        self.assertEqual(cmd[cmd.index("-b") + 1], "16")
+
+    def test_add_clip_reports_unreadable_probe(self):
+        """An unreadable probe WAV becomes the actionable error, not a crash."""
+        project = create_project()
+        add_track(project, name="Track 1")
+        with mock.patch.object(
+            sox_backend,
+            "probe_duration",
+            side_effect=wave.Error("unknown format: 65534"),
+        ):
+            with self.assertRaises(ValueError) as raised:
+                add_clip(project, 0, self.mp3)
+        self.assertIn("duration", str(raised.exception))
 
 
 if __name__ == "__main__":

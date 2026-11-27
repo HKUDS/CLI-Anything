@@ -51,7 +51,7 @@ def _probe_duration(path: str) -> float:
     try:
         from cli_anything.audacity.utils.sox_backend import probe_duration
         return probe_duration(path)
-    except (RuntimeError, FileNotFoundError, OSError, ValueError):
+    except (RuntimeError, FileNotFoundError, OSError, ValueError, wave.Error):
         return 0.0
 
 
