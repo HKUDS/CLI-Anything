@@ -129,6 +129,39 @@ class CompressedInputTests(unittest.TestCase):
         )
         self.assertAlmostEqual(clip["end_time"], 0.5)
 
+    def test_explicit_end_bounds_the_clip_on_the_timeline(self):
+        """An explicit --end must not probe, nor play past its declared end."""
+        project = create_project(sample_rate=8000, channels=1)
+        add_track(project, name="Track 1")
+        clip = add_clip(project, 0, self.mp3, end_time=0.2)
+        self.assertEqual(
+            RECORDED_RUNS, [], "a duration probe ran despite an explicit end"
+        )
+        self.assertAlmostEqual(clip["end_time"], 0.2)
+        self.assertAlmostEqual(
+            clip["trim_end"], 0.2, places=2,
+            msg="the explicit end was stretched to the whole source",
+        )
+
+        # A later clip extends the track past the first clip's end. The first
+        # clip must stay silent after 0.2 s instead of borrowing that room.
+        wav_path = os.path.join(self.root, "later.wav")
+        samples = generate_sine_wave(440.0, 0.2, 8000, 0.5, 1)
+        write_wav(wav_path, samples, 8000, 1, 16)
+        add_clip(project, 0, wav_path, start_time=1.0, end_time=1.2, trim_end=0.2)
+
+        output = os.path.join(self.root, "explicit-end-out.wav")
+        result = render_mix(project, output, preset="wav")
+        self.assertAlmostEqual(result["duration"], 1.2, places=2)
+        with wave.open(output, "r") as handle:
+            raw = handle.readframes(handle.getnframes())
+        values = struct.unpack(f"<{len(raw) // 2}h", raw)
+        gap = values[int(0.25 * 8000):int(0.95 * 8000)]
+        self.assertEqual(
+            max(abs(sample) for sample in gap), 0,
+            "the clip was audible past its explicit end",
+        )
+
     def test_render_decodes_compressed_source(self):
         project, _ = self._project(
             self.mp3, end_time=FAKE_DURATION, trim_end=FAKE_DURATION

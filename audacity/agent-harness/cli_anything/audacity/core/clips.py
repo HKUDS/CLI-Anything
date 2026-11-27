@@ -93,10 +93,13 @@ def add_clip(
 
     abs_source = os.path.abspath(source) if source else ""
 
-    # Determine duration from source only when a bound still needs it: probing
-    # a compressed source decodes the whole file when soxi is unavailable.
+    # Determine duration from source only when the timeline end still needs it:
+    # probing a compressed source decodes the whole file when soxi is
+    # unavailable. With an explicit end the trim bound is derived from the
+    # timeline below, so probing would only stretch the rendered clip past its
+    # declared end.
     duration = 0.0
-    needs_duration = end_time is None or trim_end is None
+    needs_duration = end_time is None
     if abs_source and os.path.exists(abs_source) and needs_duration:
         duration = _probe_duration(abs_source)
 
@@ -114,7 +117,12 @@ def add_clip(
         else:
             end_time = start_time + (duration - trim_start)
     if trim_end is None:
-        trim_end = duration if duration > 0 else (end_time - start_time + trim_start)
+        if needs_duration and duration > 0:
+            trim_end = duration
+        else:
+            # An explicit timeline end bounds the clip: trim exactly that much
+            # of the source instead of stretching to the whole file.
+            trim_end = end_time - start_time + trim_start
 
     if start_time < 0:
         raise ValueError(f"start_time must be >= 0, got {start_time}")
