@@ -121,8 +121,7 @@ class _TomlFallbackParser:
     }
 
     def __init__(self, text: str) -> None:
-        cleaned = text[1:] if text.startswith("\ufeff") else text
-        self.text = cleaned.replace("\r\n", "\n")
+        self.text = text.replace("\r\n", "\n")
         self.n = len(self.text)
         self.pos = 0
 

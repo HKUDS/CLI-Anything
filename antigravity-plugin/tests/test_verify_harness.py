@@ -5643,5 +5643,224 @@ console_scripts = cli-anything-cfglist = cli_anything.cfglist.cfglist_cli:main, 
     assert "missing_fn" in cs_bad["detail"]
 
 
+def test_verify_enforces_required_pep621_project_metadata(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "pep621_meta", "pmeta")
+    (harness / "setup.py").unlink()
+    pyproj = harness / "pyproject.toml"
+
+    def _write_proj(project_block: str) -> None:
+        pyproj.write_text(
+            f"""[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+{project_block}
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.pmeta" = ["skills/*.md"]
+""",
+            encoding="utf-8",
+        )
+
+    invalid_blocks = [
+        # 1. Missing name
+        """[project]
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pmeta = "cli_anything.pmeta.pmeta_cli:main"
+""",
+        # 2. Invalid PEP 508 name
+        """[project]
+name = "invalid name!"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pmeta = "cli_anything.pmeta.pmeta_cli:main"
+""",
+        # 3. name listed in dynamic (forbidden by PEP 621)
+        """[project]
+version = "1.0.0"
+dynamic = ["name"]
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pmeta = "cli_anything.pmeta.pmeta_cli:main"
+""",
+        # 4. Missing version without dynamic=["version"]
+        """[project]
+name = "cli-anything-pmeta"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pmeta = "cli_anything.pmeta.pmeta_cli:main"
+""",
+        # 5. version defined statically AND listed in dynamic
+        """[project]
+name = "cli-anything-pmeta"
+version = "1.0.0"
+dynamic = ["version"]
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pmeta = "cli_anything.pmeta.pmeta_cli:main"
+""",
+        # 6. scripts defined statically AND listed in dynamic
+        """[project]
+name = "cli-anything-pmeta"
+version = "1.0.0"
+dynamic = ["scripts"]
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pmeta = "cli_anything.pmeta.pmeta_cli:main"
+""",
+    ]
+    for idx, block in enumerate(invalid_blocks):
+        _write_proj(block)
+        res = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, idx
+        assert {c["id"]: c for c in res["checks"]}["pyproject-metadata"]["status"] == "fail", idx
+
+        with monkeypatch.context() as mp:
+            mp.setitem(sys.modules, "tomllib", None)
+            res_310 = verify_harness.verify_harness(
+                harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+            )
+            assert res_310["ok"] is False, idx
+            assert {c["id"]: c for c in res_310["checks"]}["pyproject-metadata"]["status"] == "fail", idx
+
+    # Valid PEP 621 project with dynamic version (e.g. setuptools-scm / hatch-vcs) must pass.
+    _write_proj(
+        """[project]
+name = "cli-anything-pmeta"
+dynamic = ["version"]
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-pmeta = "cli_anything.pmeta.pmeta_cli:main"
+"""
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_rejects_utf8_bom_in_pyproject_toml(tmp_path: Path, monkeypatch) -> None:
+    import _toml_fallback  # noqa: PLC0415
+
+    harness = _create_valid_harness(tmp_path / "bom_pyproj", "bomapp")
+    (harness / "setup.py").unlink()
+    valid_toml = (
+        '[build-system]\n'
+        'requires = ["setuptools>=68"]\n'
+        'build-backend = "setuptools.build_meta"\n\n'
+        '[project]\n'
+        'name = "cli-anything-bomapp"\n'
+        'version = "1.0.0"\n'
+        'requires-python = ">=3.10"\n\n'
+        '[project.scripts]\n'
+        'cli-anything-bomapp = "cli_anything.bomapp.bomapp_cli:main"\n\n'
+        '[tool.setuptools.packages.find]\n'
+        'include = ["cli_anything.*"]\n\n'
+        '[tool.setuptools.package-data]\n'
+        '"cli_anything.bomapp" = ["skills/*.md"]\n'
+    )
+
+    # Direct fallback parser rejects leading UTF-8 BOM identically to tomllib.
+    with pytest.raises(ValueError):
+        _toml_fallback.loads_toml_fallback("\ufeff" + valid_toml)
+
+    # BOM-prefixed pyproject.toml must fail pyproject-toml-syntax under both tomllib and Py3.10 fallback.
+    (harness / "pyproject.toml").write_bytes(b"\xef\xbb\xbf" + valid_toml.encode("utf-8"))
+    r_native = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_native["ok"] is False
+    assert {c["id"]: c for c in r_native["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_310["ok"] is False
+        assert {c["id"]: c for c in r_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+    # Non-UTF-8 bytes also fail pyproject-toml-syntax.
+    (harness / "pyproject.toml").write_bytes(b"\xff\xfe[project]\n")
+    r_bad_utf8 = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_bad_utf8["ok"] is False
+    assert {c["id"]: c for c in r_bad_utf8["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+    # Without the BOM, the exact same pyproject.toml passes strict verification.
+    (harness / "pyproject.toml").write_bytes(valid_toml.encode("utf-8"))
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_pep420_guard_normalizes_dot_segments_and_separators() -> None:
+    forbidden_payloads = [
+        {"toolCall": {"args": {"Path": "/repo/agent-harness/cli_anything/./__init__.py"}}},
+        {"toolCall": {"args": {"Path": "/repo/agent-harness/cli_anything//__init__.py"}}},
+        {"toolCall": {"args": {"Path": "/repo/agent-harness/cli_anything/demoapp/../__init__.py"}}},
+        {"toolCall": {"args": {"Path": "//cli_anything/__init__.py"}}},
+        {"toolCall": {"args": {"Path": r"\\server\share\cli_anything\.\__init__.py"}}},
+        {"toolCall": {"args": {"Path": r"C:\repo\cli_anything\.\__init__.py"}}},
+        {"toolCall": {"args": {"Path": r"C:\repo\cli_anything\sub\..\__init__.py"}}},
+        {"toolCall": {"args": {"Path": r"C:cli_anything\__init__.py"}}},
+        {"toolCall": {"args": {"Path": "cli_anything/./__init__.py"}}},
+        {"toolCall": {"args": {"Path": "./cli_anything/__init__.py"}}},
+        {"toolCall": {"args": {"Path": "cli_anything/__init__.py/."}}},
+        {"toolCall": {"args": {"Path": "cli_anything/__init__.py/"}}},
+        {
+            "cwd": "/repo/agent-harness/cli_anything",
+            "toolCall": {"args": {"Path": "__init__.py"}},
+        },
+        {
+            "toolCall": {
+                "cwd": r"C:\repo\agent-harness\cli_anything",
+                "args": {"Path": r".\__init__.py"},
+            }
+        },
+    ]
+    for payload in forbidden_payloads:
+        res = pep420_guard.evaluate(payload)
+        assert res["decision"] == "deny", payload
+
+    allowed_payloads = [
+        {"toolCall": {"args": {"Path": "/repo/agent-harness/cli_anything/demoapp/__init__.py"}}},
+        {"toolCall": {"args": {"Path": "/repo/agent-harness/cli_anything/demoapp/./__init__.py"}}},
+        {"toolCall": {"args": {"Path": "/repo/agent-harness/cli_anything/demoapp/core/../__init__.py"}}},
+        {"toolCall": {"args": {"Path": "/repo/other_cli_anything/__init__.py"}}},
+    ]
+    for payload in allowed_payloads:
+        res = pep420_guard.evaluate(payload)
+        assert res["decision"] == "allow", payload
+
+    # Verify CLI invocation under `python -S` denies dot-segment bypass with zero site imports.
+    proc = subprocess.run(
+        [sys.executable, "-S", str(SCRIPTS_DIR / "pep420_guard.py")],
+        input=json.dumps({"toolCall": {"args": {"Path": "/repo/agent-harness/cli_anything/./__init__.py"}}}),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(proc.stdout)["decision"] == "deny"
+
+
+
 
 

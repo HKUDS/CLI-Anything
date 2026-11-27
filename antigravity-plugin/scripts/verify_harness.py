@@ -3072,6 +3072,7 @@ def _loads_toml_fallback(text: str) -> dict[str, Any]:
 def _empty_pyproject_info() -> dict[str, Any]:
     return {
         "parse_error": None,
+        "project_metadata_error": None,
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
@@ -3382,25 +3383,60 @@ def _inspect_pyproject_data(
                     info["namespace_ok"] = True
                     info["package_dir"].update(poetry_pkg_dir)
 
+    _pep508_name_re = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+    has_project_key = "project" in data
     project_cfg = data.get("project")
     dynamic_fields: set[str] = set()
-    if isinstance(project_cfg, dict):
+    if has_project_key and not isinstance(project_cfg, dict):
+        info["has_project_table"] = True
+        info["project_metadata_error"] = "[project] must be a TOML table"
+    elif isinstance(project_cfg, dict):
         info["has_project_table"] = True
         req_py = project_cfg.get("requires-python")
         if isinstance(req_py, str) and req_py.strip():
             info["has_python_requires"] = True
         dynamic = project_cfg.get("dynamic")
-        if isinstance(dynamic, list):
-            dynamic_fields = {d for d in dynamic if isinstance(d, str)}
-            if "scripts" in dynamic_fields:
-                info["scripts_dynamic"] = True
-            if "requires-python" in dynamic_fields:
-                info["requires_python_dynamic"] = True
+        if "dynamic" in project_cfg:
+            if not isinstance(dynamic, list) or any(not isinstance(d, str) for d in dynamic):
+                info["project_metadata_error"] = "[project].dynamic must be a list of strings"
+            else:
+                dynamic_fields = set(dynamic)
+                if "scripts" in dynamic_fields:
+                    info["scripts_dynamic"] = True
+                if "requires-python" in dynamic_fields:
+                    info["requires_python_dynamic"] = True
+                if "name" in dynamic_fields:
+                    info["project_metadata_error"] = "'name' cannot be listed in [project].dynamic (PEP 621)"
+        if info["project_metadata_error"] is None:
+            raw_name = project_cfg.get("name")
+            if not isinstance(raw_name, str) or not _pep508_name_re.fullmatch(raw_name):
+                info["project_metadata_error"] = (
+                    "[project] must define a valid PEP 508 'name' property"
+                )
+        if info["project_metadata_error"] is None:
+            if "version" in project_cfg:
+                raw_ver = project_cfg["version"]
+                if not isinstance(raw_ver, str) or not raw_ver.strip():
+                    info["project_metadata_error"] = "[project].version must be a non-empty string"
+            elif "version" not in dynamic_fields:
+                info["project_metadata_error"] = (
+                    "[project] must define 'version' or list 'version' in [project].dynamic"
+                )
+        if info["project_metadata_error"] is None:
+            for dyn_field in sorted(dynamic_fields):
+                if dyn_field in project_cfg:
+                    info["project_metadata_error"] = (
+                        f"[project] cannot specify '{dyn_field}' statically and also list it in [project].dynamic"
+                    )
+                    break
         scripts = project_cfg.get("scripts")
-        if isinstance(scripts, dict):
-            for k, v in scripts.items():
-                target_val = v.strip() if isinstance(v, str) else ""
-                info["console_scripts"].append((str(k).strip(), target_val))
+        if "scripts" in project_cfg:
+            if not isinstance(scripts, dict) or any(not isinstance(v, str) for v in scripts.values()):
+                if info["project_metadata_error"] is None:
+                    info["project_metadata_error"] = "[project.scripts] must map script names to string targets"
+            else:
+                for k, v in scripts.items():
+                    info["console_scripts"].append((str(k).strip(), v.strip()))
         ep = project_cfg.get("entry-points")
         if isinstance(ep, dict) and "console_scripts" in ep:
             # PEP 621 reserves console_scripts for [project.scripts]; setuptools drops
@@ -3694,7 +3730,15 @@ def _check_packaging(
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
-    pyproject_text = _read_text(pyproject) if has_pyproject else ""
+    pyproject_text = ""
+    pyproject_read_error: str | None = None
+    if has_pyproject:
+        try:
+            # Preserve UTF-8 BOM (do NOT decode with utf-8-sig) and require strict UTF-8
+            # so BOM-prefixed or non-UTF-8 pyproject.toml fails TOML validation like tomllib/setuptools.
+            pyproject_text = pyproject.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            pyproject_read_error = str(exc) or exc.__class__.__name__
     setup_cfg_text = _read_text(setup_cfg) if has_setup_cfg else ""
 
     target_pkg = f"cli_anything.{module.name}" if module is not None else None
@@ -3716,11 +3760,15 @@ def _check_packaging(
         "include_package_data": None,
         "has_python_requires": False,
     }
-    pyproj_info = (
-        _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg, harness=harness)
-        if has_pyproject
-        else _empty_pyproject_info()
-    )
+    if has_pyproject and pyproject_read_error:
+        pyproj_info = _empty_pyproject_info()
+        pyproj_info["parse_error"] = pyproject_read_error
+    else:
+        pyproj_info = (
+            _inspect_pyproject_toml(pyproject_text, target_pkg=target_pkg, harness=harness)
+            if has_pyproject
+            else _empty_pyproject_info()
+        )
 
     if has_pyproject and pyproj_info["parse_error"]:
         checks.append(
@@ -3729,6 +3777,17 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 f"invalid pyproject.toml: {pyproj_info['parse_error']}",
+            )
+        )
+        return checks, module, [], {}
+
+    if has_pyproject and pyproj_info["project_metadata_error"]:
+        checks.append(
+            CheckResult(
+                "pyproject-metadata",
+                "packaging",
+                FAIL,
+                f"invalid pyproject.toml [project] metadata: {pyproj_info['project_metadata_error']}",
             )
         )
         return checks, module, [], {}

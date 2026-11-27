@@ -10,6 +10,7 @@ open for all unrelated file writes.
 """
 
 import json
+import posixpath
 import sys
 
 
@@ -23,12 +24,45 @@ def _extract_target_path(payload: dict) -> str:
     return ""
 
 
+def _extract_cwd(payload: dict) -> str:
+    tool_call = payload.get("toolCall") or {}
+    for container in (tool_call, payload):
+        for key in ("cwd", "workingDirectory", "working_directory"):
+            val = container.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    return ""
+
+
+def _normalize_guard_path(raw_path: str, cwd: str = "") -> str:
+    p = raw_path.strip().replace("\\", "/")
+    has_drive = len(p) >= 2 and p[1] == ":" and p[0].isalpha()
+    if cwd and not has_drive and not p.startswith("/"):
+        p = f"{cwd.strip().replace(chr(92), '/').rstrip('/')}/{p}"
+        has_drive = len(p) >= 2 and p[1] == ":" and p[0].isalpha()
+
+    drive = ""
+    if has_drive:
+        drive = p[:2].lower()
+        p = p[2:]
+        if not p.startswith("/"):
+            p = "/" + p
+
+    if p.startswith("/"):
+        p = "/" + p.lstrip("/")
+
+    norm = posixpath.normpath(p).lower()
+    if drive:
+        return f"{drive}{norm}"
+    return norm
+
+
 def evaluate(payload: dict) -> dict:
     raw_path = _extract_target_path(payload)
     if not raw_path:
         return {"decision": "allow"}
 
-    norm = raw_path.replace("\\", "/").lower()
+    norm = _normalize_guard_path(raw_path, _extract_cwd(payload))
     if norm.endswith("/cli_anything/__init__.py") or norm == "cli_anything/__init__.py":
         return {
             "decision": "deny",
