@@ -41,6 +41,10 @@ if [[ -n "${WORKSPACE_PATH}" ]]; then
 elif is_verified_self_install_dir "${PLUGIN_SRC}"; then
   DEST_DIR="${PLUGIN_SRC}"
   SELF_VERIFIED=1
+elif [[ -e "${PLUGIN_SRC}/PLUGIN_ROOT.txt" || -L "${PLUGIN_SRC}/PLUGIN_ROOT.txt" ]]; then
+  echo "Refusing to fall back to global uninstall: invoked from an installed plugin copy with a stale or mismatched PLUGIN_ROOT.txt (${PLUGIN_SRC})." >&2
+  echo "Pass --workspace <path> to uninstall a relocated workspace copy, or run uninstall.sh from the source checkout to uninstall the global plugin." >&2
+  exit 1
 else
   if [[ -n "${ANTIGRAVITY_PLUGINS_HOME:-}" ]]; then
     PLUGINS_HOME="$(resolve_plugins_home "${ANTIGRAVITY_PLUGINS_HOME}")"

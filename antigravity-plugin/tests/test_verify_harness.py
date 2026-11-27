@@ -2598,3 +2598,171 @@ def test_list_harnesses_strips_utf8_bom_from_setup_py_and_pyproject(
     payload_toml = list_harnesses.collect_tools(tmp_path)
     assert payload_toml["total"] == 1
     assert payload_toml["tools"][0]["source"] == "./iterm2/agent-harness"
+
+
+def test_verify_validates_mapped_source_dirs_for_runtime_subpackages(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 1. setup.py mapping cli_anything.submap.core -> missing-core must fail namespace-packages.
+    harness = _create_valid_harness(tmp_path / "subpkg_map", "submap")
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-submap",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"cli_anything.submap.core": "missing-core"},
+    package_data={"cli_anything.submap": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-submap=cli_anything.submap.submap_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing["ok"] is False
+    ns_check = {c["id"]: c for c in r_missing["checks"]}["namespace-packages"]
+    assert ns_check["status"] == "fail"
+    assert "missing-core" in ns_check["detail"]
+
+    # 2. pyproject.toml [tool.setuptools.package-dir] mapping to missing-core must fail (tomllib + py310 fallback).
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-submap"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-submap = "cli_anything.submap.submap_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-dir]
+"cli_anything.submap.core" = "missing-core"
+
+[tool.setuptools.package-data]
+"cli_anything.submap" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_pyproj = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_pyproj["ok"] is False
+    assert {c["id"]: c for c in r_pyproj["checks"]}["namespace-packages"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_pyproj_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_pyproj_310["ok"] is False
+        assert {c["id"]: c for c in r_pyproj_310["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 3. setup.cfg [options] package_dir mapping to missing-core must fail.
+    (harness / "pyproject.toml").unlink()
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    (harness / "setup.cfg").write_text(
+        """[metadata]
+name = cli-anything-submap
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+package_dir =
+    cli_anything.submap.core = missing-core
+
+[options.packages.find]
+include = cli_anything.*
+
+[options.package_data]
+cli_anything.submap = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-submap = cli_anything.submap.submap_cli:main
+""",
+        encoding="utf-8",
+    )
+    r_cfg = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_cfg["ok"] is False
+    assert {c["id"]: c for c in r_cfg["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 4. Mapping utils to an existing empty dir must fail repl-skin (CLI surface checks mapped dir).
+    (harness / "setup.cfg").unlink()
+    (harness / "empty-utils").mkdir()
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-submap",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"cli_anything.submap.utils": "empty-utils"},
+    package_data={"cli_anything.submap": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-submap=cli_anything.submap.submap_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_empty = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_empty["ok"] is False
+    assert {c["id"]: c for c in r_empty["checks"]}["repl-skin"]["status"] == "fail"
+
+    # 5. Mapping utils to a populated custom-utils copy passes strict verification.
+    shutil.copytree(harness / "cli_anything" / "submap" / "utils", harness / "custom-utils")
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-submap",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"cli_anything.submap.utils": "custom-utils"},
+    package_data={"cli_anything.submap": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-submap=cli_anything.submap.submap_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 6. Explicit packages listing a nonexistent subpackage fails namespace-packages.
+    (harness / "setup.py").write_text(
+        """from setuptools import setup
+setup(
+    name="cli-anything-submap",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=[
+        "cli_anything.submap",
+        "cli_anything.submap.core",
+        "cli_anything.submap.utils",
+        "cli_anything.submap.missing_sub",
+    ],
+    package_data={"cli_anything.submap": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-submap=cli_anything.submap.submap_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_exp = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_exp["ok"] is False
+    assert {c["id"]: c for c in r_exp["checks"]}["namespace-packages"]["status"] == "fail"

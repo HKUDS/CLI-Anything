@@ -529,3 +529,150 @@ def test_posix_symlink_workspace_self_uninstall_preserves_global(tmp_path: Path)
     assert not ws_installed.exists()
     assert (global_installed / "plugin.json").is_file()
     assert global_pointer.is_file()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows stale PLUGIN_ROOT.txt refusal test")
+def test_windows_stale_plugin_root_refuses_global_fallback(tmp_path: Path) -> None:
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    assert shell, "PowerShell required on Windows"
+
+    git_bash = None
+    for candidate in (
+        Path(r"C:\Program Files\Git\bin\bash.exe"),
+        Path(r"C:\Program Files\Git\usr\bin\bash.exe"),
+    ):
+        if candidate.is_file():
+            git_bash = str(candidate)
+            break
+    if git_bash is None:
+        which_bash = shutil.which("bash")
+        if which_bash and "system32" not in which_bash.lower():
+            git_bash = which_bash
+
+    home = tmp_path / "home"
+    home.mkdir(parents=True)
+    ws = tmp_path / "ws"
+    ws.mkdir(parents=True)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+    def _run_ps(script: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *extra],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    assert _run_ps(PLUGIN_SRC / "scripts" / "install.ps1").returncode == 0
+    assert _run_ps(PLUGIN_SRC / "scripts" / "install.ps1", "-Workspace", str(ws)).returncode == 0
+
+    global_installed = home / ".gemini" / "config" / "plugins" / "cli-anything"
+    global_pointer = home / ".gemini" / "cli-anything-generator.root"
+    assert (global_installed / "plugin.json").is_file()
+    assert global_pointer.is_file()
+
+    # Rename workspace so its installed PLUGIN_ROOT.txt stamp becomes stale.
+    ws_renamed = tmp_path / "ws-renamed"
+    ws.rename(ws_renamed)
+    stale_ws_installed = ws_renamed / ".agents" / "plugins" / "cli-anything"
+    assert (stale_ws_installed / "PLUGIN_ROOT.txt").is_file()
+
+    # Invoking uninstall.ps1 from the relocated copy without -Workspace MUST fail and preserve global.
+    ps_res = _run_ps(stale_ws_installed / "scripts" / "uninstall.ps1")
+    assert ps_res.returncode != 0, "expected stale PLUGIN_ROOT.txt to refuse global fallback"
+    assert (global_installed / "plugin.json").is_file(), "global install was unexpectedly deleted"
+    assert global_pointer.is_file(), "global discovery pointer was unexpectedly deleted"
+    assert (stale_ws_installed / "plugin.json").is_file(), "relocated workspace copy was unexpectedly deleted"
+
+    # Invoking uninstall.sh from the relocated copy without --workspace MUST also fail and preserve global.
+    if git_bash is not None:
+        sh_res = subprocess.run(
+            [git_bash, str(stale_ws_installed / "scripts" / "uninstall.sh")],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert sh_res.returncode != 0, "expected stale PLUGIN_ROOT.txt to refuse global fallback in uninstall.sh"
+        assert (global_installed / "plugin.json").is_file(), "global install was deleted by uninstall.sh"
+        assert global_pointer.is_file(), "global discovery pointer was deleted by uninstall.sh"
+        assert (stale_ws_installed / "plugin.json").is_file()
+
+    # Explicit -Workspace targeting the renamed workspace removes only the relocated copy.
+    ws_rm = _run_ps(stale_ws_installed / "scripts" / "uninstall.ps1", "-Workspace", str(ws_renamed))
+    assert ws_rm.returncode == 0, ws_rm.stdout + ws_rm.stderr
+    assert not stale_ws_installed.exists()
+    assert (global_installed / "plugin.json").is_file()
+    assert global_pointer.is_file()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX stale PLUGIN_ROOT.txt refusal test")
+def test_posix_stale_plugin_root_refuses_global_fallback(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir(parents=True)
+    ws = tmp_path / "ws"
+    ws.mkdir(parents=True)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+
+    g_inst = subprocess.run(
+        ["bash", str(PLUGIN_SRC / "scripts" / "install.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert g_inst.returncode == 0, g_inst.stdout + g_inst.stderr
+    w_inst = subprocess.run(
+        ["bash", str(PLUGIN_SRC / "scripts" / "install.sh"), "--workspace", str(ws)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert w_inst.returncode == 0, w_inst.stdout + w_inst.stderr
+
+    global_installed = home / ".gemini" / "config" / "plugins" / "cli-anything"
+    global_pointer = home / ".gemini" / "cli-anything-generator.root"
+    assert (global_installed / "plugin.json").is_file()
+    assert global_pointer.is_file()
+
+    ws_renamed = tmp_path / "ws-renamed"
+    ws.rename(ws_renamed)
+    stale_ws_installed = ws_renamed / ".agents" / "plugins" / "cli-anything"
+    assert (stale_ws_installed / "PLUGIN_ROOT.txt").is_file()
+
+    # Invoking uninstall.sh from the relocated copy without --workspace MUST fail and preserve global.
+    u_stale = subprocess.run(
+        ["bash", str(stale_ws_installed / "scripts" / "uninstall.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert u_stale.returncode != 0, "expected stale PLUGIN_ROOT.txt to refuse global fallback"
+    assert (global_installed / "plugin.json").is_file(), "global install was unexpectedly deleted"
+    assert global_pointer.is_file(), "global discovery pointer was unexpectedly deleted"
+    assert (stale_ws_installed / "plugin.json").is_file()
+
+    # Explicit --workspace targeting the renamed workspace removes only the relocated copy.
+    u_ws = subprocess.run(
+        ["bash", str(stale_ws_installed / "scripts" / "uninstall.sh"), "--workspace", str(ws_renamed)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert u_ws.returncode == 0, u_ws.stdout + u_ws.stderr
+    assert not stale_ws_installed.exists()
+    assert (global_installed / "plugin.json").is_file()
+    assert global_pointer.is_file()

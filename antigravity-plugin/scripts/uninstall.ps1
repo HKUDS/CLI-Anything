@@ -25,6 +25,8 @@ if (-not [string]::IsNullOrWhiteSpace($Workspace)) {
 } elseif (Test-CliAnythingVerifiedSelfInstallDir -Dir $pluginSrc) {
     $destDir = [System.IO.Path]::GetFullPath($pluginSrc)
     $selfVerified = $true
+} elseif (Test-Path -LiteralPath (Join-Path $pluginSrc "PLUGIN_ROOT.txt")) {
+    throw "Refusing to fall back to global uninstall: invoked from an installed plugin copy with a stale or mismatched PLUGIN_ROOT.txt ($pluginSrc). Pass -Workspace <path> to uninstall a relocated workspace copy, or run uninstall.ps1 from the source checkout to uninstall the global plugin."
 } else {
     if ($env:ANTIGRAVITY_PLUGINS_HOME) {
         $pluginsHome = Resolve-CliAnythingPluginsHome -Raw $env:ANTIGRAVITY_PLUGINS_HOME

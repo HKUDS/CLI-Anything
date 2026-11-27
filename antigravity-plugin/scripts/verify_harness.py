@@ -1051,6 +1051,7 @@ def _inspect_setup_py(
                     inc_kw = node.args[2]
 
                 wheres: list[str] | None = ["."]
+                dynamic_where = False
                 if where_kw is not None:
                     resolved_where = _resolve(where_kw)
                     if isinstance(resolved_where, ast.Constant) and isinstance(resolved_where.value, str):
@@ -1058,6 +1059,7 @@ def _inspect_setup_py(
                     else:
                         # Dynamic where expression (e.g., os.path.dirname(__file__)); avoid false failures.
                         wheres = None
+                        dynamic_where = True
 
                 includes: list[str] | None = None
                 if inc_kw is not None:
@@ -1077,6 +1079,7 @@ def _inspect_setup_py(
                     "includes": includes,
                     "excludes": excludes,
                     "wheres": wheres,
+                    "dynamic_where": dynamic_where,
                     "fills_package_dir": False,
                 }
                 if _find_selects_package(
@@ -1870,7 +1873,7 @@ def _check_packaging(
     harness: Path,
     software_slug: str,
     module: Path | None,
-) -> tuple[list[CheckResult], Path | None, list[Path]]:
+) -> tuple[list[CheckResult], Path | None, list[Path], dict[str, Path]]:
     checks: list[CheckResult] = []
     setup_py = harness / "setup.py"
     pyproject = harness / "pyproject.toml"
@@ -1880,7 +1883,7 @@ def _check_packaging(
     has_setup_cfg = setup_cfg.is_file()
     pkg_file = setup_py if has_setup else (pyproject if has_pyproject else (setup_cfg if has_setup_cfg else None))
     if pkg_file is None:
-        return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")], module, []
+        return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")], module, [], {}
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
@@ -1918,7 +1921,7 @@ def _check_packaging(
                 f"invalid pyproject.toml: {pyproj_info['parse_error']}",
             )
         )
-        return checks, module, []
+        return checks, module, [], {}
 
     uses_setuptools = not has_pyproject or pyproj_info["backend_kind"] == "setuptools"
     uses_setup_py = has_setup and uses_setuptools
@@ -1938,7 +1941,7 @@ def _check_packaging(
                 f"invalid setup.cfg: {setup_cfg_info['parse_error']}",
             )
         )
-        return checks, module, []
+        return checks, module, [], {}
 
     # Determine effective package selection (setuptools precedence: pyproject.toml > setup.py > setup.cfg).
     if pyproj_info["namespaces_disabled"]:
@@ -1995,29 +1998,78 @@ def _check_packaging(
             missing_effective_dir = raw_target_dir
 
     missing_runtime_subpkgs: list[str] = []
+    missing_subpkg_dirs: list[str] = []
+    eff_subpkg_dirs: dict[str, Path] = {}
+
+    def _is_subpkg_selected(pkg_name: str) -> bool:
+        if eff_pkg_spec is None:
+            return True
+        if eff_pkg_spec["kind"] == "find":
+            return _find_selects_package(
+                pkg_name,
+                eff_pkg_spec["includes"],
+                eff_pkg_spec["excludes"],
+                harness=harness,
+                wheres=eff_pkg_spec["wheres"],
+                require_init=False,
+            )
+        if eff_pkg_spec["kind"] == "explicit":
+            return pkg_name in eff_pkg_spec["packages"]
+        return True
+
     if (
         parent_selected
         and not missing_effective_dir
         and target_pkg
         and effective_module is not None
-        and eff_pkg_spec is not None
     ):
-        for sub_pkg in _collect_runtime_subpackages(effective_module, target_pkg):
-            if eff_pkg_spec["kind"] == "find":
-                sub_selected = _find_selects_package(
-                    sub_pkg,
-                    eff_pkg_spec["includes"],
-                    eff_pkg_spec["excludes"],
-                    harness=harness,
-                    wheres=eff_pkg_spec["wheres"],
-                    require_init=False,
-                )
-            elif eff_pkg_spec["kind"] == "explicit":
-                sub_selected = sub_pkg in eff_pkg_spec["packages"]
-            else:
-                sub_selected = True
-            if not sub_selected:
+        runtime_subpkgs = _collect_runtime_subpackages(effective_module, target_pkg)
+        checked_mapped: set[str] = {target_pkg}
+
+        def _check_mapped_pkg_dir(pkg_name: str) -> None:
+            if not pkg_name or pkg_name in checked_mapped:
+                return
+            checked_mapped.add(pkg_name)
+            raw_dir = _get_package_dir_rel(pkg_name, eff_package_dir)
+            dir_path = (harness / raw_dir) if raw_dir else harness
+            if not dir_path.is_dir():
+                missing_subpkg_dirs.append(f"{pkg_name} -> '{raw_dir}'")
+
+        for sub_pkg in runtime_subpkgs:
+            if eff_pkg_spec is not None and not _is_subpkg_selected(sub_pkg):
                 missing_runtime_subpkgs.append(sub_pkg)
+                checked_mapped.add(sub_pkg)
+                continue
+            _check_mapped_pkg_dir(sub_pkg)
+
+        if eff_pkg_spec is not None:
+            if eff_pkg_spec["kind"] == "find" and not eff_pkg_spec.get("dynamic_where"):
+                scan_wheres = eff_pkg_spec["wheres"] if eff_pkg_spec["wheres"] is not None else ["."]
+                for w in scan_wheres:
+                    norm_w = _norm_pkg_dir_value(w) or "."
+                    for disc_pkg in _find_discovered_packages(
+                        harness / norm_w,
+                        eff_pkg_spec["includes"],
+                        eff_pkg_spec["excludes"],
+                    ):
+                        if disc_pkg.startswith(f"{target_pkg}."):
+                            _check_mapped_pkg_dir(disc_pkg)
+            elif eff_pkg_spec["kind"] == "explicit":
+                for exp_pkg in eff_pkg_spec["packages"]:
+                    if exp_pkg == target_pkg or exp_pkg.startswith(f"{target_pkg}."):
+                        _check_mapped_pkg_dir(exp_pkg)
+
+        for mapped_pkg in eff_package_dir:
+            if mapped_pkg and mapped_pkg.startswith(f"{target_pkg}.") and _is_subpkg_selected(mapped_pkg):
+                _check_mapped_pkg_dir(mapped_pkg)
+
+        for sub_name in ("core", "utils", "tests", "skills"):
+            sub_pkg = f"{target_pkg}.{sub_name}"
+            if sub_name in ("core", "utils") or _is_subpkg_selected(sub_pkg):
+                raw_sub = _get_package_dir_rel(sub_pkg, eff_package_dir)
+                eff_subpkg_dirs[sub_name] = (harness / raw_sub) if raw_sub else harness
+            else:
+                eff_subpkg_dirs[sub_name] = effective_module / sub_name
 
     # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py/setup.cfg.
     # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py or setup.cfg at all.
@@ -2038,6 +2090,15 @@ def _check_packaging(
                     "packaging",
                     FAIL,
                     f"effective package directory '{missing_effective_dir}' for {target_pkg_label} does not exist",
+                )
+            )
+        elif pyproj_info["namespace_ok"] and missing_subpkg_dirs:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"mapped source directory missing for selected subpackage(s): {', '.join(missing_subpkg_dirs)}",
                 )
             )
         elif pyproj_info["namespace_ok"] and not missing_runtime_subpkgs:
@@ -2088,6 +2149,15 @@ def _check_packaging(
                     f"effective package directory '{missing_effective_dir}' for {target_pkg_label} does not exist",
                 )
             )
+        elif missing_subpkg_dirs:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"mapped source directory missing for selected subpackage(s): {', '.join(missing_subpkg_dirs)}",
+                )
+            )
         elif not missing_runtime_subpkgs:
             checks.append(CheckResult("namespace-packages", "packaging", PASS, "namespace package discovery configured"))
         else:
@@ -2116,6 +2186,15 @@ def _check_packaging(
                     "packaging",
                     FAIL,
                     f"effective package directory '{missing_effective_dir}' for {target_pkg_label} does not exist",
+                )
+            )
+        elif missing_subpkg_dirs:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"mapped source directory missing for selected subpackage(s): {', '.join(missing_subpkg_dirs)}",
                 )
             )
         elif not missing_runtime_subpkgs:
@@ -2371,7 +2450,7 @@ def _check_packaging(
             CheckResult("python-requires", "packaging", WARN, "python_requires not declared", severity="warn")
         )
 
-    return checks, effective_module, declared_cli_files
+    return checks, effective_module, declared_cli_files, eff_subpkg_dirs
 
 
 def _check_cli_surface(
@@ -2379,9 +2458,12 @@ def _check_cli_surface(
     canonical_repl_skin: Path | None,
     *,
     cli_entry_files: list[Path] | None = None,
+    subpkg_dirs: dict[str, Path] | None = None,
 ) -> list[CheckResult]:
     checks: list[CheckResult] = []
     cli_files = list(cli_entry_files) if cli_entry_files else sorted(module.glob("*_cli.py"))
+    core_dir = (subpkg_dirs or {}).get("core") or (module / "core")
+    utils_dir = (subpkg_dirs or {}).get("utils") or (module / "utils")
 
     if cli_files:
         cli_texts = [_read_text(p) for p in cli_files]
@@ -2408,7 +2490,7 @@ def _check_cli_surface(
                 )
             )
 
-        has_session = (module / "core" / "session.py").is_file()
+        has_session = (core_dir / "session.py").is_file()
         session_clis = [t for t in cli_texts if '"--project"' in t or "'--project'" in t]
         if has_session and session_clis:
             if all(
@@ -2427,7 +2509,7 @@ def _check_cli_surface(
                     )
                 )
 
-    repl_skin = module / "utils" / "repl_skin.py"
+    repl_skin = utils_dir / "repl_skin.py"
     if not repl_skin.is_file():
         checks.append(CheckResult("repl-skin", "cli", FAIL, "missing utils/repl_skin.py"))
     elif canonical_repl_skin is None:
@@ -2454,7 +2536,6 @@ def _check_cli_surface(
                 )
             )
 
-    utils_dir = module / "utils"
     backends = sorted(utils_dir.glob("*_backend.py")) if utils_dir.is_dir() else []
     if backends:
         checks.append(CheckResult("backend-wrapper", "cli", PASS, f"backend wrapper present: {backends[0].name}"))
@@ -2477,6 +2558,8 @@ def _check_docs_and_tests(
     software_dir_name: str,
     module: Path,
     repo_root: Path | None,
+    *,
+    subpkg_dirs: dict[str, Path] | None = None,
 ) -> list[CheckResult]:
     checks: list[CheckResult] = []
 
@@ -2507,7 +2590,7 @@ def _check_docs_and_tests(
     else:
         checks.append(CheckResult("no-duplicate-harness", "docs", PASS, "no duplicate HARNESS.md in agent-harness/"))
 
-    tests_dir = module / "tests"
+    tests_dir = (subpkg_dirs or {}).get("tests") or (module / "tests")
     test_md = tests_dir / "TEST.md"
     if test_md.is_file() and _read_text(test_md).strip():
         test_md_text = _read_text(test_md)
@@ -2559,7 +2642,8 @@ def _check_docs_and_tests(
     else:
         checks.append(CheckResult("e2e-tests", "tests", FAIL, "missing tests/test_full_e2e.py"))
 
-    pkg_skill = module / "skills" / "SKILL.md"
+    skills_dir = (subpkg_dirs or {}).get("skills") or (module / "skills")
+    pkg_skill = skills_dir / "SKILL.md"
     if pkg_skill.is_file():
         checks.append(CheckResult("packaged-skill", "skills", PASS, "packaged cli_anything/<software>/skills/SKILL.md present"))
         fm = _parse_frontmatter(_read_text(pkg_skill))
@@ -2696,7 +2780,7 @@ def verify_harness(
     repl_skin_ref = _find_canonical_repl_skin(canonical_repl_skin, repo_root)
 
     checks, module = _check_layout(harness)
-    pkg_checks, effective_module, declared_cli_files = _check_packaging(
+    pkg_checks, effective_module, declared_cli_files, eff_subpkg_dirs = _check_packaging(
         harness, _slugify(software_dir_name), module
     )
     checks.extend(pkg_checks)
@@ -2714,7 +2798,11 @@ def verify_harness(
                         f"PEP 420 violation in effective source root: {active_module.parent.relative_to(harness)}/__init__.py must NOT exist",
                     )
                 )
-            eff_missing_subdirs = [sub for sub in ("core", "utils", "tests") if not (active_module / sub).is_dir()]
+            eff_missing_subdirs = [
+                sub
+                for sub in ("core", "utils", "tests")
+                if not (eff_subpkg_dirs.get(sub) or (active_module / sub)).is_dir()
+            ]
             if eff_missing_subdirs:
                 checks.append(
                     CheckResult(
@@ -2738,9 +2826,18 @@ def verify_harness(
                 active_module,
                 repl_skin_ref,
                 cli_entry_files=declared_cli_files,
+                subpkg_dirs=eff_subpkg_dirs,
             )
         )
-        checks.extend(_check_docs_and_tests(harness, software_dir_name, active_module, repo_root))
+        checks.extend(
+            _check_docs_and_tests(
+                harness,
+                software_dir_name,
+                active_module,
+                repo_root,
+                subpkg_dirs=eff_subpkg_dirs,
+            )
+        )
     checks.extend(_check_code_quality(harness))
 
     errors = [c for c in checks if c.status == FAIL and c.severity == "error"]
