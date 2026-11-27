@@ -25,7 +25,7 @@ npx skills add HKUDS/CLI-Anything --skill cli-hub-meta-skill -g -y
 ```bash
 cli-hub list
 cli-hub search <query>
-cli-hub info <name>
+cli-hub info <name> [--json]
 cli-hub install <name>
 cli-hub uninstall <name>
 cli-hub update <name>

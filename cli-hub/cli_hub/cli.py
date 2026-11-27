@@ -257,7 +257,8 @@ def search(query, as_json):
 
 @main.command()
 @click.argument("name")
-def info(name):
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+def info(name, as_json):
     """Show details for a specific CLI."""
     cli = get_cli(name)
     if not cli:
@@ -267,6 +268,13 @@ def info(name):
     installed = get_installed()
     is_installed = cli["name"] in installed
     source = cli.get("_source", "harness")
+
+    if as_json:
+        payload = {key: value for key, value in cli.items() if not key.startswith("_")}
+        payload["source"] = source
+        payload["installed"] = is_installed
+        click.echo(json_mod.dumps(payload, indent=2, sort_keys=True))
+        return
 
     click.secho(f"\n  {cli['display_name']}", bold=True)
     click.echo(f"  {cli['description']}")

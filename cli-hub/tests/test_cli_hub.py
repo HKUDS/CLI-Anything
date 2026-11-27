@@ -1784,6 +1784,46 @@ class TestCLI:
     @patch("cli_hub.cli.track_first_run")
     @patch("cli_hub.cli.track_visit")
     @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_cli", return_value=SAMPLE_REGISTRY["clis"][0])
+    @patch("cli_hub.cli.get_installed", return_value={})
+    def test_info_json_command(self, mock_installed, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["info", "gimp", "--json"])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["name"] == "gimp"
+        assert payload["display_name"] == "GIMP"
+        assert payload["version"] == "1.0.0"
+        assert payload["entry_point"] == "cli-anything-gimp"
+        assert payload["source"] == "harness"
+        assert payload["installed"] is False
+        assert "_source" not in payload
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_cli", return_value=SAMPLE_REGISTRY["clis"][0])
+    @patch("cli_hub.cli.get_installed", return_value={"gimp": {"path": "/usr/local/bin/cli-anything-gimp"}})
+    def test_info_json_reports_installed_state(self, mock_installed, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["info", "gimp", "--json"])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["installed"] is True
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
+    @patch("cli_hub.cli.get_cli", return_value=None)
+    def test_info_json_not_found(self, mock_get, mock_detect, mock_visit, mock_first_run):
+        mock_detect.return_value = self.human_detection
+        result = self.runner.invoke(main, ["info", "nonexistent", "--json"])
+        assert result.exit_code == 1
+        assert "{" not in result.output
+
+    @patch("cli_hub.cli.track_first_run")
+    @patch("cli_hub.cli.track_visit")
+    @patch("cli_hub.cli.detect_invocation_context")
     @patch("cli_hub.cli.track_install")
     @patch("cli_hub.cli.install_cli", return_value=(True, "Installed GIMP (cli-anything-gimp)"))
     @patch("cli_hub.cli.get_cli", return_value=SAMPLE_REGISTRY["clis"][0])

@@ -202,7 +202,7 @@ pip install cli-anything-hub
 |---------|--------------|
 | `cli-hub list` | Browse the registry |
 | `cli-hub search <query>` | Search by keyword |
-| `cli-hub info <name>` | Inspect one CLI |
+| `cli-hub info <name>` | Inspect one CLI (`--json` for scripts) |
 | `cli-hub install <name>` | Install from CLI-Hub |
 | `cli-hub update <name>` | Update an install |
 | `cli-hub uninstall <name>` | Remove an install |
@@ -216,6 +216,7 @@ cli-hub search image
 # Install and try a CLI immediately
 cli-hub install gimp
 cli-hub info gimp
+cli-hub info gimp --json   # one JSON object with the registry fields and installed state
 cli-hub launch gimp
 ```
 
