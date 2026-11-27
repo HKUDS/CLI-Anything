@@ -48,6 +48,9 @@ $lockDir = Split-Path -Parent $destDir
 $lockPath = Join-Path $lockDir ".cli-anything.lock"
 $lockHandle = $null
 try {
+    if (-not (Test-Path -LiteralPath $lockDir)) {
+        New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
+    }
     if (Test-Path -LiteralPath $lockDir -PathType Container) {
         $lockHandle = Acquire-CliAnythingInstallLock -LockPath $lockPath
     }

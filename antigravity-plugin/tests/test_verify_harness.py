@@ -5861,6 +5861,356 @@ def test_pep420_guard_normalizes_dot_segments_and_separators() -> None:
     assert json.loads(proc.stdout)["decision"] == "deny"
 
 
+def test_verify_resolves_setup_cfg_interpolation_in_discovery(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cfg_interp", "cfgint")
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    cfg_py = harness / "setup.cfg"
+
+    # 1. exclude = %(include)s interpolates to cli_anything.*, excluding all packages -> FAIL.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfgint
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+exclude = %(include)s
+
+[options.package_data]
+cli_anything.cfgint = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgint = cli_anything.cfgint.cfgint_cli:main
+""",
+        encoding="utf-8",
+    )
+    r_excl = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_excl["ok"] is False
+    checks_excl = {c["id"]: c for c in r_excl["checks"]}
+    assert checks_excl["namespace-packages"]["status"] == "fail"
+
+    # 2. Valid interpolation selecting cli_anything.* -> PASS.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfgint
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+ns_glob = cli_anything.*
+include = %(ns_glob)s
+
+[options.package_data]
+cli_anything.cfgint = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgint = cli_anything.cfgint.cfgint_cli:main
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 3. Broken interpolation reference fails setup-cfg-syntax.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfgint
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+exclude = %(undefined_var)s
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgint = cli_anything.cfgint.cfgint_cli:main
+""",
+        encoding="utf-8",
+    )
+    r_bad = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_bad["ok"] is False
+    assert {c["id"]: c for c in r_bad["checks"]}["setup-cfg-syntax"]["status"] == "fail"
+
+
+def test_verify_applies_setuptools_automatic_discovery(tmp_path: Path) -> None:
+    # 1. Flat-layout setup.py omitting `packages=...` uses setuptools auto-discovery -> PASS.
+    harness = _create_valid_harness(tmp_path / "auto_flat", "autoapp")
+    (harness / "setup.py").write_text(
+        """from setuptools import setup
+setup(
+    name="cli-anything-autoapp",
+    version="1.2.3",
+    python_requires=">=3.10",
+    package_data={"cli_anything.autoapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-autoapp=cli_anything.autoapp.autoapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_flat = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_flat["ok"] is True, r_flat["checks"]
+    assert {c["id"]: c for c in r_flat["checks"]}["namespace-packages"]["status"] == "pass"
+
+    # 2. Adding a second top-level package triggers setuptools Multiple top-level packages error -> FAIL.
+    extra = harness / "other_pkg"
+    extra.mkdir()
+    (extra / "__init__.py").write_text("", encoding="utf-8")
+    r_multi = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_multi["ok"] is False
+    ns_multi = {c["id"]: c for c in r_multi["checks"]}["namespace-packages"]
+    assert ns_multi["status"] == "fail"
+    assert "Multiple top-level packages" in ns_multi["detail"]
+    shutil.rmtree(extra)
+
+    # 3. Explicitly empty `packages=[]` disables auto-discovery -> FAIL.
+    (harness / "setup.py").write_text(
+        """from setuptools import setup
+setup(
+    name="cli-anything-autoapp",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=[],
+    package_data={"cli_anything.autoapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-autoapp=cli_anything.autoapp.autoapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_empty = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_empty["ok"] is False
+    assert {c["id"]: c for c in r_empty["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 4. Declaring `py_modules=[...]` without `packages` disables auto-discovery -> FAIL.
+    (harness / "helper.py").write_text("X = 1\n", encoding="utf-8")
+    (harness / "setup.py").write_text(
+        """from setuptools import setup
+setup(
+    name="cli-anything-autoapp",
+    version="1.2.3",
+    python_requires=">=3.10",
+    py_modules=["helper"],
+    package_data={"cli_anything.autoapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-autoapp=cli_anything.autoapp.autoapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_pymod = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_pymod["ok"] is False
+    assert {c["id"]: c for c in r_pymod["checks"]}["namespace-packages"]["status"] == "fail"
+    (harness / "helper.py").unlink()
+
+    # 5. PEP 621 pyproject.toml omitting [tool.setuptools.packages*] uses auto-discovery -> PASS.
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-autoapp"
+version = "1.2.3"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-autoapp = "cli_anything.autoapp.autoapp_cli:main"
+
+[tool.setuptools.package-data]
+"cli_anything.autoapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 6. src-layout auto-discovery (`src/cli_anything/srcauto` without explicit packages/package-dir) -> PASS,
+    #    and top-level `src/cli_anything.py` shadowing namespace -> FAIL.
+    src_h = _create_valid_harness(tmp_path / "auto_src", "srcauto")
+    shutil.copytree(src_h / "cli_anything", src_h / "src" / "cli_anything")
+    (src_h / "setup.py").unlink()
+    (src_h / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-srcauto"
+version = "1.2.3"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-srcauto = "cli_anything.srcauto.srcauto_cli:main"
+
+[tool.setuptools.package-data]
+"cli_anything.srcauto" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        src_h, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    (src_h / "src" / "cli_anything.py").write_text("X = 1\n", encoding="utf-8")
+    r_shadow = verify_harness.verify_harness(
+        src_h, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_shadow["ok"] is False
+    assert {c["id"]: c for c in r_shadow["checks"]}["namespace-packages"]["status"] == "fail"
+
+
+def test_verify_snapshots_aliases_before_source_rebind(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "alias_snap", "snapapp")
+    cli_py = harness / "cli_anything" / "snapapp" / "snapapp_cli.py"
+    setup_py = harness / "setup.py"
+
+    def _set_target(target_spec: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-snapapp",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.snapapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-snapapp={target_spec}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+
+    cli_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+# 1. Alias captures callable before source is rebound to non-callable 0.
+def fn_ok():
+    cli()
+
+run_ok = fn_ok
+fn_ok = 0
+
+# 2. Inverse: alias captures non-callable 0 before source is rebound to a callable.
+fn_inv = 0
+run_bad_inv = fn_inv
+
+def fn_inv():
+    cli()
+
+# 3. Multi-hop alias chain snapshots cleanly across successive rebinds.
+def chain_src():
+    cli()
+
+hop1 = chain_src
+hop2 = hop1
+chain_src = 0
+hop1 = 0
+
+# 4. Bad-signature function captured before source is fixed.
+def sig_src(argv):
+    cli(argv)
+
+run_bad_sig = sig_src
+
+def sig_src():
+    cli()
+
+# 5. Attribute alias captured before receiver is rebound to 0.
+class Runner:
+    def ok_method(self):
+        cli()
+
+runner = Runner()
+run_bound_method = runner.ok_method
+runner = 0
+
+# 6. Module attribute assignment captures non-callable before RHS is rebound.
+attr_rhs = 0
+cli.bad_snap_attr = attr_rhs
+attr_rhs = lambda: cli()
+
+# 7. Non-callable instance captured before variable is rebound to a lambda.
+class Plain:
+    pass
+
+inst_var = Plain()
+bad_inst_alias = inst_var
+inst_var = lambda: cli()
+""",
+        encoding="utf-8",
+    )
+
+    for ok_spec in (
+        "cli_anything.snapapp.snapapp_cli:run_ok",
+        "cli_anything.snapapp.snapapp_cli:fn_inv",
+        "cli_anything.snapapp.snapapp_cli:hop2",
+        "cli_anything.snapapp.snapapp_cli:sig_src",
+        "cli_anything.snapapp.snapapp_cli:run_bound_method",
+        "cli_anything.snapapp.snapapp_cli:inst_var",
+    ):
+        _set_target(ok_spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (ok_spec, res["checks"])
+
+    for bad_spec in (
+        "cli_anything.snapapp.snapapp_cli:fn_ok",
+        "cli_anything.snapapp.snapapp_cli:run_bad_inv",
+        "cli_anything.snapapp.snapapp_cli:chain_src",
+        "cli_anything.snapapp.snapapp_cli:hop1",
+        "cli_anything.snapapp.snapapp_cli:run_bad_sig",
+        "cli_anything.snapapp.snapapp_cli:runner.ok_method",
+        "cli_anything.snapapp.snapapp_cli:cli.bad_snap_attr",
+        "cli_anything.snapapp.snapapp_cli:bad_inst_alias",
+    ):
+        _set_target(bad_spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, bad_spec
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "fail", bad_spec
+
+
+
 
 
 

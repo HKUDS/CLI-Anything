@@ -98,9 +98,15 @@ try {
 
     $stagingDir = Join-Path $pluginsHome (".cli-anything.tmp." + [System.Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $stagingDir | Out-Null
+    $stagingKey = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $stagingDir)
+    $destKey = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $destDir)
 
     Get-ChildItem -LiteralPath $pluginSrc -Force | ForEach-Object {
-        if ($_.Name -in @("tests", "references", ".git", "__pycache__")) {
+        if ($_.Name -in @("tests", "references", ".git", ".agents", "__pycache__")) {
+            return
+        }
+        $entryKey = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $_.FullName)
+        if (($stagingKey -eq $entryKey) -or $stagingKey.StartsWith("$entryKey/") -or ($destKey -eq $entryKey) -or $destKey.StartsWith("$entryKey/")) {
             return
         }
         Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $stagingDir $_.Name) -Recurse -Force

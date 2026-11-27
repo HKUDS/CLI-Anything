@@ -74,6 +74,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if [[ ! -e "${LOCK_DIR}" && ! -L "${LOCK_DIR}" ]]; then
+  mkdir -p "${LOCK_DIR}"
+fi
 if [[ -d "${LOCK_DIR}" ]]; then
   acquire_install_lock "${LOCK_PATH}"
   LOCK_HELD=1

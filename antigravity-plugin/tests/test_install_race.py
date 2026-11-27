@@ -997,3 +997,147 @@ def test_uninstall_serializes_with_same_root_reinstall_via_install_lock(tmp_path
             assert not ptr.exists(), f"Round {i}: plugin removed but stale discovery pointer remained"
         assert not (pdir / ".cli-anything.lock").exists()
         assert not (h / ".gemini" / ".cli-anything-generator.root.lock").exists()
+
+
+def test_uninstall_acquires_lock_even_when_plugins_root_absent(tmp_path: Path) -> None:
+    """Uninstall targeting a not-yet-created plugins root must still acquire the per-root lock
+    so a concurrent first install cannot race with discovery-pointer cleanup."""
+    import time
+
+    def _uninstall_cmd(script_dir: Path) -> list[str]:
+        if sys.platform == "win32":
+            shell = shutil.which("pwsh") or shutil.which("powershell")
+            assert shell, "PowerShell required on Windows"
+            return [
+                shell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_dir / "uninstall.ps1"),
+            ]
+        return ["bash", str(script_dir / "uninstall.sh")]
+
+    home = tmp_path / "home"
+    plugins = tmp_path / "absent-root" / "plugins"
+    gemini_dir = home / ".gemini"
+    gemini_dir.mkdir(parents=True)
+    # Note: `plugins` intentionally does NOT exist yet.
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["ANTIGRAVITY_PLUGINS_HOME"] = str(plugins)
+
+    pointer = gemini_dir / "cli-anything-generator.root"
+    ptr_lock = gemini_dir / ".cli-anything-generator.root.lock"
+    root_lock = plugins / ".cli-anything.lock"
+
+    # Hold the shared pointer lock so uninstall pauses after checking DEST_DIR and before pointer cleanup.
+    ptr_lock.write_text("99999\n", encoding="utf-8")
+    p_install: subprocess.Popen[str] | None = None
+    try:
+        p_uninst = subprocess.Popen(
+            _uninstall_cmd(PLUGIN_SRC / "scripts"),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not root_lock.exists():
+            if p_uninst.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert root_lock.exists(), "uninstall skipped per-root .cli-anything.lock when plugins root was absent"
+        assert p_uninst.poll() is None, "uninstall did not wait on shared pointer lock"
+
+        # Start the first install into the same root; it MUST block on root_lock until uninstall finishes.
+        p_install = subprocess.Popen(
+            _installer_cmd(force=True),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(0.35)
+        assert p_install.poll() is None, "first install did not serialize against uninstall's per-root lock"
+    finally:
+        if ptr_lock.exists():
+            ptr_lock.unlink()
+
+    u_out, u_err = p_uninst.communicate(timeout=30)
+    assert p_uninst.returncode == 0, f"uninstall failed:\n{u_out}{u_err}"
+    assert p_install is not None
+    i_out, i_err = p_install.communicate(timeout=30)
+    assert p_install.returncode == 0, f"first install failed:\n{i_out}{i_err}"
+
+    expected = str((plugins / "cli-anything").resolve())
+    assert (plugins / "cli-anything" / "plugin.json").is_file(), "installed plugin missing"
+    assert pointer.is_file(), "uninstall deleted the discovery pointer written by the first install"
+    got = pointer.read_text(encoding="utf-8").strip()
+    assert (got.lower() == expected.lower()) if sys.platform == "win32" else (got == expected)
+    assert not root_lock.exists()
+    assert not ptr_lock.exists()
+
+
+def test_workspace_install_into_source_directory_excludes_staging_subtree(tmp_path: Path) -> None:
+    """Running workspace install with --workspace . from the plugin source directory itself
+    must exclude .agents / staging subtrees instead of copying staging into itself."""
+    sandbox = tmp_path / "self_ws_repo"
+    if (PLUGIN_SRC.parent / "cli-anything-plugin" / "HARNESS.md").is_file():
+        # Monorepo checkout layout (CLI-Anything/antigravity-plugin + sibling cli-anything-plugin + docs/)
+        src_copy = sandbox / "antigravity-plugin"
+        shutil.copytree(
+            PLUGIN_SRC,
+            src_copy,
+            ignore=shutil.ignore_patterns(".git", ".agents", "__pycache__", ".pytest_cache"),
+        )
+        shutil.copytree(
+            PLUGIN_SRC.parent / "cli-anything-plugin",
+            sandbox / "cli-anything-plugin",
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+        (sandbox / "docs").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            PLUGIN_SRC.parent / "docs" / "PREVIEW_PROTOCOL.md",
+            sandbox / "docs" / "PREVIEW_PROTOCOL.md",
+        )
+    else:
+        # Standalone Community Edition layout
+        src_copy = sandbox / "cli-anything-antigravity"
+        shutil.copytree(
+            PLUGIN_SRC,
+            src_copy,
+            ignore=shutil.ignore_patterns(".git", ".agents", "__pycache__", ".pytest_cache"),
+        )
+
+    home = tmp_path / "home"
+    home.mkdir(parents=True)
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+
+    if sys.platform == "win32":
+        shell = shutil.which("pwsh") or shutil.which("powershell")
+        assert shell, "PowerShell required on Windows"
+        cmd = [
+            shell,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(src_copy / "scripts" / "install.ps1"),
+            "-Workspace",
+            ".",
+        ]
+    else:
+        cmd = ["bash", str(src_copy / "scripts" / "install.sh"), "--workspace", "."]
+
+    res = subprocess.run(cmd, cwd=src_copy, env=env, capture_output=True, text=True, check=False)
+    assert res.returncode == 0, f"self-workspace install failed:\n{res.stdout}\n{res.stderr}"
+
+    installed = src_copy / ".agents" / "plugins" / "cli-anything"
+    assert (installed / "plugin.json").is_file()
+    assert not (installed / ".agents").exists(), "staging/workspace .agents subtree leaked into installed plugin"
+

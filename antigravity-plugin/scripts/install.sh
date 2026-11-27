@@ -132,15 +132,21 @@ if [[ -e "${DEST_DIR}" && "${FORCE}" -ne 1 ]]; then
 fi
 
 STAGING_DIR="$(mktemp -d "${PLUGINS_HOME}/.cli-anything.tmp.XXXXXX")"
+STAGING_KEY="$(normalize_path_key "$(resolve_real_path "${STAGING_DIR}")")"
+DEST_KEY="$(normalize_path_key "$(resolve_real_path "${DEST_DIR}")")"
 
-# Copy adapter package (exclude tests, .git, and references/ which is assembled cleanly below).
+# Copy adapter package (exclude tests, .git, .agents, staging/dest subtrees, and references/ which is assembled cleanly below).
 while IFS= read -r -d '' entry; do
   base="$(basename "${entry}")"
   case "${base}" in
-    tests|references|.git|__pycache__)
+    tests|references|.git|.agents|__pycache__)
       continue
       ;;
   esac
+  entry_key="$(normalize_path_key "$(resolve_real_path "${entry}")")"
+  if [[ "${STAGING_KEY}" == "${entry_key}" || "${STAGING_KEY}" == "${entry_key}/"* || "${DEST_KEY}" == "${entry_key}" || "${DEST_KEY}" == "${entry_key}/"* ]]; then
+    continue
+  fi
   cp -R "${entry}" "${STAGING_DIR}/"
 done < <(find "${PLUGIN_SRC}" -mindepth 1 -maxdepth 1 -print0)
 

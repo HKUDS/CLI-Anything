@@ -772,6 +772,7 @@ def _resolve_module_attr_path(
     hatch_exclude: list[str] | None = None,
     check_manifest: bool = False,
     _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
+    _preparsed_env: dict[str, Any] | None = None,
 ) -> tuple[bool, str | None, Path | None]:
     """Validate a console-script attribute chain and resolve local re-exports to the implementation file.
 
@@ -792,33 +793,68 @@ def _resolve_module_attr_path(
         return False, f"cyclic dotted callable '{'.'.join(attr_parts)}' in {py_file.name}", None
     next_visited = _visited | {visit_key}
 
-    ok_root, root_err = _module_defines_symbol(py_file, attr_parts[0])
-    if not ok_root:
-        return False, root_err, None
-
-    try:
-        tree = ast.parse(_read_text(py_file), filename=str(py_file))
-    except SyntaxError as exc:
-        return False, f"syntax error in {py_file.name}: {exc.msg}", None
-
     try_star = getattr(ast, "TryStar", ())
     match_cls = getattr(ast, "Match", ())
 
-    direct_local_defs: set[str] = set()
-    non_callable_local_defs: set[str] = set()
-    bad_sig_local_defs: dict[str, str] = {}
-    click_modules: set[str] = set()
-    click_factories: set[str] = set()
-    click_cmds: set[str] = set()
-    classes: dict[str, list[ast.ClassDef]] = {}
-    attr_assign_values: dict[tuple[str, ...], list[ast.AST | None]] = {}
-    aliases: dict[str, list[str]] = {}
-    attr_aliases: dict[str, list[tuple[str, ...]]] = {}
-    instances: dict[str, list[str]] = {}
-    from_imports: dict[str, list[tuple[str, str, bool]]] = {}
-    mod_imports: dict[str, list[str]] = {}
-    dotted_imports: list[tuple[str, ...]] = []
-    star_imports: list[tuple[str, bool]] = []
+    if _preparsed_env is not None:
+        direct_local_defs = _preparsed_env["direct_local_defs"]
+        non_callable_local_defs = _preparsed_env["non_callable_local_defs"]
+        bad_sig_local_defs = _preparsed_env["bad_sig_local_defs"]
+        click_cmds = _preparsed_env["click_cmds"]
+        classes = _preparsed_env["classes"]
+        cls_base_refs = _preparsed_env["cls_base_refs"]
+        attr_assign_values = _preparsed_env["attr_assign_values"]
+        aliases = _preparsed_env["aliases"]
+        attr_aliases = _preparsed_env["attr_aliases"]
+        instances = _preparsed_env["instances"]
+        from_imports = _preparsed_env["from_imports"]
+        mod_imports = _preparsed_env["mod_imports"]
+        dotted_imports = _preparsed_env["dotted_imports"]
+        star_imports = _preparsed_env["star_imports"]
+        local_env = _preparsed_env
+    else:
+        ok_root, root_err = _module_defines_symbol(py_file, attr_parts[0])
+        if not ok_root:
+            return False, root_err, None
+
+        try:
+            tree = ast.parse(_read_text(py_file), filename=str(py_file))
+        except SyntaxError as exc:
+            return False, f"syntax error in {py_file.name}: {exc.msg}", None
+
+        direct_local_defs: set[str] = set()
+        non_callable_local_defs: set[str] = set()
+        bad_sig_local_defs: dict[str, str] = {}
+        click_modules: set[str] = set()
+        click_factories: set[str] = set()
+        click_cmds: set[str] = set()
+        classes: dict[str, list[ast.ClassDef]] = {}
+        cls_base_refs: dict[int, list[str | None]] = {}
+        attr_assign_values: dict[tuple[str, ...], list[ast.AST | None]] = {}
+        aliases: dict[str, list[str]] = {}
+        attr_aliases: dict[str, list[tuple[str, ...]]] = {}
+        instances: dict[str, list[str]] = {}
+        from_imports: dict[str, list[tuple[str, str, bool]]] = {}
+        mod_imports: dict[str, list[str]] = {}
+        dotted_imports: list[tuple[str, ...]] = []
+        star_imports: list[tuple[str, bool]] = []
+        snap_counter = 0
+        local_env = {
+            "direct_local_defs": direct_local_defs,
+            "non_callable_local_defs": non_callable_local_defs,
+            "bad_sig_local_defs": bad_sig_local_defs,
+            "click_cmds": click_cmds,
+            "classes": classes,
+            "cls_base_refs": cls_base_refs,
+            "attr_assign_values": attr_assign_values,
+            "aliases": aliases,
+            "attr_aliases": attr_aliases,
+            "instances": instances,
+            "from_imports": from_imports,
+            "mod_imports": mod_imports,
+            "dotted_imports": dotted_imports,
+            "star_imports": star_imports,
+        }
 
     is_pkg_init = py_file.name == "__init__.py"
     cur_pkg_parts = (
@@ -859,12 +895,93 @@ def _resolve_module_attr_path(
                 return True
         return False
 
-    def _clear_reexports(name: str) -> None:
-        from_imports.pop(name, None)
-        mod_imports.pop(name, None)
-        aliases.pop(name, None)
-        attr_aliases.pop(name, None)
-        instances.pop(name, None)
+    def _replace_ast_root(node: ast.AST | None, old_name: str, new_name: str) -> ast.AST | None:
+        if node is None:
+            return None
+        if isinstance(node, ast.Name) and node.id == old_name:
+            return ast.Name(id=new_name, ctx=ast.Load())
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == old_name:
+            return ast.Call(
+                func=ast.Name(id=new_name, ctx=ast.Load()),
+                args=node.args,
+                keywords=node.keywords,
+            )
+        chain = _extract_attr_chain(node)
+        if chain is not None and len(chain) >= 2 and chain[0] == old_name:
+            cur: ast.expr = ast.Name(id=new_name, ctx=ast.Load())
+            for seg in chain[1:]:
+                cur = ast.Attribute(value=cur, attr=seg, ctx=ast.Load())
+            return cur
+        return node
+
+    def _snapshot_and_clear(name: str) -> str | None:
+        """Archive current top-level binding of `name` under an internal SSA snapshot before rebinding."""
+        nonlocal snap_counter
+        has_state = (
+            (name in direct_local_defs)
+            or (name in non_callable_local_defs)
+            or (name in bad_sig_local_defs)
+            or (name in click_cmds)
+            or (name in classes)
+            or (name in instances)
+            or (name in from_imports)
+            or (name in mod_imports)
+            or (name in aliases)
+            or (name in attr_aliases)
+            or any(k[0] == name for k in attr_assign_values)
+        )
+        has_refs = (
+            any(name in vals for vals in aliases.values())
+            or any(c[0] == name for chains in attr_aliases.values() for c in chains)
+            or any(name in vals for vals in instances.values())
+            or any(name in bases for bases in cls_base_refs.values())
+        )
+        if not has_state and not has_refs:
+            return None
+        snap_counter += 1
+        snap = f"\x00snap:{name}:{snap_counter}"
+        if name in direct_local_defs:
+            direct_local_defs.discard(name)
+            direct_local_defs.add(snap)
+        if name in non_callable_local_defs:
+            non_callable_local_defs.discard(name)
+            non_callable_local_defs.add(snap)
+        if name in bad_sig_local_defs:
+            bad_sig_local_defs[snap] = bad_sig_local_defs.pop(name)
+        if name in click_cmds:
+            click_cmds.discard(name)
+            click_cmds.add(snap)
+        if name in classes:
+            classes[snap] = classes.pop(name)
+        if name in instances:
+            instances[snap] = instances.pop(name)
+        if name in from_imports:
+            from_imports[snap] = from_imports.pop(name)
+        if name in mod_imports:
+            mod_imports[snap] = mod_imports.pop(name)
+        if name in aliases:
+            aliases[snap] = aliases.pop(name)
+        if name in attr_aliases:
+            attr_aliases[snap] = attr_aliases.pop(name)
+        moved_attr_keys = [k for k in attr_assign_values if k[0] == name]
+        for k in moved_attr_keys:
+            attr_assign_values[(snap, *k[1:])] = attr_assign_values.pop(k)
+
+        for k, vals in aliases.items():
+            if name in vals:
+                aliases[k] = [snap if v == name else v for v in vals]
+        for k, chains in attr_aliases.items():
+            if any(c[0] == name for c in chains):
+                attr_aliases[k] = [(snap, *c[1:]) if c[0] == name else c for c in chains]
+        for k, vals in instances.items():
+            if name in vals:
+                instances[k] = [snap if v == name else v for v in vals]
+        for cid, bases in cls_base_refs.items():
+            if name in bases:
+                cls_base_refs[cid] = [snap if b == name else b for b in bases]
+        for k, vals in attr_assign_values.items():
+            attr_assign_values[k] = [_replace_ast_root(v, name, snap) for v in vals]
+        return snap
 
     def _record_attr_chains(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
         direct_chain = _extract_attr_chain(target)
@@ -896,65 +1013,50 @@ def _resolve_module_attr_path(
             return
         if isinstance(target, ast.Name):
             name = target.id
+            snap = _snapshot_and_clear(name) if top_level else None
             if isinstance(value, ast.Name):
-                if top_level:
-                    direct_local_defs.discard(name)
-                    non_callable_local_defs.discard(name)
-                    bad_sig_local_defs.pop(name, None)
-                    _clear_reexports(name)
-                aliases.setdefault(name, []).append(value.id)
+                src_id = snap if (snap is not None and value.id == name) else value.id
+                aliases.setdefault(name, []).append(src_id)
                 return
             val_chain = _extract_attr_chain(value)
             if val_chain is not None and len(val_chain) >= 2:
-                if top_level:
-                    direct_local_defs.discard(name)
-                    non_callable_local_defs.discard(name)
-                    bad_sig_local_defs.pop(name, None)
-                    _clear_reexports(name)
+                if snap is not None and val_chain[0] == name:
+                    val_chain = (snap, *val_chain[1:])
                 attr_aliases.setdefault(name, []).append(val_chain)
                 return
-            if top_level:
-                _clear_reexports(name)
             if _is_provably_non_callable_expr(value):
-                if top_level:
-                    direct_local_defs.discard(name)
-                    bad_sig_local_defs.pop(name, None)
                 non_callable_local_defs.add(name)
                 return
             if isinstance(value, ast.Lambda):
                 ok_zero, sig_err = _args_allow_zero_call(value.args, bound_self=False)
                 if not ok_zero:
-                    if top_level:
-                        direct_local_defs.discard(name)
-                        non_callable_local_defs.discard(name)
                     bad_sig_local_defs[name] = (
                         f"callable '{name}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments"
                     )
                     return
-            if top_level:
-                non_callable_local_defs.discard(name)
-                bad_sig_local_defs.pop(name, None)
             direct_local_defs.add(name)
             if _is_click_cmd_value(value):
                 click_cmds.add(name)
             elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
-                instances.setdefault(name, []).append(value.func.id)
+                callee = snap if (snap is not None and value.func.id == name) else value.func.id
+                instances.setdefault(name, []).append(callee)
         else:
             for bound_name in _collect_target_names(target):
                 if top_level:
-                    _clear_reexports(bound_name)
-                    non_callable_local_defs.discard(bound_name)
-                    bad_sig_local_defs.pop(bound_name, None)
+                    _snapshot_and_clear(bound_name)
                 direct_local_defs.add(bound_name)
 
     def _collect_stmts(stmts: list[ast.stmt], *, top_level: bool) -> None:
         for stmt in stmts:
             if isinstance(stmt, ast.ClassDef):
-                if top_level:
-                    _clear_reexports(stmt.name)
-                    non_callable_local_defs.discard(stmt.name)
-                    bad_sig_local_defs.pop(stmt.name, None)
+                snap = _snapshot_and_clear(stmt.name) if top_level else None
                 classes.setdefault(stmt.name, []).append(stmt)
+                cls_base_refs[id(stmt)] = [
+                    (snap if (snap is not None and b.id == stmt.name) else b.id)
+                    if isinstance(b, ast.Name)
+                    else None
+                    for b in stmt.bases
+                ]
                 init_err: str | None = None
                 if not stmt.decorator_list and not stmt.bases and not stmt.keywords:
                     has_new = False
@@ -970,24 +1072,17 @@ def _resolve_module_attr_path(
                         if not ok_fn:
                             init_err = f"class '{stmt.name}.__init__' in {py_file.name} {fn_err}"
                 if init_err is not None:
-                    if top_level:
-                        direct_local_defs.discard(stmt.name)
                     bad_sig_local_defs[stmt.name] = init_err
                 else:
                     direct_local_defs.add(stmt.name)
             elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if top_level:
-                    _clear_reexports(stmt.name)
-                    non_callable_local_defs.discard(stmt.name)
+                    _snapshot_and_clear(stmt.name)
                 if not stmt.decorator_list:
                     ok_fn, fn_err = _check_plain_func_console_callable(stmt, bound_self=False)
                     if not ok_fn:
-                        if top_level:
-                            direct_local_defs.discard(stmt.name)
                         bad_sig_local_defs[stmt.name] = f"function '{stmt.name}' in {py_file.name} {fn_err}"
                         continue
-                if top_level:
-                    bad_sig_local_defs.pop(stmt.name, None)
                 direct_local_defs.add(stmt.name)
                 if any(_is_click_cmd_expr(dec) for dec in stmt.decorator_list):
                     click_cmds.add(stmt.name)
@@ -1001,10 +1096,7 @@ def _resolve_module_attr_path(
                 for alias in stmt.names:
                     bound = alias.asname or alias.name.split(".", 1)[0]
                     if top_level:
-                        direct_local_defs.discard(bound)
-                        non_callable_local_defs.discard(bound)
-                        bad_sig_local_defs.pop(bound, None)
-                        _clear_reexports(bound)
+                        _snapshot_and_clear(bound)
                     if alias.name in {"click", "click.decorators", "click.core"}:
                         click_modules.add(alias.asname or alias.name.split(".", 1)[0])
                     if alias.asname:
@@ -1026,10 +1118,7 @@ def _resolve_module_attr_path(
                         continue
                     bound = alias.asname or alias.name
                     if top_level:
-                        direct_local_defs.discard(bound)
-                        non_callable_local_defs.discard(bound)
-                        bad_sig_local_defs.pop(bound, None)
-                        _clear_reexports(bound)
+                        _snapshot_and_clear(bound)
                     if stmt.level == 0 and stmt.module in {"click", "click.decorators", "click.core"} and alias.name in {
                         "group",
                         "command",
@@ -1071,7 +1160,8 @@ def _resolve_module_attr_path(
                 for case in stmt.cases:
                     _collect_stmts(case.body, top_level=False)
 
-    _collect_stmts(tree.body, top_level=True)
+    if _preparsed_env is None:
+        _collect_stmts(tree.body, top_level=True)
 
     def _expand_aliases(start_name: str) -> set[str]:
         seen: set[str] = {start_name}
@@ -1265,13 +1355,19 @@ def _resolve_module_attr_path(
                 f"callable '{cls_node.name}.__call__' in {py_file.name} is assigned a non-callable value",
             )
 
-        for base in cls_node.bases:
+        base_names_snap = cls_base_refs.get(id(cls_node))
+        for idx, base in enumerate(cls_node.bases):
             if isinstance(base, ast.Name) and base.id == "object":
                 continue
             if not isinstance(base, ast.Name):
                 return "unknown", None
+            base_ref = (
+                base_names_snap[idx]
+                if (base_names_snap is not None and idx < len(base_names_snap) and base_names_snap[idx] is not None)
+                else base.id
+            )
             base_candidates = [
-                c for c in _expand_aliases(base.id) if c in classes and c not in visited_cls
+                c for c in _expand_aliases(base_ref) if c in classes and c not in visited_cls
             ]
             if not base_candidates:
                 return "unknown", None
@@ -1360,6 +1456,7 @@ def _resolve_module_attr_path(
                     hatch_exclude=hatch_exclude,
                     check_manifest=check_manifest,
                     _visited=next_visited,
+                    _preparsed_env=local_env,
                 )
                 if ok_sub:
                     return True, None, impl or py_file
@@ -1500,6 +1597,7 @@ def _resolve_module_attr_path(
                 hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
                 _visited=next_visited,
+                _preparsed_env=local_env,
             )
             if ok_ref:
                 return True, None, ref_impl or py_file
@@ -1519,6 +1617,7 @@ def _resolve_module_attr_path(
                 hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
                 _visited=next_visited,
+                _preparsed_env=local_env,
             )
             if ok_ref:
                 return True, None, ref_impl or py_file
@@ -1791,19 +1890,27 @@ def _resolve_module_attr_path(
                     if cls_err is None and v_err:
                         cls_err = v_err
 
-        for base in cls_node.bases:
-            if isinstance(base, ast.Name) and base.id not in visited_cls:
-                for base_cls in classes.get(base.id, ()):
-                    ok_b, b_err, b_impl = _class_defines_chain(
-                        base_cls,
-                        rest,
-                        visited_cls | {base.id},
-                        accessed_on_instance=accessed_on_instance,
-                    )
-                    if ok_b:
-                        return True, None, b_impl or py_file
-                    if cls_err is None and b_err:
-                        cls_err = b_err
+        base_names_snap = cls_base_refs.get(id(cls_node))
+        for idx, base in enumerate(cls_node.bases):
+            if isinstance(base, ast.Name):
+                base_ref = (
+                    base_names_snap[idx]
+                    if (base_names_snap is not None and idx < len(base_names_snap) and base_names_snap[idx] is not None)
+                    else base.id
+                )
+                for expanded_base in _expand_aliases(base_ref):
+                    if expanded_base not in visited_cls:
+                        for base_cls in classes.get(expanded_base, ()):
+                            ok_b, b_err, b_impl = _class_defines_chain(
+                                base_cls,
+                                rest,
+                                visited_cls | {expanded_base},
+                                accessed_on_instance=accessed_on_instance,
+                            )
+                            if ok_b:
+                                return True, None, b_impl or py_file
+                            if cls_err is None and b_err:
+                                cls_err = b_err
         return False, cls_err, None
 
     candidate_classes: list[tuple[str, bool]] = []
@@ -1843,6 +1950,7 @@ def _resolve_module_attr_path(
                 hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
                 _visited=next_visited,
+                _preparsed_env=local_env,
             )
             if ok_sub:
                 return True, None, impl or py_file
@@ -2866,7 +2974,9 @@ def _inspect_setup_py(
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "declares_py_modules": False,
         "py_modules": [],
+        "has_ext_modules": False,
         "has_entry_points": False,
         "entry_points_error": None,
         "console_scripts": [],
@@ -2966,7 +3076,7 @@ def _inspect_setup_py(
         else:
             explicit = _const_str_list(node)
             if explicit is not None:
-                info["declares_packages"] = bool(explicit)
+                info["declares_packages"] = True
                 info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
             if explicit and _explicit_packages_cover(target_pkg, explicit):
                 info["namespace_ok"] = True
@@ -3024,9 +3134,16 @@ def _inspect_setup_py(
                 if kw.arg == "packages":
                     _check_packages_expr(kw.value)
                 elif kw.arg == "py_modules":
-                    mods = _const_str_list(_resolve(kw.value))
+                    val = _resolve(kw.value)
+                    if not (isinstance(val, ast.Constant) and val.value is None):
+                        info["declares_py_modules"] = True
+                    mods = _const_str_list(val)
                     if mods:
                         info["py_modules"] = list(mods)
+                elif kw.arg == "ext_modules":
+                    val = _resolve(kw.value)
+                    if not (isinstance(val, ast.Constant) and val.value is None):
+                        info["has_ext_modules"] = True
                 elif kw.arg == "package_dir":
                     _extract_str_mapping(kw.value, info["package_dir"])
                 elif kw.arg == "entry_points":
@@ -3523,7 +3640,9 @@ def _empty_setup_cfg_info() -> dict[str, Any]:
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "declares_py_modules": False,
         "py_modules": [],
+        "has_ext_modules": False,
         "has_entry_points": False,
         "entry_points_error": None,
         "console_scripts": [],
@@ -3549,7 +3668,8 @@ def _inspect_setup_cfg(
 ) -> dict[str, Any]:
     """Inspect setuptools setup.cfg for packages, package_dir, package_data, exclusions, and scripts."""
     info = _empty_setup_cfg_info()
-    cp = configparser.ConfigParser(interpolation=None)
+    # Mirror setuptools.config.setupcfg: ConfigParser uses BasicInterpolation by default.
+    cp = configparser.ConfigParser()
     cp.optionxform = str  # type: ignore[assignment]
     try:
         cp.read_string(text)
@@ -3557,152 +3677,288 @@ def _inspect_setup_cfg(
         info["parse_error"] = str(exc) or exc.__class__.__name__
         return info
 
-    if cp.has_section("options"):
-        opts = cp["options"]
-        py_req = opts.get("python_requires", "").strip()
-        if py_req:
-            info["has_python_requires"] = True
+    try:
+        if cp.has_section("options"):
+            opts = cp["options"]
+            py_req = opts.get("python_requires", "").strip()
+            if py_req:
+                info["has_python_requires"] = True
 
-        if "include_package_data" in opts:
-            raw_inc = opts["include_package_data"].strip().lower()
-            if raw_inc in {"true", "1", "yes", "on"}:
-                info["include_package_data"] = True
-            elif raw_inc in {"false", "0", "no", "off"}:
-                info["include_package_data"] = False
+            if "include_package_data" in opts:
+                raw_inc = opts["include_package_data"].strip().lower()
+                if raw_inc in {"true", "1", "yes", "on"}:
+                    info["include_package_data"] = True
+                elif raw_inc in {"false", "0", "no", "off"}:
+                    info["include_package_data"] = False
 
-        if "package_dir" in opts:
-            raw_pd = opts["package_dir"]
-            entries = raw_pd.splitlines() if "\n" in raw_pd else raw_pd.split(",")
-            for entry in entries:
-                s = entry.strip()
-                if not s or s.startswith(("#", ";")) or "=" not in s:
+            if "package_dir" in opts:
+                raw_pd = opts["package_dir"]
+                entries = raw_pd.splitlines() if "\n" in raw_pd else raw_pd.split(",")
+                for entry in entries:
+                    s = entry.strip()
+                    if not s or s.startswith(("#", ";")) or "=" not in s:
+                        continue
+                    k, v = s.split("=", 1)
+                    info["package_dir"][k.strip()] = v.strip()
+
+            if "py_modules" in opts:
+                raw_pm = opts["py_modules"]
+                if raw_pm.strip():
+                    info["declares_py_modules"] = True
+                info["py_modules"] = _parse_setup_cfg_list(raw_pm)
+
+            if "packages" in opts:
+                raw_pkgs = opts["packages"].strip()
+                if raw_pkgs:
+                    info["declares_packages"] = True
+                    if raw_pkgs == "find_namespace:":
+                        find_sec = cp["options.packages.find"] if cp.has_section("options.packages.find") else {}
+                        # Mirror setuptools setupcfg.parse_section_packages__find(): empty options are dropped
+                        # and revert to their discovery defaults (unlike TOML where `include = []` is empty).
+                        raw_wheres = _parse_setup_cfg_list(find_sec["where"]) if "where" in find_sec else []
+                        wheres: list[str] | None = [raw_wheres[0]] if raw_wheres else None
+                        raw_includes = _parse_setup_cfg_list(find_sec["include"]) if "include" in find_sec else []
+                        includes: list[str] | None = raw_includes or None
+                        raw_excludes = _parse_setup_cfg_list(find_sec["exclude"]) if "exclude" in find_sec else []
+                        excludes: list[str] | None = raw_excludes or None
+                        info["pkg_spec"] = {
+                            "kind": "find",
+                            "includes": includes,
+                            "excludes": excludes,
+                            "wheres": wheres,
+                            "fills_package_dir": True,
+                        }
+                        if _find_selects_package(
+                            target_pkg,
+                            includes,
+                            excludes,
+                            harness=harness,
+                            wheres=wheres,
+                        ):
+                            info["namespace_ok"] = True
+                        if target_pkg and _find_selects_package(
+                            f"{target_pkg}.skills",
+                            includes,
+                            excludes,
+                            harness=harness,
+                            wheres=wheres,
+                            require_init=False,
+                        ):
+                            info["skills_subpkg_ok"] = True
+                    elif raw_pkgs == "find:":
+                        info["uses_regular_find_packages"] = True
+                    else:
+                        explicit = _parse_setup_cfg_list(raw_pkgs)
+                        info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
+                        if explicit and _explicit_packages_cover(target_pkg, explicit):
+                            info["namespace_ok"] = True
+                        if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
+                            info["skills_subpkg_ok"] = True
+
+        if cp.has_section("options.package_data"):
+            for k, v in cp.items("options.package_data"):
+                info["package_data"][k.strip()] = _parse_setup_cfg_list(v)
+
+        if cp.has_section("options.exclude_package_data"):
+            for k, v in cp.items("options.exclude_package_data"):
+                info["exclude_package_data"][k.strip()] = _parse_setup_cfg_list(v)
+
+        # Mirror setuptools ConfigHandler.parse() / __setitem__(): sections are evaluated in file order,
+        # and the first non-empty entry_points definition (either [options] entry_points or [options.entry_points])
+        # populates Distribution.entry_points while any later definition is skipped.
+        entry_points_populated = False
+        for sec in cp.sections():
+            if entry_points_populated:
+                break
+            if sec == "options" and "entry_points" in cp["options"]:
+                raw_ep_opt = cp["options"]["entry_points"]
+                raw_ep_stripped = raw_ep_opt.strip()
+                if not raw_ep_stripped:
                     continue
-                k, v = s.split("=", 1)
-                info["package_dir"][k.strip()] = v.strip()
-
-        if "py_modules" in opts:
-            info["py_modules"] = _parse_setup_cfg_list(opts["py_modules"])
-
-        if "packages" in opts:
-            raw_pkgs = opts["packages"].strip()
-            if raw_pkgs:
-                info["declares_packages"] = True
-                if raw_pkgs == "find_namespace:":
-                    find_sec = cp["options.packages.find"] if cp.has_section("options.packages.find") else {}
-                    # Mirror setuptools setupcfg.parse_section_packages__find(): empty options are dropped
-                    # and revert to their discovery defaults (unlike TOML where `include = []` is empty).
-                    raw_wheres = _parse_setup_cfg_list(find_sec["where"]) if "where" in find_sec else []
-                    wheres: list[str] | None = [raw_wheres[0]] if raw_wheres else None
-                    raw_includes = _parse_setup_cfg_list(find_sec["include"]) if "include" in find_sec else []
-                    includes: list[str] | None = raw_includes or None
-                    raw_excludes = _parse_setup_cfg_list(find_sec["exclude"]) if "exclude" in find_sec else []
-                    excludes: list[str] | None = raw_excludes or None
-                    info["pkg_spec"] = {
-                        "kind": "find",
-                        "includes": includes,
-                        "excludes": excludes,
-                        "wheres": wheres,
-                        "fills_package_dir": True,
-                    }
-                    if _find_selects_package(
-                        target_pkg,
-                        includes,
-                        excludes,
-                        harness=harness,
-                        wheres=wheres,
-                    ):
-                        info["namespace_ok"] = True
-                    if target_pkg and _find_selects_package(
-                        f"{target_pkg}.skills",
-                        includes,
-                        excludes,
-                        harness=harness,
-                        wheres=wheres,
-                        require_init=False,
-                    ):
-                        info["skills_subpkg_ok"] = True
-                elif raw_pkgs == "find:":
-                    info["uses_regular_find_packages"] = True
-                else:
-                    explicit = _parse_setup_cfg_list(raw_pkgs)
-                    info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
-                    if explicit and _explicit_packages_cover(target_pkg, explicit):
-                        info["namespace_ok"] = True
-                    if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
-                        info["skills_subpkg_ok"] = True
-
-    if cp.has_section("options.package_data"):
-        for k, v in cp.items("options.package_data"):
-            info["package_data"][k.strip()] = _parse_setup_cfg_list(v)
-
-    if cp.has_section("options.exclude_package_data"):
-        for k, v in cp.items("options.exclude_package_data"):
-            info["exclude_package_data"][k.strip()] = _parse_setup_cfg_list(v)
-
-    # Mirror setuptools ConfigHandler.parse() / __setitem__(): sections are evaluated in file order,
-    # and the first non-empty entry_points definition (either [options] entry_points or [options.entry_points])
-    # populates Distribution.entry_points while any later definition is skipped.
-    entry_points_populated = False
-    for sec in cp.sections():
-        if entry_points_populated:
-            break
-        if sec == "options" and "entry_points" in cp["options"]:
-            raw_ep_opt = cp["options"]["entry_points"]
-            raw_ep_stripped = raw_ep_opt.strip()
-            if not raw_ep_stripped:
-                continue
-            if raw_ep_stripped.startswith("file:"):
-                spec = raw_ep_stripped[len("file:") :]
-                ep_files = [p.strip() for p in spec.split(",") if p.strip()]
-                if not ep_files:
-                    continue
-                ep_text, read_err = _read_local_config_files(
-                    harness, ep_files, "setup.cfg [options] entry_points"
-                )
-                if read_err:
-                    info["has_entry_points"] = True
-                    info["entry_points_error"] = read_err
+                if raw_ep_stripped.startswith("file:"):
+                    spec = raw_ep_stripped[len("file:") :]
+                    ep_files = [p.strip() for p in spec.split(",") if p.strip()]
+                    if not ep_files:
+                        continue
+                    ep_text, read_err = _read_local_config_files(
+                        harness, ep_files, "setup.cfg [options] entry_points"
+                    )
+                    if read_err:
+                        info["has_entry_points"] = True
+                        info["entry_points_error"] = read_err
+                        entry_points_populated = True
+                        continue
+                    if not ep_text:
+                        continue
                     entry_points_populated = True
-                    continue
-                if not ep_text:
+                    info["has_entry_points"] = True
+                    try:
+                        groups = _parse_entry_points_ini_groups(ep_text, strict=False)
+                    except configparser.Error as exc:
+                        info["entry_points_error"] = (
+                            f"invalid INI in setup.cfg [options] entry_points: {exc}"
+                        )
+                        continue
+                    for k, v in groups.get("console_scripts", {}).items():
+                        info["console_scripts"].append((k.strip(), v.strip()))
+                else:
+                    entry_points_populated = True
+                    info["has_entry_points"] = True
+                    try:
+                        groups = _parse_entry_points_ini_groups(raw_ep_opt, strict=False)
+                    except configparser.Error as exc:
+                        info["entry_points_error"] = (
+                            f"invalid INI in setup.cfg [options] entry_points: {exc}"
+                        )
+                        continue
+                    for k, v in groups.get("console_scripts", {}).items():
+                        info["console_scripts"].append((k.strip(), v.strip()))
+            elif sec == "options.entry_points":
+                ep_sec_items = list(cp.items("options.entry_points"))
+                if not ep_sec_items:
                     continue
                 entry_points_populated = True
                 info["has_entry_points"] = True
-                try:
-                    groups = _parse_entry_points_ini_groups(ep_text, strict=False)
-                except configparser.Error as exc:
-                    info["entry_points_error"] = (
-                        f"invalid INI in setup.cfg [options] entry_points: {exc}"
-                    )
-                    continue
-                for k, v in groups.get("console_scripts", {}).items():
-                    info["console_scripts"].append((k.strip(), v.strip()))
-            else:
-                entry_points_populated = True
-                info["has_entry_points"] = True
-                try:
-                    groups = _parse_entry_points_ini_groups(raw_ep_opt, strict=False)
-                except configparser.Error as exc:
-                    info["entry_points_error"] = (
-                        f"invalid INI in setup.cfg [options] entry_points: {exc}"
-                    )
-                    continue
-                for k, v in groups.get("console_scripts", {}).items():
-                    info["console_scripts"].append((k.strip(), v.strip()))
-        elif sec == "options.entry_points":
-            ep_sec_items = list(cp.items("options.entry_points"))
-            if not ep_sec_items:
-                continue
-            entry_points_populated = True
-            info["has_entry_points"] = True
-            raw_cs = cp.get("options.entry_points", "console_scripts", fallback="")
-            for spec in _parse_setup_cfg_list(raw_cs):
-                if not spec or spec.startswith(("#", ";")) or "=" not in spec:
-                    continue
-                name, target = spec.split("=", 1)
-                info["console_scripts"].append((name.strip(), target.strip()))
+                raw_cs = cp.get("options.entry_points", "console_scripts", fallback="")
+                for spec in _parse_setup_cfg_list(raw_cs):
+                    if not spec or spec.startswith(("#", ";")) or "=" not in spec:
+                        continue
+                    name, target = spec.split("=", 1)
+                    info["console_scripts"].append((name.strip(), target.strip()))
+    except configparser.Error as exc:
+        info["parse_error"] = str(exc) or exc.__class__.__name__
+        return info
 
     return info
+
+
+_FLAT_LAYOUT_EXCLUDE_NAMES = (
+    "ci",
+    "bin",
+    "debian",
+    "doc",
+    "docs",
+    "documentation",
+    "manpages",
+    "news",
+    "newsfragments",
+    "changelog",
+    "test",
+    "tests",
+    "unit_test",
+    "unit_tests",
+    "example",
+    "examples",
+    "scripts",
+    "tools",
+    "util",
+    "utils",
+    "python",
+    "build",
+    "dist",
+    "venv",
+    "env",
+    "requirements",
+    "tasks",
+    "fabfile",
+    "site_scons",
+    "benchmark",
+    "benchmarks",
+    "exercise",
+    "exercises",
+    "htmlcov",
+    "[._]*",
+)
+_FLAT_LAYOUT_DEFAULT_EXCLUDES = tuple(
+    pat for name in _FLAT_LAYOUT_EXCLUDE_NAMES for pat in (name, f"{name}.*")
+)
+_FLAT_LAYOUT_EXCLUDED_MODULES = {
+    "setup",
+    "conftest",
+    "noxfile",
+    "dodo",
+    "fabfile",
+    "tasks",
+}
+
+
+def _setuptools_auto_discover(
+    harness: Path,
+    base_pkg_dir: dict[str, str],
+) -> dict[str, Any]:
+    """Mirror setuptools.discovery.ConfigDiscovery._analyse_package_layout()."""
+    # 1. Explicit layout: non-root entries in package_dir.
+    non_root_pd = {k: v for k, v in base_pkg_dir.items() if k != ""}
+    if non_root_pd:
+        pkgs: list[str] = []
+        for pkg, parent_dir in non_root_pd.items():
+            norm_parent = _norm_pkg_dir_value(parent_dir)
+            parent_path = (harness / norm_parent) if norm_parent else harness
+            if not parent_path.is_dir():
+                continue
+            if pkg not in pkgs:
+                pkgs.append(pkg)
+            for sub in _find_discovered_packages(parent_path, ["*"], []):
+                full = f"{pkg}.{sub}"
+                if full not in pkgs:
+                    pkgs.append(full)
+        return {"packages": pkgs, "py_modules": [], "package_dir_updates": {}, "error": None}
+
+    # 2. src-layout: package_dir[""] if set, otherwise "src/" directory if present.
+    src_rel = base_pkg_dir.get("", "src")
+    norm_src = _norm_pkg_dir_value(src_rel)
+    src_dir = (harness / norm_src) if norm_src else harness
+    if norm_src and src_dir.is_dir():
+        pkgs = _find_discovered_packages(src_dir, ["*"], [])
+        py_mods = sorted(
+            p.stem for p in src_dir.glob("*.py") if p.is_file() and p.stem.isidentifier()
+        )
+        pd_updates = {} if "" in base_pkg_dir else {"": src_rel}
+        return {
+            "packages": pkgs,
+            "py_modules": py_mods,
+            "package_dir_updates": pd_updates,
+            "error": None,
+        }
+
+    # 3. flat-layout: discover PEP 420 packages under harness root with FlatLayoutPackageFinder rules.
+    raw_pkgs = _find_discovered_packages(harness, ["*"], list(_FLAT_LAYOUT_DEFAULT_EXCLUDES))
+    pkgs = []
+    for pkg in raw_pkgs:
+        parts = pkg.split(".")
+        if (parts[0].isidentifier() or parts[0].endswith("-stubs")) and all(
+            part.isidentifier() for part in parts[1:]
+        ):
+            pkgs.append(pkg)
+    top_level = sorted({p.split(".", 1)[0] for p in pkgs if not p.endswith("-stubs")})
+    if len(top_level) > 1:
+        return {
+            "packages": [],
+            "py_modules": [],
+            "package_dir_updates": {},
+            "error": f"Multiple top-level packages discovered in a flat-layout: {top_level}",
+        }
+    if top_level:
+        return {"packages": pkgs, "py_modules": [], "package_dir_updates": {}, "error": None}
+
+    # Flat-layout single-module fallback (only when no packages discovered).
+    flat_mods = sorted(
+        p.stem
+        for p in harness.glob("*.py")
+        if p.is_file()
+        and p.stem.isidentifier()
+        and p.stem not in _FLAT_LAYOUT_EXCLUDED_MODULES
+        and not p.stem.startswith(("_", "test"))
+        and not p.stem.endswith("_test")
+    )
+    if len(flat_mods) > 1:
+        return {
+            "packages": [],
+            "py_modules": [],
+            "package_dir_updates": {},
+            "error": f"Multiple top-level modules discovered in a flat-layout: {flat_mods}",
+        }
+    return {"packages": [], "py_modules": flat_mods, "package_dir_updates": {}, "error": None}
 
 
 def _check_packaging(
@@ -3751,7 +4007,9 @@ def _check_packaging(
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "declares_py_modules": False,
         "py_modules": [],
+        "has_ext_modules": False,
         "has_entry_points": False,
         "entry_points_error": None,
         "console_scripts": [],
@@ -3812,7 +4070,21 @@ def _check_packaging(
         )
         return checks, module, [], {}
 
-    # Determine effective package selection (setuptools precedence: pyproject.toml > setup.py > setup.cfg).
+    if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
+        eff_base_package_dir = dict(pyproj_info["package_dir"])
+    elif pyproj_info["declares_package_dir"]:
+        eff_base_package_dir = dict(pyproj_info["package_dir"])
+    elif uses_setup_py and setup_info["package_dir"]:
+        eff_base_package_dir = dict(setup_info["package_dir"])
+    elif uses_setup_cfg and setup_cfg_info["package_dir"]:
+        eff_base_package_dir = dict(setup_cfg_info["package_dir"])
+    else:
+        eff_base_package_dir = {}
+
+    auto_discovery_error: str | None = None
+    auto_discovered_py_modules: list[str] = []
+
+    # Determine effective package selection (setuptools precedence: pyproject.toml > setup.py > setup.cfg > auto-discovery).
     if pyproj_info["namespaces_disabled"]:
         parent_selected = False
         skills_subpkg_selected = False
@@ -3834,21 +4106,37 @@ def _check_packaging(
         eff_pkg_spec = setup_cfg_info["pkg_spec"]
         pkg_source = "setup_cfg"
     else:
-        parent_selected = False
-        skills_subpkg_selected = False
-        eff_pkg_spec = None
-        pkg_source = "none"
-
-    if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
-        eff_base_package_dir = dict(pyproj_info["package_dir"])
-    elif pyproj_info["declares_package_dir"]:
-        eff_base_package_dir = dict(pyproj_info["package_dir"])
-    elif uses_setup_py and setup_info["package_dir"]:
-        eff_base_package_dir = dict(setup_info["package_dir"])
-    elif uses_setup_cfg and setup_cfg_info["package_dir"]:
-        eff_base_package_dir = dict(setup_cfg_info["package_dir"])
-    else:
-        eff_base_package_dir = {}
+        any_py_modules_declared = (
+            pyproj_info["declares_py_modules"]
+            or (uses_setup_py and setup_info["declares_py_modules"])
+            or (uses_setup_cfg and setup_cfg_info["declares_py_modules"])
+        )
+        blocking_ext_modules = (
+            uses_setup_py
+            and setup_info["has_ext_modules"]
+            and not pyproj_info["has_project_table"]
+        )
+        if uses_setuptools and not any_py_modules_declared and not blocking_ext_modules:
+            auto_res = _setuptools_auto_discover(harness, eff_base_package_dir)
+            auto_discovery_error = auto_res["error"]
+            auto_discovered_py_modules = list(auto_res["py_modules"])
+            eff_base_package_dir.update(auto_res["package_dir_updates"])
+            auto_pkgs = auto_res["packages"]
+            if auto_pkgs and not auto_discovery_error:
+                eff_pkg_spec = {"kind": "explicit", "packages": auto_pkgs}
+                parent_selected = bool(target_pkg and target_pkg in auto_pkgs)
+                skills_subpkg_selected = bool(target_pkg and f"{target_pkg}.skills" in auto_pkgs)
+                pkg_source = "auto"
+            else:
+                parent_selected = False
+                skills_subpkg_selected = False
+                eff_pkg_spec = None
+                pkg_source = "auto"
+        else:
+            parent_selected = False
+            skills_subpkg_selected = False
+            eff_pkg_spec = None
+            pkg_source = "none"
 
     eff_package_dir = _apply_find_package_dir(
         harness,
@@ -3971,6 +4259,8 @@ def _check_packaging(
             eff_py_modules = list(setup_info["py_modules"])
         elif uses_setup_cfg and setup_cfg_info["py_modules"]:
             eff_py_modules = list(setup_cfg_info["py_modules"])
+        elif auto_discovered_py_modules:
+            eff_py_modules = list(auto_discovered_py_modules)
         else:
             eff_py_modules = []
         if "cli_anything" in eff_py_modules:
@@ -4184,6 +4474,52 @@ def _check_packaging(
                     "packaging",
                     FAIL,
                     f"setup.cfg package discovery/packages does not select required runtime subpackage(s): {', '.join(missing_runtime_subpkgs)}",
+                )
+            )
+    elif pkg_source == "auto" and auto_discovery_error:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"setuptools automatic discovery failed: {auto_discovery_error}",
+            )
+        )
+    elif pkg_source == "auto" and parent_selected:
+        if missing_effective_dir:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"effective package directory '{missing_effective_dir}' for {target_pkg_label} does not exist",
+                )
+            )
+        elif missing_subpkg_dirs:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"mapped source directory missing for selected subpackage(s): {', '.join(missing_subpkg_dirs)}",
+                )
+            )
+        elif not missing_runtime_subpkgs:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    PASS,
+                    f"setuptools automatic discovery selects {target_pkg_label}",
+                )
+            )
+        else:
+            checks.append(
+                CheckResult(
+                    "namespace-packages",
+                    "packaging",
+                    FAIL,
+                    f"setuptools automatic discovery does not select required runtime subpackage(s): {', '.join(missing_runtime_subpkgs)}",
                 )
             )
     else:
