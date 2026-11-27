@@ -10,6 +10,8 @@ Requires: sox (system package)
 import os
 import shutil
 import subprocess
+import tempfile
+import wave
 from typing import Optional, List
 
 
@@ -149,3 +151,53 @@ def convert_format(
         "method": "sox",
         "file_size": os.path.getsize(output_path),
     }
+
+
+def decode_to_wav(input_path: str, output_path: str, timeout: int = 60) -> dict:
+    """Decode any source SoX can read into a WAV file.
+
+    SoX handles compressed inputs (MP3, FLAC, OGG, ...) and resets the
+    container to RIFF/WAV so the stdlib wave reader can consume it.
+    """
+    try:
+        return convert_format(input_path, output_path, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"SoX timed out decoding {input_path}") from exc
+
+
+def probe_duration(input_path: str, timeout: int = 15) -> float:
+    """Return the duration of any source SoX can read, in seconds.
+
+    ``soxi -D`` answers without decoding the whole file. When soxi is not
+    installed (some SoX builds ship only the main binary), fall back to
+    decoding a temporary WAV and counting its frames.
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    soxi = shutil.which("soxi")
+    if soxi:
+        try:
+            result = subprocess.run(
+                [soxi, "-D", input_path],
+                capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            result = None
+        if result is not None and result.returncode == 0:
+            try:
+                duration = float(result.stdout.strip().splitlines()[-1])
+            except (IndexError, ValueError):
+                duration = 0.0
+            if duration > 0:
+                return duration
+
+    with tempfile.TemporaryDirectory(prefix="cli-anything-sox-") as tmp_dir:
+        wav_path = os.path.join(tmp_dir, "probe.wav")
+        decode_to_wav(input_path, wav_path, timeout=max(timeout, 60))
+        with wave.open(wav_path, "r") as wf:
+            frames = wf.getnframes()
+            rate = wf.getframerate()
+        if rate <= 0:
+            raise RuntimeError(f"SoX produced an unreadable WAV for {input_path}")
+        return frames / rate

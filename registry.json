@@ -141,7 +141,7 @@
     {
       "name": "audacity",
       "display_name": "Audacity",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Audio editing and processing via sox",
       "requires": "sox (apt install sox)",
       "homepage": "https://www.audacityteam.org",

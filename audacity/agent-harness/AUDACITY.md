@@ -34,7 +34,8 @@ making direct manipulation complex. Our strategy:
 
 1. **JSON project format** tracks all state (tracks, clips, effects, labels)
 2. **Python stdlib** (`wave`, `struct`, `math`) handles WAV I/O and audio processing
-3. **pydub** (optional) for advanced format support (MP3, FLAC, OGG)
+3. **SoX** decodes compressed inputs (MP3, FLAC, OGG) into a temporary WAV; it is
+   required for those formats, while WAV stays stdlib-only
 
 ### Why Not .aup3 Directly?
 
@@ -129,7 +130,8 @@ Instead, we use a JSON manifest and render to standard audio formats.
 ## Rendering Pipeline
 
 1. For each non-muted track (respecting solo):
-   a. For each clip: read source WAV, apply trim, place at timeline position
+   a. For each clip: read source audio (WAV directly, compressed formats decoded
+      through SoX), apply trim, place at timeline position
    b. Mix overlapping clips on the same track
    c. Apply track effects chain in order
    d. Apply track volume

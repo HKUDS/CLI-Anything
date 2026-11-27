@@ -33,11 +33,26 @@ def import_audio(path: str) -> Dict[str, Any]:
             info["duration"] = wf.getnframes() / wf.getframerate()
             info["format"] = "WAV"
     except (wave.Error, EOFError, struct_error()):
-        # Not a WAV or unreadable — store basic info
-        info["duration"] = 0.0
+        # Not a WAV or unreadable: let SoX probe compressed containers.
         info["format"] = _guess_format(abs_path)
+        info["duration"] = _probe_duration(abs_path)
 
     return info
+
+
+def _probe_duration(path: str) -> float:
+    """Read WAV durations directly and ask SoX about other containers."""
+    try:
+        with wave.open(path, "r") as wf:
+            return wf.getnframes() / wf.getframerate()
+    except (wave.Error, EOFError, struct_error(), OSError, ValueError):
+        pass
+
+    try:
+        from cli_anything.audacity.utils.sox_backend import probe_duration
+        return probe_duration(path)
+    except (RuntimeError, FileNotFoundError, OSError, ValueError):
+        return 0.0
 
 
 def struct_error():
@@ -81,14 +96,16 @@ def add_clip(
     # Determine duration from source if available
     duration = 0.0
     if abs_source and os.path.exists(abs_source):
-        try:
-            with wave.open(abs_source, "r") as wf:
-                duration = wf.getnframes() / wf.getframerate()
-        except (wave.Error, EOFError):
-            pass
+        duration = _probe_duration(abs_source)
 
     if end_time is None:
-        end_time = start_time + (duration - trim_start if duration > 0 else 10.0)
+        if duration <= 0:
+            raise ValueError(
+                f"Cannot determine the duration of '{abs_source or source}'. "
+                "Pass --end explicitly, or install SoX so compressed formats "
+                "can be probed."
+            )
+        end_time = start_time + (duration - trim_start)
     if trim_end is None:
         trim_end = duration if duration > 0 else (end_time - start_time + trim_start)
 

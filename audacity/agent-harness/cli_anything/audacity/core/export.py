@@ -11,6 +11,7 @@ import os
 import wave
 import math
 import struct
+import tempfile
 from typing import Dict, Any, Optional, List, Tuple
 
 from cli_anything.audacity.core.effects import EFFECT_REGISTRY
@@ -269,6 +270,29 @@ def _render_track(
     return track_audio
 
 
+def _decode_compressed_source(source: str, read_error: Exception):
+    """Decode a non-WAV source through SoX, failing loudly when unavailable."""
+    try:
+        from cli_anything.audacity.utils.sox_backend import decode_to_wav, find_sox
+        find_sox()
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"Cannot read audio source '{source}' ({read_error}). Only WAV is "
+            "supported without SoX; install SoX (apt install sox) or convert "
+            "the source to WAV."
+        ) from exc
+
+    with tempfile.TemporaryDirectory(prefix="cli-anything-source-") as tmp_dir:
+        wav_path = os.path.join(tmp_dir, "source.wav")
+        try:
+            decode_to_wav(source, wav_path)
+        except (RuntimeError, OSError) as exc:
+            raise RuntimeError(
+                f"Could not decode audio source '{source}' with SoX: {exc}"
+            ) from exc
+        return read_wav(wav_path)
+
+
 def _render_clip(
     clip: Dict[str, Any],
     sample_rate: int,
@@ -280,8 +304,10 @@ def _render_clip(
     if source and os.path.exists(source):
         try:
             samples, src_rate, src_channels, src_bits = read_wav(source)
-        except (wave.Error, EOFError, struct.error, ValueError):
-            return None
+        except (wave.Error, EOFError, struct.error, ValueError) as exc:
+            samples, src_rate, src_channels, src_bits = _decode_compressed_source(
+                source, exc
+            )
 
         # Handle trim
         trim_start = clip.get("trim_start", 0.0)
