@@ -14,7 +14,7 @@ _SKILL_SOURCE_REPO = os.environ.get("CLI_ANYTHING_SKILL_REPO", "HKUDS/CLI-Anythi
 
 
 def _display_home_path(path: str) -> str:
-    expanded = Path(os.path.normpath(str(Path(path).expanduser())))
+    expanded = Path(os.path.abspath(os.path.expanduser(str(path))))
     for home in (Path.home(), Path.home().resolve()):
         try:
             relative = expanded.relative_to(home)

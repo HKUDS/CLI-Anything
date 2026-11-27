@@ -97,9 +97,10 @@ def _display_home_path(path: str) -> str:
 
     Deliberately does not resolve symlinks: skill paths are often links
     into synced storage, and the resolved target is long enough that the
-    banner truncates it.
+    banner truncates it. The path is made absolute against the current
+    directory so a relative skills directory stays usable after a chdir.
     """
-    expanded = Path(os.path.normpath(str(Path(path).expanduser())))
+    expanded = Path(os.path.abspath(os.path.expanduser(str(path))))
     for home in (Path.home(), Path.home().resolve()):
         try:
             relative = expanded.relative_to(home)

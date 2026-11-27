@@ -70,6 +70,34 @@ class DisplayHomePathTest(unittest.TestCase):
 
         self.assertEqual(displayed, str(outside))
 
+    def test_relative_skill_dir_is_made_absolute_against_the_cwd(self):
+        """A relative global skills dir must not leak into the banner."""
+        target = self.home / ".agents" / "skills" / "cli-anything-demo"
+        target.mkdir(parents=True)
+        os.environ["HOME"] = str(self.home)
+        old_cwd = os.getcwd()
+        os.chdir(str(self.home / ".agents"))
+        try:
+            displayed = repl_skin._display_home_path("skills/cli-anything-demo")
+        finally:
+            os.chdir(old_cwd)
+
+        self.assertEqual(displayed, "~/.agents/skills/cli-anything-demo")
+
+    def test_relative_path_outside_home_is_absolute(self):
+        """A relative path outside home is displayed as an absolute path."""
+        outside = self.root / "work"
+        outside.mkdir()
+        os.environ["HOME"] = str(self.home)
+        old_cwd = os.getcwd()
+        os.chdir(str(self.root))
+        try:
+            displayed = repl_skin._display_home_path("work")
+        finally:
+            os.chdir(old_cwd)
+
+        self.assertEqual(displayed, str(outside))
+
 
 if __name__ == "__main__":
     unittest.main()
