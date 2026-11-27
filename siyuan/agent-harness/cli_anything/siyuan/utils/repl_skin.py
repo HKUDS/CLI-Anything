@@ -20,6 +20,7 @@ Usage:
 
 import os
 import sys
+import unicodedata
 from pathlib import Path
 
 # ── ANSI color codes (no external deps for core styling) ──────────────
@@ -90,6 +91,14 @@ def _strip_ansi(text: str) -> str:
 def _visible_len(text: str) -> int:
     """Get visible length of text (excluding ANSI codes)."""
     return len(_strip_ansi(text))
+
+
+def _disp_width(text: str) -> int:
+    """Terminal display width: CJK wide/fullwidth chars occupy two columns."""
+    return sum(
+        2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        for ch in str(text)
+    )
 
 
 def _display_home_path(path: str) -> str:
@@ -423,18 +432,26 @@ class ReplSkin:
         if not headers:
             return
 
-        # Calculate column widths
-        col_widths = [min(len(h), max_col_width) for h in headers]
+        # Calculate column widths by display width (CJK = 2 columns)
+        col_widths = [min(_disp_width(h), max_col_width) for h in headers]
         for row in rows:
             for i, cell in enumerate(row):
                 if i < len(col_widths):
                     col_widths[i] = min(
-                        max(col_widths[i], len(str(cell))), max_col_width
+                        max(col_widths[i], _disp_width(cell)), max_col_width
                     )
 
         def pad(text: str, width: int) -> str:
-            t = str(text)[:width]
-            return t + " " * (width - len(t))
+            s = str(text)
+            parts: list[str] = []
+            used = 0
+            for ch in s:
+                cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+                if used + cw > width:
+                    break
+                parts.append(ch)
+                used += cw
+            return "".join(parts) + " " * (width - used)
 
         # Header
         header_cells = [
@@ -446,7 +463,6 @@ class ReplSkin:
         print(header_line)
 
         # Separator
-        sep_parts = [self._c(_DARK_GRAY, _H_LINE * w) for w in col_widths]
         sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
         print(sep_line)
 
