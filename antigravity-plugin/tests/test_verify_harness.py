@@ -4000,3 +4000,262 @@ setup(
     (pkg / "wcall_cli.py").write_text(base_cli + '\n__all__ = ["cli"]\n', encoding="utf-8")
     (pkg / "__main__.py").write_text("from .wcall_cli import main\n", encoding="utf-8")
     assert _set_ep("cli_anything.wcall.__main__:main")["ok"] is True
+
+
+def test_verify_rejects_packaged_modules_shadowing_namespace(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "shadow_ns", "shadapp")
+
+    def _write_setup(extra: str = "") -> None:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-shadapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.shadapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-shadapp=cli_anything.shadapp.shadapp_cli:main"]}},
+    {extra}
+)
+""",
+            encoding="utf-8",
+        )
+
+    # 1. setup.py py_modules=["cli_anything"] + cli_anything.py shadows the PEP 420 namespace -> fail.
+    (harness / "cli_anything.py").write_text("SHADOW = True\n", encoding="utf-8")
+    _write_setup('py_modules=["cli_anything"],')
+    r_shadow = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_shadow["ok"] is False
+    assert {c["id"]: c for c in r_shadow["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 2. Unlisted cli_anything.py or unrelated py_modules=["helper"] does not ship cli_anything.py -> pass.
+    (harness / "helper.py").write_text("OK = True\n", encoding="utf-8")
+    _write_setup("")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+    _write_setup('py_modules=["helper"],')
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 3. setup.cfg py_modules = cli_anything fails even when setup.py passes falsy py_modules=[],
+    #    but non-empty setup.py py_modules=["helper"] overrides setup.cfg.
+    (harness / "setup.cfg").write_text("[options]\npy_modules = cli_anything\n", encoding="utf-8")
+    _write_setup("py_modules=[],")
+    r_cfg = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_cfg["ok"] is False
+    assert {c["id"]: c for c in r_cfg["checks"]}["namespace-packages"]["status"] == "fail"
+    _write_setup('py_modules=["helper"],')
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+    (harness / "setup.cfg").unlink()
+
+    # 4. pyproject.toml [tool.setuptools] py-modules takes precedence over setup.py (including empty []).
+    _write_setup('py_modules=["cli_anything"],')
+    pyproj_base = """[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-shadapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-shadapp = "cli_anything.shadapp.shadapp_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.shadapp" = ["skills/*.md"]
+"""
+    (harness / "pyproject.toml").write_text(
+        pyproj_base + '\n[tool.setuptools]\npy-modules = ["cli_anything"]\n',
+        encoding="utf-8",
+    )
+    r_pyp = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_pyp["ok"] is False
+    assert {c["id"]: c for c in r_pyp["checks"]}["namespace-packages"]["status"] == "fail"
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_pyp_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_pyp_310["ok"] is False
+        assert {c["id"]: c for c in r_pyp_310["checks"]}["namespace-packages"]["status"] == "fail"
+
+    (harness / "pyproject.toml").write_text(
+        pyproj_base + "\n[tool.setuptools]\npy-modules = []\n",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 5. Poetry shipping cli_anything.py alongside cli_anything/ also fails.
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-shadapp"
+version = "1.0.0"
+packages = [{include = "cli_anything"}, {include = "cli_anything.py"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-shadapp = "cli_anything.shadapp.shadapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    r_poetry = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_poetry["ok"] is False
+    assert {c["id"]: c for c in r_poetry["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 6. src/ layout resolves py_modules under package_dir[""] = "src".
+    src_harness = _create_valid_harness(tmp_path / "shadow_src", "shsrc")
+    shutil.copytree(src_harness / "cli_anything", src_harness / "src" / "cli_anything")
+    (src_harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-shsrc",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(where="src", include=["cli_anything.*"]),
+    package_dir={"": "src"},
+    py_modules=["cli_anything"],
+    package_data={"cli_anything.shsrc": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-shsrc=cli_anything.shsrc.shsrc_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    (src_harness / "cli_anything.py").write_text("ROOT_ONLY = True\n", encoding="utf-8")
+    assert verify_harness.verify_harness(
+        src_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+    (src_harness / "src" / "cli_anything.py").write_text("IN_SRC = True\n", encoding="utf-8")
+    r_src = verify_harness.verify_harness(
+        src_harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_src["ok"] is False
+    assert {c["id"]: c for c in r_src["checks"]}["namespace-packages"]["status"] == "fail"
+
+
+def test_verify_checks_callability_of_assigned_dotted_and_class_targets(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "dotted_callable", "dcall")
+    cli_py = harness / "cli_anything" / "dcall" / "dcall_cli.py"
+    cli_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+
+EXIT_CODE = 0
+main.exit_code = 0
+main.neg_code = -1
+main.code_ref = EXIT_CODE
+main.mod_ref = click
+main.overwritten = main
+main.overwritten = 0
+main.sub = main
+main.fn = lambda: cli()
+
+class Base:
+    @staticmethod
+    def run():
+        cli()
+
+class Runner(Base):
+    exit_code = 0
+    mod_ref = click
+    fn = main
+
+    @property
+    def prop(self):
+        return 0
+
+class ShadowChild(Base):
+    run = 0
+
+Runner.extra_num = 1
+Runner.extra_fn = main
+""",
+        encoding="utf-8",
+    )
+
+    def _set_ep(target: str) -> dict:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-dcall",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.dcall": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-dcall={target}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        return verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+
+    for bad_target in (
+        "cli_anything.dcall.dcall_cli:main.exit_code",
+        "cli_anything.dcall.dcall_cli:main.neg_code",
+        "cli_anything.dcall.dcall_cli:main.code_ref",
+        "cli_anything.dcall.dcall_cli:main.mod_ref",
+        "cli_anything.dcall.dcall_cli:main.overwritten",
+        "cli_anything.dcall.dcall_cli:Runner.exit_code",
+        "cli_anything.dcall.dcall_cli:Runner.mod_ref",
+        "cli_anything.dcall.dcall_cli:Runner.prop",
+        "cli_anything.dcall.dcall_cli:ShadowChild.run",
+        "cli_anything.dcall.dcall_cli:Runner.extra_num",
+    ):
+        res = _set_ep(bad_target)
+        assert res["ok"] is False, (bad_target, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "fail", bad_target
+
+    for good_target in (
+        "cli_anything.dcall.dcall_cli:main.sub",
+        "cli_anything.dcall.dcall_cli:main.fn",
+        "cli_anything.dcall.dcall_cli:Runner.run",
+        "cli_anything.dcall.dcall_cli:Runner.fn",
+        "cli_anything.dcall.dcall_cli:Runner.extra_fn",
+    ):
+        res = _set_ep(good_target)
+        assert res["ok"] is True, (good_target, res["checks"])

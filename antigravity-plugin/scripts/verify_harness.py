@@ -439,11 +439,38 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
 
 
 def _is_provably_non_callable_expr(node: ast.AST) -> bool:
-    """Return True if an AST expression provably evaluates to a non-callable literal/container."""
-    return isinstance(
+    """Return True if an AST expression provably evaluates to a non-callable value."""
+    if isinstance(
         node,
-        (ast.Constant, ast.List, ast.Tuple, ast.Set, ast.Dict, ast.JoinedStr, ast.FormattedValue),
-    )
+        (
+            ast.Constant,
+            ast.List,
+            ast.Tuple,
+            ast.Set,
+            ast.Dict,
+            ast.JoinedStr,
+            ast.FormattedValue,
+            ast.ListComp,
+            ast.SetComp,
+            ast.DictComp,
+            ast.GeneratorExp,
+            ast.Slice,
+        ),
+    ):
+        return True
+    if isinstance(node, ast.UnaryOp):
+        return _is_provably_non_callable_expr(node.operand)
+    if isinstance(node, ast.BinOp):
+        return _is_provably_non_callable_expr(node.left) and _is_provably_non_callable_expr(node.right)
+    if isinstance(node, ast.BoolOp):
+        return all(_is_provably_non_callable_expr(v) for v in node.values)
+    if isinstance(node, ast.Compare):
+        return _is_provably_non_callable_expr(node.left) and all(
+            _is_provably_non_callable_expr(c) for c in node.comparators
+        )
+    if isinstance(node, ast.IfExp):
+        return _is_provably_non_callable_expr(node.body) and _is_provably_non_callable_expr(node.orelse)
+    return False
 
 
 def _is_known_external_module(base_mod: str, orig_name: str) -> bool:
@@ -724,7 +751,7 @@ def _resolve_module_attr_path(
     click_factories: set[str] = set()
     click_cmds: set[str] = set()
     classes: dict[str, list[ast.ClassDef]] = {}
-    attr_assigns: set[tuple[str, ...]] = set()
+    attr_assign_values: dict[tuple[str, ...], list[ast.AST | None]] = {}
     aliases: dict[str, list[str]] = {}
     attr_aliases: dict[str, list[tuple[str, ...]]] = {}
     instances: dict[str, list[str]] = {}
@@ -778,9 +805,32 @@ def _resolve_module_attr_path(
         aliases.pop(name, None)
         attr_aliases.pop(name, None)
 
-    def _record_binding(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
+    def _record_attr_chains(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
+        direct_chain = _extract_attr_chain(target)
+        if direct_chain is not None and len(direct_chain) >= 2:
+            if top_level:
+                attr_assign_values[direct_chain] = [value]
+            else:
+                attr_assign_values.setdefault(direct_chain, []).append(value)
+            return
+        if (
+            isinstance(target, (ast.Tuple, ast.List))
+            and isinstance(value, (ast.Tuple, ast.List))
+            and len(target.elts) == len(value.elts)
+            and not any(isinstance(e, ast.Starred) for e in target.elts)
+            and not any(isinstance(e, ast.Starred) for e in value.elts)
+        ):
+            for t_elt, v_elt in zip(target.elts, value.elts):
+                _record_attr_chains(t_elt, v_elt, top_level=top_level)
+            return
         for chain in _collect_target_attr_chains(target):
-            attr_assigns.add(chain)
+            if top_level:
+                attr_assign_values[chain] = [None]
+            else:
+                attr_assign_values.setdefault(chain, []).append(None)
+
+    def _record_binding(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
+        _record_attr_chains(target, value, top_level=top_level)
         if value is None:
             return
         if isinstance(target, ast.Name):
@@ -1125,98 +1175,268 @@ def _resolve_module_attr_path(
             return True, None, py_file
         return False, first_local_err, None
 
+    def _check_assigned_value_callable(
+        val: ast.AST | None,
+        target_label: str,
+    ) -> tuple[bool, str | None, Path | None]:
+        if val is None:
+            return True, None, py_file
+        if _is_provably_non_callable_expr(val):
+            return (
+                False,
+                f"target '{target_label}' is assigned a non-callable value in {py_file.name}",
+                None,
+            )
+        if isinstance(val, ast.Name):
+            ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
+                py_file,
+                [val.id],
+                module_path=module_path,
+                harness=harness,
+                target_pkg=target_pkg,
+                eff_pkg_dir=eff_pkg_dir,
+                parent_selected=parent_selected,
+                pkg_spec=pkg_spec,
+                excluded_files=excluded_files,
+                check_manifest=check_manifest,
+                _visited=next_visited,
+            )
+            if ok_ref:
+                return True, None, ref_impl or py_file
+            return False, ref_err, None
+        rhs_chain = _extract_attr_chain(val)
+        if rhs_chain is not None and len(rhs_chain) >= 2:
+            ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
+                py_file,
+                list(rhs_chain),
+                module_path=module_path,
+                harness=harness,
+                target_pkg=target_pkg,
+                eff_pkg_dir=eff_pkg_dir,
+                parent_selected=parent_selected,
+                pkg_spec=pkg_spec,
+                excluded_files=excluded_files,
+                check_manifest=check_manifest,
+                _visited=next_visited,
+            )
+            if ok_ref:
+                return True, None, ref_impl or py_file
+            chain_roots = _expand_aliases(rhs_chain[0])
+            is_local_ref = any(
+                (r in direct_local_defs)
+                or (r in non_callable_local_defs)
+                or (r in classes)
+                or (r in click_cmds)
+                or (r in from_imports and any(_is_harness_mod_ref(bm, ir) for bm, _, ir in from_imports[r]))
+                or (r in mod_imports and any(_is_harness_mod_ref(tm, False) for tm in mod_imports[r]))
+                for r in chain_roots
+            ) or any(
+                rhs_chain[0] == di[0] and _is_harness_mod_ref(".".join(di), False)
+                for di in dotted_imports
+            )
+            if is_local_ref:
+                return False, ref_err, None
+            return True, None, py_file
+        return True, None, py_file
+
     tail = tuple(attr_parts[1:])
 
     # 1. Explicit module-scope attribute assignment (e.g. `main.sub = ...` or `A.B.c = ...`).
-    if any((cand, *tail) in attr_assigns for cand in root_names):
-        return True, None, py_file
+    matched_attr_vals: list[ast.AST | None] = []
+    for cand in root_names:
+        chain = (cand, *tail)
+        if chain in attr_assign_values:
+            matched_attr_vals.extend(attr_assign_values[chain])
+    if matched_attr_vals:
+        attr_err: str | None = None
+        for assigned_val in matched_attr_vals:
+            ok_val, val_err, impl = _check_assigned_value_callable(
+                assigned_val, ".".join(attr_parts)
+            )
+            if ok_val:
+                return True, None, impl or py_file
+            if attr_err is None and val_err:
+                attr_err = val_err
+        if first_local_err is None and attr_err:
+            first_local_err = attr_err
 
     # 2. Click Command / Group `.main` entrypoint (e.g. `@click.group() def cli(): ...` -> `cli.main`).
     if len(attr_parts) == 2 and attr_parts[1] == "main" and any(c in click_cmds for c in root_names):
         return True, None, py_file
 
     # 3. Local class (or alias / direct instance of a local class) attribute/method chain.
+    def _is_property_decorated(fn_node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        for dec in fn_node.decorator_list:
+            if isinstance(dec, ast.Name) and dec.id == "property":
+                return True
+        return False
+
     def _class_defines_chain(
         cls_node: ast.ClassDef,
         rest: list[str],
         visited_cls: set[str],
-    ) -> bool:
+    ) -> tuple[bool, str | None, Path | None]:
         if not rest:
-            return True
-        direct_names: set[str] = set()
+            return True, None, py_file
+        callable_names: set[str] = set()
+        non_callable_names: set[str] = set()
+        cls_attr_vals: dict[str, list[ast.AST | None]] = {}
         nested_classes: dict[str, list[ast.ClassDef]] = {}
         cls_aliases: dict[str, list[str]] = {}
         cls_instances: dict[str, list[str]] = {}
 
-        def _scan_cls_body(body: list[ast.stmt]) -> None:
+        def _record_cls_assign(t: ast.AST, val: ast.AST | None, *, cls_top: bool) -> None:
+            if isinstance(t, ast.Name):
+                if val is not None and _is_provably_non_callable_expr(val):
+                    if cls_top:
+                        callable_names.discard(t.id)
+                        cls_attr_vals.pop(t.id, None)
+                    non_callable_names.add(t.id)
+                    return
+                if cls_top:
+                    non_callable_names.discard(t.id)
+                    cls_attr_vals[t.id] = [val]
+                else:
+                    cls_attr_vals.setdefault(t.id, []).append(val)
+                if isinstance(val, ast.Name):
+                    cls_aliases.setdefault(t.id, []).append(val.id)
+                elif isinstance(val, ast.Call) and isinstance(val.func, ast.Name):
+                    cls_instances.setdefault(t.id, []).append(val.func.id)
+                else:
+                    callable_names.add(t.id)
+            else:
+                for bn in _collect_target_names(t):
+                    if cls_top:
+                        non_callable_names.discard(bn)
+                    callable_names.add(bn)
+
+        def _scan_cls_body(body: list[ast.stmt], *, cls_top: bool) -> None:
             for s in body:
                 if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    direct_names.add(s.name)
+                    if _is_property_decorated(s):
+                        if cls_top:
+                            callable_names.discard(s.name)
+                            cls_attr_vals.pop(s.name, None)
+                        non_callable_names.add(s.name)
+                    else:
+                        if cls_top:
+                            non_callable_names.discard(s.name)
+                            cls_attr_vals.pop(s.name, None)
+                        callable_names.add(s.name)
                 elif isinstance(s, ast.ClassDef):
-                    direct_names.add(s.name)
+                    if cls_top:
+                        non_callable_names.discard(s.name)
+                        cls_attr_vals.pop(s.name, None)
+                    callable_names.add(s.name)
                     nested_classes.setdefault(s.name, []).append(s)
                 elif isinstance(s, ast.Assign):
                     for t in s.targets:
-                        direct_names.update(_collect_target_names(t))
-                        if isinstance(t, ast.Name):
-                            if isinstance(s.value, ast.Name):
-                                cls_aliases.setdefault(t.id, []).append(s.value.id)
-                            elif isinstance(s.value, ast.Call) and isinstance(s.value.func, ast.Name):
-                                cls_instances.setdefault(t.id, []).append(s.value.func.id)
+                        _record_cls_assign(t, s.value, cls_top=cls_top)
                 elif isinstance(s, ast.AnnAssign) and s.value is not None:
-                    direct_names.update(_collect_target_names(s.target))
-                    if isinstance(s.target, ast.Name):
-                        if isinstance(s.value, ast.Name):
-                            cls_aliases.setdefault(s.target.id, []).append(s.value.id)
-                        elif isinstance(s.value, ast.Call) and isinstance(s.value.func, ast.Name):
-                            cls_instances.setdefault(s.target.id, []).append(s.value.func.id)
+                    _record_cls_assign(s.target, s.value, cls_top=cls_top)
                 elif isinstance(s, ast.ImportFrom):
+                    resolved_mod = _resolve_import_from_module(s) or ""
                     for a in s.names:
-                        if a.name != "*":
-                            direct_names.add(a.asname or a.name)
+                        if a.name == "*":
+                            continue
+                        bound = a.asname or a.name
+                        is_mod = _is_known_external_module(resolved_mod, a.name)
+                        if not is_mod and harness is not None and eff_pkg_dir is not None:
+                            sub_mod = f"{resolved_mod}.{a.name}" if resolved_mod else a.name
+                            sub_file, _ = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
+                            if sub_file is not None:
+                                is_mod = True
+                        if is_mod:
+                            if cls_top:
+                                callable_names.discard(bound)
+                            non_callable_names.add(bound)
+                        else:
+                            if cls_top:
+                                non_callable_names.discard(bound)
+                            callable_names.add(bound)
                 elif isinstance(s, ast.If):
-                    _scan_cls_body(s.body)
-                    _scan_cls_body(s.orelse)
+                    _scan_cls_body(s.body, cls_top=False)
+                    _scan_cls_body(s.orelse, cls_top=False)
                 elif isinstance(s, (ast.For, ast.AsyncFor, ast.While)):
-                    _scan_cls_body(s.body)
-                    _scan_cls_body(s.orelse)
+                    _scan_cls_body(s.body, cls_top=False)
+                    _scan_cls_body(s.orelse, cls_top=False)
                 elif isinstance(s, (ast.With, ast.AsyncWith)):
-                    _scan_cls_body(s.body)
+                    _scan_cls_body(s.body, cls_top=False)
                 elif isinstance(s, ast.Try) or (try_star and isinstance(s, try_star)):
-                    _scan_cls_body(s.body)
-                    _scan_cls_body(s.orelse)
-                    _scan_cls_body(s.finalbody)
+                    _scan_cls_body(s.body, cls_top=False)
+                    _scan_cls_body(s.orelse, cls_top=False)
+                    _scan_cls_body(s.finalbody, cls_top=False)
                     for h in s.handlers:
-                        _scan_cls_body(h.body)
+                        _scan_cls_body(h.body, cls_top=False)
                 elif match_cls and isinstance(s, match_cls):
                     for c in s.cases:
-                        _scan_cls_body(c.body)
+                        _scan_cls_body(c.body, cls_top=False)
 
-        _scan_cls_body(cls_node.body)
+        _scan_cls_body(cls_node.body, cls_top=True)
         head = rest[0]
+        cls_err: str | None = None
         if len(rest) == 1:
-            if head in direct_names:
-                return True
+            if head in callable_names:
+                return True, None, py_file
+            if head in cls_attr_vals:
+                for val in cls_attr_vals[head]:
+                    ok_v, v_err, v_impl = _check_assigned_value_callable(
+                        val, f"{cls_node.name}.{head}"
+                    )
+                    if ok_v:
+                        return True, None, v_impl or py_file
+                    if cls_err is None and v_err:
+                        cls_err = v_err
+            if head in non_callable_names:
+                return (
+                    False,
+                    cls_err or f"class attribute '{cls_node.name}.{head}' is not callable in {py_file.name}",
+                    None,
+                )
         else:
             for nested in nested_classes.get(head, ()):
-                if _class_defines_chain(nested, rest[1:], set()):
-                    return True
+                ok_n, n_err, n_impl = _class_defines_chain(nested, rest[1:], set())
+                if ok_n:
+                    return True, None, n_impl or py_file
+                if cls_err is None and n_err:
+                    cls_err = n_err
             for ref in (*cls_aliases.get(head, ()), *cls_instances.get(head, ())):
                 for nested in nested_classes.get(ref, ()):
-                    if _class_defines_chain(nested, rest[1:], set()):
-                        return True
+                    ok_n, n_err, n_impl = _class_defines_chain(nested, rest[1:], set())
+                    if ok_n:
+                        return True, None, n_impl or py_file
+                    if cls_err is None and n_err:
+                        cls_err = n_err
                 for top_cls in classes.get(ref, ()):
-                    if ref not in visited_cls and _class_defines_chain(top_cls, rest[1:], visited_cls | {ref}):
-                        return True
-            if (cls_node.name, *rest) in attr_assigns:
-                return True
+                    if ref not in visited_cls:
+                        ok_n, n_err, n_impl = _class_defines_chain(
+                            top_cls, rest[1:], visited_cls | {ref}
+                        )
+                        if ok_n:
+                            return True, None, n_impl or py_file
+                        if cls_err is None and n_err:
+                            cls_err = n_err
+            if (cls_node.name, *rest) in attr_assign_values:
+                for assigned_val in attr_assign_values[(cls_node.name, *rest)]:
+                    ok_v, v_err, v_impl = _check_assigned_value_callable(
+                        assigned_val, f"{cls_node.name}.{'.'.join(rest)}"
+                    )
+                    if ok_v:
+                        return True, None, v_impl or py_file
+                    if cls_err is None and v_err:
+                        cls_err = v_err
 
         for base in cls_node.bases:
             if isinstance(base, ast.Name) and base.id not in visited_cls:
                 for base_cls in classes.get(base.id, ()):
-                    if _class_defines_chain(base_cls, rest, visited_cls | {base.id}):
-                        return True
-        return False
+                    ok_b, b_err, b_impl = _class_defines_chain(
+                        base_cls, rest, visited_cls | {base.id}
+                    )
+                    if ok_b:
+                        return True, None, b_impl or py_file
+                    if cls_err is None and b_err:
+                        cls_err = b_err
+        return False, cls_err, None
 
     candidate_class_names: set[str] = set()
     for cand in root_names:
@@ -1228,8 +1448,11 @@ def _resolve_module_attr_path(
                     candidate_class_names.add(expanded_cls)
     for cls_name in candidate_class_names:
         for cls_node in classes.get(cls_name, ()):
-            if _class_defines_chain(cls_node, attr_parts[1:], {cls_name}):
-                return True, None, py_file
+            ok_cls, cls_err, cls_impl = _class_defines_chain(cls_node, attr_parts[1:], {cls_name})
+            if ok_cls:
+                return True, None, cls_impl or py_file
+            if first_local_err is None and cls_err:
+                first_local_err = cls_err
 
     # 4. Local attribute aliases (e.g. `sub = demoapp_cli.Runner` -> `sub.run`).
     for cand in root_names:
@@ -2127,6 +2350,7 @@ def _inspect_setup_py(
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "py_modules": [],
         "has_entry_points": False,
         "console_scripts": [],
         "package_data": {},
@@ -2273,6 +2497,10 @@ def _inspect_setup_py(
             for kw in node.keywords:
                 if kw.arg == "packages":
                     _check_packages_expr(kw.value)
+                elif kw.arg == "py_modules":
+                    mods = _const_str_list(_resolve(kw.value))
+                    if mods:
+                        info["py_modules"] = list(mods)
                 elif kw.arg == "package_dir":
                     _extract_str_mapping(kw.value, info["package_dir"])
                 elif kw.arg == "entry_points":
@@ -2327,6 +2555,10 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "pkg_spec": None,
         "declares_package_dir": False,
         "package_dir": {},
+        "declares_py_modules": False,
+        "py_modules": [],
+        "hatch_packages": [],
+        "poetry_wheel_packages": [],
         "has_project_table": False,
         "scripts_dynamic": False,
         "dynamic_scripts_defined": False,
@@ -2439,6 +2671,10 @@ def _inspect_pyproject_data(
         if isinstance(setuptools_cfg, dict):
             if isinstance(setuptools_cfg.get("include-package-data"), bool):
                 info["include_package_data"] = setuptools_cfg["include-package-data"]
+            py_mods_cfg = setuptools_cfg.get("py-modules")
+            if isinstance(py_mods_cfg, list):
+                info["declares_py_modules"] = True
+                info["py_modules"] = [m for m in py_mods_cfg if isinstance(m, str)]
             pkg_dir_cfg = setuptools_cfg.get("package-dir")
             if isinstance(pkg_dir_cfg, dict):
                 info["declares_package_dir"] = True
@@ -2526,6 +2762,7 @@ def _inspect_pyproject_data(
         if isinstance(hatch_pkgs, list):
             info["declares_packages"] = True
             str_pkgs = [p for p in hatch_pkgs if isinstance(p, str)]
+            info["hatch_packages"] = str_pkgs
             hatch_pkg_dir = _hatch_packages_dir(target_pkg, str_pkgs, harness=harness)
             if hatch_pkg_dir is not None:
                 info["namespace_ok"] = True
@@ -2567,6 +2804,7 @@ def _inspect_pyproject_data(
                     and isinstance(p.get("include"), str)
                     and _poetry_entry_has_wheel_format(p, default_formats=("sdist", "wheel"))
                 ]
+                info["poetry_wheel_packages"] = pkg_entries
                 poetry_pkg_dir = _poetry_packages_dir(target_pkg, pkg_entries, harness=harness)
                 if poetry_pkg_dir is not None:
                     info["namespace_ok"] = True
@@ -2677,6 +2915,7 @@ def _empty_setup_cfg_info() -> dict[str, Any]:
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "py_modules": [],
         "has_entry_points": False,
         "console_scripts": [],
         "package_data": {},
@@ -2731,6 +2970,9 @@ def _inspect_setup_cfg(
                     continue
                 k, v = s.split("=", 1)
                 info["package_dir"][k.strip()] = v.strip()
+
+        if "py_modules" in opts:
+            info["py_modules"] = _parse_setup_cfg_list(opts["py_modules"])
 
         if "packages" in opts:
             raw_pkgs = opts["packages"].strip()
@@ -2850,6 +3092,7 @@ def _check_packaging(
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "py_modules": [],
         "has_entry_points": False,
         "console_scripts": [],
         "package_data": {},
@@ -3035,6 +3278,77 @@ def _check_packaging(
             else:
                 eff_subpkg_dirs[sub_name] = effective_module / sub_name
 
+    poetry_excluded_files: set[str] = set()
+    poetry_wheel_included_files: set[str] = set()
+    if has_pyproject and pyproj_info["backend_kind"] == "poetry":
+        poetry_excluded_files, poetry_wheel_included_files = _poetry_wheel_file_sets(
+            harness,
+            pyproj_info["poetry_exclude"],
+            pyproj_info["poetry_wheel_include"],
+        )
+
+    # Detect packaged top-level `cli_anything.py` modules that shadow the PEP 420 namespace.
+    shadowing_ns_module: str | None = None
+    if uses_setuptools:
+        if pyproj_info["declares_py_modules"]:
+            eff_py_modules = list(pyproj_info["py_modules"])
+        elif uses_setup_py and setup_info["py_modules"]:
+            eff_py_modules = list(setup_info["py_modules"])
+        elif uses_setup_cfg and setup_cfg_info["py_modules"]:
+            eff_py_modules = list(setup_cfg_info["py_modules"])
+        else:
+            eff_py_modules = []
+        if "cli_anything" in eff_py_modules:
+            root_dir_rel = _get_package_dir_rel("", eff_package_dir)
+            ns_mod_path = (
+                (harness / root_dir_rel / "cli_anything.py")
+                if root_dir_rel
+                else (harness / "cli_anything.py")
+            )
+            if ns_mod_path.is_file():
+                shadowing_ns_module = (
+                    f"{root_dir_rel}/cli_anything.py" if root_dir_rel else "cli_anything.py"
+                )
+    elif has_pyproject and pyproj_info["backend_kind"] == "poetry":
+        if "cli_anything.py" in poetry_wheel_included_files:
+            shadowing_ns_module = "cli_anything.py"
+        else:
+            for entry in pyproj_info["poetry_wheel_packages"]:
+                raw_inc = entry[0]
+                raw_from = entry[1] if len(entry) > 1 else "."
+                raw_to = entry[2] if len(entry) > 2 else ""
+                if not raw_inc or _is_absolute_pattern(raw_inc):
+                    continue
+                norm_inc = _norm_pkg_dir_value(raw_inc)
+                norm_from = _norm_pkg_dir_value(raw_from)
+                norm_to = _norm_pkg_dir_value(raw_to)
+                if norm_to == ".":
+                    norm_to = ""
+                if not norm_to and norm_inc == "cli_anything.py":
+                    cand = (
+                        (harness / norm_from / "cli_anything.py")
+                        if norm_from not in {"", "."}
+                        else (harness / "cli_anything.py")
+                    )
+                    if cand.is_file():
+                        try:
+                            rel_cand = cand.relative_to(harness).as_posix()
+                        except ValueError:
+                            rel_cand = "cli_anything.py"
+                        if not _poetry_is_excluded(rel_cand, poetry_excluded_files):
+                            shadowing_ns_module = rel_cand
+                            break
+    elif has_pyproject and pyproj_info["backend_kind"] == "hatch":
+        for raw_hp in pyproj_info["hatch_packages"]:
+            if not raw_hp or _is_absolute_pattern(raw_hp):
+                continue
+            norm_hp = _norm_pkg_dir_value(raw_hp)
+            if (norm_hp == "cli_anything.py" or norm_hp.endswith("/cli_anything.py")) and (
+                harness / norm_hp
+            ).is_file():
+                shadowing_ns_module = norm_hp
+                break
+
     # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py/setup.cfg.
     # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py or setup.cfg at all.
     if pyproj_info["namespaces_disabled"]:
@@ -3044,6 +3358,15 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 "pyproject.toml sets [tool.setuptools.packages.find] namespaces = false (overrides setup.py and breaks PEP 420 discovery)",
+            )
+        )
+    elif shadowing_ns_module:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"packaged top-level module '{shadowing_ns_module}' shadows PEP 420 namespace package 'cli_anything'",
             )
         )
     elif pyproj_info["declares_packages"]:
@@ -3208,15 +3531,6 @@ def _check_packaging(
         for name, target in declared_scripts
         if name in expected_prefixes or re.match(r"^cli-anything-[a-z0-9_-]+$", name)
     ]
-    poetry_excluded_files: set[str] = set()
-    poetry_wheel_included_files: set[str] = set()
-    if has_pyproject and pyproj_info["backend_kind"] == "poetry":
-        poetry_excluded_files, poetry_wheel_included_files = _poetry_wheel_file_sets(
-            harness,
-            pyproj_info["poetry_exclude"],
-            pyproj_info["poetry_wheel_include"],
-        )
-
     primary_cli_files: list[Path] = []
     all_resolved_cli_files: list[Path] = []
     if pyproj_info["dynamic_scripts_error"]:
