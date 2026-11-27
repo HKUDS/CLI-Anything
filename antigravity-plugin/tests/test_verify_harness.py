@@ -3302,3 +3302,102 @@ def test_list_harnesses_resolves_installed_executable_via_console_scripts_entry_
     assert found["slay-the-spire-ii"]["executable"] == "/usr/local/bin/cli-anything-sts2"
     assert found["slay-the-spire-ii"]["version"] == "1.0.0"
     assert found["legacy-no-ep"]["executable"] == "/usr/local/bin/cli-anything-legacy-no-ep"
+
+
+def test_verify_does_not_treat_remapped_app_physical_parent_as_namespace_root(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "remap_parent", "remapapp")
+    shutil.copytree(harness / "cli_anything" / "remapapp", harness / "sources" / "app")
+    # Unrelated __init__.py under `sources/` must NOT trigger a PEP 420 failure because
+    # `cli_anything` still maps to `cli_anything/`, not `sources/`.
+    (harness / "sources" / "__init__.py").write_text("# unrelated container package\n", encoding="utf-8")
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-remapapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"cli_anything.remapapp": "sources/app"},
+    package_data={"cli_anything.remapapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-remapapp=cli_anything.remapapp.remapapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    res = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res["ok"] is True, res
+
+
+def test_verify_ignores_setup_cfg_entry_points_when_setup_py_passes_nonempty_entry_points(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "ep_prec", "epprec")
+    (harness / "setup.cfg").write_text(
+        """[options.entry_points]
+console_scripts =
+    cli-anything-epprec = cli_anything.epprec.epprec_cli:main
+""",
+        encoding="utf-8",
+    )
+
+    # 1. Non-empty entry_points dict with only gui_scripts suppresses setup.cfg console_scripts -> fail.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-epprec",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.epprec": ["skills/*.md"]},
+    entry_points={"gui_scripts": ["epprec-window=cli_anything.epprec.epprec_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_gui = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_gui["ok"] is False
+    assert {c["id"]: c for c in r_gui["checks"]}["console-script"]["status"] == "fail"
+
+    # 2. Non-empty INI string without console_scripts also suppresses setup.cfg -> fail.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-epprec",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.epprec": ["skills/*.md"]},
+    entry_points="[gui_scripts]\\nepprec-window=cli_anything.epprec.epprec_cli:main\\n",
+)
+""",
+        encoding="utf-8",
+    )
+    r_ini = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_ini["ok"] is False
+    assert {c["id"]: c for c in r_ini["checks"]}["console-script"]["status"] == "fail"
+
+    # 3. Empty (falsy) entry_points={} allows setup.cfg [options.entry_points] to apply -> pass.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-epprec",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.epprec": ["skills/*.md"]},
+    entry_points={},
+)
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True

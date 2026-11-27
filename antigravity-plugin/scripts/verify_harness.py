@@ -1032,6 +1032,7 @@ def _inspect_setup_py(
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "has_entry_points": False,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -1139,6 +1140,8 @@ def _inspect_setup_py(
     def _extract_entry_points(expr: ast.AST) -> None:
         node = _resolve(expr)
         if isinstance(node, ast.Dict):
+            if node.keys:
+                info["has_entry_points"] = True
             for k, v in zip(node.keys, node.values):
                 if isinstance(k, ast.Constant) and k.value == "console_scripts":
                     vals = _const_str_list(_resolve(v))
@@ -1148,6 +1151,8 @@ def _inspect_setup_py(
                                 name, target = spec.split("=", 1)
                                 info["console_scripts"].append((name.strip(), target.strip()))
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value:
+                info["has_entry_points"] = True
             info["console_scripts"].extend(_parse_ini_console_scripts(node.value))
 
     def _extract_pkg_data_mapping(expr: ast.AST, dest: dict[str, list[str]]) -> None:
@@ -1554,6 +1559,7 @@ def _empty_setup_cfg_info() -> dict[str, Any]:
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "has_entry_points": False,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -1729,6 +1735,7 @@ def _check_packaging(
         "declares_packages": False,
         "pkg_spec": None,
         "package_dir": {},
+        "has_entry_points": False,
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
@@ -2057,11 +2064,12 @@ def _check_packaging(
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
     # Under PEP 517 / PEP 621: non-setuptools backends ignore setup.py/setup.cfg, setuptools >= 61
-    # ignores legacy entry_points whenever [project] omits "scripts" from project.dynamic, and
-    # [tool.setuptools.dynamic].entry-points supersedes legacy setup.py/setup.cfg scripts.
+    # ignores legacy entry_points whenever [project] omits "scripts" from project.dynamic,
+    # [tool.setuptools.dynamic].entry-points supersedes legacy setup.py/setup.cfg scripts, and any
+    # truthy setup.py entry_points mapping/string suppresses setup.cfg [options.entry_points].
     legacy_scripts = (
         list(setup_info["console_scripts"])
-        if (uses_setup_py and setup_info["console_scripts"])
+        if (uses_setup_py and setup_info["has_entry_points"])
         else (list(setup_cfg_info["console_scripts"]) if uses_setup_cfg else [])
     )
     if (
@@ -2146,6 +2154,11 @@ def _check_packaging(
             detail = (
                 "pyproject.toml defines [project] without scripts (and without 'scripts' in project.dynamic), "
                 "so legacy console_scripts are ignored by setuptools"
+            )
+        elif uses_setup_py and setup_info["has_entry_points"] and not setup_info["console_scripts"] and uses_setup_cfg and setup_cfg_info["console_scripts"]:
+            detail = (
+                "setup.py passes non-empty entry_points without console_scripts, "
+                "so setup.cfg [options.entry_points] is ignored by setuptools"
             )
         else:
             detail = f"{pkg_file.name} does not declare console_scripts entry point cli-anything-{software_slug}"
@@ -2642,29 +2655,19 @@ def verify_harness(
     active_module = effective_module or module
     if active_module is not None:
         # Validate PEP 420 namespace purity on the effective mapped `cli_anything` root
-        # independently of whether the application directory itself moved.
-        ns_candidates: list[Path] = []
+        # (never assuming a directly remapped app's physical parent is `cli_anything`).
         mapped_ns_dir = eff_subpkg_dirs.get("__namespace__")
         if mapped_ns_dir is not None:
-            ns_candidates.append(mapped_ns_dir)
-        if module is not None and active_module.resolve() != module.resolve():
-            ns_candidates.append(active_module.parent)
-
-        flat_ns_resolved = (harness / "cli_anything").resolve()
-        seen_ns: set[Path] = set()
-        for ns_cand in ns_candidates:
+            flat_ns_resolved = (harness / "cli_anything").resolve()
             try:
-                ns_res = ns_cand.resolve()
+                ns_res = mapped_ns_dir.resolve()
             except OSError:
-                ns_res = ns_cand
-            if ns_res == flat_ns_resolved or ns_res in seen_ns:
-                continue
-            seen_ns.add(ns_res)
-            if (ns_cand / "__init__.py").exists():
+                ns_res = mapped_ns_dir
+            if ns_res != flat_ns_resolved and (mapped_ns_dir / "__init__.py").exists():
                 try:
-                    rel_ns = str(ns_cand.relative_to(harness)).replace("\\", "/")
+                    rel_ns = str(mapped_ns_dir.relative_to(harness)).replace("\\", "/")
                 except ValueError:
-                    rel_ns = str(ns_cand)
+                    rel_ns = str(mapped_ns_dir)
                 init_hint = f"{rel_ns}/__init__.py" if rel_ns not in {"", "."} else "__init__.py"
                 checks.append(
                     CheckResult(
