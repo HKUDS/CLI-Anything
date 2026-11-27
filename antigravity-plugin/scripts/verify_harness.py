@@ -1892,6 +1892,12 @@ def _check_packaging(
             if mapped_pkg and mapped_pkg.startswith(f"{target_pkg}.") and _is_subpkg_selected(mapped_pkg):
                 _check_mapped_pkg_dir(mapped_pkg)
 
+        if _is_subpkg_selected("cli_anything"):
+            _check_mapped_pkg_dir("cli_anything")
+
+        raw_ns = _get_package_dir_rel("cli_anything", eff_package_dir)
+        eff_subpkg_dirs["__namespace__"] = (harness / raw_ns) if raw_ns else harness
+
         for sub_name in ("core", "utils", "tests", "skills"):
             sub_pkg = f"{target_pkg}.{sub_name}"
             if sub_name in ("core", "utils") or _is_subpkg_selected(sub_pkg):
@@ -2635,18 +2641,43 @@ def verify_harness(
     checks.extend(pkg_checks)
     active_module = effective_module or module
     if active_module is not None:
+        # Validate PEP 420 namespace purity on the effective mapped `cli_anything` root
+        # independently of whether the application directory itself moved.
+        ns_candidates: list[Path] = []
+        mapped_ns_dir = eff_subpkg_dirs.get("__namespace__")
+        if mapped_ns_dir is not None:
+            ns_candidates.append(mapped_ns_dir)
         if module is not None and active_module.resolve() != module.resolve():
-            # Verify layout invariants on the effective packaged source directory when it differs
-            # from the flat cli_anything/ tree (e.g., where = ["src"] or package_dir = {"": "src"}).
-            if (active_module.parent / "__init__.py").exists():
+            ns_candidates.append(active_module.parent)
+
+        flat_ns_resolved = (harness / "cli_anything").resolve()
+        seen_ns: set[Path] = set()
+        for ns_cand in ns_candidates:
+            try:
+                ns_res = ns_cand.resolve()
+            except OSError:
+                ns_res = ns_cand
+            if ns_res == flat_ns_resolved or ns_res in seen_ns:
+                continue
+            seen_ns.add(ns_res)
+            if (ns_cand / "__init__.py").exists():
+                try:
+                    rel_ns = str(ns_cand.relative_to(harness)).replace("\\", "/")
+                except ValueError:
+                    rel_ns = str(ns_cand)
+                init_hint = f"{rel_ns}/__init__.py" if rel_ns not in {"", "."} else "__init__.py"
                 checks.append(
                     CheckResult(
                         "effective-namespace-package",
                         "layout",
                         FAIL,
-                        f"PEP 420 violation in effective source root: {active_module.parent.relative_to(harness)}/__init__.py must NOT exist",
+                        f"PEP 420 violation in effective namespace root: {init_hint} must NOT exist",
                     )
                 )
+
+        if module is not None and active_module.resolve() != module.resolve():
+            # Verify layout invariants on the effective packaged source directory when it differs
+            # from the flat cli_anything/ tree (e.g., where = ["src"] or package_dir = {"": "src"}).
             eff_missing_subdirs = [
                 sub
                 for sub in ("core", "utils", "tests")

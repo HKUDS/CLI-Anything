@@ -3180,3 +3180,125 @@ include = ["cli_anything.*"]
         )
         assert r_toml_310["ok"] is False
         assert {c["id"]: c for c in r_toml_310["checks"]}["package-data-skills"]["status"] == "warn"
+
+
+def test_verify_validates_mapped_namespace_root_even_when_app_dir_is_unchanged(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "ns_root_map", "nsmap")
+    ns_root = harness / "namespace-root"
+    ns_root.mkdir()
+    (ns_root / "__init__.py").write_text("# breaks PEP 420\n", encoding="utf-8")
+
+    # 1. setup.py maps cli_anything -> namespace-root while keeping cli_anything.nsmap in place.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-nsmap",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything", "cli_anything.*"]),
+    package_dir={"cli_anything": "namespace-root", "cli_anything.nsmap": "cli_anything/nsmap"},
+    package_data={"cli_anything.nsmap": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-nsmap=cli_anything.nsmap.nsmap_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_setup = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_setup["ok"] is False
+    eff_ns = {c["id"]: c for c in r_setup["checks"]}["effective-namespace-package"]
+    assert eff_ns["status"] == "fail"
+    assert "namespace-root/__init__.py" in eff_ns["detail"]
+
+    # 2. Same setup in pyproject.toml (both tomllib and Py3.10 fallback).
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-nsmap"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-nsmap = "cli_anything.nsmap.nsmap_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything", "cli_anything.*"]
+
+[tool.setuptools.package-dir]
+"cli_anything" = "namespace-root"
+"cli_anything.nsmap" = "cli_anything/nsmap"
+
+[tool.setuptools.package-data]
+"cli_anything.nsmap" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_toml = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_toml["ok"] is False
+    assert {c["id"]: c for c in r_toml["checks"]}["effective-namespace-package"]["status"] == "fail"
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_toml_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_toml_310["ok"] is False
+        assert {c["id"]: c for c in r_toml_310["checks"]}["effective-namespace-package"]["status"] == "fail"
+
+    # 3. Removing namespace-root/__init__.py makes the mapped PEP 420 layout valid.
+    (ns_root / "__init__.py").unlink()
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 4. Removing namespace-root altogether fails namespace-packages when cli_anything is selected.
+    ns_root.rmdir()
+    r_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing["ok"] is False
+    assert {c["id"]: c for c in r_missing["checks"]}["namespace-packages"]["status"] == "fail"
+
+
+def test_list_harnesses_resolves_installed_executable_via_console_scripts_entry_points(
+    monkeypatch,
+) -> None:
+    from importlib.metadata import EntryPoint
+    from types import SimpleNamespace
+
+    fake_dists = [
+        SimpleNamespace(
+            metadata={"Name": "cli-anything-slay-the-spire-ii"},
+            version="1.0.0",
+            entry_points=[
+                EntryPoint(name="helper-tool", value="cli_anything.slay_the_spire_ii.helper:main", group="console_scripts"),
+                EntryPoint(name="cli-anything-sts2", value="cli_anything.slay_the_spire_ii.slay_the_spire_ii_cli:main", group="console_scripts"),
+                EntryPoint(name="other-plugin", value="foo:bar", group="other_group"),
+            ],
+        ),
+        SimpleNamespace(
+            metadata={"Name": "cli-anything-legacy-no-ep"},
+            version="0.2.0",
+            entry_points=[],
+        ),
+    ]
+    fake_bins = {
+        "helper-tool": "/usr/local/bin/helper-tool",
+        "cli-anything-sts2": "/usr/local/bin/cli-anything-sts2",
+        "cli-anything-legacy-no-ep": "/usr/local/bin/cli-anything-legacy-no-ep",
+    }
+    monkeypatch.setattr(list_harnesses, "distributions", lambda: fake_dists)
+    monkeypatch.setattr(list_harnesses.shutil, "which", lambda cmd: fake_bins.get(cmd))
+
+    found = list_harnesses.scan_installed()
+    assert found["slay-the-spire-ii"]["executable"] == "/usr/local/bin/cli-anything-sts2"
+    assert found["slay-the-spire-ii"]["version"] == "1.0.0"
+    assert found["legacy-no-ep"]["executable"] == "/usr/local/bin/cli-anything-legacy-no-ep"

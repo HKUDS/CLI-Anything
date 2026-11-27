@@ -238,6 +238,42 @@ def _extract_version(harness_dir: Path) -> str | None:
     return _extract_packaging_metadata(harness_dir)[1]
 
 
+def _resolve_installed_executable(dist: Any, norm_name: str) -> str | None:
+    """Resolve an installed harness executable from its console_scripts entry points."""
+    exact_eps: list[str] = []
+    cli_anything_eps: list[str] = []
+    other_eps: list[str] = []
+    try:
+        entry_points = getattr(dist, "entry_points", ()) or ()
+        for ep in entry_points:
+            if getattr(ep, "group", None) != "console_scripts":
+                continue
+            ep_name = (getattr(ep, "name", None) or "").strip()
+            if not ep_name:
+                continue
+            if ep_name == norm_name:
+                if ep_name not in exact_eps:
+                    exact_eps.append(ep_name)
+            elif ep_name.startswith("cli-anything-"):
+                if ep_name not in cli_anything_eps:
+                    cli_anything_eps.append(ep_name)
+            else:
+                if ep_name not in other_eps:
+                    other_eps.append(ep_name)
+    except Exception:
+        pass
+
+    candidates = [*exact_eps, *cli_anything_eps, *other_eps]
+    if not candidates:
+        candidates = [norm_name]
+
+    for cmd in candidates:
+        exe = shutil.which(cmd)
+        if exe:
+            return exe
+    return None
+
+
 def scan_installed(*, include_hub: bool = False) -> dict[str, dict[str, object]]:
     installed: dict[str, dict[str, object]] = {}
     for dist in distributions():
@@ -248,7 +284,7 @@ def scan_installed(*, include_hub: bool = False) -> dict[str, dict[str, object]]
         if not include_hub and norm_name == "cli-anything-hub":
             continue
         software = norm_name[len("cli-anything-"):]
-        exe = shutil.which(norm_name)
+        exe = _resolve_installed_executable(dist, norm_name)
         installed[software] = {
             "name": software,
             "status": "installed",
