@@ -18,6 +18,13 @@ A 3MF file is a ZIP archive containing:
 - `3D/3dmodel.model` — XML mesh data (core spec namespace: `http://schemas.microsoft.com/3dmanufacturing/core/2015/02`)
 - `Metadata/` — slicer settings, thumbnails, plate configurations (BambuStudio, PrusaSlicer)
 
+The `<model unit="...">` attribute declares the unit of the mesh coordinates
+(`micron`, `millimeter`, `centimeter`, `inch`, `foot` or `meter`; missing means
+`millimeter`). The parser normalises every mesh to millimetres for analysis and
+editing, and the writer converts them back to the model's declared unit, so
+`info`, `inspect`, `repair` and `resize --diameter` always work in mm while a
+round-tripped file keeps its original unit and coordinates.
+
 ## Architecture
 
 ```
