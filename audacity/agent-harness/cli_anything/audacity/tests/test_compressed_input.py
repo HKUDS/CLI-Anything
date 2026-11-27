@@ -137,6 +137,35 @@ class CompressedInputTests(unittest.TestCase):
         result = render_mix(project, output, preset="wav")
         self.assertGreater(result["peak_level"], 0.1)
 
+    def test_stereo_to_mono_resampling_keeps_full_duration(self):
+        """A converted clip must not be truncated by the resampler."""
+        wav_path = os.path.join(self.root, "stereo-8k.wav")
+        frames = int(8000 * 0.5)
+        payload = b"".join(struct.pack("<hh", 12000, 12000) for _ in range(frames))
+        with wave.open(wav_path, "w") as handle:
+            handle.setnchannels(2)
+            handle.setsampwidth(2)
+            handle.setframerate(8000)
+            handle.writeframes(payload)
+
+        project = create_project(sample_rate=16000, channels=1)
+        add_track(project, name="Track 1")
+        clip = add_clip(project, 0, wav_path)
+        self.assertAlmostEqual(clip["end_time"], 0.5, places=2)
+
+        output = os.path.join(self.root, "resampled.wav")
+        result = render_mix(project, output, preset="wav")
+        self.assertAlmostEqual(result["duration"], 0.5, places=2)
+        with wave.open(output, "r") as handle:
+            self.assertEqual(handle.getnframes(), 8000)
+            raw = handle.readframes(handle.getnframes())
+        tail = struct.unpack("<1000h", raw[-2000:])
+        self.assertGreater(
+            max(abs(sample) for sample in tail),
+            3000,
+            "the second half of the clip was left silent",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

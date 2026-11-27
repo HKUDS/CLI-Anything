@@ -331,12 +331,14 @@ def _render_clip(
                 stereo.append(s)
                 stereo.append(s)
             samples = stereo
+            src_channels = 2
         elif src_channels == 2 and channels == 1:
             # Stereo to mono
             mono = []
             for i in range(0, len(samples) - 1, 2):
                 mono.append((samples[i] + samples[i + 1]) / 2.0)
             samples = mono
+            src_channels = 1
 
         # Resample if needed (simple linear interpolation)
         if src_rate != sample_rate:
