@@ -3702,58 +3702,57 @@ def _inspect_setup_cfg(
                     info["package_dir"][k.strip()] = v.strip()
 
             if "py_modules" in opts:
-                raw_pm = opts["py_modules"]
-                if raw_pm.strip():
-                    info["declares_py_modules"] = True
-                info["py_modules"] = _parse_setup_cfg_list(raw_pm)
+                info["declares_py_modules"] = True
+                info["py_modules"] = _parse_setup_cfg_list(opts["py_modules"])
 
             if "packages" in opts:
+                info["declares_packages"] = True
                 raw_pkgs = opts["packages"].strip()
-                if raw_pkgs:
-                    info["declares_packages"] = True
-                    if raw_pkgs == "find_namespace:":
-                        find_sec = cp["options.packages.find"] if cp.has_section("options.packages.find") else {}
-                        # Mirror setuptools setupcfg.parse_section_packages__find(): empty options are dropped
-                        # and revert to their discovery defaults (unlike TOML where `include = []` is empty).
-                        raw_wheres = _parse_setup_cfg_list(find_sec["where"]) if "where" in find_sec else []
-                        wheres: list[str] | None = [raw_wheres[0]] if raw_wheres else None
-                        raw_includes = _parse_setup_cfg_list(find_sec["include"]) if "include" in find_sec else []
-                        includes: list[str] | None = raw_includes or None
-                        raw_excludes = _parse_setup_cfg_list(find_sec["exclude"]) if "exclude" in find_sec else []
-                        excludes: list[str] | None = raw_excludes or None
-                        info["pkg_spec"] = {
-                            "kind": "find",
-                            "includes": includes,
-                            "excludes": excludes,
-                            "wheres": wheres,
-                            "fills_package_dir": True,
-                        }
-                        if _find_selects_package(
-                            target_pkg,
-                            includes,
-                            excludes,
-                            harness=harness,
-                            wheres=wheres,
-                        ):
-                            info["namespace_ok"] = True
-                        if target_pkg and _find_selects_package(
-                            f"{target_pkg}.skills",
-                            includes,
-                            excludes,
-                            harness=harness,
-                            wheres=wheres,
-                            require_init=False,
-                        ):
-                            info["skills_subpkg_ok"] = True
-                    elif raw_pkgs == "find:":
-                        info["uses_regular_find_packages"] = True
-                    else:
-                        explicit = _parse_setup_cfg_list(raw_pkgs)
-                        info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
-                        if explicit and _explicit_packages_cover(target_pkg, explicit):
-                            info["namespace_ok"] = True
-                        if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
-                            info["skills_subpkg_ok"] = True
+                if not raw_pkgs:
+                    info["pkg_spec"] = {"kind": "explicit", "packages": []}
+                elif raw_pkgs == "find_namespace:":
+                    find_sec = cp["options.packages.find"] if cp.has_section("options.packages.find") else {}
+                    # Mirror setuptools setupcfg.parse_section_packages__find(): empty options are dropped
+                    # and revert to their discovery defaults (unlike TOML where `include = []` is empty).
+                    raw_wheres = _parse_setup_cfg_list(find_sec["where"]) if "where" in find_sec else []
+                    wheres: list[str] | None = [raw_wheres[0]] if raw_wheres else None
+                    raw_includes = _parse_setup_cfg_list(find_sec["include"]) if "include" in find_sec else []
+                    includes: list[str] | None = raw_includes or None
+                    raw_excludes = _parse_setup_cfg_list(find_sec["exclude"]) if "exclude" in find_sec else []
+                    excludes: list[str] | None = raw_excludes or None
+                    info["pkg_spec"] = {
+                        "kind": "find",
+                        "includes": includes,
+                        "excludes": excludes,
+                        "wheres": wheres,
+                        "fills_package_dir": True,
+                    }
+                    if _find_selects_package(
+                        target_pkg,
+                        includes,
+                        excludes,
+                        harness=harness,
+                        wheres=wheres,
+                    ):
+                        info["namespace_ok"] = True
+                    if target_pkg and _find_selects_package(
+                        f"{target_pkg}.skills",
+                        includes,
+                        excludes,
+                        harness=harness,
+                        wheres=wheres,
+                        require_init=False,
+                    ):
+                        info["skills_subpkg_ok"] = True
+                elif raw_pkgs == "find:":
+                    info["uses_regular_find_packages"] = True
+                else:
+                    explicit = _parse_setup_cfg_list(raw_pkgs)
+                    info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
+                    if explicit and _explicit_packages_cover(target_pkg, explicit):
+                        info["namespace_ok"] = True
+                    if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
+                        info["skills_subpkg_ok"] = True
 
         if cp.has_section("options.package_data"):
             for k, v in cp.items("options.package_data"):
@@ -4999,6 +4998,69 @@ def _file_has_invoke_without_command(py_file: Path, text: str) -> bool:
     return False
 
 
+def _decl_matches_cli_flag(decl: str, flag: str) -> bool:
+    """Match an option declaration string against `flag`, including Click's paired boolean syntax."""
+    if decl == flag:
+        return True
+    split_char = ";" if decl[:1] == "/" else "/"
+    if split_char not in decl:
+        return False
+    first, second = decl.split(split_char, 1)
+    first = first.rstrip()
+    second = second.lstrip()
+    if not first and not second:
+        return False
+    if first == second:
+        return False
+    opt_re = re.compile(r"^[-/+][^\s]+$")
+    if first and not opt_re.fullmatch(first):
+        return False
+    if second and not opt_re.fullmatch(second):
+        return False
+    return first == flag or second == flag
+
+
+def _file_declares_cli_flag(py_file: Path, text: str, flag: str) -> bool:
+    """Return True if py_file declares CLI option `flag` (single or Click paired boolean spelling)."""
+    try:
+        tree = ast.parse(text, filename=str(py_file))
+    except SyntaxError:
+        return f'"{flag}"' in text or f"'{flag}'" in text
+
+    str_bindings: dict[str, list[str]] = {}
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+            if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+                str_bindings[stmt.targets[0].id] = [stmt.value.value]
+            elif isinstance(stmt.value, (ast.List, ast.Tuple)):
+                strs = [e.value for e in stmt.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+                if strs:
+                    str_bindings[stmt.targets[0].id] = strs
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
+            if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+                str_bindings[stmt.target.id] = [stmt.value.value]
+
+    def _expr_matches(expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return _decl_matches_cli_flag(expr.value, flag)
+        if isinstance(expr, ast.Name) and expr.id in str_bindings:
+            return any(_decl_matches_cli_flag(s, flag) for s in str_bindings[expr.id])
+        if isinstance(expr, (ast.List, ast.Tuple)):
+            return any(_expr_matches(e) for e in expr.elts)
+        return False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if any(_expr_matches(a) for a in node.args):
+                return True
+            if any(kw.arg == "param_decls" and _expr_matches(kw.value) for kw in node.keywords):
+                return True
+        elif isinstance(node, ast.Compare):
+            if _expr_matches(node.left) or any(_expr_matches(c) for c in node.comparators):
+                return True
+    return False
+
+
 def _check_cli_surface(
     module: Path,
     canonical_repl_skin: Path | None,
@@ -5018,7 +5080,7 @@ def _check_cli_surface(
         else:
             checks.append(CheckResult("click-groups", "cli", FAIL, "CLI does not declare a Click command group"))
 
-        if all('"--json"' in t or "'--json'" in t for t in cli_texts):
+        if all(_file_declares_cli_flag(p, t, "--json") for p, t in zip(cli_files, cli_texts)):
             checks.append(CheckResult("json-flag", "cli", PASS, "--json output flag declared"))
         else:
             checks.append(CheckResult("json-flag", "cli", FAIL, "missing --json flag in CLI entry point"))
@@ -5037,11 +5099,13 @@ def _check_cli_surface(
             )
 
         has_session = (core_dir / "session.py").is_file()
-        session_clis = [t for t in cli_texts if '"--project"' in t or "'--project'" in t]
+        session_clis = [
+            (p, t) for p, t in zip(cli_files, cli_texts) if _file_declares_cli_flag(p, t, "--project")
+        ]
         if has_session and session_clis:
             if all(
-                ('"--dry-run"' in t or "'--dry-run'" in t) and ("result_callback" in t or "call_on_close" in t)
-                for t in session_clis
+                _file_declares_cli_flag(p, t, "--dry-run") and ("result_callback" in t or "call_on_close" in t)
+                for p, t in session_clis
             ):
                 checks.append(CheckResult("auto-save-dry-run", "cli", PASS, "auto-save and --dry-run implemented"))
             else:

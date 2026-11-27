@@ -6210,6 +6210,194 @@ inst_var = lambda: cli()
         assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "fail", bad_spec
 
 
+def test_verify_preserves_explicit_empty_setup_cfg_package_selections(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cfg_empty_pkg", "cfgemp")
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    cfg_py = harness / "setup.cfg"
+
+    # 1. Explicit empty `packages =` in setup.cfg suppresses auto-discovery -> FAIL.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfgemp
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages =
+
+[options.package_data]
+cli_anything.cfgemp = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgemp = cli_anything.cfgemp.cfgemp_cli:main
+""",
+        encoding="utf-8",
+    )
+    r_empty_pkgs = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_empty_pkgs["ok"] is False
+    assert {c["id"]: c for c in r_empty_pkgs["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 2. Explicit empty `py_modules =` in setup.cfg also suppresses auto-discovery -> FAIL.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfgemp
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+py_modules =
+
+[options.package_data]
+cli_anything.cfgemp = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgemp = cli_anything.cfgemp.cfgemp_cli:main
+""",
+        encoding="utf-8",
+    )
+    r_empty_mods = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_empty_mods["ok"] is False
+    assert {c["id"]: c for c in r_empty_mods["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 3. Omitting both `packages` and `py_modules` in setup.cfg allows setuptools auto-discovery -> PASS.
+    cfg_py.write_text(
+        """[metadata]
+name = cli-anything-cfgemp
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+
+[options.package_data]
+cli_anything.cfgemp = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgemp = cli_anything.cfgemp.cfgemp_cli:main
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_accepts_click_paired_boolean_json_and_dry_run_flags(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "paired_flags", "pairapp")
+    cli_py = harness / "cli_anything" / "pairapp" / "pairapp_cli.py"
+
+    valid_variants = [
+        # 1. Paired --json/--no-json and --dry-run/--no-dry-run
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json/--no-json", "use_json", default=False)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run/--no-dry-run", default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+        # 2. Spaced paired spelling `--json / --no-json`
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json / --no-json", "use_json", default=False)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run / --no-dry-run", default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+        # 3. Secondary position `--no-json/--json` and module constant
+        """import click
+
+JSON_FLAG = "--no-json/--json"
+
+@click.group(invoke_without_command=True)
+@click.option(JSON_FLAG, "use_json", default=False)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+    ]
+    for idx, src in enumerate(valid_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (idx, res["checks"])
+        by_id = {c["id"]: c for c in res["checks"]}
+        assert by_id["json-flag"]["status"] == "pass", idx
+        assert by_id["auto-save-dry-run"]["status"] == "pass", idx
+
+    # Invalid / non-option mentions must NOT pass json-flag.
+    invalid_variants = [
+        # Duplicate identical boolean flag (rejected by Click)
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json/--json", "use_json", default=False)
+def cli(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        # URL / docstring mention without an actual option declaration
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    \"\"\"See https://example.com/--json and pass --json.\"\"\"
+    click.echo("https://example.com/--json")
+
+def main():
+    cli()
+""",
+    ]
+    for idx, bad_src in enumerate(invalid_variants):
+        cli_py.write_text(bad_src, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, idx
+        assert {c["id"]: c for c in res_bad["checks"]}["json-flag"]["status"] == "fail", idx
+
+
+
 
 
 
