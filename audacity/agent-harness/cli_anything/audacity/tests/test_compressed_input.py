@@ -26,6 +26,7 @@ from cli_anything.audacity.utils.audio_utils import generate_sine_wave, write_wa
 
 FAKE_DURATION = 0.5
 RECORDED_RUNS = []
+RECORDED_KWARGS = []
 
 
 class FakeResult:
@@ -38,6 +39,7 @@ class FakeResult:
 def fake_run(cmd, **kwargs):
     """Stand-in for subprocess.run inside sox_backend."""
     RECORDED_RUNS.append(list(cmd))
+    RECORDED_KWARGS.append(dict(kwargs))
     executable = os.path.basename(str(cmd[0]))
     if executable == "soxi" and list(cmd[1:2]) == ["-D"]:
         return FakeResult(stdout=f"{FAKE_DURATION}\n")
@@ -71,6 +73,7 @@ class CompressedInputTests(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory(prefix="audacity-746-")
         self.root = self.tmp_dir.name
         RECORDED_RUNS.clear()
+        RECORDED_KWARGS.clear()
         self.mp3 = os.path.join(self.root, "voice.mp3")
         with open(self.mp3, "wb") as handle:
             handle.write(b"ID3\x04\x00\x00\x00\x00\x00\x00not-a-wav")
@@ -217,6 +220,16 @@ class CompressedInputTests(unittest.TestCase):
             3000,
             "the second half of the clip was left silent",
         )
+
+    def test_convert_format_keeps_fifth_positional_timeout(self):
+        """The new ``bits`` argument must not displace positional ``timeout``."""
+        output = os.path.join(self.root, "converted.wav")
+        sox_backend.convert_format(self.mp3, output, None, None, 5)
+        cmd = RECORDED_RUNS[-1]
+        self.assertNotIn(
+            "-b", cmd, "a positional timeout was read as a sample width"
+        )
+        self.assertEqual(RECORDED_KWARGS[-1].get("timeout"), 5)
 
     def test_probe_fallback_asks_sox_for_plain_mono_pcm(self):
         """The soxi fallback must produce a WAV every Python can read."""

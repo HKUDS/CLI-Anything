@@ -121,10 +121,14 @@ def convert_format(
     output_path: str,
     sample_rate: Optional[int] = None,
     channels: Optional[int] = None,
-    bits: Optional[int] = None,
     timeout: int = 30,
+    bits: Optional[int] = None,
 ) -> dict:
-    """Convert audio format using SoX."""
+    """Convert audio format using SoX.
+
+    ``timeout`` keeps the fifth positional slot it had before ``bits``
+    existed; pass ``bits`` by keyword.
+    """
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
