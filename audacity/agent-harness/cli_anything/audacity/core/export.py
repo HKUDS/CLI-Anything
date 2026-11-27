@@ -11,6 +11,7 @@ import os
 import wave
 import math
 import struct
+import tempfile
 from typing import Dict, Any, Optional, List, Tuple
 
 from cli_anything.audacity.core.effects import EFFECT_REGISTRY
@@ -269,6 +270,38 @@ def _render_track(
     return track_audio
 
 
+def _decode_compressed_source(source: str, read_error: Exception, channels: int):
+    """Decode a non-WAV source through SoX, failing loudly when unavailable.
+
+    The clip renderer only understands mono and stereo buffers, so SoX is
+    asked to remix the decoded source to the project's channel count instead
+    of returning the source's native layout (a 5.1 source would otherwise be
+    inserted frame-by-frame as if it were mono/stereo). The decoded file is
+    also pinned to 16-bit PCM: SoX writes WAVE_FORMAT_EXTENSIBLE for some
+    high-bit-depth sources, which the stdlib wave reader rejects before
+    Python 3.12 (this package still supports 3.10 and 3.11).
+    """
+    try:
+        from cli_anything.audacity.utils.sox_backend import decode_to_wav, find_sox
+        find_sox()
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"Cannot read audio source '{source}' ({read_error}). Only WAV is "
+            "supported without SoX; install SoX (apt install sox) or convert "
+            "the source to WAV."
+        ) from exc
+
+    with tempfile.TemporaryDirectory(prefix="cli-anything-source-") as tmp_dir:
+        wav_path = os.path.join(tmp_dir, "source.wav")
+        try:
+            decode_to_wav(source, wav_path, channels=channels, bits=16)
+        except (RuntimeError, OSError) as exc:
+            raise RuntimeError(
+                f"Could not decode audio source '{source}' with SoX: {exc}"
+            ) from exc
+        return read_wav(wav_path)
+
+
 def _render_clip(
     clip: Dict[str, Any],
     sample_rate: int,
@@ -280,8 +313,10 @@ def _render_clip(
     if source and os.path.exists(source):
         try:
             samples, src_rate, src_channels, src_bits = read_wav(source)
-        except (wave.Error, EOFError, struct.error, ValueError):
-            return None
+        except (wave.Error, EOFError, struct.error, ValueError) as exc:
+            samples, src_rate, src_channels, src_bits = _decode_compressed_source(
+                source, exc, channels
+            )
 
         # Handle trim
         trim_start = clip.get("trim_start", 0.0)
@@ -305,12 +340,14 @@ def _render_clip(
                 stereo.append(s)
                 stereo.append(s)
             samples = stereo
+            src_channels = 2
         elif src_channels == 2 and channels == 1:
             # Stereo to mono
             mono = []
             for i in range(0, len(samples) - 1, 2):
                 mono.append((samples[i] + samples[i + 1]) / 2.0)
             samples = mono
+            src_channels = 1
 
         # Resample if needed (simple linear interpolation)
         if src_rate != sample_rate:
