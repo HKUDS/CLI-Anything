@@ -8250,6 +8250,192 @@ namespaces = true
     assert res_ok["ok"] is True, res_ok["checks"]
 
 
+def test_verify_preserves_computed_and_unresolved_finder_roots_and_package_dir(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "comp_root", "crtapp")
+    (harness / "empty").mkdir()
+    setup_py = harness / "setup.py"
+
+    # 1. Computed finder where= pointing to an empty directory must FAIL (exact repro from 6086055153).
+    invalid_where_variants = [
+        """import os
+from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(where=os.path.join("empty", "."), include=["cli_anything.*"]),
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from pathlib import Path
+from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(where=str(Path("empty")), include=["cli_anything.*"]),
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from setuptools import find_namespace_packages, setup
+
+def get_where():
+    return "empty"
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(where=get_where(), include=["cli_anything.*"]),
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+    ]
+    for idx, src in enumerate(invalid_where_variants):
+        setup_py.write_text(src, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        assert {c["id"]: c for c in res_bad["checks"]}["namespace-packages"]["status"] == "fail", idx
+
+    # 2. Computed or unverifiable package_dir= pointing away from flat sources must FAIL (exact repro from 6086055153).
+    invalid_pkg_dir_variants = [
+        """from pathlib import Path
+from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"": str(Path("empty"))},
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from setuptools import find_namespace_packages, setup
+
+def get_root():
+    return "empty"
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"": get_root()},
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from setuptools import find_namespace_packages, setup
+
+def build_pkg_dir():
+    return {"": "empty"}
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir=build_pkg_dir(),
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+    ]
+    for idx, src in enumerate(invalid_pkg_dir_variants):
+        setup_py.write_text(src, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        assert {c["id"]: c for c in res_bad["checks"]}["namespace-packages"]["status"] == "fail", idx
+
+    # 3. Valid computed roots referring to the harness root (`os.path.dirname(__file__)`, `Path(__file__).parent`) must PASS strictly.
+    valid_where_variants = [
+        """import os
+from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(where=os.path.dirname(__file__), include=["cli_anything.*"]),
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from pathlib import Path
+from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-crtapp",
+    version="1.0.0",
+    packages=find_namespace_packages(where=str(Path(__file__).resolve().parent), include=["cli_anything.*"]),
+    package_dir={"": str(Path("."))},
+    package_data={"cli_anything.crtapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-crtapp=cli_anything.crtapp.crtapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+    ]
+    for idx, src in enumerate(valid_where_variants):
+        setup_py.write_text(src, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+
+
+def test_verify_does_not_import_external_parents_during_static_validation(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "no_sidefx", "nsfxapp")
+    cli_py = harness / "cli_anything" / "nsfxapp" / "nsfxapp_cli.py"
+    cli_py.write_text(
+        cli_py.read_text(encoding="utf-8") + "\nfrom this import s as main\n",
+        encoding="utf-8",
+    )
+
+    # Fresh subprocess invocation with --json must NOT import `this` (no Zen of Python in stdout).
+    script_path = Path(verify_harness.__file__).resolve()
+    proc = subprocess.run(
+        [sys.executable, str(script_path), str(harness), "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert "Zen of Python" not in proc.stdout, proc.stdout
+    payload = json.loads(proc.stdout)
+    assert payload["harnesses"][0]["software"] == "nsfxapp"
+
+    # Also verify real stdlib submodules (e.g. `from urllib import parse as main`) are still rejected
+    # as non-callable modules without importing their parent package.
+    cli_py.write_text(
+        """import click
+from urllib import parse as main
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+""",
+        encoding="utf-8",
+    )
+    res_mod = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_mod["ok"] is False
+    assert {c["id"]: c for c in res_mod["checks"]}["console-script"]["status"] == "fail"
+
+
+
 
 
 

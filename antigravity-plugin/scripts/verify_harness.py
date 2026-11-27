@@ -15,6 +15,7 @@ import argparse
 import ast
 import configparser
 import fnmatch
+import importlib.machinery
 import importlib.util
 import json
 import keyword
@@ -727,6 +728,40 @@ def _is_provably_non_callable_expr(node: ast.AST) -> bool:
     return False
 
 
+def _find_spec_no_import(dotted_name: str) -> importlib.machinery.ModuleSpec | None:
+    """Locate a ModuleSpec for `dotted_name` without importing unimported parent modules."""
+    parts = dotted_name.split(".")
+    if not parts or not all(parts):
+        return None
+    if dotted_name in sys.modules:
+        return getattr(sys.modules[dotted_name], "__spec__", None)
+    try:
+        spec = importlib.util.find_spec(parts[0])
+    except (ImportError, ModuleNotFoundError, ValueError, AttributeError):
+        return None
+    if spec is None or len(parts) == 1:
+        return spec
+    search_locs = spec.submodule_search_locations
+    cur_name = parts[0]
+    for seg in parts[1:]:
+        if search_locs is None:
+            return None
+        cur_name = f"{cur_name}.{seg}"
+        if cur_name in sys.modules:
+            spec = getattr(sys.modules[cur_name], "__spec__", None)
+            if spec is None:
+                return None
+            search_locs = spec.submodule_search_locations
+            continue
+        spec = importlib.machinery.PathFinder.find_spec(cur_name, list(search_locs))
+        if spec is None:
+            spec = importlib.machinery.FrozenImporter.find_spec(cur_name)
+        if spec is None:
+            return None
+        search_locs = spec.submodule_search_locations
+    return spec
+
+
 def _is_known_external_module(base_mod: str, orig_name: str) -> bool:
     """Return True if `from base_mod import orig_name` provably binds a module without executing user code."""
     if not base_mod:
@@ -743,7 +778,7 @@ def _is_known_external_module(base_mod: str, orig_name: str) -> bool:
     stdlib_names = getattr(sys, "stdlib_module_names", frozenset())
     if top_pkg in stdlib_names:
         try:
-            if importlib.util.find_spec(full_name) is not None:
+            if _find_spec_no_import(full_name) is not None:
                 return True
         except (ImportError, ValueError, AttributeError):
             pass
@@ -3524,6 +3559,8 @@ def _inspect_setup_py(
         "declares_packages": False,
         "packages_nonempty": False,
         "pkg_spec": None,
+        "declares_package_dir": False,
+        "unverifiable_package_dir": False,
         "package_dir": {},
         "declares_py_modules": False,
         "py_modules": [],
@@ -3547,11 +3584,28 @@ def _inspect_setup_py(
     bindings: dict[str, ast.AST] = {}
     setuptools_modules: set[str] = {"setuptools"}
     callable_aliases: dict[str, str] = {}
+    os_modules: set[str] = set()
+    os_path_modules: set[str] = set()
+    os_path_funcs: dict[str, str] = {}
+    pathlib_modules: set[str] = set()
+    path_classes: set[str] = set()
     for stmt in tree.body:
         if isinstance(stmt, ast.Import):
             for alias in stmt.names:
+                bound = alias.asname or alias.name.split(".", 1)[0]
                 if alias.name == "setuptools":
                     setuptools_modules.add(alias.asname or "setuptools")
+                elif alias.name == "os":
+                    os_modules.add(bound)
+                elif alias.name in {"os.path", "posixpath", "ntpath"}:
+                    if alias.asname:
+                        os_path_modules.add(alias.asname)
+                    elif alias.name == "os.path":
+                        os_modules.add("os")
+                    else:
+                        os_path_modules.add(alias.name)
+                elif alias.name == "pathlib":
+                    pathlib_modules.add(bound)
         elif isinstance(stmt, ast.ImportFrom):
             if stmt.level == 0 and stmt.module == "setuptools":
                 for alias in stmt.names:
@@ -3561,6 +3615,18 @@ def _inspect_setup_py(
                 for alias in stmt.names:
                     if alias.name in {"PEP420PackageFinder", "PackageFinder"}:
                         callable_aliases[alias.asname or alias.name] = alias.name
+            elif stmt.level == 0 and stmt.module == "os":
+                for alias in stmt.names:
+                    if alias.name == "path":
+                        os_path_modules.add(alias.asname or "path")
+            elif stmt.level == 0 and stmt.module in {"os.path", "posixpath", "ntpath"}:
+                for alias in stmt.names:
+                    if alias.name in {"join", "dirname", "abspath", "realpath", "normpath"}:
+                        os_path_funcs[alias.asname or alias.name] = alias.name
+            elif stmt.level == 0 and stmt.module == "pathlib":
+                for alias in stmt.names:
+                    if alias.name in {"Path", "PurePath", "PurePosixPath", "PosixPath", "WindowsPath"}:
+                        path_classes.add(alias.asname or alias.name)
         elif isinstance(stmt, ast.Assign):
             if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
                 bindings[stmt.targets[0].id] = stmt.value
@@ -3632,6 +3698,142 @@ def _inspect_setup_py(
             if cur.attr in {"setup", "find_namespace_packages", "find_packages"}:
                 return cur.attr
         return _call_func_name(cur)
+
+    def _resolve_path_func(func_node: ast.AST) -> str | None:
+        cur = _resolve(func_node)
+        if isinstance(cur, ast.Name):
+            if cur.id in os_path_funcs:
+                return os_path_funcs[cur.id]
+            if cur.id in path_classes:
+                return "Path"
+            if cur.id == "str":
+                return "str"
+            return None
+        chain = _extract_attr_chain(cur)
+        if chain is not None:
+            if len(chain) == 2 and chain[0] in os_modules and chain[1] == "fspath":
+                return "str"
+            if len(chain) == 2 and chain[0] in os_path_modules and chain[1] in {
+                "join",
+                "dirname",
+                "abspath",
+                "realpath",
+                "normpath",
+            }:
+                return chain[1]
+            if len(chain) == 3 and chain[0] in os_modules and chain[1] == "path" and chain[2] in {
+                "join",
+                "dirname",
+                "abspath",
+                "realpath",
+                "normpath",
+            }:
+                return chain[2]
+            if len(chain) == 2 and chain[0] in pathlib_modules and chain[1] in {
+                "Path",
+                "PurePath",
+                "PurePosixPath",
+                "PosixPath",
+                "WindowsPath",
+            }:
+                return "Path"
+        return None
+
+    def _is_dunder_file_expr(node: ast.AST, _seen: frozenset[str] = frozenset()) -> bool:
+        cur = node
+        seen = set(_seen)
+        while isinstance(cur, ast.Name) and cur.id in bindings and cur.id not in seen:
+            seen.add(cur.id)
+            cur = bindings[cur.id]
+        next_seen = frozenset(seen)
+        if isinstance(cur, ast.Name) and cur.id == "__file__":
+            return True
+        if isinstance(cur, ast.Call) and len(cur.args) == 1 and not cur.keywords and not isinstance(cur.args[0], ast.Starred):
+            pf = _resolve_path_func(cur.func)
+            if pf in {"abspath", "realpath", "Path", "str"}:
+                return _is_dunder_file_expr(cur.args[0], next_seen)
+            if isinstance(cur.func, ast.Attribute) and cur.func.attr in {"resolve", "absolute"} and not cur.args:
+                return _is_dunder_file_expr(cur.func.value, next_seen)
+        if (
+            isinstance(cur, ast.Call)
+            and isinstance(cur.func, ast.Attribute)
+            and cur.func.attr in {"resolve", "absolute"}
+            and not cur.args
+            and not cur.keywords
+        ):
+            return _is_dunder_file_expr(cur.func.value, next_seen)
+        return False
+
+    def _eval_setup_path_str(node: ast.AST, _seen: frozenset[str] = frozenset()) -> str | None:
+        """Statically evaluate simple path expressions in setup.py (literals, join, Path, dirname(__file__))."""
+        cur = node
+        seen = set(_seen)
+        while isinstance(cur, ast.Name) and cur.id in bindings and cur.id not in seen:
+            seen.add(cur.id)
+            cur = bindings[cur.id]
+        next_seen = frozenset(seen)
+        if isinstance(cur, ast.Constant) and isinstance(cur.value, str):
+            return cur.value
+        if isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.Add):
+            left = _eval_setup_path_str(cur.left, next_seen)
+            right = _eval_setup_path_str(cur.right, next_seen)
+            if left is not None and right is not None:
+                return left + right
+            return None
+        if isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.Div):
+            left = _eval_setup_path_str(cur.left, next_seen)
+            right = _eval_setup_path_str(cur.right, next_seen)
+            if left is not None and right is not None:
+                return posixpath.join(left, right)
+            return None
+        if isinstance(cur, ast.Attribute) and cur.attr == "parent":
+            if _is_dunder_file_expr(cur.value, next_seen):
+                return "."
+            return None
+        if isinstance(cur, ast.Call):
+            if (
+                isinstance(cur.func, ast.Attribute)
+                and cur.func.attr == "as_posix"
+                and not cur.args
+                and not cur.keywords
+            ):
+                return _eval_setup_path_str(cur.func.value, next_seen)
+            if cur.keywords or any(isinstance(a, ast.Starred) for a in cur.args):
+                return None
+            pf = _resolve_path_func(cur.func)
+            if pf == "str" and len(cur.args) == 1:
+                return _eval_setup_path_str(cur.args[0], next_seen)
+            if pf == "Path":
+                if not cur.args:
+                    return "."
+                parts: list[str] = []
+                for a in cur.args:
+                    p = _eval_setup_path_str(a, next_seen)
+                    if p is None:
+                        return None
+                    parts.append(p)
+                return posixpath.join(*parts)
+            if pf == "join" and cur.args:
+                parts = []
+                for a in cur.args:
+                    p = _eval_setup_path_str(a, next_seen)
+                    if p is None:
+                        return None
+                    parts.append(p)
+                return posixpath.join(*parts)
+            if pf == "dirname" and len(cur.args) == 1:
+                if _is_dunder_file_expr(cur.args[0], next_seen):
+                    return "."
+                inner = _eval_setup_path_str(cur.args[0], next_seen)
+                if inner is not None:
+                    return posixpath.dirname(inner) or "."
+                return None
+            if pf == "normpath" and len(cur.args) == 1:
+                inner = _eval_setup_path_str(cur.args[0], next_seen)
+                if inner is not None:
+                    return posixpath.normpath(inner)
+                return None
+        return None
 
     def _eval_setup_str_list(node: ast.AST, _seen: frozenset[str] = frozenset()) -> list[str] | None:
         cur = node
@@ -3789,16 +3991,14 @@ def _inspect_setup_py(
                 if inc_kw is None and len(node.args) >= 3:
                     inc_kw = node.args[2]
 
-                wheres: list[str] | None = ["."]
-                dynamic_where = False
+                wheres: list[str] = ["."]
                 if where_kw is not None:
-                    resolved_where = _resolve(where_kw)
-                    if isinstance(resolved_where, ast.Constant) and isinstance(resolved_where.value, str):
-                        wheres = [resolved_where.value]
-                    else:
-                        # Dynamic where expression (e.g., os.path.dirname(__file__)); avoid false failures.
-                        wheres = None
-                        dynamic_where = True
+                    where_val = _eval_setup_path_str(where_kw)
+                    if where_val is None or _is_absolute_pattern(where_val):
+                        info["packages_nonempty"] = True
+                        info["unverifiable_packages"] = True
+                        return
+                    wheres = [where_val]
 
                 includes: list[str] | None = None
                 if inc_kw is not None:
@@ -3823,7 +4023,6 @@ def _inspect_setup_py(
                     "includes": includes,
                     "excludes": excludes,
                     "wheres": wheres,
-                    "dynamic_where": dynamic_where,
                     "fills_package_dir": False,
                 }
                 if _find_selects_package(
@@ -3843,12 +4042,12 @@ def _inspect_setup_py(
                     require_init=False,
                 ):
                     info["skills_subpkg_ok"] = True
-                if info["namespace_ok"] or dynamic_where or harness is None:
+                if info["namespace_ok"] or harness is None:
                     info["packages_nonempty"] = True
                 else:
                     info["packages_nonempty"] = any(
                         bool(_find_discovered_packages(harness / (_norm_pkg_dir_value(w) or "."), includes, excludes))
-                        for w in (wheres or ["."])
+                        for w in wheres
                     )
             elif fname == "find_packages":
                 kw_pairs, kw_unresolved = _expand_call_keywords(node.keywords)
@@ -3866,9 +4065,9 @@ def _inspect_setup_py(
                 fp_where: str | None = "."
                 fp_dynamic_where = kw_unresolved or any(isinstance(a, ast.Starred) for a in node.args)
                 if where_kw is not None:
-                    resolved_where = _resolve(where_kw)
-                    if isinstance(resolved_where, ast.Constant) and isinstance(resolved_where.value, str):
-                        fp_where = resolved_where.value
+                    where_val = _eval_setup_path_str(where_kw)
+                    if where_val is not None and not _is_absolute_pattern(where_val):
+                        fp_where = where_val
                     else:
                         fp_where = None
                         fp_dynamic_where = True
@@ -3946,13 +4145,21 @@ def _inspect_setup_py(
                 if vals is not None:
                     dest[k] = vals
 
-    def _extract_str_mapping(expr: ast.AST, dest: dict[str, str]) -> None:
-        dict_items = _eval_static_dict_items(expr)
-        if dict_items is not None:
-            for k, v in dict_items:
-                val = _resolve(v)
-                if isinstance(val, ast.Constant) and isinstance(val.value, str):
-                    dest[k] = val.value
+    def _extract_package_dir_mapping(expr: ast.AST) -> None:
+        resolved = _resolve(expr)
+        if isinstance(resolved, ast.Constant) and resolved.value is None:
+            return
+        info["declares_package_dir"] = True
+        dict_items = _eval_static_dict_items(resolved)
+        if dict_items is None:
+            info["unverifiable_package_dir"] = True
+            return
+        for k, v in dict_items:
+            val_str = _eval_setup_path_str(v)
+            if val_str is None or _is_absolute_pattern(val_str):
+                info["unverifiable_package_dir"] = True
+            else:
+                info["package_dir"][k] = val_str
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _resolve_setuptools_callable(node.func) == "setup":
@@ -3972,7 +4179,7 @@ def _inspect_setup_py(
                     if not (isinstance(val, ast.Constant) and val.value is None):
                         info["has_ext_modules"] = True
                 elif kw_name == "package_dir":
-                    _extract_str_mapping(kw_val, info["package_dir"])
+                    _extract_package_dir_mapping(kw_val)
                 elif kw_name == "entry_points":
                     _extract_entry_points(kw_val)
                 elif kw_name == "package_data":
@@ -3987,10 +4194,14 @@ def _inspect_setup_py(
                     val = _resolve(kw_val)
                     if isinstance(val, ast.Constant) and isinstance(val.value, str) and val.value.strip():
                         info["has_python_requires"] = True
-            if has_unresolved_kwargs and not info["declares_packages"]:
-                info["declares_packages"] = True
-                info["packages_nonempty"] = True
-                info["unverifiable_packages"] = True
+            if has_unresolved_kwargs:
+                if not info["declares_packages"]:
+                    info["declares_packages"] = True
+                    info["packages_nonempty"] = True
+                    info["unverifiable_packages"] = True
+                if not info["declares_package_dir"]:
+                    info["declares_package_dir"] = True
+                    info["unverifiable_package_dir"] = True
 
     return info
 
@@ -5008,6 +5219,8 @@ def _check_packaging(
         "declares_packages": False,
         "packages_nonempty": False,
         "pkg_spec": None,
+        "declares_package_dir": False,
+        "unverifiable_package_dir": False,
         "package_dir": {},
         "declares_py_modules": False,
         "py_modules": [],
@@ -5083,12 +5296,14 @@ def _check_packaging(
         )
         return checks, module, [], {}, {}
 
+    setup_py_package_dir_unverifiable = False
     if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
         eff_base_package_dir = dict(pyproj_info["package_dir"])
     elif pyproj_info["declares_package_dir"]:
         eff_base_package_dir = dict(pyproj_info["package_dir"])
-    elif uses_setup_py and setup_info["package_dir"]:
+    elif uses_setup_py and (setup_info["package_dir"] or setup_info["unverifiable_package_dir"]):
         eff_base_package_dir = dict(setup_info["package_dir"])
+        setup_py_package_dir_unverifiable = bool(setup_info["unverifiable_package_dir"])
     elif uses_setup_cfg and setup_cfg_info["package_dir"]:
         eff_base_package_dir = dict(setup_cfg_info["package_dir"])
     else:
@@ -5379,6 +5594,15 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 f"packaged top-level module '{shadowing_ns_module}' shadows PEP 420 namespace package 'cli_anything'",
+            )
+        )
+    elif setup_py_package_dir_unverifiable:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "setup.py specifies an explicit dynamic/unverifiable package_dir= mapping that cannot be statically verified",
             )
         )
     elif pyproj_info["declares_packages"]:
