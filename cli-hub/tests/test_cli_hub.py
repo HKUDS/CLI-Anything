@@ -960,6 +960,22 @@ class TestInstaller:
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
+    def test_uninstall_uses_dist_name_when_it_differs_from_registry_name(self, mock_get_cli, mock_run):
+        """cc-switch is shipped as cli-anything-ccswitch; uninstall must use the wheel name."""
+        cli = dict(SAMPLE_REGISTRY["clis"][0])
+        cli["dist_name"] = "cli-anything-ccswitch"
+        mock_get_cli.return_value = cli
+        mock_run.return_value = MagicMock(returncode=0)
+
+        uninstall_cli("cc-switch")
+
+        assert mock_run.call_args.args[0] == [
+            sys.executable, "-m", "pip", "uninstall", "-y", "cli-anything-ccswitch"
+        ]
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_command_strategy_success(self, mock_get_cli, mock_run):
         mock_get_cli.return_value = {
             "name": "onepassword-cli",
