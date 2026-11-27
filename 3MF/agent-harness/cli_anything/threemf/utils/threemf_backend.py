@@ -312,9 +312,21 @@ def cross_section_circles(
         if section is None:
             continue
 
-        # section is a Path3D; extract discrete points from each entity
+        # section is a Path3D; extract discrete points from each entity.
+        # ``trimesh`` needs ``networkx`` to traverse closed paths here and
+        # only declares it as an optional dependency, so a plain ``pip install``
+        # used to turn every slice into an empty hole list (issue #578).
         try:
             discrete = section.discrete
+        except ModuleNotFoundError as exc:
+            if exc.name == "networkx":
+                raise RuntimeError(
+                    "networkx is required for 3MF hole detection "
+                    "(trimesh Path3D.discrete); install it with "
+                    "'pip install networkx' or reinstall cli-anything-3mf "
+                    "so its declared dependencies are installed."
+                ) from exc
+            continue
         except Exception:
             continue
 
