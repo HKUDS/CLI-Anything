@@ -47,10 +47,18 @@ Live Amazon tests (opt-in, `ALEXA_E2E=1` after `auth login`):
 Environment: Linux, Python 3.13, alexapy 1.36.0 (suite also passes on 1.38.0), no Amazon account (live
 tests skipped).
 
-Manual live check (macOS, Python 3.13, amazon.co.uk account, Echo Dot):
-`auth login` and `speak` succeeded (Amazon accepted the request,
-`"sent": true`). This surfaced the busy-port, CA-certificate and
-account-domain issues fixed in this branch.
+Manual live checks on a real Amazon account (macOS, Python 3.13, amazon.co.uk):
+
+1. First run: `auth login` and `speak` succeeded (Amazon accepted the
+   request, `"sent": true`). This surfaced the busy-port, CA-certificate
+   and account-domain issues fixed in this branch.
+2. Re-test on the final code (head 78b2af0), all passing:
+   - `auth logout`, then `auth login --domain amazon.co.uk` through the
+     local sign-in page: logged in, speech language en-GB, no domain warning
+   - `device list`: Echo Dot, Echo Show 5, a multi-room speaker group and a
+     shared-household Echo listed and online; Alexa apps hidden
+   - `speak` on the Echo Dot: spoke out loud
+   - `speak` on another household member's Echo: spoke out loud
 
 ```
 test_core.py::TestDevices::test_normalize_fields PASSED [  0%]
