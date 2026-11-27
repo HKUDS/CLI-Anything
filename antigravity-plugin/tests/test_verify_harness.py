@@ -6754,6 +6754,200 @@ packages = []
     assert {c["id"]: c for c in r_pyproj_empty["checks"]}["namespace-packages"]["status"] == "fail"
 
 
+def test_verify_rejects_malformed_console_script_entries(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "bad_ep_entries", "badep")
+    setup_py = harness / "setup.py"
+    setup_cfg = harness / "setup.cfg"
+    pyproject = harness / "pyproject.toml"
+
+    def _write_setup(ep_repr: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import setup, find_namespace_packages
+
+setup(
+    name="cli-anything-badep",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.badep": ["skills/*.md"]}},
+    entry_points={ep_repr},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    # 1. Invalid setup.py entry_points variants (secondary broken line, semicolon, empty target,
+    #    duplicate name, broken non-console group, broken INI string) must all FAIL console-script.
+    invalid_setup_eps = [
+        '{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main", "broken-alias"]}',
+        '{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main", "; not a comment"]}',
+        '{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main", "other="]}',
+        '{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main", "other=not valid target"]}',
+        '{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main", "=cli_anything.badep.badep_cli:main"]}',
+        '{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main", "cli-anything-badep=cli_anything.badep.badep_cli:main"]}',
+        '{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main"], "other_group": ["broken-entry"]}',
+        '{"console_scripts": "cli-anything-badep=cli_anything.badep.badep_cli:main\\nbroken-alias\\n"}',
+        '"[console_scripts]\\ncli-anything-badep=cli_anything.badep.badep_cli:main\\nbroken-alias\\n"',
+        '"[console_scripts]\\n; not a comment\\ncli-anything-badep=cli_anything.badep.badep_cli:main\\n"',
+    ]
+    for idx, ep_repr in enumerate(invalid_setup_eps):
+        _write_setup(ep_repr)
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, ep_repr)
+        assert {c["id"]: c for c in res_bad["checks"]}["console-script"]["status"] == "fail", idx
+
+    # 2. Valid setup.py with `#` comment and valid secondary alias -> PASS.
+    _write_setup(
+        '{"console_scripts": ["# comment", "cli-anything-badep=cli_anything.badep.badep_cli:main", "helper=cli_anything.badep.badep_cli:main"]}'
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 3. Broken setup.py entry_points still fails even when pyproject.toml defines [project.scripts]
+    #    under setuptools backend (setuptools aborts during setup() before applying pyproject.toml).
+    _write_setup('{"console_scripts": ["cli-anything-badep=cli_anything.badep.badep_cli:main", "broken-alias"]}')
+    pyproject.write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-badep"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-badep = "cli_anything.badep.badep_cli:main"
+""",
+        encoding="utf-8",
+    )
+    r_setup_plus_pyproj = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_setup_plus_pyproj["ok"] is False
+    assert {c["id"]: c for c in r_setup_plus_pyproj["checks"]}["console-script"]["status"] == "fail"
+    pyproject.unlink()
+
+    # 4. Invalid setup.cfg [options.entry_points] and file-backed [options] entry_points -> FAIL.
+    setup_py.write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    invalid_cfgs = [
+        """[metadata]
+name = cli-anything-badep
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.package_data]
+cli_anything.badep = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-badep = cli_anything.badep.badep_cli:main
+    broken-alias
+""",
+        """[metadata]
+name = cli-anything-badep
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.package_data]
+cli_anything.badep = skills/*.md
+
+[options.entry_points]
+console_scripts = cli-anything-badep = cli_anything.badep.badep_cli:main, broken-alias
+""",
+        """[metadata]
+name = cli-anything-badep
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.package_data]
+cli_anything.badep = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-badep = cli_anything.badep.badep_cli:main
+other_group =
+    broken-entry
+""",
+    ]
+    for idx, cfg_text in enumerate(invalid_cfgs):
+        setup_cfg.write_text(cfg_text, encoding="utf-8")
+        r_cfg = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_cfg["ok"] is False, idx
+        assert {c["id"]: c for c in r_cfg["checks"]}["console-script"]["status"] == "fail", idx
+
+    # Valid setup.cfg with semicolon comment and secondary alias -> PASS.
+    setup_cfg.write_text(
+        """[metadata]
+name = cli-anything-badep
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.package_data]
+cli_anything.badep = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    ; valid INI comment
+    cli-anything-badep = cli_anything.badep.badep_cli:main
+    helper = cli_anything.badep.badep_cli:main
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+    setup_cfg.unlink()
+
+    # 5. pyproject.toml [project.scripts] with malformed secondary entry -> FAIL console-script.
+    setup_py.unlink()
+    pyproject.write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-badep"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-badep = "cli_anything.badep.badep_cli:main"
+helper = "not a valid reference"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.badep" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_pyproj_sec = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_pyproj_sec["ok"] is False
+    assert {c["id"]: c for c in r_pyproj_sec["checks"]}["console-script"]["status"] == "fail"
+
+
+
 
 
 

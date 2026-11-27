@@ -132,6 +132,7 @@ if [[ -e "${DEST_DIR}" && "${FORCE}" -ne 1 ]]; then
 fi
 
 STAGING_DIR="$(mktemp -d "${PLUGINS_HOME}/.cli-anything.tmp.XXXXXX")"
+LOCK_KEY="$(normalize_path_key "$(resolve_real_path "${LOCK_PATH}")")"
 STAGING_KEY="$(normalize_path_key "$(resolve_real_path "${STAGING_DIR}")")"
 DEST_KEY="$(normalize_path_key "$(resolve_real_path "${DEST_DIR}")")"
 
@@ -144,7 +145,7 @@ while IFS= read -r -d '' entry; do
       ;;
   esac
   entry_key="$(normalize_path_key "$(resolve_real_path "${entry}")")"
-  if [[ "${STAGING_KEY}" == "${entry_key}" || "${STAGING_KEY}" == "${entry_key}/"* || "${DEST_KEY}" == "${entry_key}" || "${DEST_KEY}" == "${entry_key}/"* ]]; then
+  if [[ "${STAGING_KEY}" == "${entry_key}" || "${STAGING_KEY}" == "${entry_key}/"* || "${DEST_KEY}" == "${entry_key}" || "${DEST_KEY}" == "${entry_key}/"* || "${LOCK_KEY}" == "${entry_key}" || "${LOCK_KEY}" == "${entry_key}/"* ]]; then
     continue
   fi
   cp -R "${entry}" "${STAGING_DIR}/"

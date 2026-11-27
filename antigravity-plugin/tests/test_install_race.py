@@ -1141,3 +1141,75 @@ def test_workspace_install_into_source_directory_excludes_staging_subtree(tmp_pa
     assert (installed / "plugin.json").is_file()
     assert not (installed / ".agents").exists(), "staging/workspace .agents subtree leaked into installed plugin"
 
+
+def test_custom_plugins_home_inside_source_directory_excludes_staging_subtree(tmp_path: Path) -> None:
+    """Setting ANTIGRAVITY_PLUGINS_HOME to <plugin-src>/plugins places staging/dest under a non-excluded
+    source subdirectory; both PowerShell and Bash installers must exclude that ancestor using matching
+    normalized path separators rather than recursing into staging or copying plugins/ into itself."""
+    sandbox = tmp_path / "self_custom_plugins_repo"
+    if (PLUGIN_SRC.parent / "cli-anything-plugin" / "HARNESS.md").is_file():
+        src_copy = sandbox / "antigravity-plugin"
+        shutil.copytree(
+            PLUGIN_SRC,
+            src_copy,
+            ignore=shutil.ignore_patterns(".git", ".agents", "__pycache__", ".pytest_cache"),
+        )
+        shutil.copytree(
+            PLUGIN_SRC.parent / "cli-anything-plugin",
+            sandbox / "cli-anything-plugin",
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+        (sandbox / "docs").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            PLUGIN_SRC.parent / "docs" / "PREVIEW_PROTOCOL.md",
+            sandbox / "docs" / "PREVIEW_PROTOCOL.md",
+        )
+    else:
+        src_copy = sandbox / "cli-anything-antigravity"
+        shutil.copytree(
+            PLUGIN_SRC,
+            src_copy,
+            ignore=shutil.ignore_patterns(".git", ".agents", "__pycache__", ".pytest_cache"),
+        )
+
+    home = tmp_path / "home"
+    home.mkdir(parents=True)
+    custom_plugins = src_copy / "plugins"
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["ANTIGRAVITY_PLUGINS_HOME"] = str(custom_plugins)
+
+    def _run_install(*extra: str) -> subprocess.CompletedProcess[str]:
+        if sys.platform == "win32":
+            shell = shutil.which("pwsh") or shutil.which("powershell")
+            assert shell, "PowerShell required on Windows"
+            cmd = [
+                shell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(src_copy / "scripts" / "install.ps1"),
+                *extra,
+            ]
+        else:
+            cmd = ["bash", str(src_copy / "scripts" / "install.sh"), *extra]
+        return subprocess.run(cmd, cwd=src_copy, env=env, capture_output=True, text=True, check=False)
+
+    res1 = _run_install()
+    assert res1.returncode == 0, f"initial install into <src>/plugins failed:\n{res1.stdout}\n{res1.stderr}"
+    installed = custom_plugins / "cli-anything"
+    assert (installed / "plugin.json").is_file()
+    assert not (installed / "plugins").exists(), "plugins/ ancestor subtree leaked into installed plugin"
+    assert not list(installed.glob(".cli-anything.tmp.*")), "staging directory leaked into installed plugin"
+    assert not (installed / ".cli-anything.lock").exists(), "lock file leaked into installed plugin"
+
+    force_flag = "-Force" if sys.platform == "win32" else "--force"
+    res2 = _run_install(force_flag)
+    assert res2.returncode == 0, f"force reinstall into <src>/plugins failed:\n{res2.stdout}\n{res2.stderr}"
+    assert (installed / "plugin.json").is_file()
+    assert not (installed / "plugins").exists(), "plugins/ ancestor subtree leaked on force reinstall"
+
+

@@ -98,6 +98,7 @@ try {
 
     $stagingDir = Join-Path $pluginsHome (".cli-anything.tmp." + [System.Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $stagingDir | Out-Null
+    $lockKey = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $lockPath)
     $stagingKey = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $stagingDir)
     $destKey = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $destDir)
 
@@ -106,7 +107,12 @@ try {
             return
         }
         $entryKey = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $_.FullName)
-        if (($stagingKey -eq $entryKey) -or $stagingKey.StartsWith("$entryKey/") -or ($destKey -eq $entryKey) -or $destKey.StartsWith("$entryKey/")) {
+        $entryPrefix = "$entryKey\"
+        if (
+            ($stagingKey -eq $entryKey) -or $stagingKey.StartsWith($entryPrefix) -or
+            ($destKey -eq $entryKey) -or $destKey.StartsWith($entryPrefix) -or
+            ($lockKey -eq $entryKey) -or $lockKey.StartsWith($entryPrefix)
+        ) {
             return
         }
         Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $stagingDir $_.Name) -Recurse -Force

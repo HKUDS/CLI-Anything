@@ -261,20 +261,102 @@ def _const_str_list(node: ast.AST) -> list[str] | None:
     return None
 
 
-def _parse_ini_console_scripts(ini_text: str) -> list[tuple[str, str]]:
+_ENTRY_POINT_VALUE_RE = re.compile(
+    r"^(?P<module>[\w.]+)\s*(?::\s*(?P<attr>[\w.]+)\s*)?(?:\[.*\]\s*)?$"
+)
+
+
+def _parse_entry_point_group_items(
+    raw_items: list[str],
+    *,
+    group: str,
+    allow_semicolon_comments: bool = False,
+) -> tuple[list[tuple[str, str]], str | None]:
+    """Parse and validate setuptools entry_points lines for a single group.
+
+    Mirrors setuptools._entry_points.load_group() / validate(): rejects non-comment lines
+    missing '=', empty entry-point names/values, malformed references, and duplicate names
+    within the group instead of silently discarding broken entries.
+    """
+    parsed: list[tuple[str, str]] = []
+    seen_names: set[str] = set()
+    for item in raw_items:
+        for raw_line in item.splitlines():
+            spec = raw_line.strip()
+            if not spec or spec.startswith("#") or (allow_semicolon_comments and spec.startswith(";")):
+                continue
+            if "=" not in spec:
+                return (
+                    parsed,
+                    f"malformed entry_points entry in [{group}]: {spec!r} (expected 'name = module:callable')",
+                )
+            name, target = spec.split("=", 1)
+            name = name.strip()
+            target = target.strip()
+            if not name:
+                return (
+                    parsed,
+                    f"malformed entry_points entry in [{group}]: empty name in {spec!r}",
+                )
+            if not target or not _ENTRY_POINT_VALUE_RE.match(target):
+                return (
+                    parsed,
+                    f"malformed entry_points target for '{name}' in [{group}]: {target!r}",
+                )
+            if name in seen_names:
+                return (
+                    parsed,
+                    f"duplicate entry_points entry '{name}' in [{group}]",
+                )
+            seen_names.add(name)
+            parsed.append((name, target))
+    return parsed, None
+
+
+def _parse_ini_entry_points(ini_text: str) -> tuple[list[tuple[str, str]], str | None]:
+    """Parse and validate a setuptools INI-formatted entry_points string."""
     scripts: list[tuple[str, str]] = []
-    in_section = False
+    current_group: str | None = None
+    group_lines: dict[str, list[str]] = {}
+    group_order: list[str] = []
     for raw in ini_text.splitlines():
         line = raw.strip()
-        if not line or line.startswith(("#", ";")):
+        if not line or line.startswith("#"):
             continue
         if line.startswith("[") and line.endswith("]"):
-            in_section = line[1:-1].strip() == "console_scripts"
+            current_group = line[1:-1].strip()
+            if current_group not in group_lines:
+                group_lines[current_group] = []
+                group_order.append(current_group)
             continue
-        if in_section and "=" in line:
-            name, target = line.split("=", 1)
-            scripts.append((name.strip(), target.strip()))
-    return scripts
+        if current_group is not None:
+            group_lines[current_group].append(line)
+    for grp in group_order:
+        pairs, err = _parse_entry_point_group_items(
+            group_lines[grp], group=grp, allow_semicolon_comments=False
+        )
+        if err is not None:
+            return scripts, err
+        if grp == "console_scripts":
+            scripts.extend(pairs)
+    return scripts, None
+
+
+def _validate_ini_entry_point_groups(
+    groups: dict[str, dict[str, str]],
+    *,
+    source_label: str,
+) -> str | None:
+    """Validate parsed INI entry-point groups for empty names or malformed targets."""
+    for grp, mapping in groups.items():
+        for raw_name, raw_target in mapping.items():
+            name = raw_name.strip()
+            target = raw_target.strip()
+            if not name:
+                return f"malformed entry_points entry in {source_label} [{grp}]: empty name"
+            if not target or not _ENTRY_POINT_VALUE_RE.match(target):
+                return f"malformed entry_points target for '{name}' in {source_label} [{grp}]: {raw_target!r}"
+    return None
 
 
 def _collect_target_names(node: ast.AST) -> set[str]:
@@ -3335,26 +3417,32 @@ def _inspect_setup_py(
             if node.keys:
                 info["has_entry_points"] = True
             for k, v in zip(node.keys, node.values):
+                if k is None:
+                    continue
                 k_node = _resolve(k)
-                if isinstance(k_node, ast.Constant) and k_node.value == "console_scripts":
-                    v_node = _resolve(v)
-                    if isinstance(v_node, ast.Constant) and isinstance(v_node.value, str):
-                        raw_items: list[str] | None = [v_node.value]
-                    else:
-                        raw_items = _const_str_list(v_node)
-                    if raw_items:
-                        for item in raw_items:
-                            for raw_line in item.splitlines():
-                                spec = raw_line.strip()
-                                if not spec or spec.startswith(("#", ";")):
-                                    continue
-                                if "=" in spec:
-                                    name, target = spec.split("=", 1)
-                                    info["console_scripts"].append((name.strip(), target.strip()))
+                if not (isinstance(k_node, ast.Constant) and isinstance(k_node.value, str)):
+                    continue
+                group_name = k_node.value
+                v_node = _resolve(v)
+                if isinstance(v_node, ast.Constant) and isinstance(v_node.value, str):
+                    raw_items: list[str] | None = [v_node.value]
+                else:
+                    raw_items = _const_str_list(v_node)
+                if raw_items is not None:
+                    pairs, ep_err = _parse_entry_point_group_items(
+                        raw_items, group=group_name, allow_semicolon_comments=False
+                    )
+                    if ep_err is not None and info["entry_points_error"] is None:
+                        info["entry_points_error"] = f"setup.py {ep_err}"
+                    if group_name == "console_scripts":
+                        info["console_scripts"].extend(pairs)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             if node.value:
                 info["has_entry_points"] = True
-            info["console_scripts"].extend(_parse_ini_console_scripts(node.value))
+            cs_pairs, ep_err = _parse_ini_entry_points(node.value)
+            if ep_err is not None and info["entry_points_error"] is None:
+                info["entry_points_error"] = f"setup.py {ep_err}"
+            info["console_scripts"].extend(cs_pairs)
 
     def _extract_pkg_data_mapping(expr: ast.AST, dest: dict[str, list[str]]) -> None:
         node = _resolve(expr)
@@ -3910,7 +3998,12 @@ def _inspect_pyproject_data(
                                 f"invalid [tool.setuptools.dynamic].entry-points INI: {exc}"
                             )
                         else:
-                            if "console_scripts" in groups:
+                            val_err = _validate_ini_entry_point_groups(
+                                groups, source_label="[tool.setuptools.dynamic].entry-points"
+                            )
+                            if val_err is not None:
+                                info["dynamic_scripts_error"] = val_err
+                            elif "console_scripts" in groups:
                                 if "scripts" not in dynamic_fields:
                                     info["dynamic_scripts_error"] = (
                                         "[tool.setuptools.dynamic].entry-points defines [console_scripts], "
@@ -4113,6 +4206,12 @@ def _inspect_setup_cfg(
                             f"invalid INI in setup.cfg [options] entry_points: {exc}"
                         )
                         continue
+                    val_err = _validate_ini_entry_point_groups(
+                        groups, source_label="setup.cfg [options] entry_points"
+                    )
+                    if val_err is not None:
+                        info["entry_points_error"] = val_err
+                        continue
                     for k, v in groups.get("console_scripts", {}).items():
                         info["console_scripts"].append((k.strip(), v.strip()))
                 else:
@@ -4125,6 +4224,12 @@ def _inspect_setup_cfg(
                             f"invalid INI in setup.cfg [options] entry_points: {exc}"
                         )
                         continue
+                    val_err = _validate_ini_entry_point_groups(
+                        groups, source_label="setup.cfg [options] entry_points"
+                    )
+                    if val_err is not None:
+                        info["entry_points_error"] = val_err
+                        continue
                     for k, v in groups.get("console_scripts", {}).items():
                         info["console_scripts"].append((k.strip(), v.strip()))
             elif sec == "options.entry_points":
@@ -4133,12 +4238,17 @@ def _inspect_setup_cfg(
                     continue
                 entry_points_populated = True
                 info["has_entry_points"] = True
-                raw_cs = cp.get("options.entry_points", "console_scripts", fallback="")
-                for spec in _parse_setup_cfg_list(raw_cs):
-                    if not spec or spec.startswith(("#", ";")) or "=" not in spec:
-                        continue
-                    name, target = spec.split("=", 1)
-                    info["console_scripts"].append((name.strip(), target.strip()))
+                for raw_grp, raw_val in ep_sec_items:
+                    grp_name = raw_grp.strip()
+                    pairs, ep_err = _parse_entry_point_group_items(
+                        _parse_setup_cfg_list(raw_val),
+                        group=grp_name,
+                        allow_semicolon_comments=True,
+                    )
+                    if ep_err is not None and info["entry_points_error"] is None:
+                        info["entry_points_error"] = f"setup.cfg [options.entry_points] {ep_err}"
+                    if grp_name == "console_scripts":
+                        info["console_scripts"].extend(pairs)
     except configparser.Error as exc:
         info["parse_error"] = str(exc) or exc.__class__.__name__
         return info
@@ -4911,6 +5021,15 @@ def _check_packaging(
                 str(pyproj_info["dynamic_scripts_error"]),
             )
         )
+    elif uses_setup_py and setup_info["entry_points_error"]:
+        checks.append(
+            CheckResult(
+                "console-script",
+                "packaging",
+                FAIL,
+                str(setup_info["entry_points_error"]),
+            )
+        )
     elif uses_setup_cfg_scripts and setup_cfg_info["entry_points_error"]:
         checks.append(
             CheckResult(
@@ -4922,6 +5041,16 @@ def _check_packaging(
         )
     elif matching_scripts:
         invalid_targets: list[str] = []
+        matching_set = set(matching_scripts)
+        for cmd_name, target_spec in declared_scripts:
+            if (cmd_name, target_spec) in matching_set:
+                continue
+            if not cmd_name:
+                invalid_targets.append(f"<empty>={target_spec} (empty console_scripts command name)")
+            elif not target_spec or not _ENTRY_POINT_VALUE_RE.match(target_spec):
+                invalid_targets.append(
+                    f"{cmd_name}={target_spec} (malformed console_scripts entry-point reference)"
+                )
         for cmd_name, target_spec in matching_scripts:
             ok_target, reason, mod_file = _validate_console_script_target(
                 target_spec,
