@@ -1018,6 +1018,70 @@ class TestInstaller:
         assert "already available" in msg
 
 
+class TestPipUninstall:
+    """Regression tests for pip distribution naming (issue #726)."""
+
+    @staticmethod
+    def _registry_entry(name):
+        registry_path = Path(__file__).resolve().parents[2] / "registry.json"
+        registry = json.loads(registry_path.read_text())
+        return next(cli for cli in registry["clis"] if cli["name"] == name)
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
+    def test_uninstall_cc_switch_targets_declared_pip_package(self, mock_get_cli, mock_run):
+        cli = self._registry_entry("cc-switch")
+        assert cli["pip_package"] == "cli-anything-ccswitch"
+        mock_get_cli.return_value = cli
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        success, msg = uninstall_cli("cc-switch")
+
+        assert success
+        assert "CC Switch" in msg
+        mock_run.assert_called_once_with(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "cli-anything-ccswitch"],
+            capture_output=True,
+            text=True,
+        )
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
+    def test_uninstall_falls_back_to_conventional_package_name(self, mock_get_cli, mock_run):
+        cli = SAMPLE_REGISTRY["clis"][0]
+        assert "pip_package" not in cli
+        mock_get_cli.return_value = cli
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
+
+        success, _ = uninstall_cli("gimp")
+
+        assert success
+        mock_run.assert_called_once_with(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "cli-anything-gimp"],
+            capture_output=True,
+            text=True,
+        )
+
+    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.get_cli")
+    def test_uninstall_failure_preserves_installed_tracking(self, mock_get_cli, mock_run, tmp_path):
+        installed_file = tmp_path / "installed.json"
+        cli = self._registry_entry("cc-switch")
+        mock_get_cli.return_value = cli
+        mock_run.return_value = MagicMock(returncode=1, stderr="uninstall failed")
+
+        with patch("cli_hub.installer.INSTALLED_FILE", installed_file):
+            _save_installed({"cc-switch": {"version": "1.0.0", "strategy": "pip"}})
+            success, msg = uninstall_cli("cc-switch")
+            tracked = _load_installed()
+
+        assert not success
+        assert "pip uninstall failed" in msg
+        assert "cc-switch" in tracked
+
+
 GENERATE_VEO_CLI = {
     "name": "generate-veo-video",
     "display_name": "Generate Veo Video",

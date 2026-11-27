@@ -52,6 +52,7 @@
       "homepage": "https://github.com/HKUDS/CLI-Anything",
       "source_url": null,
       "install_cmd": "pip install git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=cc-switch/agent-harness",
+      "pip_package": "cli-anything-ccswitch",
       "entry_point": "cli-anything-ccswitch",
       "skill_md": "skills/cli-anything-ccswitch/SKILL.md",
       "category": "devops",
