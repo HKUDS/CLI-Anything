@@ -426,7 +426,7 @@
     {
       "name": "libreoffice",
       "display_name": "LibreOffice",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Create and manipulate ODF documents, export to PDF/DOCX/XLSX/PPTX via headless mode",
       "requires": "libreoffice",
       "homepage": "https://www.libreoffice.org",
