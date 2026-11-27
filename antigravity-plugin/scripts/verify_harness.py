@@ -1163,6 +1163,422 @@ def _check_local_module_wheel_inclusion(
     return None
 
 
+def _resolve_module_class_instance_call_status(
+    py_file: Path,
+    symbol: str,
+    *,
+    module_path: str | None = None,
+    harness: Path | None = None,
+    eff_pkg_dir: dict[str, str] | None = None,
+    _visited: frozenset[tuple[Path, str]] = frozenset(),
+) -> tuple[str, str | None]:
+    """Resolve an imported local class symbol and classify whether calling an instance succeeds.
+
+    Returns one of:
+      - ("callable", None): class defines/inherits a zero-arg-callable `__call__`.
+      - ("bad_call", err): class defines/inherits an uncallable or incompatible `__call__`.
+      - ("no_call", err): class and all resolved bases define no `__call__`.
+      - ("unknown", None): symbol is a function, external class, dynamic factory, or unresolvable.
+    """
+    try:
+        resolved_file = py_file.resolve()
+    except OSError:
+        resolved_file = py_file
+    vkey = (resolved_file, symbol)
+    if vkey in _visited:
+        return "unknown", None
+    next_visited = _visited | {vkey}
+
+    try:
+        tree = _parse_python_file(py_file)
+    except (OSError, SyntaxError, ValueError):
+        return "unknown", None
+
+    tc_names = _collect_type_checking_names(tree.body)
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
+
+    local_classes: dict[str, list[ast.ClassDef]] = {}
+    non_class_defs: set[str] = set()
+    name_aliases: dict[str, list[str]] = {}
+    attr_aliases: dict[str, list[tuple[str, ...]]] = {}
+    from_imports: dict[str, list[tuple[str, str]]] = {}
+    mod_imports: dict[str, list[str]] = {}
+    dotted_imports: list[tuple[str, ...]] = []
+    star_imports: list[str] = []
+    attr_assigns: set[tuple[str, str]] = set()
+
+    def _clear_top(name: str) -> None:
+        local_classes.pop(name, None)
+        non_class_defs.discard(name)
+        name_aliases.pop(name, None)
+        attr_aliases.pop(name, None)
+        from_imports.pop(name, None)
+        mod_imports.pop(name, None)
+
+    def _scan_mod_stmts(stmts: list[ast.stmt], *, top_level: bool) -> None:
+        for stmt in stmts:
+            if isinstance(stmt, ast.ClassDef):
+                if top_level:
+                    _clear_top(stmt.name)
+                local_classes.setdefault(stmt.name, []).append(stmt)
+            elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if top_level:
+                    _clear_top(stmt.name)
+                non_class_defs.add(stmt.name)
+            elif isinstance(stmt, ast.Assign):
+                for tgt in stmt.targets:
+                    if isinstance(tgt, ast.Attribute) and isinstance(tgt.value, ast.Name):
+                        attr_assigns.add((tgt.value.id, tgt.attr))
+                    elif isinstance(tgt, ast.Name):
+                        if top_level:
+                            _clear_top(tgt.id)
+                        val = _unwrap_static_ifexp(stmt.value)
+                        if isinstance(val, ast.Name):
+                            name_aliases.setdefault(tgt.id, []).append(val.id)
+                        else:
+                            ch = _extract_attr_chain(val) if val is not None else None
+                            if ch is not None and len(ch) >= 2:
+                                attr_aliases.setdefault(tgt.id, []).append(ch)
+                            else:
+                                non_class_defs.add(tgt.id)
+                    else:
+                        for bn in _collect_target_names(tgt):
+                            if top_level:
+                                _clear_top(bn)
+                            non_class_defs.add(bn)
+            elif isinstance(stmt, ast.AnnAssign):
+                if isinstance(stmt.target, ast.Attribute) and isinstance(stmt.target.value, ast.Name):
+                    if stmt.value is not None:
+                        attr_assigns.add((stmt.target.value.id, stmt.target.attr))
+                elif isinstance(stmt.target, ast.Name) and stmt.value is not None:
+                    if top_level:
+                        _clear_top(stmt.target.id)
+                    val = _unwrap_static_ifexp(stmt.value)
+                    if isinstance(val, ast.Name):
+                        name_aliases.setdefault(stmt.target.id, []).append(val.id)
+                    else:
+                        ch = _extract_attr_chain(val) if val is not None else None
+                        if ch is not None and len(ch) >= 2:
+                            attr_aliases.setdefault(stmt.target.id, []).append(ch)
+                        else:
+                            non_class_defs.add(stmt.target.id)
+            elif isinstance(stmt, ast.Import):
+                for alias in stmt.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    t_mod = alias.name if alias.asname else bound
+                    if top_level:
+                        _clear_top(bound)
+                    mod_imports.setdefault(bound, []).append(t_mod)
+                    if not alias.asname and "." in alias.name:
+                        dotted_imports.append(tuple(alias.name.split(".")))
+            elif isinstance(stmt, ast.ImportFrom):
+                rmod = _resolve_relative_import_mod(stmt, py_file, module_path)
+                for alias in stmt.names:
+                    if alias.name == "*":
+                        if rmod:
+                            star_imports.append(rmod)
+                        continue
+                    bound = alias.asname or alias.name
+                    if top_level:
+                        _clear_top(bound)
+                    if rmod:
+                        from_imports.setdefault(bound, []).append((rmod, alias.name))
+                    sub_mod = f"{rmod}.{alias.name}" if rmod else alias.name
+                    mod_imports.setdefault(bound, []).append(sub_mod)
+            elif isinstance(stmt, ast.If):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is True:
+                    _scan_mod_stmts(stmt.body, top_level=top_level)
+                elif branch is False:
+                    _scan_mod_stmts(stmt.orelse, top_level=top_level)
+                else:
+                    _scan_mod_stmts(stmt.body, top_level=False)
+                    _scan_mod_stmts(stmt.orelse, top_level=False)
+            elif isinstance(stmt, ast.While):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is False:
+                    _scan_mod_stmts(stmt.orelse, top_level=top_level)
+                else:
+                    _scan_mod_stmts(stmt.body, top_level=False)
+                    _scan_mod_stmts(stmt.orelse, top_level=False)
+            elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+                _scan_mod_stmts(stmt.body, top_level=False)
+                _scan_mod_stmts(stmt.orelse, top_level=False)
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+                _scan_mod_stmts(stmt.body, top_level=False)
+            elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
+                _scan_mod_stmts(stmt.body, top_level=False)
+                _scan_mod_stmts(stmt.orelse, top_level=False)
+                _scan_mod_stmts(stmt.finalbody, top_level=False)
+                for h in stmt.handlers:
+                    _scan_mod_stmts(h.body, top_level=False)
+            elif match_cls and isinstance(stmt, match_cls):
+                for c in stmt.cases:
+                    _scan_mod_stmts(c.body, top_level=False)
+
+    _scan_mod_stmts(tree.body, top_level=True)
+
+    def _resolve_chain_in_mod(
+        chain: tuple[str, ...],
+        vis: frozenset[tuple[Path, str]],
+    ) -> tuple[str, str | None]:
+        if len(chain) < 2 or harness is None or eff_pkg_dir is None:
+            return "unknown", None
+        for imp_parts in reversed(dotted_imports):
+            if len(chain) == len(imp_parts) + 1 and chain[:-1] == imp_parts:
+                t_mod = ".".join(imp_parts)
+                t_file, _ = _resolve_local_module_file(t_mod, harness, eff_pkg_dir)
+                if t_file is not None:
+                    return _resolve_module_class_instance_call_status(
+                        t_file,
+                        chain[-1],
+                        module_path=t_mod,
+                        harness=harness,
+                        eff_pkg_dir=eff_pkg_dir,
+                        _visited=vis,
+                    )
+        errs: list[tuple[str, str]] = []
+        matched_any = False
+        for base_mod in mod_imports.get(chain[0], ()):
+            for split_k in range(len(chain) - 1, 0, -1):
+                cand_mod = f"{base_mod}.{'.'.join(chain[1:split_k])}" if split_k > 1 else base_mod
+                t_file, _ = _resolve_local_module_file(cand_mod, harness, eff_pkg_dir)
+                if t_file is not None:
+                    matched_any = True
+                    if split_k == len(chain) - 1:
+                        st, err = _resolve_module_class_instance_call_status(
+                            t_file,
+                            chain[-1],
+                            module_path=cand_mod,
+                            harness=harness,
+                            eff_pkg_dir=eff_pkg_dir,
+                            _visited=vis,
+                        )
+                        if st in {"callable", "unknown"}:
+                            return st, None
+                        if err:
+                            errs.append((st, err))
+                    else:
+                        return "unknown", None
+                    break
+        if matched_any and errs:
+            return errs[0]
+        return "unknown", None
+
+    def _cls_node_status(
+        cls_node: ast.ClassDef,
+        vis: frozenset[tuple[Path, str]],
+    ) -> tuple[str, str | None]:
+        if cls_node.decorator_list or cls_node.keywords:
+            return "unknown", None
+        if (cls_node.name, "__call__") in attr_assigns or (cls_node.name, "__new__") in attr_assigns:
+            return "unknown", None
+        has_new = False
+        has_dynamic_call = False
+        call_fn_nodes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        call_non_callable = False
+
+        def _scan_cls(stmts: list[ast.stmt], *, cls_top: bool) -> None:
+            nonlocal has_new, has_dynamic_call, call_non_callable
+            for cs in stmts:
+                if isinstance(cs, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if cs.name == "__new__":
+                        has_new = True
+                    elif cs.name == "__call__":
+                        if cls_top:
+                            call_fn_nodes.clear()
+                            call_non_callable = False
+                            has_dynamic_call = False
+                        call_fn_nodes.append(cs)
+                elif isinstance(cs, ast.Assign):
+                    for t in cs.targets:
+                        for bn in _collect_target_names(t):
+                            if bn == "__new__":
+                                has_new = True
+                            elif bn == "__call__":
+                                if cls_top:
+                                    call_fn_nodes.clear()
+                                    call_non_callable = False
+                                if _is_provably_non_callable_expr(cs.value):
+                                    call_non_callable = True
+                                else:
+                                    has_dynamic_call = True
+                elif isinstance(cs, ast.AnnAssign) and cs.value is not None:
+                    for bn in _collect_target_names(cs.target):
+                        if bn == "__new__":
+                            has_new = True
+                        elif bn == "__call__":
+                            if cls_top:
+                                call_fn_nodes.clear()
+                                call_non_callable = False
+                            if _is_provably_non_callable_expr(cs.value):
+                                call_non_callable = True
+                            else:
+                                has_dynamic_call = True
+                elif isinstance(cs, (ast.Import, ast.ImportFrom)):
+                    for a in cs.names:
+                        bound = a.asname or a.name.split(".", 1)[0]
+                        if bound == "__new__":
+                            has_new = True
+                        elif bound == "__call__":
+                            has_dynamic_call = True
+                elif isinstance(cs, ast.If):
+                    branch = _static_branch_truthiness(cs.test, tc_names=tc_names)
+                    if branch is False:
+                        _scan_cls(cs.orelse, cls_top=cls_top)
+                    elif branch is True:
+                        _scan_cls(cs.body, cls_top=cls_top)
+                    else:
+                        _scan_cls(cs.body, cls_top=False)
+                        _scan_cls(cs.orelse, cls_top=False)
+                elif isinstance(cs, (ast.For, ast.AsyncFor)):
+                    _scan_cls(cs.body, cls_top=False)
+                    _scan_cls(cs.orelse, cls_top=False)
+                elif isinstance(cs, ast.While):
+                    branch = _static_branch_truthiness(cs.test, tc_names=tc_names)
+                    if branch is False:
+                        _scan_cls(cs.orelse, cls_top=cls_top)
+                    else:
+                        _scan_cls(cs.body, cls_top=False)
+                        _scan_cls(cs.orelse, cls_top=False)
+                elif isinstance(cs, (ast.With, ast.AsyncWith)):
+                    _scan_cls(cs.body, cls_top=False)
+                elif isinstance(cs, ast.Try) or (try_star and isinstance(cs, try_star)):
+                    _scan_cls(cs.body, cls_top=False)
+                    _scan_cls(cs.orelse, cls_top=False)
+                    _scan_cls(cs.finalbody, cls_top=False)
+                    for h in cs.handlers:
+                        _scan_cls(h.body, cls_top=False)
+                elif match_cls and isinstance(cs, match_cls):
+                    for c in cs.cases:
+                        _scan_cls(c.body, cls_top=False)
+
+        _scan_cls(cls_node.body, cls_top=True)
+        if has_new or has_dynamic_call:
+            return "unknown", None
+        if call_fn_nodes:
+            errs: list[str] = []
+            for cn in call_fn_nodes:
+                if any(isinstance(d, ast.Name) and d.id == "property" for d in cn.decorator_list):
+                    errs.append(
+                        f"callable '{cls_node.name}.__call__' in {py_file.name} is a @property and not callable"
+                    )
+                    continue
+                if cn.decorator_list:
+                    return "unknown", None
+                ok_fn, fn_err = _check_plain_func_console_callable(cn, bound_self=True)
+                if ok_fn:
+                    return "callable", None
+                errs.append(f"callable '{cls_node.name}.__call__' in {py_file.name} {fn_err}")
+            return "bad_call", errs[0]
+        if call_non_callable:
+            return (
+                "bad_call",
+                f"callable '{cls_node.name}.__call__' in {py_file.name} is assigned a non-callable value",
+            )
+
+        for base in cls_node.bases:
+            if isinstance(base, ast.Name) and base.id == "object":
+                continue
+            if isinstance(base, ast.Name):
+                st, berr = _resolve_name_in_mod(base.id, vis)
+            else:
+                bchain = _extract_attr_chain(base)
+                if bchain is not None and len(bchain) >= 2:
+                    st, berr = _resolve_chain_in_mod(bchain, vis)
+                else:
+                    return "unknown", None
+            if st == "callable":
+                return "callable", None
+            if st == "unknown":
+                return "unknown", None
+            if st == "bad_call":
+                return "bad_call", berr
+
+        return (
+            "no_call",
+            f"instance of class '{cls_node.name}' in {py_file.name} defines no '__call__' method and is not callable",
+        )
+
+    def _resolve_name_in_mod(
+        sym: str,
+        vis: frozenset[tuple[Path, str]],
+    ) -> tuple[str, str | None]:
+        nkey = (resolved_file, sym)
+        if nkey in vis:
+            return "unknown", None
+        nvis = vis | {nkey}
+        if sym in non_class_defs:
+            return "unknown", None
+        errs: list[tuple[str, str]] = []
+        found_any = False
+
+        for cls_node in local_classes.get(sym, ()):
+            found_any = True
+            st, err = _cls_node_status(cls_node, nvis)
+            if st in {"callable", "unknown"}:
+                return st, None
+            if err:
+                errs.append((st, err))
+        for al in name_aliases.get(sym, ()):
+            found_any = True
+            st, err = _resolve_name_in_mod(al, nvis)
+            if st in {"callable", "unknown"}:
+                return st, None
+            if err:
+                errs.append((st, err))
+        for ch in attr_aliases.get(sym, ()):
+            found_any = True
+            st, err = _resolve_chain_in_mod(ch, nvis)
+            if st in {"callable", "unknown"}:
+                return st, None
+            if err:
+                errs.append((st, err))
+        if harness is not None and eff_pkg_dir is not None:
+            for base_mod, orig_name in from_imports.get(sym, ()):
+                found_any = True
+                t_file, _ = _resolve_local_module_file(base_mod, harness, eff_pkg_dir)
+                if t_file is None:
+                    return "unknown", None
+                st, err = _resolve_module_class_instance_call_status(
+                    t_file,
+                    orig_name,
+                    module_path=base_mod,
+                    harness=harness,
+                    eff_pkg_dir=eff_pkg_dir,
+                    _visited=nvis,
+                )
+                if st in {"callable", "unknown"}:
+                    return st, None
+                if err:
+                    errs.append((st, err))
+            if not found_any:
+                for star_mod in reversed(star_imports):
+                    star_file, _ = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+                    if star_file is not None:
+                        if _module_wildcard_allows(star_file, sym)[0] and _module_defines_symbol(star_file, sym)[0]:
+                            found_any = True
+                            st, err = _resolve_module_class_instance_call_status(
+                                star_file,
+                                sym,
+                                module_path=star_mod,
+                                harness=harness,
+                                eff_pkg_dir=eff_pkg_dir,
+                                _visited=nvis,
+                            )
+                            if st in {"callable", "unknown"}:
+                                return st, None
+                            if err:
+                                errs.append((st, err))
+                            break
+        if found_any and errs:
+            return errs[0]
+        return "unknown", None
+
+    return _resolve_name_in_mod(symbol, _visited)
+
+
 def _resolve_module_attr_path(
     py_file: Path,
     attr_parts: list[str],
@@ -1214,6 +1630,7 @@ def _resolve_module_attr_path(
         aliases = _preparsed_env["aliases"]
         attr_aliases = _preparsed_env["attr_aliases"]
         instances = _preparsed_env["instances"]
+        attr_call_instances = _preparsed_env["attr_call_instances"]
         from_imports = _preparsed_env["from_imports"]
         mod_imports = _preparsed_env["mod_imports"]
         dotted_imports = _preparsed_env["dotted_imports"]
@@ -1248,6 +1665,7 @@ def _resolve_module_attr_path(
         aliases: dict[str, list[str]] = {}
         attr_aliases: dict[str, list[tuple[str, ...]]] = {}
         instances: dict[str, list[str]] = {}
+        attr_call_instances: dict[str, list[tuple[str, ...]]] = {}
         from_imports: dict[str, list[tuple[str, str, bool]]] = {}
         mod_imports: dict[str, list[str]] = {}
         dotted_imports: list[tuple[str, ...]] = []
@@ -1268,6 +1686,7 @@ def _resolve_module_attr_path(
             "aliases": aliases,
             "attr_aliases": attr_aliases,
             "instances": instances,
+            "attr_call_instances": attr_call_instances,
             "from_imports": from_imports,
             "mod_imports": mod_imports,
             "dotted_imports": dotted_imports,
@@ -1356,6 +1775,7 @@ def _resolve_module_attr_path(
             or (name in click_cmds)
             or (name in classes)
             or (name in instances)
+            or (name in attr_call_instances)
             or (name in from_imports)
             or (name in mod_imports)
             or (name in aliases)
@@ -1366,6 +1786,7 @@ def _resolve_module_attr_path(
             any(name in vals for vals in aliases.values())
             or any(c[0] == name for chains in attr_aliases.values() for c in chains)
             or any(name in vals for vals in instances.values())
+            or any(c[0] == name for chains in attr_call_instances.values() for c in chains)
             or any(name in bases for bases in cls_base_refs.values())
         )
         if not has_state and not has_refs:
@@ -1392,6 +1813,8 @@ def _resolve_module_attr_path(
             classes[snap] = classes.pop(name)
         if name in instances:
             instances[snap] = instances.pop(name)
+        if name in attr_call_instances:
+            attr_call_instances[snap] = attr_call_instances.pop(name)
         if name in from_imports:
             from_imports[snap] = from_imports.pop(name)
         if name in mod_imports:
@@ -1413,6 +1836,9 @@ def _resolve_module_attr_path(
         for k, vals in instances.items():
             if name in vals:
                 instances[k] = [snap if v == name else v for v in vals]
+        for k, chains in attr_call_instances.items():
+            if any(c[0] == name for c in chains):
+                attr_call_instances[k] = [(snap, *c[1:]) if c[0] == name else c for c in chains]
         for cid, bases in cls_base_refs.items():
             if name in bases:
                 cls_base_refs[cid] = [snap if b == name else b for b in bases]
@@ -1541,9 +1967,16 @@ def _resolve_module_attr_path(
         direct_local_defs.add(name)
         if _is_click_cmd_value(value):
             click_cmds.add(name)
-        elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
-            callee = snap if (snap is not None and value.func.id == name) else value.func.id
-            instances.setdefault(name, []).append(callee)
+        elif isinstance(value, ast.Call):
+            if isinstance(value.func, ast.Name):
+                callee = snap if (snap is not None and value.func.id == name) else value.func.id
+                instances.setdefault(name, []).append(callee)
+            else:
+                fn_chain = _extract_attr_chain(value.func)
+                if fn_chain is not None and len(fn_chain) >= 2:
+                    if snap is not None and fn_chain[0] == name:
+                        fn_chain = (snap, *fn_chain[1:])
+                    attr_call_instances.setdefault(name, []).append(fn_chain)
 
     def _record_binding(target: ast.AST, value: ast.AST | None, *, top_level: bool, seq: int) -> None:
         value = _unwrap_static_ifexp(value)
@@ -1801,6 +2234,136 @@ def _resolve_module_attr_path(
     root_names = _expand_aliases(attr_parts[0])
     first_local_err: str | None = None
 
+    def _candidate_star_imports(cand: str) -> tuple[str, list[tuple[str, bool, int, bool]]]:
+        """Return (lookup_name, applicable_star_imports_newest_first) honoring statement order."""
+        if cand in snap_star_info:
+            orig_name, min_seq, max_seq = snap_star_info[cand]
+            return orig_name, [s for s in reversed(star_imports) if min_seq < s[2] < max_seq]
+        min_seq = explicit_top_seq.get(cand, -1)
+        return cand, [s for s in reversed(star_imports) if s[2] > min_seq]
+
+    def _resolve_attr_chain_class_status(chain: tuple[str, ...]) -> tuple[str, str | None]:
+        if len(chain) < 2 or harness is None or eff_pkg_dir is None:
+            return "unknown", None
+        for imp_parts in reversed(dotted_imports):
+            if len(chain) == len(imp_parts) + 1 and chain[:-1] == imp_parts:
+                t_mod = ".".join(imp_parts)
+                t_file, _ = _resolve_local_module_file(t_mod, harness, eff_pkg_dir)
+                if t_file is not None:
+                    return _resolve_module_class_instance_call_status(
+                        t_file,
+                        chain[-1],
+                        module_path=t_mod,
+                        harness=harness,
+                        eff_pkg_dir=eff_pkg_dir,
+                    )
+        errs: list[tuple[str, str]] = []
+        found_any = False
+        for root in _expand_aliases(chain[0]):
+            for base_mod in mod_imports.get(root, ()):
+                for split_k in range(len(chain) - 1, 0, -1):
+                    cand_mod = f"{base_mod}.{'.'.join(chain[1:split_k])}" if split_k > 1 else base_mod
+                    t_file, _ = _resolve_local_module_file(cand_mod, harness, eff_pkg_dir)
+                    if t_file is not None:
+                        found_any = True
+                        if split_k == len(chain) - 1:
+                            st, err = _resolve_module_class_instance_call_status(
+                                t_file,
+                                chain[-1],
+                                module_path=cand_mod,
+                                harness=harness,
+                                eff_pkg_dir=eff_pkg_dir,
+                            )
+                            if st in {"callable", "unknown"}:
+                                return st, None
+                            if err:
+                                errs.append((st, err))
+                        else:
+                            return "unknown", None
+                        break
+            for base_mod, orig_name, _is_rel in from_imports.get(root, ()):
+                sub_mod = f"{base_mod}.{orig_name}" if base_mod else orig_name
+                for split_k in range(len(chain) - 1, 0, -1):
+                    cand_mod = f"{sub_mod}.{'.'.join(chain[1:split_k])}" if split_k > 1 else sub_mod
+                    t_file, _ = _resolve_local_module_file(cand_mod, harness, eff_pkg_dir)
+                    if t_file is not None:
+                        found_any = True
+                        if split_k == len(chain) - 1:
+                            st, err = _resolve_module_class_instance_call_status(
+                                t_file,
+                                chain[-1],
+                                module_path=cand_mod,
+                                harness=harness,
+                                eff_pkg_dir=eff_pkg_dir,
+                            )
+                            if st in {"callable", "unknown"}:
+                                return st, None
+                            if err:
+                                errs.append((st, err))
+                        else:
+                            return "unknown", None
+                        break
+        if found_any and errs:
+            return errs[0]
+        return "unknown", None
+
+    def _resolve_imported_cls_ref_status(cls_ref: str) -> tuple[str, str | None]:
+        if harness is None or eff_pkg_dir is None:
+            return "unknown", None
+        all_cands = _expand_aliases(cls_ref)
+        errs: list[tuple[str, str]] = []
+        found_any = False
+        for c in all_cands:
+            if c in direct_local_defs and c not in classes:
+                return "unknown", None
+            for ch in attr_aliases.get(c, ()):
+                found_any = True
+                st, err = _resolve_attr_chain_class_status(ch)
+                if st in {"callable", "unknown"}:
+                    return st, None
+                if err:
+                    errs.append((st, err))
+            for base_mod, orig_name, _is_rel in from_imports.get(c, ()):
+                found_any = True
+                if not base_mod:
+                    return "unknown", None
+                t_file, _ = _resolve_local_module_file(base_mod, harness, eff_pkg_dir)
+                if t_file is None:
+                    return "unknown", None
+                st, err = _resolve_module_class_instance_call_status(
+                    t_file,
+                    orig_name,
+                    module_path=base_mod,
+                    harness=harness,
+                    eff_pkg_dir=eff_pkg_dir,
+                )
+                if st in {"callable", "unknown"}:
+                    return st, None
+                if err:
+                    errs.append((st, err))
+            if not found_any:
+                sym_name, applicable_stars = _candidate_star_imports(c)
+                for star_mod, _is_rel, _sseq, _stop in applicable_stars:
+                    star_file, _ = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+                    if star_file is not None:
+                        if _module_wildcard_allows(star_file, sym_name)[0] and _module_defines_symbol(star_file, sym_name)[0]:
+                            found_any = True
+                            st, err = _resolve_module_class_instance_call_status(
+                                star_file,
+                                sym_name,
+                                module_path=star_mod,
+                                harness=harness,
+                                eff_pkg_dir=eff_pkg_dir,
+                            )
+                            if st in {"callable", "unknown"}:
+                                return st, None
+                            if err:
+                                errs.append((st, err))
+                            break
+        if found_any and errs:
+            return errs[0]
+        return "unknown", None
+
     def _class_instance_call_status(
         cls_node: ast.ClassDef,
         visited_cls: set[str],
@@ -1923,6 +2486,16 @@ def _resolve_module_attr_path(
             if isinstance(base, ast.Name) and base.id == "object":
                 continue
             if not isinstance(base, ast.Name):
+                bchain = _extract_attr_chain(base)
+                if bchain is not None and len(bchain) >= 2:
+                    st, berr = _resolve_attr_chain_class_status(bchain)
+                    if st == "callable":
+                        return "callable", None
+                    if st == "unknown":
+                        return "unknown", None
+                    if st == "bad_call":
+                        return "bad_call", berr
+                    continue
                 return "unknown", None
             base_ref = (
                 base_names_snap[idx]
@@ -1933,7 +2506,14 @@ def _resolve_module_attr_path(
                 c for c in _expand_aliases(base_ref) if c in classes and c not in visited_cls
             ]
             if not base_candidates:
-                return "unknown", None
+                st, berr = _resolve_imported_cls_ref_status(base_ref)
+                if st == "callable":
+                    return "callable", None
+                if st == "unknown":
+                    return "unknown", None
+                if st == "bad_call":
+                    return "bad_call", berr
+                continue
             for bname in base_candidates:
                 for bnode in classes[bname]:
                     st, berr = _class_instance_call_status(bnode, visited_cls | {bname})
@@ -1952,6 +2532,9 @@ def _resolve_module_attr_path(
     def _cls_ref_instance_call_error(cls_ref: str) -> str | None:
         expanded = [c for c in _expand_aliases(cls_ref) if c in classes]
         if not expanded:
+            st, err = _resolve_imported_cls_ref_status(cls_ref)
+            if st in {"bad_call", "no_call"}:
+                return err
             return None
         errs: list[str] = []
         for cls_name in expanded:
@@ -1964,24 +2547,25 @@ def _resolve_module_attr_path(
         return errs[0] if errs else None
 
     def _instance_call_sig_error(cand: str) -> str | None:
+        if cand in classes or cand in click_cmds:
+            return None
         cls_refs = instances.get(cand)
-        if not cls_refs or cand in classes or cand in click_cmds:
+        attr_chains = attr_call_instances.get(cand)
+        if not cls_refs and not attr_chains:
             return None
         errs: list[str] = []
-        for cls_ref in cls_refs:
+        for cls_ref in cls_refs or ():
             err = _cls_ref_instance_call_error(cls_ref)
             if err is None:
                 return None
             errs.append(err)
+        for ch in attr_chains or ():
+            st, err = _resolve_attr_chain_class_status(ch)
+            if st in {"callable", "unknown"}:
+                return None
+            if err:
+                errs.append(err)
         return errs[0] if errs else None
-
-    def _candidate_star_imports(cand: str) -> tuple[str, list[tuple[str, bool, int, bool]]]:
-        """Return (lookup_name, applicable_star_imports_newest_first) honoring statement order."""
-        if cand in snap_star_info:
-            orig_name, min_seq, max_seq = snap_star_info[cand]
-            return orig_name, [s for s in reversed(star_imports) if min_seq < s[2] < max_seq]
-        min_seq = explicit_top_seq.get(cand, -1)
-        return cand, [s for s in reversed(star_imports) if s[2] > min_seq]
 
     def _is_absent_export_error(err: str | None) -> bool:
         if not err:
@@ -2203,11 +2787,18 @@ def _resolve_module_attr_path(
                     None,
                 )
             return True, None, py_file
-        if isinstance(val, ast.Call) and isinstance(val.func, ast.Name):
-            cls_err = _cls_ref_instance_call_error(val.func.id)
-            if cls_err is not None:
-                return False, cls_err, None
-            return True, None, py_file
+        if isinstance(val, ast.Call):
+            if isinstance(val.func, ast.Name):
+                cls_err = _cls_ref_instance_call_error(val.func.id)
+                if cls_err is not None:
+                    return False, cls_err, None
+                return True, None, py_file
+            fn_chain = _extract_attr_chain(val.func)
+            if fn_chain is not None and len(fn_chain) >= 2:
+                st, cls_err = _resolve_attr_chain_class_status(fn_chain)
+                if st in {"bad_call", "no_call"} and cls_err is not None:
+                    return False, cls_err, None
+                return True, None, py_file
         if isinstance(val, ast.Name):
             sub_out: list[tuple[Path, str, str | None]] | None = [] if _resolved_target_out is not None else None
             ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
@@ -5887,15 +6478,16 @@ def _check_packaging(
                         eff_pkg_spec["includes"],
                         eff_pkg_spec["excludes"],
                     ):
-                        if disc_pkg.startswith(f"{target_pkg}."):
-                            _check_mapped_pkg_dir(disc_pkg)
+                        _check_mapped_pkg_dir(disc_pkg)
             elif eff_pkg_spec["kind"] == "explicit":
                 for exp_pkg in eff_pkg_spec["packages"]:
-                    if exp_pkg == target_pkg or exp_pkg.startswith(f"{target_pkg}."):
+                    if not exp_pkg:
+                        missing_subpkg_dirs.append("'' -> ''")
+                    else:
                         _check_mapped_pkg_dir(exp_pkg)
 
         for mapped_pkg in eff_package_dir:
-            if mapped_pkg and mapped_pkg.startswith(f"{target_pkg}.") and _is_subpkg_selected(mapped_pkg):
+            if mapped_pkg and _is_subpkg_selected(mapped_pkg):
                 _check_mapped_pkg_dir(mapped_pkg)
 
         cli_anything_selected = _is_subpkg_selected("cli_anything")

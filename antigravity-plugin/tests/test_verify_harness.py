@@ -9556,6 +9556,193 @@ def test_verify_parses_original_python_bytes_for_syntax_check(tmp_path: Path) ->
         assert {c["id"]: c for c in res_ok["checks"]}["python-syntax"]["status"] == "pass", idx
 
 
+def test_verify_validates_all_explicitly_selected_package_directories(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "explicit_pkg_dirs", "expapp")
+    setup_py = harness / "setup.py"
+
+    # 1. Exact repro from review 6087716732: explicit packages=[..., "missingpkg"] must FAIL.
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-expapp",
+    version="1.0.0",
+    packages=[
+        "cli_anything.expapp",
+        "cli_anything.expapp.core",
+        "cli_anything.expapp.utils",
+        "cli_anything.expapp.skills",
+        "missingpkg",
+    ],
+    package_data={"cli_anything.expapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-expapp=cli_anything.expapp.expapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_missing["ok"] is False
+    ns_chk = {c["id"]: c for c in res_missing["checks"]}["namespace-packages"]
+    assert ns_chk["status"] == "fail"
+    assert "missingpkg" in ns_chk["detail"]
+
+    # 2. Same check via pyproject.toml [tool.setuptools] packages = [..., "missingpkg"].
+    setup_py.unlink()
+    pyproject = harness / "pyproject.toml"
+    pyproject.write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-expapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-expapp = "cli_anything.expapp.expapp_cli:main"
+
+[tool.setuptools]
+packages = [
+    "cli_anything.expapp",
+    "cli_anything.expapp.core",
+    "cli_anything.expapp.utils",
+    "cli_anything.expapp.skills",
+    "missingpkg",
+]
+
+[tool.setuptools.package-data]
+"cli_anything.expapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    res_pyproj_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_pyproj_missing["ok"] is False
+    ns_pp = {c["id"]: c for c in res_pyproj_missing["checks"]}["namespace-packages"]
+    assert ns_pp["status"] == "fail"
+    assert "missingpkg" in ns_pp["detail"]
+
+    # 3. Mapping missingpkg to an existing in-tree directory via package-dir must PASS strictly.
+    vendor_dir = harness / "vendor_pkg"
+    vendor_dir.mkdir(parents=True)
+    (vendor_dir / "__init__.py").write_text("", encoding="utf-8")
+    pyproject.write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-expapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-expapp = "cli_anything.expapp.expapp_cli:main"
+
+[tool.setuptools]
+packages = [
+    "cli_anything.expapp",
+    "cli_anything.expapp.core",
+    "cli_anything.expapp.utils",
+    "cli_anything.expapp.skills",
+    "missingpkg",
+]
+
+[tool.setuptools.package-dir]
+missingpkg = "vendor_pkg"
+
+[tool.setuptools.package-data]
+"cli_anything.expapp" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    res_mapped_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_mapped_ok["ok"] is True, res_mapped_ok["checks"]
+
+
+def test_verify_resolves_imported_classes_for_instance_callability(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "imp_cls_call", "icapp")
+    pkg_dir = harness / "cli_anything" / "icapp"
+    cli_py = pkg_dir / "icapp_cli.py"
+    (pkg_dir / "runners.py").write_text(
+        """class BadRunner:
+    def __init__(self, cli):
+        self.cli = cli
+
+
+class BadSigRunner:
+    def __init__(self, cli):
+        self.cli = cli
+
+    def __call__(self, required_arg):
+        return self.cli()
+
+
+class GoodRunner:
+    def __init__(self, cli):
+        self.cli = cli
+
+    def __call__(self):
+        return self.cli()
+
+
+def make_runner(cli):
+    return cli
+""",
+        encoding="utf-8",
+    )
+
+    cli_def = """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+"""
+
+    # 1. Non-callable imported class instances (direct, module-qualified, wildcard, inherited, bad __call__) MUST FAIL.
+    bad_variants = [
+        # Exact repro from review 6087716732: `from .runners import BadRunner; main = BadRunner(cli)`
+        cli_def + "\nfrom .runners import BadRunner\nmain = BadRunner(cli)\n",
+        cli_def + "\nfrom . import runners\nmain = runners.BadRunner(cli)\n",
+        cli_def + "\nfrom .runners import BadSigRunner\nmain = BadSigRunner(cli)\n",
+        cli_def + "\nfrom .runners import *\nmain = BadRunner(cli)\n",
+        cli_def + "\nfrom .runners import BadRunner\nclass SubRunner(BadRunner):\n    pass\nmain = SubRunner(cli)\n",
+        cli_def + "\nfrom . import runners\nclass SubRunner(runners.BadRunner):\n    pass\nmain = SubRunner(cli)\n",
+    ]
+    for idx, src in enumerate(bad_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        cs_chk = {c["id"]: c for c in res_bad["checks"]}["console-script"]
+        assert cs_chk["status"] == "fail", (idx, cs_chk)
+
+    # 2. Callable imported class instances, subclasses inheriting __call__, and factory functions MUST PASS strictly.
+    good_variants = [
+        cli_def + "\nfrom .runners import GoodRunner\nmain = GoodRunner(cli)\n",
+        cli_def + "\nfrom . import runners\nmain = runners.GoodRunner(cli)\n",
+        cli_def + "\nfrom .runners import GoodRunner\nclass SubGood(GoodRunner):\n    pass\nmain = SubGood(cli)\n",
+        cli_def + "\nfrom .runners import make_runner\nmain = make_runner(cli)\n",
+    ]
+    for idx, src in enumerate(good_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+
+
+
 
 
 
