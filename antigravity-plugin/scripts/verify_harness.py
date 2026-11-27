@@ -438,6 +438,29 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
     return False, f"attribute '{symbol}' not defined or imported in {py_file.name}"
 
 
+def _args_allow_zero_call(
+    args: ast.arguments,
+    *,
+    bound_self: bool = False,
+) -> tuple[bool, str | None]:
+    """Return (True, None) if a callable with AST `args` can be invoked with zero arguments."""
+    pos_params = list(args.posonlyargs) + list(args.args)
+    total_pos = len(pos_params)
+    required_pos = total_pos - len(args.defaults)
+    if bound_self:
+        if total_pos == 0 and args.vararg is None:
+            return False, "takes 0 positional arguments when bound (missing self/cls)"
+        if required_pos > 1:
+            return False, f"requires positional argument '{pos_params[1].arg}'"
+    else:
+        if required_pos > 0:
+            return False, f"requires positional argument '{pos_params[0].arg}'"
+    for kw_arg, kw_default in zip(args.kwonlyargs, args.kw_defaults):
+        if kw_default is None:
+            return False, f"requires keyword-only argument '{kw_arg.arg}'"
+    return True, None
+
+
 def _is_provably_non_callable_expr(node: ast.AST) -> bool:
     """Return True if an AST expression provably evaluates to a non-callable value."""
     if isinstance(
@@ -748,6 +771,7 @@ def _resolve_module_attr_path(
 
     direct_local_defs: set[str] = set()
     non_callable_local_defs: set[str] = set()
+    bad_sig_local_defs: dict[str, str] = {}
     click_modules: set[str] = set()
     click_factories: set[str] = set()
     click_cmds: set[str] = set()
@@ -805,6 +829,7 @@ def _resolve_module_attr_path(
         mod_imports.pop(name, None)
         aliases.pop(name, None)
         attr_aliases.pop(name, None)
+        instances.pop(name, None)
 
     def _record_attr_chains(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
         direct_chain = _extract_attr_chain(target)
@@ -840,6 +865,7 @@ def _resolve_module_attr_path(
                 if top_level:
                     direct_local_defs.discard(name)
                     non_callable_local_defs.discard(name)
+                    bad_sig_local_defs.pop(name, None)
                     _clear_reexports(name)
                 aliases.setdefault(name, []).append(value.id)
                 return
@@ -848,6 +874,7 @@ def _resolve_module_attr_path(
                 if top_level:
                     direct_local_defs.discard(name)
                     non_callable_local_defs.discard(name)
+                    bad_sig_local_defs.pop(name, None)
                     _clear_reexports(name)
                 attr_aliases.setdefault(name, []).append(val_chain)
                 return
@@ -856,10 +883,22 @@ def _resolve_module_attr_path(
             if _is_provably_non_callable_expr(value):
                 if top_level:
                     direct_local_defs.discard(name)
+                    bad_sig_local_defs.pop(name, None)
                 non_callable_local_defs.add(name)
                 return
+            if isinstance(value, ast.Lambda):
+                ok_zero, sig_err = _args_allow_zero_call(value.args, bound_self=False)
+                if not ok_zero:
+                    if top_level:
+                        direct_local_defs.discard(name)
+                        non_callable_local_defs.discard(name)
+                    bad_sig_local_defs[name] = (
+                        f"callable '{name}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments"
+                    )
+                    return
             if top_level:
                 non_callable_local_defs.discard(name)
+                bad_sig_local_defs.pop(name, None)
             direct_local_defs.add(name)
             if _is_click_cmd_value(value):
                 click_cmds.add(name)
@@ -870,6 +909,7 @@ def _resolve_module_attr_path(
                 if top_level:
                     _clear_reexports(bound_name)
                     non_callable_local_defs.discard(bound_name)
+                    bad_sig_local_defs.pop(bound_name, None)
                 direct_local_defs.add(bound_name)
 
     def _collect_stmts(stmts: list[ast.stmt], *, top_level: bool) -> None:
@@ -878,12 +918,46 @@ def _resolve_module_attr_path(
                 if top_level:
                     _clear_reexports(stmt.name)
                     non_callable_local_defs.discard(stmt.name)
-                direct_local_defs.add(stmt.name)
+                    bad_sig_local_defs.pop(stmt.name, None)
                 classes.setdefault(stmt.name, []).append(stmt)
+                init_err: str | None = None
+                if not stmt.decorator_list and not stmt.bases and not stmt.keywords:
+                    has_new = False
+                    init_node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+                    for cls_stmt in stmt.body:
+                        if isinstance(cls_stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            if cls_stmt.name == "__new__":
+                                has_new = True
+                            elif cls_stmt.name == "__init__":
+                                init_node = cls_stmt
+                    if not has_new and init_node is not None and not init_node.decorator_list:
+                        ok_zero, sig_err = _args_allow_zero_call(init_node.args, bound_self=True)
+                        if not ok_zero:
+                            init_err = (
+                                f"class '{stmt.name}.__init__' in {py_file.name} {sig_err} "
+                                "and cannot be invoked with zero arguments"
+                            )
+                if init_err is not None:
+                    if top_level:
+                        direct_local_defs.discard(stmt.name)
+                    bad_sig_local_defs[stmt.name] = init_err
+                else:
+                    direct_local_defs.add(stmt.name)
             elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if top_level:
                     _clear_reexports(stmt.name)
                     non_callable_local_defs.discard(stmt.name)
+                if not stmt.decorator_list:
+                    ok_zero, sig_err = _args_allow_zero_call(stmt.args, bound_self=False)
+                    if not ok_zero:
+                        if top_level:
+                            direct_local_defs.discard(stmt.name)
+                        bad_sig_local_defs[stmt.name] = (
+                            f"function '{stmt.name}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments"
+                        )
+                        continue
+                if top_level:
+                    bad_sig_local_defs.pop(stmt.name, None)
                 direct_local_defs.add(stmt.name)
                 if any(_is_click_cmd_expr(dec) for dec in stmt.decorator_list):
                     click_cmds.add(stmt.name)
@@ -899,6 +973,7 @@ def _resolve_module_attr_path(
                     if top_level:
                         direct_local_defs.discard(bound)
                         non_callable_local_defs.discard(bound)
+                        bad_sig_local_defs.pop(bound, None)
                         _clear_reexports(bound)
                     if alias.name in {"click", "click.decorators", "click.core"}:
                         click_modules.add(alias.asname or alias.name.split(".", 1)[0])
@@ -923,6 +998,7 @@ def _resolve_module_attr_path(
                     if top_level:
                         direct_local_defs.discard(bound)
                         non_callable_local_defs.discard(bound)
+                        bad_sig_local_defs.pop(bound, None)
                         _clear_reexports(bound)
                     if stmt.level == 0 and stmt.module in {"click", "click.decorators", "click.core"} and alias.name in {
                         "group",
@@ -1055,12 +1131,49 @@ def _resolve_module_attr_path(
     root_names = _expand_aliases(attr_parts[0])
     first_local_err: str | None = None
 
+    def _instance_call_sig_error(cand: str) -> str | None:
+        cls_refs = instances.get(cand)
+        if not cls_refs or cand in classes or cand in click_cmds:
+            return None
+        errs: list[str] = []
+        for cls_ref in cls_refs:
+            expanded = [c for c in _expand_aliases(cls_ref) if c in classes]
+            if not expanded:
+                return None
+            for cls_name in expanded:
+                for cls_node in classes[cls_name]:
+                    if cls_node.decorator_list or cls_node.keywords:
+                        return None
+                    call_node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+                    for cs in cls_node.body:
+                        if (
+                            isinstance(cs, (ast.FunctionDef, ast.AsyncFunctionDef))
+                            and cs.name == "__call__"
+                        ):
+                            call_node = cs
+                    if call_node is None or call_node.decorator_list:
+                        return None
+                    ok_zero, sig_err = _args_allow_zero_call(call_node.args, bound_self=True)
+                    if ok_zero:
+                        return None
+                    errs.append(
+                        f"callable '{cls_node.name}.__call__' in {py_file.name} {sig_err} "
+                        "and cannot be invoked with zero arguments"
+                    )
+        return errs[0] if errs else None
+
     # Single-component callable (`module:main`): return directly if defined locally,
     # reject imported module objects and non-callable literals, and follow local re-exports
     # (`from .demoapp_cli import main`, `main = cli_mod.main`, wildcard exports honoring `__all__`, etc.).
     if len(attr_parts) == 1:
-        if any(cand in direct_local_defs for cand in root_names):
-            return True, None, py_file
+        for cand in root_names:
+            if cand in direct_local_defs:
+                inst_err = _instance_call_sig_error(cand)
+                if inst_err is not None:
+                    if first_local_err is None:
+                        first_local_err = inst_err
+                    continue
+                return True, None, py_file
 
         has_external_binding = False
         for cand in root_names:
@@ -1075,6 +1188,9 @@ def _resolve_module_attr_path(
                     first_local_err = (
                         f"target '{attr_parts[0]}' resolves to a non-callable value in {py_file.name}"
                     )
+            if cand in bad_sig_local_defs:
+                if first_local_err is None:
+                    first_local_err = bad_sig_local_defs[cand]
 
             for attr_chain in attr_aliases.get(cand, ()):
                 ok_sub, sub_err, impl = _resolve_module_attr_path(
@@ -1095,7 +1211,13 @@ def _resolve_module_attr_path(
                     return True, None, impl or py_file
                 chain_roots = _expand_aliases(attr_chain[0])
                 is_local_chain = any(
-                    (r in from_imports and any(_is_harness_mod_ref(bm, ir) for bm, _, ir in from_imports[r]))
+                    (r in direct_local_defs)
+                    or (r in non_callable_local_defs)
+                    or (r in bad_sig_local_defs)
+                    or (r in classes)
+                    or (r in instances)
+                    or (r in click_cmds)
+                    or (r in from_imports and any(_is_harness_mod_ref(bm, ir) for bm, _, ir in from_imports[r]))
                     or (r in mod_imports and any(_is_harness_mod_ref(tm, False) for tm in mod_imports[r]))
                     for r in chain_roots
                 ) or any(
@@ -1185,6 +1307,8 @@ def _resolve_module_attr_path(
     def _check_assigned_value_callable(
         val: ast.AST | None,
         target_label: str,
+        *,
+        bound_self: bool = False,
     ) -> tuple[bool, str | None, Path | None]:
         if val is None:
             return True, None, py_file
@@ -1194,6 +1318,15 @@ def _resolve_module_attr_path(
                 f"target '{target_label}' is assigned a non-callable value in {py_file.name}",
                 None,
             )
+        if isinstance(val, ast.Lambda):
+            ok_zero, sig_err = _args_allow_zero_call(val.args, bound_self=bound_self)
+            if not ok_zero:
+                return (
+                    False,
+                    f"target '{target_label}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments",
+                    None,
+                )
+            return True, None, py_file
         if isinstance(val, ast.Name):
             ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
                 py_file,
@@ -1234,7 +1367,9 @@ def _resolve_module_attr_path(
             is_local_ref = any(
                 (r in direct_local_defs)
                 or (r in non_callable_local_defs)
+                or (r in bad_sig_local_defs)
                 or (r in classes)
+                or (r in instances)
                 or (r in click_cmds)
                 or (r in from_imports and any(_is_harness_mod_ref(bm, ir) for bm, _, ir in from_imports[r]))
                 or (r in mod_imports and any(_is_harness_mod_ref(tm, False) for tm in mod_imports[r]))
@@ -1280,15 +1415,25 @@ def _resolve_module_attr_path(
                 return True
         return False
 
+    def _single_builtin_method_decorator(fn_node: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+        if len(fn_node.decorator_list) == 1 and isinstance(fn_node.decorator_list[0], ast.Name):
+            dec_id = fn_node.decorator_list[0].id
+            if dec_id in {"staticmethod", "classmethod"}:
+                return dec_id
+        return None
+
     def _class_defines_chain(
         cls_node: ast.ClassDef,
         rest: list[str],
         visited_cls: set[str],
+        *,
+        accessed_on_instance: bool = False,
     ) -> tuple[bool, str | None, Path | None]:
         if not rest:
             return True, None, py_file
         callable_names: set[str] = set()
         non_callable_names: set[str] = set()
+        bad_sig_cls_names: dict[str, str] = {}
         cls_attr_vals: dict[str, list[ast.AST | None]] = {}
         nested_classes: dict[str, list[ast.ClassDef]] = {}
         cls_aliases: dict[str, list[str]] = {}
@@ -1299,11 +1444,13 @@ def _resolve_module_attr_path(
                 if val is not None and _is_provably_non_callable_expr(val):
                     if cls_top:
                         callable_names.discard(t.id)
+                        bad_sig_cls_names.pop(t.id, None)
                         cls_attr_vals.pop(t.id, None)
                     non_callable_names.add(t.id)
                     return
                 if cls_top:
                     non_callable_names.discard(t.id)
+                    bad_sig_cls_names.pop(t.id, None)
                     cls_attr_vals[t.id] = [val]
                 else:
                     cls_attr_vals.setdefault(t.id, []).append(val)
@@ -1311,12 +1458,15 @@ def _resolve_module_attr_path(
                     cls_aliases.setdefault(t.id, []).append(val.id)
                 elif isinstance(val, ast.Call) and isinstance(val.func, ast.Name):
                     cls_instances.setdefault(t.id, []).append(val.func.id)
+                elif isinstance(val, ast.Lambda):
+                    pass
                 else:
                     callable_names.add(t.id)
             else:
                 for bn in _collect_target_names(t):
                     if cls_top:
                         non_callable_names.discard(bn)
+                        bad_sig_cls_names.pop(bn, None)
                     callable_names.add(bn)
 
         def _scan_cls_body(body: list[ast.stmt], *, cls_top: bool) -> None:
@@ -1325,16 +1475,38 @@ def _resolve_module_attr_path(
                     if _is_property_decorated(s):
                         if cls_top:
                             callable_names.discard(s.name)
+                            bad_sig_cls_names.pop(s.name, None)
                             cls_attr_vals.pop(s.name, None)
                         non_callable_names.add(s.name)
                     else:
+                        builtin_dec = _single_builtin_method_decorator(s)
+                        check_sig = (not s.decorator_list) or (builtin_dec is not None)
+                        if check_sig:
+                            is_bound = (
+                                False
+                                if builtin_dec == "staticmethod"
+                                else (True if builtin_dec == "classmethod" else accessed_on_instance)
+                            )
+                            ok_zero, sig_err = _args_allow_zero_call(s.args, bound_self=is_bound)
+                            if not ok_zero:
+                                if cls_top:
+                                    callable_names.discard(s.name)
+                                    non_callable_names.discard(s.name)
+                                    cls_attr_vals.pop(s.name, None)
+                                bad_sig_cls_names[s.name] = (
+                                    f"method '{cls_node.name}.{s.name}' in {py_file.name} {sig_err} "
+                                    "and cannot be invoked with zero arguments"
+                                )
+                                continue
                         if cls_top:
                             non_callable_names.discard(s.name)
+                            bad_sig_cls_names.pop(s.name, None)
                             cls_attr_vals.pop(s.name, None)
                         callable_names.add(s.name)
                 elif isinstance(s, ast.ClassDef):
                     if cls_top:
                         non_callable_names.discard(s.name)
+                        bad_sig_cls_names.pop(s.name, None)
                         cls_attr_vals.pop(s.name, None)
                     callable_names.add(s.name)
                     nested_classes.setdefault(s.name, []).append(s)
@@ -1358,10 +1530,12 @@ def _resolve_module_attr_path(
                         if is_mod:
                             if cls_top:
                                 callable_names.discard(bound)
+                                bad_sig_cls_names.pop(bound, None)
                             non_callable_names.add(bound)
                         else:
                             if cls_top:
                                 non_callable_names.discard(bound)
+                                bad_sig_cls_names.pop(bound, None)
                             callable_names.add(bound)
                 elif isinstance(s, ast.If):
                     _scan_cls_body(s.body, cls_top=False)
@@ -1390,12 +1564,14 @@ def _resolve_module_attr_path(
             if head in cls_attr_vals:
                 for val in cls_attr_vals[head]:
                     ok_v, v_err, v_impl = _check_assigned_value_callable(
-                        val, f"{cls_node.name}.{head}"
+                        val, f"{cls_node.name}.{head}", bound_self=accessed_on_instance
                     )
                     if ok_v:
                         return True, None, v_impl or py_file
                     if cls_err is None and v_err:
                         cls_err = v_err
+            if head in bad_sig_cls_names:
+                return False, bad_sig_cls_names[head], None
             if head in non_callable_names:
                 return (
                     False,
@@ -1404,14 +1580,18 @@ def _resolve_module_attr_path(
                 )
         else:
             for nested in nested_classes.get(head, ()):
-                ok_n, n_err, n_impl = _class_defines_chain(nested, rest[1:], set())
+                ok_n, n_err, n_impl = _class_defines_chain(
+                    nested, rest[1:], set(), accessed_on_instance=False
+                )
                 if ok_n:
                     return True, None, n_impl or py_file
                 if cls_err is None and n_err:
                     cls_err = n_err
-            for ref in (*cls_aliases.get(head, ()), *cls_instances.get(head, ())):
+            for ref in cls_aliases.get(head, ()):
                 for nested in nested_classes.get(ref, ()):
-                    ok_n, n_err, n_impl = _class_defines_chain(nested, rest[1:], set())
+                    ok_n, n_err, n_impl = _class_defines_chain(
+                        nested, rest[1:], set(), accessed_on_instance=False
+                    )
                     if ok_n:
                         return True, None, n_impl or py_file
                     if cls_err is None and n_err:
@@ -1419,7 +1599,25 @@ def _resolve_module_attr_path(
                 for top_cls in classes.get(ref, ()):
                     if ref not in visited_cls:
                         ok_n, n_err, n_impl = _class_defines_chain(
-                            top_cls, rest[1:], visited_cls | {ref}
+                            top_cls, rest[1:], visited_cls | {ref}, accessed_on_instance=False
+                        )
+                        if ok_n:
+                            return True, None, n_impl or py_file
+                        if cls_err is None and n_err:
+                            cls_err = n_err
+            for ref in cls_instances.get(head, ()):
+                for nested in nested_classes.get(ref, ()):
+                    ok_n, n_err, n_impl = _class_defines_chain(
+                        nested, rest[1:], set(), accessed_on_instance=True
+                    )
+                    if ok_n:
+                        return True, None, n_impl or py_file
+                    if cls_err is None and n_err:
+                        cls_err = n_err
+                for top_cls in classes.get(ref, ()):
+                    if ref not in visited_cls:
+                        ok_n, n_err, n_impl = _class_defines_chain(
+                            top_cls, rest[1:], visited_cls | {ref}, accessed_on_instance=True
                         )
                         if ok_n:
                             return True, None, n_impl or py_file
@@ -1439,7 +1637,10 @@ def _resolve_module_attr_path(
             if isinstance(base, ast.Name) and base.id not in visited_cls:
                 for base_cls in classes.get(base.id, ()):
                     ok_b, b_err, b_impl = _class_defines_chain(
-                        base_cls, rest, visited_cls | {base.id}
+                        base_cls,
+                        rest,
+                        visited_cls | {base.id},
+                        accessed_on_instance=accessed_on_instance,
                     )
                     if ok_b:
                         return True, None, b_impl or py_file
@@ -1447,17 +1648,22 @@ def _resolve_module_attr_path(
                         cls_err = b_err
         return False, cls_err, None
 
-    candidate_class_names: set[str] = set()
+    candidate_classes: list[tuple[str, bool]] = []
+    seen_cls_candidates: set[tuple[str, bool]] = set()
     for cand in root_names:
-        if cand in classes:
-            candidate_class_names.add(cand)
+        if cand in classes and (cand, False) not in seen_cls_candidates:
+            seen_cls_candidates.add((cand, False))
+            candidate_classes.append((cand, False))
         for cls_ref in instances.get(cand, ()):
             for expanded_cls in _expand_aliases(cls_ref):
-                if expanded_cls in classes:
-                    candidate_class_names.add(expanded_cls)
-    for cls_name in candidate_class_names:
+                if expanded_cls in classes and (expanded_cls, True) not in seen_cls_candidates:
+                    seen_cls_candidates.add((expanded_cls, True))
+                    candidate_classes.append((expanded_cls, True))
+    for cls_name, is_inst in candidate_classes:
         for cls_node in classes.get(cls_name, ()):
-            ok_cls, cls_err, cls_impl = _class_defines_chain(cls_node, attr_parts[1:], {cls_name})
+            ok_cls, cls_err, cls_impl = _class_defines_chain(
+                cls_node, attr_parts[1:], {cls_name}, accessed_on_instance=is_inst
+            )
             if ok_cls:
                 return True, None, cls_impl or py_file
             if first_local_err is None and cls_err:

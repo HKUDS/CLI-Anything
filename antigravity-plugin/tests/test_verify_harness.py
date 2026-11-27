@@ -4513,3 +4513,264 @@ def main():
             harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
         )
         assert {c["id"]: c for c in res["checks"]}["click-groups"]["status"] == "fail", bad_src
+
+
+def test_verify_validates_zero_arg_invocation_of_plain_console_targets(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "zero_arg_cli", "zargapp")
+    pkg = harness / "cli_anything" / "zargapp"
+    cli_py = pkg / "zargapp_cli.py"
+    setup_py = harness / "setup.py"
+
+    cli_header = """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+"""
+
+    def _set_target(target_spec: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-zargapp",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.zargapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-zargapp={target_spec}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+
+    cli_py.write_text(
+        cli_header
+        + """
+def bad_pos(argv):
+    cli(argv)
+
+def bad_kw(*, flag):
+    cli()
+
+bad_lambda = lambda argv: cli(argv)
+
+def ok_zero():
+    cli()
+
+def ok_default(argv=None):
+    cli()
+
+def ok_varargs(*args, **kwargs):
+    cli()
+
+ok_lambda = lambda: cli()
+
+ok_zero.bad_sub = lambda argv: cli(argv)
+ok_zero.ok_sub = lambda: cli()
+
+class Runner:
+    @staticmethod
+    def bad_static(argv):
+        cli(argv)
+
+    @staticmethod
+    def ok_static():
+        cli()
+
+    @classmethod
+    def bad_cls(cls, argv):
+        cli(argv)
+
+    @classmethod
+    def ok_cls(cls):
+        cli()
+
+    def instance_method(self):
+        cli()
+
+    def bad_instance(self, argv):
+        cli(argv)
+
+    bound_lam = lambda self: cli()
+    unbound_lam = lambda: cli()
+
+runner = Runner()
+bad_alias = Runner.bad_static
+
+class BadInit:
+    def __init__(self, argv):
+        self.argv = argv
+
+class BadCall:
+    def __call__(self, argv):
+        cli(argv)
+
+bad_call_inst = BadCall()
+
+class OkCall:
+    def __call__(self):
+        cli()
+
+ok_call_inst = OkCall()
+""",
+        encoding="utf-8",
+    )
+    (pkg / "__main__.py").write_text(
+        "from .zargapp_cli import bad_pos, ok_zero\n",
+        encoding="utf-8",
+    )
+
+    invalid_targets = [
+        "cli_anything.zargapp.zargapp_cli:bad_pos",
+        "cli_anything.zargapp.zargapp_cli:bad_kw",
+        "cli_anything.zargapp.zargapp_cli:bad_lambda",
+        "cli_anything.zargapp.__main__:bad_pos",
+        "cli_anything.zargapp.zargapp_cli:ok_zero.bad_sub",
+        "cli_anything.zargapp.zargapp_cli:Runner.bad_static",
+        "cli_anything.zargapp.zargapp_cli:Runner.bad_cls",
+        "cli_anything.zargapp.zargapp_cli:Runner.instance_method",
+        "cli_anything.zargapp.zargapp_cli:runner.bad_instance",
+        "cli_anything.zargapp.zargapp_cli:Runner.bound_lam",
+        "cli_anything.zargapp.zargapp_cli:runner.unbound_lam",
+        "cli_anything.zargapp.zargapp_cli:bad_alias",
+        "cli_anything.zargapp.zargapp_cli:BadInit",
+        "cli_anything.zargapp.zargapp_cli:bad_call_inst",
+    ]
+    for spec in invalid_targets:
+        _set_target(spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, spec
+        cs = {c["id"]: c for c in res["checks"]}["console-script"]
+        assert cs["status"] == "fail", (spec, cs)
+        assert "zero arguments" in cs["detail"], (spec, cs)
+
+    valid_targets = [
+        "cli_anything.zargapp.zargapp_cli:ok_zero",
+        "cli_anything.zargapp.zargapp_cli:ok_default",
+        "cli_anything.zargapp.zargapp_cli:ok_varargs",
+        "cli_anything.zargapp.zargapp_cli:ok_lambda",
+        "cli_anything.zargapp.__main__:ok_zero",
+        "cli_anything.zargapp.zargapp_cli:ok_zero.ok_sub",
+        "cli_anything.zargapp.zargapp_cli:cli",
+        "cli_anything.zargapp.zargapp_cli:cli.main",
+        "cli_anything.zargapp.zargapp_cli:Runner.ok_static",
+        "cli_anything.zargapp.zargapp_cli:Runner.ok_cls",
+        "cli_anything.zargapp.zargapp_cli:runner.instance_method",
+        "cli_anything.zargapp.zargapp_cli:runner.bound_lam",
+        "cli_anything.zargapp.zargapp_cli:Runner.unbound_lam",
+        "cli_anything.zargapp.zargapp_cli:ok_call_inst",
+    ]
+    for spec in valid_targets:
+        _set_target(spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (spec, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "pass", spec
+
+
+def test_toml_fallback_rejects_duplicate_tables_and_frozen_mutations(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import _toml_fallback  # noqa: PLC0415
+
+    try:
+        import tomllib  # noqa: PLC0415
+    except ModuleNotFoundError:
+        tomllib = None
+
+    invalid_docs = [
+        '[project]\nname = "a"\n[project]\nversion = "1"\n',
+        '["project"]\nname = "a"\n[project]\nversion = "1"\n',
+        '[a.b]\nx = 1\n[a.b]\ny = 2\n',
+        '[a.b]\nx = 1\n[a]\ny = 2\n[a]\nz = 3\n',
+        'a.b = 1\n[a]\nc = 2\n',
+        'a.b.c = 1\n[a.b]\nd = 2\n',
+        '[a.b]\nx = 1\n[a]\nb.y = 2\n',
+        'a = { b = 1 }\n[a]\nc = 2\n',
+        'a = { b = 1 }\n[a.c]\nd = 2\n',
+        'a = { b = 1 }\na.c = 2\n',
+        'x = { a = { b = 1 }, a.c = 2 }\n',
+        'x = { a.b = 1, a = { c = 2 } }\n',
+        'a = [{ b = 1 }]\n[[a]]\nb = 2\n',
+        '[[a]]\n[a.b]\nx = 1\n[a.b]\ny = 2\n',
+        '[[a]]\nx = 1\n[a]\ny = 2\n',
+        '[a]\nx = 1\n[[a]]\ny = 2\n',
+        '[[a]]\nb.c = 1\n[a.b]\nd = 2\n',
+    ]
+    for doc in invalid_docs:
+        with pytest.raises(ValueError):
+            _toml_fallback.loads_toml_fallback(doc)
+        if tomllib is not None:
+            with pytest.raises(ValueError):
+                tomllib.loads(doc)
+
+    valid_docs = [
+        ('[a.b]\nx = 1\n[a]\ny = 2\n', {"a": {"b": {"x": 1}, "y": 2}}),
+        ('a.b = 1\na.c = 2\n', {"a": {"b": 1, "c": 2}}),
+        ('a.b = 1\n[a.c]\nd = 2\n', {"a": {"b": 1, "c": {"d": 2}}}),
+        (
+            '[[a]]\n[a.b]\nx = 1\n[[a]]\n[a.b]\nx = 2\n',
+            {"a": [{"b": {"x": 1}}, {"b": {"x": 2}}]},
+        ),
+        ('x = { a.b = 1, a.c = 2 }\n', {"x": {"a": {"b": 1, "c": 2}}}),
+        ('[[a.b]]\nx = 1\n[a]\ny = 2\n', {"a": {"b": [{"x": 1}], "y": 2}}),
+    ]
+    for doc, expected in valid_docs:
+        parsed = _toml_fallback.loads_toml_fallback(doc)
+        assert parsed == expected, doc
+        if tomllib is not None:
+            assert tomllib.loads(doc) == parsed, doc
+
+    # End-to-end verify_harness check: duplicate [project] header must fail pyproject-toml-syntax
+    # both under native tomllib and under the Python 3.10 fallback.
+    harness = _create_valid_harness(tmp_path / "dup_table_proj", "duptbl")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-duptbl"
+
+[project]
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-duptbl = "cli_anything.duptbl.duptbl_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.duptbl" = ["skills/*.md"]
+""",
+        encoding="utf-8",
+    )
+    r_native = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_native["ok"] is False
+    assert {c["id"]: c for c in r_native["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_310["ok"] is False
+        assert {c["id"]: c for c in r_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
