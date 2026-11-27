@@ -701,3 +701,49 @@ def test_json_repl_keeps_stdout_pure_json(fake_backend, monkeypatch):
     result = CliRunner().invoke(alexa_cli.cli, ["--json", "--dry-run", "repl"])
     assert json.loads(result.stdout)["dry_run"] is True  # only the command's JSON on stdout
     assert result.stderr.strip()  # banner/help/goodbye went to stderr
+
+
+# ── ninth Codex review round (commit 78b2af0) ─────────────────────────
+
+def test_login_cleans_up_when_proxy_fails_to_start(home, monkeypatch):
+    import asyncio
+    closed = []
+
+    class FakeLogin:
+        def __init__(self, **kw):
+            pass
+
+        async def close(self):
+            closed.append("login")
+
+    class FakeProxy:
+        active = False
+
+        def __init__(self, login, url):
+            pass
+
+        async def start_proxy(self, host=None):
+            raise OSError("address already in use")
+
+        async def stop_proxy(self):
+            closed.append("proxy")
+
+    class FakeAlexapy:
+        AlexaLogin = FakeLogin
+        AlexaProxy = FakeProxy
+
+    monkeypatch.setattr(backend, "_alexapy", lambda: FakeAlexapy)
+    with pytest.raises(OSError):
+        asyncio.run(backend._login_via_proxy("a@b.c", "amazon.com", 9, 5, lambda url: None))
+    assert closed == ["login"]  # session closed; proxy that never started is not stopped
+
+
+def test_json_repl_usage_errors_are_json(fake_backend, monkeypatch):
+    from cli_anything.alexa.utils import repl_skin
+    lines = iter(["volume kitchen 150", "quit"])
+    monkeypatch.setattr(repl_skin.ReplSkin, "create_prompt_session", lambda self: None)
+    monkeypatch.setattr(repl_skin.ReplSkin, "get_input", lambda self, *a, **k: next(lines))
+    result = CliRunner().invoke(alexa_cli.cli, ["--json", "repl"])
+    data = json.loads(result.stdout)
+    assert data["ok"] is False and data["error"] == "usage_error"
+    assert fake_backend == []

@@ -511,7 +511,10 @@ def repl():
         except SystemExit:
             pass
         except click.ClickException as exc:
-            with chrome():
+            if repl_json:  # agents driving the REPL in --json mode get JSON errors too
+                click.echo(json.dumps({"ok": False, "error": "usage_error",
+                                       "message": exc.format_message()}, indent=2))
+            else:
                 skin.error(exc.format_message())
         account = backend.load_account()
 

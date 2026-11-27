@@ -293,10 +293,11 @@ async def _login_via_proxy(email: str, domain: str, port: int, timeout: int,
     alexapy = _alexapy()
     device_uuid = uuidlib.uuid4().hex.upper()
     login = alexapy.AlexaLogin(url=domain, email=email, password="", outputpath=_outputpath, uuid=device_uuid)
-    proxy = alexapy.AlexaProxy(login, f"http://127.0.0.1:{port}")
-    await proxy.start_proxy(host="127.0.0.1")
-    login.proxy_url = str(proxy.access_url())
+    proxy = None
     try:
+        proxy = alexapy.AlexaProxy(login, f"http://127.0.0.1:{port}")
+        await proxy.start_proxy(host="127.0.0.1")
+        login.proxy_url = str(proxy.access_url())
         on_url(str(proxy.access_url()))
         deadline = time.monotonic() + timeout
         while not (getattr(login, "access_token", None) or getattr(login, "authorization_code", None)):
@@ -325,7 +326,13 @@ async def _login_via_proxy(email: str, domain: str, port: int, timeout: int,
             result["warning"] = warning
         return result
     finally:
-        await proxy.stop_proxy()
+        # Always release the local server and the HTTP session, even when the
+        # proxy failed to start (e.g. the port was taken in the meantime).
+        if proxy is not None and getattr(proxy, "active", False):
+            try:
+                await proxy.stop_proxy()
+            except Exception:
+                pass
         await login.close()
 
 
