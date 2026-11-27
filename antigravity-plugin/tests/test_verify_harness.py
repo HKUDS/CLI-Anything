@@ -2835,3 +2835,107 @@ def test_list_harnesses_parses_inline_and_dotted_pyproject_metadata_on_py310_fal
         gen_poetry = list_harnesses.scan_generated(tmp_path)
         assert list(gen_poetry.keys()) == ["poetry-inline"]
         assert gen_poetry["poetry-inline"]["version"] == "3.1.4"
+
+
+def test_verify_preserves_platform_backslash_semantics_in_package_data_and_manifest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "bs_case", "bsapp")
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-bsapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.bsapp": [r"skills\\*.md"]},
+    entry_points={"console_scripts": ["cli-anything-bsapp=cli_anything.bsapp.bsapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+
+    # 1. On POSIX, backslash is a literal filename character (convert_path preserves it),
+    #    so r"skills\*.md" must NOT satisfy package-data-skills.
+    with monkeypatch.context() as mp:
+        mp.setattr(verify_harness, "_is_windows_path_semantics", lambda: False)
+        r_posix = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_posix["ok"] is False
+        assert {c["id"]: c for c in r_posix["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 2. On Windows, backslash is a path separator so r"skills\*.md" matches skills/SKILL.md.
+    with monkeypatch.context() as mp:
+        mp.setattr(verify_harness, "_is_windows_path_semantics", lambda: True)
+        r_win = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_win["ok"] is True
+
+    # Native host check without monkeypatching confirms os.sep wiring on the live runner OS.
+    r_native = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_native["ok"] is (sys.platform == "win32")
+
+    # 3. exclude_package_data with r"skills\*.md" excludes on Windows but NOT on POSIX.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-bsapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.bsapp": ["skills/*.md"]},
+    exclude_package_data={"cli_anything.bsapp": [r"skills\\*.md"]},
+    entry_points={"console_scripts": ["cli-anything-bsapp=cli_anything.bsapp.bsapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    with monkeypatch.context() as mp:
+        mp.setattr(verify_harness, "_is_windows_path_semantics", lambda: False)
+        assert verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )["ok"] is True
+    with monkeypatch.context() as mp:
+        mp.setattr(verify_harness, "_is_windows_path_semantics", lambda: True)
+        r_win_excl = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_win_excl["ok"] is False
+        assert {c["id"]: c for c in r_win_excl["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 4. MANIFEST.in backslash pattern fails on POSIX and passes with POSIX '/'.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-bsapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-bsapp=cli_anything.bsapp.bsapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    (harness / "MANIFEST.in").write_text(
+        "include cli_anything\\bsapp\\skills\\*.md\n", encoding="utf-8"
+    )
+    with monkeypatch.context() as mp:
+        mp.setattr(verify_harness, "_is_windows_path_semantics", lambda: False)
+        r_man_posix = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_man_posix["ok"] is False
+        assert {c["id"]: c for c in r_man_posix["checks"]}["package-data-skills"]["status"] == "warn"
+    (harness / "MANIFEST.in").write_text(
+        "include cli_anything/bsapp/skills/*.md\n", encoding="utf-8"
+    )
+    with monkeypatch.context() as mp:
+        mp.setattr(verify_harness, "_is_windows_path_semantics", lambda: False)
+        assert verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )["ok"] is True

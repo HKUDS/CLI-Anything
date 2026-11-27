@@ -358,3 +358,44 @@ write_discovery_pointer() {
   release_install_lock "${ptr_lock}"
   return "${rc}"
 }
+
+# Atomically check and remove the shared discovery pointer under the same lock
+# used by write_discovery_pointer() so concurrent installs into another root
+# cannot publish a new pointer between comparison and deletion.
+remove_discovery_pointer_if_matches() {
+  local pointer_path="${1}"
+  local dest_host="${2}"
+  local dest_dir="${3}"
+  local ptr_dir ptr_lock="" rc=0
+  ptr_dir="$(dirname "${pointer_path}")"
+  if [[ ! -d "${ptr_dir}" ]]; then
+    echo "Discovery pointer not present: ${pointer_path}"
+    return 0
+  fi
+  ptr_lock="${ptr_dir}/.cli-anything-generator.root.lock"
+  acquire_install_lock "${ptr_lock}"
+  if [[ -f "${pointer_path}" ]]; then
+    local pointer="" ptr_key="" ptr_real_key="" dest_key="" dest_unix_key=""
+    if pointer="$(tr -d '\r\n' < "${pointer_path}")"; then
+      ptr_key="$(normalize_path_key "${pointer}" || true)"
+      ptr_real_key="$(normalize_path_key "$(resolve_real_path "${pointer}" || true)" || true)"
+      dest_key="$(normalize_path_key "${dest_host}" || true)"
+      dest_unix_key="$(normalize_path_key "${dest_dir}" || true)"
+      if [[ "${ptr_key}" == "${dest_key}" || "${ptr_key}" == "${dest_unix_key}" || "${ptr_real_key}" == "${dest_key}" ]]; then
+        if rm -f "${pointer_path}"; then
+          echo "Removed discovery pointer: ${pointer_path}"
+        else
+          rc=1
+        fi
+      else
+        echo "Left discovery pointer unchanged (points elsewhere): ${pointer}"
+      fi
+    else
+      rc=1
+    fi
+  else
+    echo "Discovery pointer not present: ${pointer_path}"
+  fi
+  release_install_lock "${ptr_lock}"
+  return "${rc}"
+}

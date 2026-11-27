@@ -53,20 +53,6 @@ if (Test-Path -LiteralPath $destDir) {
     Write-Host "Plugin directory not found (already removed): $destDir"
 }
 
-if (Test-Path -LiteralPath $discoveryPointer) {
-    $pointer = (Get-Content -LiteralPath $discoveryPointer -Raw).Trim()
-    $ptrNorm = Normalize-CliAnythingPathKey $pointer
-    $ptrRealNorm = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $pointer)
-    $destNorm = Normalize-CliAnythingPathKey $destDir
-    $destRealNorm = Normalize-CliAnythingPathKey $destReal
-    if (($ptrNorm -eq $destNorm) -or ($ptrNorm -eq $destRealNorm) -or ($ptrRealNorm -eq $destNorm) -or ($ptrRealNorm -eq $destRealNorm)) {
-        Remove-Item -LiteralPath $discoveryPointer -Force
-        Write-Host "Removed discovery pointer: $discoveryPointer"
-    } else {
-        Write-Host "Left discovery pointer unchanged (points elsewhere): $pointer"
-    }
-} else {
-    Write-Host "Discovery pointer not present: $discoveryPointer"
-}
+Remove-CliAnythingDiscoveryPointerIfMatches -PointerPath $discoveryPointer -DestDir $destDir -DestReal $destReal
 
 Write-Host "Uninstall complete."

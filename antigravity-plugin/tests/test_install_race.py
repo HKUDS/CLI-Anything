@@ -730,3 +730,130 @@ def test_concurrent_distinct_roots_publish_discovery_pointer_atomically(tmp_path
         gemini_dir = home / ".gemini"
         assert not (gemini_dir / ".cli-anything-generator.root.lock").exists()
         assert not list(gemini_dir.glob(".cli-anything-generator.root.tmp.*"))
+
+
+def test_uninstall_holds_pointer_lock_against_concurrent_install_publication(tmp_path: Path) -> None:
+    import time
+
+    def _uninstall_cmd(script_dir: Path) -> list[str]:
+        if sys.platform == "win32":
+            shell = shutil.which("pwsh") or shutil.which("powershell")
+            assert shell, "PowerShell required on Windows"
+            return [
+                shell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_dir / "uninstall.ps1"),
+            ]
+        return ["bash", str(script_dir / "uninstall.sh")]
+
+    # Part 1 (deterministic): hold .cli-anything-generator.root.lock while root A uninstalls,
+    # swap the discovery pointer to root B before releasing the lock, and verify A waits for
+    # the lock and leaves B's pointer intact.
+    det_dir = tmp_path / "deterministic"
+    home = det_dir / "home"
+    root_a = det_dir / "root-a" / "plugins"
+    root_b = det_dir / "root-b" / "plugins"
+    home.mkdir(parents=True)
+    root_a.mkdir(parents=True)
+    root_b.mkdir(parents=True)
+
+    env_a = os.environ.copy()
+    env_a["HOME"] = str(home)
+    env_a["USERPROFILE"] = str(home)
+    env_a["ANTIGRAVITY_PLUGINS_HOME"] = str(root_a)
+
+    inst_a = subprocess.run(_installer_cmd(force=True), env=env_a, capture_output=True, text=True, check=False)
+    assert inst_a.returncode == 0, inst_a.stdout + inst_a.stderr
+
+    pointer = home / ".gemini" / "cli-anything-generator.root"
+    ptr_lock = home / ".gemini" / ".cli-anything-generator.root.lock"
+    assert pointer.is_file()
+
+    # Hold the shared pointer lock, launch uninstall of root A, then simulate root B updating
+    # the pointer atomically before releasing the lock.
+    ptr_lock.write_text("holder\n", encoding="utf-8")
+    try:
+        uninst_proc = subprocess.Popen(
+            _uninstall_cmd(PLUGIN_SRC / "scripts"),
+            env=env_a,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        # Wait until root A's directory has been deleted and uninstall is blocked on ptr_lock.
+        deadline = time.monotonic() + 20.0
+        while (root_a / "cli-anything").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.3)
+        assert uninst_proc.poll() is None, "uninstall did not wait for shared discovery-pointer lock"
+
+        b_target = str((root_b / "cli-anything").resolve())
+        pointer.write_text(b_target + "\n", encoding="utf-8")
+    finally:
+        if ptr_lock.exists():
+            ptr_lock.unlink()
+
+    out_u, err_u = uninst_proc.communicate(timeout=30)
+    assert uninst_proc.returncode == 0, f"uninstall failed:\n{out_u}{err_u}"
+    assert not (root_a / "cli-anything").exists()
+    assert pointer.is_file(), "root A uninstall deleted root B's newly published discovery pointer"
+    assert pointer.read_text(encoding="utf-8").strip().lower() == b_target.lower()
+    assert not ptr_lock.exists()
+
+    # Part 2 (concurrent stress): overlap root A uninstall and root B install under the same HOME.
+    rounds = 5 if sys.platform != "win32" else 3
+    for i in range(rounds):
+        case_dir = tmp_path / f"overlap-{i}"
+        h = case_dir / "home"
+        pa = case_dir / "root-a" / "plugins"
+        pb = case_dir / "root-b" / "plugins"
+        h.mkdir(parents=True)
+        pa.mkdir(parents=True)
+        pb.mkdir(parents=True)
+
+        ea = os.environ.copy()
+        ea["HOME"] = str(h)
+        ea["USERPROFILE"] = str(h)
+        ea["ANTIGRAVITY_PLUGINS_HOME"] = str(pa)
+
+        eb = os.environ.copy()
+        eb["HOME"] = str(h)
+        eb["USERPROFILE"] = str(h)
+        eb["ANTIGRAVITY_PLUGINS_HOME"] = str(pb)
+
+        r_setup = subprocess.run(_installer_cmd(force=True), env=ea, capture_output=True, text=True, check=False)
+        assert r_setup.returncode == 0, r_setup.stdout + r_setup.stderr
+
+        p_uninst = subprocess.Popen(
+            _uninstall_cmd(PLUGIN_SRC / "scripts"),
+            env=ea,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        p_inst = subprocess.Popen(
+            _installer_cmd(force=True),
+            env=eb,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        u_out, u_err = p_uninst.communicate(timeout=45)
+        i_out, i_err = p_inst.communicate(timeout=45)
+        assert p_uninst.returncode == 0, f"Round {i} uninstall A failed:\n{u_out}{u_err}"
+        assert p_inst.returncode == 0, f"Round {i} install B failed:\n{i_out}{i_err}"
+
+        assert not (pa / "cli-anything").exists()
+        assert (pb / "cli-anything" / "plugin.json").is_file()
+        ptr = h / ".gemini" / "cli-anything-generator.root"
+        assert ptr.is_file(), f"Round {i}: discovery pointer was deleted during A uninstall / B install overlap"
+        exp_b = str((pb / "cli-anything").resolve())
+        got_ptr = ptr.read_text(encoding="utf-8").strip()
+        if sys.platform == "win32":
+            assert got_ptr.lower() == exp_b.lower(), f"Round {i}: pointer={got_ptr!r}, expected {exp_b!r}"
+        else:
+            assert got_ptr == exp_b, f"Round {i}: pointer={got_ptr!r}, expected {exp_b!r}"
+        assert not (h / ".gemini" / ".cli-anything-generator.root.lock").exists()

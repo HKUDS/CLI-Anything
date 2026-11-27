@@ -73,20 +73,6 @@ else
   echo "Plugin directory not found (already removed): ${DEST_DIR}"
 fi
 
-if [[ -f "${DISCOVERY_POINTER}" ]]; then
-  POINTER="$(tr -d '\r\n' < "${DISCOVERY_POINTER}")"
-  PTR_KEY="$(normalize_path_key "${POINTER}")"
-  PTR_REAL_KEY="$(normalize_path_key "$(resolve_real_path "${POINTER}")")"
-  DEST_KEY="$(normalize_path_key "${DEST_HOST}")"
-  DEST_UNIX_KEY="$(normalize_path_key "${DEST_DIR}")"
-  if [[ "${PTR_KEY}" == "${DEST_KEY}" || "${PTR_KEY}" == "${DEST_UNIX_KEY}" || "${PTR_REAL_KEY}" == "${DEST_KEY}" ]]; then
-    rm -f "${DISCOVERY_POINTER}"
-    echo "Removed discovery pointer: ${DISCOVERY_POINTER}"
-  else
-    echo "Left discovery pointer unchanged (points elsewhere): ${POINTER}"
-  fi
-else
-  echo "Discovery pointer not present: ${DISCOVERY_POINTER}"
-fi
+remove_discovery_pointer_if_matches "${DISCOVERY_POINTER}" "${DEST_HOST}" "${DEST_DIR}"
 
 echo "Uninstall complete."

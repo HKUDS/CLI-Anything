@@ -379,9 +379,19 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
     return False, f"attribute '{symbol}' not defined or imported in {py_file.name}"
 
 
+def _is_windows_path_semantics() -> bool:
+    """Return True when the host treats backslash as a path separator (Windows)."""
+    return os.sep == "\\"
+
+
+def _normalize_platform_seps(raw: str) -> str:
+    """Convert backslashes to '/' only on Windows, preserving literal '\\' on POSIX."""
+    return raw.replace("\\", "/") if _is_windows_path_semantics() else raw
+
+
 def _norm_pkg_dir_value(raw: str) -> str:
-    """Normalize a package_dir / where path like setuptools (preserving bare '.')."""
-    cleaned = raw.strip().replace("\\", "/")
+    """Normalize a package_dir / where path like setuptools convert_path() (preserving bare '.')."""
+    cleaned = _normalize_platform_seps(raw.strip())
     if not cleaned:
         return ""
     return PurePosixPath(cleaned).as_posix()
@@ -658,7 +668,7 @@ def _hatch_packages_dir(
     """Return effective package_dir mapping if Hatch wheel packages cover target_pkg, else None."""
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
     for raw in packages:
-        norm = raw.strip().strip("/").replace("\\", "/")
+        norm = _normalize_platform_seps(raw.strip()).strip("/")
         if not norm:
             continue
         if norm == "cli_anything" or norm.endswith("/cli_anything"):
@@ -682,7 +692,7 @@ def _poetry_packages_dir(
     """Return effective package_dir mapping if Poetry packages cover target_pkg, else None."""
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
     for raw_inc, raw_from in entries:
-        norm = raw_inc.strip().strip("/").replace("\\", "/")
+        norm = _normalize_platform_seps(raw_inc.strip()).strip("/")
         norm_from = _norm_pkg_dir_value(raw_from)
         base_root = (harness / norm_from) if (harness is not None and norm_from not in {"", "."}) else harness
         pkg_dir = {"": norm_from} if norm_from not in {"", "."} else {}
@@ -702,9 +712,11 @@ def _poetry_packages_dir(
 
 
 def _is_absolute_pattern(pattern: str) -> bool:
-    """Return True if a glob/path pattern is rooted (POSIX `/` or Windows drive / UNC)."""
-    s = pattern.strip().replace("\\", "/")
-    return s.startswith("/") or bool(re.match(r"^[A-Za-z]:", s))
+    """Return True if a glob/path pattern is rooted on the current platform."""
+    s = _normalize_platform_seps(pattern.strip())
+    if s.startswith("/"):
+        return True
+    return _is_windows_path_semantics() and bool(re.match(r"^[A-Za-z]:", s))
 
 
 def _glob_matches_relpath(
@@ -714,11 +726,14 @@ def _glob_matches_relpath(
     recursive: bool = True,
     platform_case: bool = False,
 ) -> bool:
-    """Match a POSIX relative path against a relative glob pattern (`**` matches 0+ dirs when recursive=True)."""
+    """Match a relative path against a relative glob pattern (`**` matches 0+ dirs when recursive=True).
+
+    Preserves platform separator semantics (`\\` is a separator only on Windows, literal on POSIX).
+    """
     if _is_absolute_pattern(pattern):
         return False
-    rel_norm = rel_path.strip().replace("\\", "/")
-    pat_norm = pattern.strip().replace("\\", "/")
+    rel_norm = _normalize_platform_seps(rel_path.strip())
+    pat_norm = _normalize_platform_seps(pattern.strip())
     while rel_norm.startswith("./"):
         rel_norm = rel_norm[2:]
     while pat_norm.startswith("./"):
@@ -728,7 +743,11 @@ def _glob_matches_relpath(
     if not rel_parts or not pat_parts:
         return False
 
-    seg_match = fnmatch.fnmatch if platform_case else fnmatch.fnmatchcase
+    seg_match = (
+        fnmatch.fnmatch
+        if (platform_case and _is_windows_path_semantics())
+        else fnmatch.fnmatchcase
+    )
 
     if not recursive:
         if len(rel_parts) != len(pat_parts):
@@ -776,13 +795,15 @@ def _pkg_data_matches_file(
     def _matches(raw_pat: str) -> bool:
         if _is_absolute_pattern(raw_pat):
             return False
-        pat = raw_pat.strip().replace("\\", "/")
+        pat = _normalize_platform_seps(raw_pat.strip())
         while pat.startswith("./"):
             pat = pat[2:]
         if not pat:
             return False
         if exclusion:
-            return fnmatch.fnmatch(rel_path, pat)
+            if _is_windows_path_semantics():
+                return fnmatch.fnmatch(rel_path, pat)
+            return fnmatch.fnmatchcase(rel_path, pat)
         return _glob_matches_relpath(rel_path, pat, recursive=True, platform_case=True)
 
     for pkg_key, patterns in mapping.items():
@@ -792,10 +813,10 @@ def _pkg_data_matches_file(
 
 
 def _normalize_manifest_path(token: str) -> str | None:
-    """Mirror distutils.util.convert_path on POSIX paths, rejecting absolute patterns."""
+    """Mirror distutils.util.convert_path with platform separator semantics, rejecting absolute patterns."""
     if _is_absolute_pattern(token):
         return None
-    norm = token.strip().replace("\\", "/")
+    norm = _normalize_platform_seps(token.strip())
     if not norm:
         return None
     return PurePosixPath(norm).as_posix()
@@ -876,7 +897,7 @@ def _manifest_covers_skill(
     if not manifest.is_file():
         return False
 
-    expected_norm = expected_manifest_rel.strip().replace("\\", "/")
+    expected_norm = _normalize_platform_seps(expected_manifest_rel.strip())
     canonical_rel = PurePosixPath(expected_norm).as_posix()
     target_dir_parts = canonical_rel.split("/")[:-1]
     ancestor_dirs = ["/".join(target_dir_parts[: i + 1]) for i in range(len(target_dir_parts))]

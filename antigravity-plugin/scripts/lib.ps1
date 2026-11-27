@@ -256,3 +256,38 @@ function Write-CliAnythingDiscoveryPointer {
         Release-CliAnythingInstallLock -LockHandle $lockHandle -LockPath $ptrLock
     }
 }
+
+function Remove-CliAnythingDiscoveryPointerIfMatches {
+    param(
+        [Parameter(Mandatory = $true)][string]$PointerPath,
+        [Parameter(Mandatory = $true)][string]$DestDir,
+        [Parameter(Mandatory = $true)][string]$DestReal
+    )
+    $ptrDir = Split-Path -Parent $PointerPath
+    if (-not (Test-Path -LiteralPath $ptrDir -PathType Container)) {
+        Write-Host "Discovery pointer not present: $PointerPath"
+        return
+    }
+    $ptrLock = Join-Path $ptrDir ".cli-anything-generator.root.lock"
+    $lockHandle = $null
+    try {
+        $lockHandle = Acquire-CliAnythingInstallLock -LockPath $ptrLock
+        if (Test-Path -LiteralPath $PointerPath) {
+            $pointer = (Get-Content -LiteralPath $PointerPath -Raw).Trim()
+            $ptrNorm = Normalize-CliAnythingPathKey $pointer
+            $ptrRealNorm = Normalize-CliAnythingPathKey (Resolve-CliAnythingRealPath -Path $pointer)
+            $destNorm = Normalize-CliAnythingPathKey $DestDir
+            $destRealNorm = Normalize-CliAnythingPathKey $DestReal
+            if (($ptrNorm -eq $destNorm) -or ($ptrNorm -eq $destRealNorm) -or ($ptrRealNorm -eq $destNorm) -or ($ptrRealNorm -eq $destRealNorm)) {
+                Remove-Item -LiteralPath $PointerPath -Force
+                Write-Host "Removed discovery pointer: $PointerPath"
+            } else {
+                Write-Host "Left discovery pointer unchanged (points elsewhere): $pointer"
+            }
+        } else {
+            Write-Host "Discovery pointer not present: $PointerPath"
+        }
+    } finally {
+        Release-CliAnythingInstallLock -LockHandle $lockHandle -LockPath $ptrLock
+    }
+}
