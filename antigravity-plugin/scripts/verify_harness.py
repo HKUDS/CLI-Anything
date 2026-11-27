@@ -555,12 +555,18 @@ def _resolve_local_module_file(
     return None, False
 
 
+def _parse_python_file(py_file: Path) -> ast.Module:
+    """Parse a Python source file from its original bytes honoring Python's PEP 263 rules."""
+    return ast.parse(py_file.read_bytes(), filename=str(py_file))
+
+
 def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None]:
     """Check statically whether py_file defines or imports `symbol` at module scope."""
     try:
-        tree = ast.parse(_read_text(py_file), filename=str(py_file))
-    except SyntaxError as exc:
-        return False, f"syntax error in {py_file.name}: {exc.msg}"
+        tree = _parse_python_file(py_file)
+    except (OSError, SyntaxError, ValueError) as exc:
+        msg = getattr(exc, "msg", str(exc))
+        return False, f"syntax error in {py_file.name}: {msg}"
 
     try_star = getattr(ast, "TryStar", ())
     match_cls = getattr(ast, "Match", ())
@@ -995,9 +1001,10 @@ def _extract_module_dunder_all(tree: ast.Module) -> tuple[str, set[str] | None]:
 def _module_wildcard_allows(py_file: Path, symbol: str) -> tuple[bool, str | None]:
     """Check whether `from <py_file> import *` exports `symbol` (honoring `__all__` and `_` rules)."""
     try:
-        tree = ast.parse(_read_text(py_file), filename=str(py_file))
-    except SyntaxError as exc:
-        return False, f"syntax error in {py_file.name}: {exc.msg}"
+        tree = _parse_python_file(py_file)
+    except (OSError, SyntaxError, ValueError) as exc:
+        msg = getattr(exc, "msg", str(exc))
+        return False, f"syntax error in {py_file.name}: {msg}"
 
     state, exports = _extract_module_dunder_all(tree)
     if state == "absent":
@@ -1014,6 +1021,148 @@ def _module_wildcard_allows(py_file: Path, symbol: str) -> tuple[bool, str | Non
     )
 
 
+def _check_local_module_wheel_inclusion(
+    target_mod: str,
+    target_file: Path,
+    is_target_pkg_init: bool,
+    *,
+    harness: Path | None,
+    target_pkg: str | None,
+    parent_selected: bool,
+    pkg_spec: dict[str, Any] | None,
+    excluded_files: set[str] | None,
+    hatch_exclude: list[str] | None,
+    check_manifest: bool,
+    wheel_ctx: dict[str, Any] | None = None,
+) -> str | None:
+    """Return an error string if a followed local module is not shipped in the built wheel/sdist."""
+    if harness is None:
+        return None
+    rel_posix = _rel_in_harness(harness, target_file)
+    if rel_posix is None:
+        return (
+            f"re-exported module '{target_mod}' resolves outside the project tree "
+            "and cannot be verified for sdist/release inclusion"
+        )
+    expected_wheel_rel = (
+        f"{target_mod.replace('.', '/')}/__init__.py"
+        if is_target_pkg_init
+        else f"{target_mod.replace('.', '/')}.py"
+    )
+    ctx = wheel_ctx or {}
+    backend_kind = ctx.get("backend_kind", "setuptools")
+
+    if excluded_files and _poetry_is_excluded(rel_posix, excluded_files):
+        if expected_wheel_rel not in ctx.get("poetry_wheel_included_files", ()):
+            return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by packaging rules"
+    if hatch_exclude and _hatch_is_excluded(rel_posix, hatch_exclude):
+        return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by Hatch exclude rules"
+    if check_manifest and not _manifest_covers_skill(
+        harness, rel_posix, initially_included=True
+    ):
+        return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from sdist by MANIFEST.in"
+
+    if backend_kind == "hatch" and wheel_ctx is not None:
+        norm_hp_pkgs = sorted(
+            p
+            for raw in ctx.get("hatch_packages", ())
+            if isinstance(raw, str)
+            and not _is_absolute_pattern(raw)
+            and (p := _hatch_norm_rel_path(raw))
+            and not p.startswith("..")
+        )
+        norm_hp_only = [
+            p
+            for raw in ctx.get("hatch_only_include", ())
+            if isinstance(raw, str)
+            and not _is_absolute_pattern(raw)
+            and (p := _hatch_norm_rel_path(raw))
+            and not p.startswith("..")
+        ]
+        hp_sources = _hatch_build_sources_map(ctx.get("hatch_sources"), norm_hp_pkgs)
+        selected_roots = norm_hp_only or norm_hp_pkgs
+        in_hatch = any(
+            (rel_posix == sel or rel_posix.startswith(f"{sel}/"))
+            and _hatch_distribution_path(rel_posix, hp_sources) == expected_wheel_rel
+            for sel in selected_roots
+        )
+        if not in_hatch:
+            return f"re-exported module '{target_mod}' ({rel_posix}) is not included in Hatch wheel packages"
+        return None
+
+    if backend_kind == "poetry" and wheel_ctx is not None:
+        if expected_wheel_rel in ctx.get("poetry_wheel_included_files", ()):
+            return None
+        rel_parts = rel_posix.split("/")
+        ancestors = ["/".join(rel_parts[: i + 1]) for i in range(len(rel_parts))]
+        in_poetry = False
+        for entry in ctx.get("poetry_wheel_packages", ()):
+            raw_inc = entry[0]
+            raw_from = entry[1] if len(entry) > 1 else "."
+            raw_to = entry[2] if len(entry) > 2 else ""
+            if not raw_inc or _is_absolute_pattern(raw_inc):
+                continue
+            norm_inc = _norm_pkg_dir_value(raw_inc)
+            norm_from = _norm_pkg_dir_value(raw_from)
+            norm_to = _norm_pkg_dir_value(raw_to)
+            if norm_to == ".":
+                norm_to = ""
+            base = norm_inc if norm_from in {"", "."} else f"{norm_from}/{norm_inc}"
+            matched_base = (
+                rel_posix == base
+                or rel_posix.startswith(f"{base}/")
+                or any(fnmatch.fnmatchcase(anc, base) for anc in ancestors)
+            )
+            if not matched_base:
+                continue
+            if norm_from in {"", "."}:
+                rel_from: str | None = rel_posix
+            elif rel_posix.startswith(f"{norm_from}/"):
+                rel_from = rel_posix[len(norm_from) + 1 :]
+            else:
+                rel_from = None
+            if rel_from is None:
+                continue
+            wheel_rel = f"{norm_to}/{rel_from}" if norm_to else rel_from
+            if wheel_rel == expected_wheel_rel:
+                in_poetry = True
+                break
+        if not in_poetry:
+            return f"re-exported module '{target_mod}' ({rel_posix}) is not included in Poetry wheel packages"
+        return None
+
+    owner = target_mod if is_target_pkg_init else ".".join(target_mod.split(".")[:-1])
+    if not owner:
+        if wheel_ctx is not None:
+            if ctx.get("py_modules_unverifiable"):
+                return (
+                    f"re-exported top-level module '{target_mod}' cannot be statically verified "
+                    "against dynamic py_modules"
+                )
+            if target_mod not in ctx.get("py_modules", ()):
+                return f"re-exported top-level module '{target_mod}' is not included in py_modules"
+        return None
+
+    if pkg_spec is not None:
+        if pkg_spec["kind"] == "find":
+            if not _find_selects_package(
+                owner,
+                pkg_spec["includes"],
+                pkg_spec["excludes"],
+                harness=harness,
+                wheres=pkg_spec["wheres"],
+                require_init=False,
+            ):
+                return f"re-exported package '{owner}' is not selected by packaging discovery"
+        elif pkg_spec["kind"] == "explicit":
+            if owner not in pkg_spec["packages"]:
+                return f"re-exported package '{owner}' is not listed in packaging packages"
+    elif wheel_ctx is not None:
+        if not (target_pkg and parent_selected and owner == target_pkg):
+            return f"re-exported package '{owner}' is not selected by packaging"
+    return None
+
+
 def _resolve_module_attr_path(
     py_file: Path,
     attr_parts: list[str],
@@ -1027,6 +1176,7 @@ def _resolve_module_attr_path(
     excluded_files: set[str] | None = None,
     hatch_exclude: list[str] | None = None,
     check_manifest: bool = False,
+    wheel_ctx: dict[str, Any] | None = None,
     _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
     _preparsed_env: dict[str, Any] | None = None,
     _resolved_target_out: list[tuple[Path, str, str | None]] | None = None,
@@ -1079,9 +1229,10 @@ def _resolve_module_attr_path(
             return False, root_err, None
 
         try:
-            tree = ast.parse(_read_text(py_file), filename=str(py_file))
-        except SyntaxError as exc:
-            return False, f"syntax error in {py_file.name}: {exc.msg}", None
+            tree = _parse_python_file(py_file)
+        except (OSError, SyntaxError, ValueError) as exc:
+            msg = getattr(exc, "msg", str(exc))
+            return False, f"syntax error in {py_file.name}: {msg}", None
 
         type_checking_names = _collect_type_checking_names(tree.body)
         direct_local_defs: set[str] = set()
@@ -1594,42 +1745,19 @@ def _resolve_module_attr_path(
         target_file: Path,
         is_target_pkg_init: bool,
     ) -> str | None:
-        if harness is None:
-            return None
-        rel_posix = _rel_in_harness(harness, target_file)
-        if rel_posix is None:
-            return f"re-exported module '{target_mod}' resolves outside the project tree and cannot be verified for sdist/release inclusion"
-        if excluded_files and _poetry_is_excluded(rel_posix, excluded_files):
-            return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by packaging rules"
-        if hatch_exclude and _hatch_is_excluded(rel_posix, hatch_exclude):
-            return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by Hatch exclude rules"
-        if check_manifest and not _manifest_covers_skill(
-            harness, rel_posix, initially_included=True
-        ):
-            return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from sdist by MANIFEST.in"
-        owner = target_mod if is_target_pkg_init else ".".join(target_mod.split(".")[:-1])
-        if (
-            target_pkg
-            and parent_selected
-            and owner
-            and owner != target_pkg
-            and owner.startswith(f"{target_pkg}.")
-            and pkg_spec is not None
-        ):
-            if pkg_spec["kind"] == "find":
-                if not _find_selects_package(
-                    owner,
-                    pkg_spec["includes"],
-                    pkg_spec["excludes"],
-                    harness=harness,
-                    wheres=pkg_spec["wheres"],
-                    require_init=False,
-                ):
-                    return f"re-exported package '{owner}' is not selected by packaging discovery"
-            elif pkg_spec["kind"] == "explicit":
-                if owner not in pkg_spec["packages"]:
-                    return f"re-exported package '{owner}' is not listed in packaging packages"
-        return None
+        return _check_local_module_wheel_inclusion(
+            target_mod,
+            target_file,
+            is_target_pkg_init,
+            harness=harness,
+            target_pkg=target_pkg,
+            parent_selected=parent_selected,
+            pkg_spec=pkg_spec,
+            excluded_files=excluded_files,
+            hatch_exclude=hatch_exclude,
+            check_manifest=check_manifest,
+            wheel_ctx=wheel_ctx,
+        )
 
     def _recurse_local(
         target_mod: str,
@@ -1652,6 +1780,7 @@ def _resolve_module_attr_path(
             excluded_files=excluded_files,
             hatch_exclude=hatch_exclude,
             check_manifest=check_manifest,
+            wheel_ctx=wheel_ctx,
             _visited=next_visited,
             _resolved_target_out=_resolved_target_out,
         )
@@ -1965,6 +2094,7 @@ def _resolve_module_attr_path(
                     excluded_files=excluded_files,
                     hatch_exclude=hatch_exclude,
                     check_manifest=check_manifest,
+                    wheel_ctx=wheel_ctx,
                     _visited=next_visited,
                     _preparsed_env=local_env,
                     _resolved_target_out=sub_out,
@@ -2092,6 +2222,7 @@ def _resolve_module_attr_path(
                 excluded_files=excluded_files,
                 hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
+                wheel_ctx=wheel_ctx,
                 _visited=next_visited,
                 _preparsed_env=local_env,
                 _resolved_target_out=sub_out,
@@ -2119,6 +2250,7 @@ def _resolve_module_attr_path(
                 excluded_files=excluded_files,
                 hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
+                wheel_ctx=wheel_ctx,
                 _visited=next_visited,
                 _preparsed_env=local_env,
                 _resolved_target_out=sub_out,
@@ -2500,6 +2632,7 @@ def _resolve_module_attr_path(
                 excluded_files=excluded_files,
                 hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
+                wheel_ctx=wheel_ctx,
                 _visited=next_visited,
                 _preparsed_env=local_env,
                 _resolved_target_out=sub_out,
@@ -2908,6 +3041,7 @@ def _validate_console_script_target(
     excluded_files: set[str] | None = None,
     hatch_exclude: list[str] | None = None,
     check_manifest: bool = False,
+    wheel_ctx: dict[str, Any] | None = None,
     resolved_target_out: list[tuple[Path, str, str | None]] | None = None,
 ) -> tuple[bool, str, Path | None]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
@@ -2993,6 +3127,7 @@ def _validate_console_script_target(
         excluded_files=excluded_files,
         hatch_exclude=hatch_exclude,
         check_manifest=check_manifest,
+        wheel_ctx=wheel_ctx,
         _resolved_target_out=resolved_target_out,
     )
     if not ok_sym:
@@ -3643,6 +3778,8 @@ def _inspect_setup_py(
     text: str,
     target_pkg: str | None = None,
     harness: Path | None = None,
+    *,
+    raw_bytes: bytes | None = None,
 ) -> dict[str, Any]:
     """Inspect setup.py via AST for PEP 420 namespace packaging and console_scripts."""
     info: dict[str, Any] = {
@@ -3673,8 +3810,8 @@ def _inspect_setup_py(
         "has_python_requires": False,
     }
     try:
-        tree = ast.parse(text)
-    except SyntaxError:
+        tree = ast.parse(raw_bytes if raw_bytes is not None else text)
+    except (SyntaxError, ValueError):
         return info
 
     # Collect simple module-level assignments and setuptools import aliases so
@@ -5440,6 +5577,12 @@ def _check_packaging(
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
+    setup_bytes: bytes | None = None
+    if has_setup:
+        try:
+            setup_bytes = setup_py.read_bytes()
+        except OSError:
+            setup_bytes = None
     pyproject_text = ""
     pyproject_read_error: str | None = None
     if has_pyproject:
@@ -5454,7 +5597,7 @@ def _check_packaging(
     target_pkg = f"cli_anything.{module.name}" if module is not None else None
     target_pkg_label = target_pkg or f"cli_anything.{software_slug.replace('-', '_')}"
 
-    setup_info = _inspect_setup_py(setup_text, target_pkg=target_pkg, harness=harness) if has_setup else {
+    setup_info = _inspect_setup_py(setup_text, target_pkg=target_pkg, harness=harness, raw_bytes=setup_bytes) if has_setup else {
         "namespace_ok": False,
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
@@ -5779,6 +5922,8 @@ def _check_packaging(
     # Detect packaged top-level `cli_anything.py` modules that shadow the PEP 420 namespace.
     shadowing_ns_module: str | None = None
     unverifiable_ns_shadow_module: str | None = None
+    eff_py_modules: list[str] = []
+    eff_py_modules_unverifiable = False
     if uses_setuptools:
         if pyproj_info["declares_py_modules"]:
             eff_py_modules = list(pyproj_info["py_modules"])
@@ -6171,6 +6316,33 @@ def _check_packaging(
         and not pyproj_info["dynamic_scripts_defined"]
         and not (pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"])
     )
+    wheel_ctx: dict[str, Any] = {
+        "backend_kind": pyproj_info["backend_kind"] if has_pyproject else "setuptools",
+        "py_modules": list(eff_py_modules),
+        "py_modules_unverifiable": bool(eff_py_modules_unverifiable),
+        "hatch_packages": (
+            list(pyproj_info["hatch_packages"])
+            if (has_pyproject and pyproj_info["backend_kind"] == "hatch")
+            else []
+        ),
+        "hatch_only_include": (
+            list(pyproj_info["hatch_only_include"])
+            if (has_pyproject and pyproj_info["backend_kind"] == "hatch")
+            else []
+        ),
+        "hatch_sources": (
+            pyproj_info["hatch_sources"]
+            if (has_pyproject and pyproj_info["backend_kind"] == "hatch")
+            else None
+        ),
+        "poetry_wheel_packages": (
+            list(pyproj_info["poetry_wheel_packages"])
+            if (has_pyproject and pyproj_info["backend_kind"] == "poetry")
+            else []
+        ),
+        "poetry_wheel_included_files": set(poetry_wheel_included_files),
+    }
+
     if pyproj_info["dynamic_scripts_error"]:
         checks.append(
             CheckResult(
@@ -6246,6 +6418,7 @@ def _check_packaging(
                     excluded_files=poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
                     hatch_exclude=pyproj_info["hatch_exclude"] if (has_pyproject and pyproj_info["backend_kind"] == "hatch") else None,
                     check_manifest=uses_setuptools,
+                    wheel_ctx=wheel_ctx,
                 )
                 if not ok_alias:
                     invalid_targets.append(f"{cmd_name}={target_spec} ({alias_reason})")
@@ -6261,6 +6434,7 @@ def _check_packaging(
                 excluded_files=poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
                 hatch_exclude=pyproj_info["hatch_exclude"] if (has_pyproject and pyproj_info["backend_kind"] == "hatch") else None,
                 check_manifest=uses_setuptools,
+                wheel_ctx=wheel_ctx,
                 resolved_target_out=resolved_targets,
             )
             if not ok_target:
@@ -6353,6 +6527,7 @@ def _check_packaging(
         "excluded_files": poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
         "hatch_exclude": pyproj_info["hatch_exclude"] if (has_pyproject and pyproj_info["backend_kind"] == "hatch") else None,
         "check_manifest": uses_setuptools,
+        "wheel_ctx": wheel_ctx,
         "entry_targets": cli_entry_targets,
     }
 
@@ -6861,43 +7036,24 @@ def _is_local_module_shipped(
     excluded_files: set[str] | None,
     hatch_exclude: list[str] | None,
     check_manifest: bool,
+    wheel_ctx: dict[str, Any] | None = None,
 ) -> bool:
-    if harness is None:
-        return True
-    rel_posix = _rel_in_harness(harness, target_file)
-    if rel_posix is None:
-        return False
-    if excluded_files and _poetry_is_excluded(rel_posix, excluded_files):
-        return False
-    if hatch_exclude and _hatch_is_excluded(rel_posix, hatch_exclude):
-        return False
-    if check_manifest and not _manifest_covers_skill(
-        harness, rel_posix, initially_included=True
-    ):
-        return False
-    owner = target_mod if is_target_pkg_init else ".".join(target_mod.split(".")[:-1])
-    if (
-        target_pkg
-        and parent_selected
-        and owner
-        and owner != target_pkg
-        and owner.startswith(f"{target_pkg}.")
-        and pkg_spec is not None
-    ):
-        if pkg_spec["kind"] == "find":
-            if not _find_selects_package(
-                owner,
-                pkg_spec["includes"],
-                pkg_spec["excludes"],
-                harness=harness,
-                wheres=pkg_spec["wheres"],
-                require_init=False,
-            ):
-                return False
-        elif pkg_spec["kind"] == "explicit":
-            if owner not in pkg_spec["packages"]:
-                return False
-    return True
+    return (
+        _check_local_module_wheel_inclusion(
+            target_mod,
+            target_file,
+            is_target_pkg_init,
+            harness=harness,
+            target_pkg=target_pkg,
+            parent_selected=parent_selected,
+            pkg_spec=pkg_spec,
+            excluded_files=excluded_files,
+            hatch_exclude=hatch_exclude,
+            check_manifest=check_manifest,
+            wheel_ctx=wheel_ctx,
+        )
+        is None
+    )
 
 
 def _resolve_relative_import_mod(
@@ -6926,10 +7082,9 @@ def _build_cli_module_index(
     py_file: Path,
     module_path: str | None,
 ) -> dict[str, Any] | None:
-    text = _read_text(py_file)
     try:
-        tree = ast.parse(text, filename=str(py_file))
-    except SyntaxError:
+        tree = _parse_python_file(py_file)
+    except (OSError, SyntaxError, ValueError):
         return None
 
     tc_names = _collect_type_checking_names(tree.body)
@@ -7168,6 +7323,7 @@ def _collect_reachable_cli_tree(
     excluded_files: set[str] | None = ctx.get("excluded_files")
     hatch_exclude: list[str] | None = ctx.get("hatch_exclude")
     check_manifest: bool = bool(ctx.get("check_manifest"))
+    wheel_ctx: dict[str, Any] | None = ctx.get("wheel_ctx")
 
     mod_cache: dict[Path, dict[str, Any] | None] = {}
 
@@ -7218,6 +7374,7 @@ def _collect_reachable_cli_tree(
             excluded_files=excluded_files,
             hatch_exclude=hatch_exclude,
             check_manifest=check_manifest,
+            wheel_ctx=wheel_ctx,
         ):
             return None, False
         return t_file, is_pkg
@@ -8845,9 +9002,9 @@ def _check_cli_surface(
                 rmap = _collect_reachable_cli_tree(p, targets, cli_resolution_ctx)
             else:
                 try:
-                    ptree = ast.parse(t, filename=str(p))
+                    ptree = _parse_python_file(p)
                     rmap = {p: (ptree, [ptree], [], _collect_type_checking_names(ptree.body), None)}
-                except SyntaxError:
+                except (OSError, SyntaxError, ValueError):
                     rmap = None
             cli_trees.append((p, t, rmap))
 
@@ -9153,14 +9310,22 @@ def _check_code_quality(harness: Path) -> list[CheckResult]:
     hardcoded_roots: list[str] = []
 
     for py_file in py_files:
-        text = _read_text(py_file)
         rel = str(py_file.relative_to(harness))
-        if "/root/cli-anything/" in text:
+        try:
+            raw_bytes = py_file.read_bytes()
+        except OSError as exc:
+            syntax_errors.append(f"{rel}: unable to read file ({exc})")
+            continue
+        text = raw_bytes.decode("utf-8", errors="replace")
+        if b"/root/cli-anything/" in raw_bytes or "/root/cli-anything/" in text:
             hardcoded_roots.append(rel)
         try:
-            tree = ast.parse(text, filename=str(py_file))
-        except SyntaxError as exc:
-            syntax_errors.append(f"{rel}:{exc.lineno}: {exc.msg}")
+            tree = ast.parse(raw_bytes, filename=str(py_file))
+        except (SyntaxError, ValueError) as exc:
+            lineno = getattr(exc, "lineno", None)
+            msg = getattr(exc, "msg", str(exc))
+            loc = f"{rel}:{lineno}" if lineno is not None else rel
+            syntax_errors.append(f"{loc}: {msg}")
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ExceptHandler) and node.type is None:

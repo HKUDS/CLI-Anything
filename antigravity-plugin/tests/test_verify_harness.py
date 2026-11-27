@@ -9308,6 +9308,255 @@ setup(
     assert res_comp_ok["ok"] is True, res_comp_ok["checks"]
 
 
+def test_verify_checks_wheel_inclusion_for_reexports_outside_harness_package(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "reexport_wheel", "rxapp")
+    cli_py = harness / "cli_anything" / "rxapp" / "rxapp_cli.py"
+    orig_cli_src = cli_py.read_text(encoding="utf-8")
+
+    # Move real CLI implementation into top-level commands.py; rxapp_cli.py is a facade.
+    root_commands = harness / "commands.py"
+    root_commands.write_text(orig_cli_src, encoding="utf-8")
+    cli_py.write_text("from commands import main\n", encoding="utf-8")
+
+    setup_py = harness / "setup.py"
+
+    # 1. Exact repro from review 6087433758: find_namespace_packages(include=["cli_anything.*"])
+    #    omits top-level commands.py -> MUST FAIL console-script.
+    res_omit_mod = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_omit_mod["ok"] is False
+    cs_chk = {c["id"]: c for c in res_omit_mod["checks"]}["console-script"]
+    assert cs_chk["status"] == "fail"
+    assert "py_modules" in cs_chk["detail"]
+
+    # 2. Explicitly shipping commands via py_modules=["commands"] MUST PASS strictly.
+    setup_py.write_text(
+        """from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-rxapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    py_modules=["commands"],
+    package_data={"cli_anything.rxapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rxapp=cli_anything.rxapp.rxapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_with_pymod = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_with_pymod["ok"] is True, res_with_pymod["checks"]
+
+    # 3. Calling commands.main() without shipping commands.py must NOT credit CLI surface checks.
+    setup_py.write_text(
+        """from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-rxapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.rxapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rxapp=cli_anything.rxapp.rxapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    cli_py.write_text(
+        """import commands
+
+def main():
+    return commands.main()
+""",
+        encoding="utf-8",
+    )
+    res_unshipped_call = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_unshipped_call["ok"] is False
+    by_call = {c["id"]: c for c in res_unshipped_call["checks"]}
+    assert by_call["click-groups"]["status"] == "fail"
+    assert by_call["json-flag"]["status"] == "fail"
+
+    # 4. Re-exporting from a sibling top-level package `shared_cli` outside `cli_anything.*`
+    #    must fail unless `shared_cli` is also selected by packaging.
+    root_commands.unlink()
+    shared_pkg = harness / "shared_cli"
+    shared_pkg.mkdir(parents=True)
+    (shared_pkg / "__init__.py").write_text(orig_cli_src, encoding="utf-8")
+    cli_py.write_text("from shared_cli import main\n", encoding="utf-8")
+
+    res_omit_pkg = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_omit_pkg["ok"] is False
+    assert {c["id"]: c for c in res_omit_pkg["checks"]}["console-script"]["status"] == "fail"
+
+    setup_py.write_text(
+        """from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-rxapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*", "shared_cli*"]),
+    package_data={"cli_anything.rxapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rxapp=cli_anything.rxapp.rxapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_with_pkg = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_with_pkg["ok"] is True, res_with_pkg["checks"]
+
+    # 5. Hatch and Poetry must likewise reject unshipped root re-exports and accept packaged ones.
+    shutil.rmtree(shared_pkg)
+    root_commands.write_text(orig_cli_src, encoding="utf-8")
+    cli_py.write_text("from commands import main\n", encoding="utf-8")
+    setup_py.unlink()
+    pyproject = harness / "pyproject.toml"
+
+    pyproject.write_text(
+        """[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-rxapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-rxapp = "cli_anything.rxapp.rxapp_cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cli_anything"]
+""",
+        encoding="utf-8",
+    )
+    res_hatch_bad = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_hatch_bad["ok"] is False
+    assert {c["id"]: c for c in res_hatch_bad["checks"]}["console-script"]["status"] == "fail"
+
+    pyproject.write_text(
+        """[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-rxapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-rxapp = "cli_anything.rxapp.rxapp_cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cli_anything", "commands.py"]
+""",
+        encoding="utf-8",
+    )
+    res_hatch_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_hatch_ok["ok"] is True, res_hatch_ok["checks"]
+
+    pyproject.write_text(
+        """[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-rxapp"
+version = "1.0.0"
+packages = [{ include = "cli_anything" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-rxapp = "cli_anything.rxapp.rxapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    res_poetry_bad = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_poetry_bad["ok"] is False
+    assert {c["id"]: c for c in res_poetry_bad["checks"]}["console-script"]["status"] == "fail"
+
+    pyproject.write_text(
+        """[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-rxapp"
+version = "1.0.0"
+packages = [{ include = "cli_anything" }, { include = "commands.py" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-rxapp = "cli_anything.rxapp.rxapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    res_poetry_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_poetry_ok["ok"] is True, res_poetry_ok["checks"]
+
+
+def test_verify_parses_original_python_bytes_for_syntax_check(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "raw_bytes_syntax", "encapp")
+    cli_py = harness / "cli_anything" / "encapp" / "encapp_cli.py"
+    orig_bytes = cli_py.read_bytes()
+
+    # 1. Exact repro from review 6087433758: Windows-1252 non-UTF-8 byte (0xe9) without
+    #    a PEP 263 coding declaration must FAIL python-syntax (and console-script).
+    bad_payloads = [
+        b'"""caf\xe9"""\n' + orig_bytes,
+        b"# -*- coding: no-such-encoding -*-\n" + orig_bytes,
+        b"\xef\xbb\xbf# -*- coding: latin-1 -*-\n" + orig_bytes,
+        orig_bytes + b"\x00\n",
+    ]
+    for idx, payload in enumerate(bad_payloads):
+        cli_py.write_bytes(payload)
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        by_id = {c["id"]: c for c in res_bad["checks"]}
+        assert by_id["python-syntax"]["status"] == "fail", (idx, by_id["python-syntax"])
+
+    # 2. Matching PEP 263 cp1252 coding declaration or valid UTF-8 BOM must PASS strictly.
+    good_payloads = [
+        b'# -*- coding: cp1252 -*-\n"""caf\xe9"""\n' + orig_bytes,
+        b'\xef\xbb\xbf"""caf\xc3\xa9"""\n' + orig_bytes,
+    ]
+    for idx, payload in enumerate(good_payloads):
+        cli_py.write_bytes(payload)
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+        assert {c["id"]: c for c in res_ok["checks"]}["python-syntax"]["status"] == "pass", idx
+
+
+
 
 
 
