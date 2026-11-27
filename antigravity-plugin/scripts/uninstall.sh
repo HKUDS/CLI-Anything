@@ -59,11 +59,31 @@ if [[ "${SELF_VERIFIED}" -ne 1 ]] && ! is_cli_anything_install_path "${DEST_DIR}
   exit 1
 fi
 
+LOCK_DIR="$(dirname "${DEST_DIR}")"
+LOCK_PATH="${LOCK_DIR}/.cli-anything.lock"
+LOCK_HELD=0
+MAIN_PID="${BASHPID:-$$}"
+
+cleanup() {
+  if [[ "${BASHPID:-$$}" != "${MAIN_PID}" ]]; then
+    return 0
+  fi
+  if [[ "${LOCK_HELD}" -eq 1 ]]; then
+    release_install_lock "${LOCK_PATH}"
+  fi
+}
+trap cleanup EXIT
+
+if [[ -d "${LOCK_DIR}" ]]; then
+  acquire_install_lock "${LOCK_PATH}"
+  LOCK_HELD=1
+fi
+
 DEST_HOST="$(to_host_path "${DEST_DIR}")"
 if [[ -d "${DEST_DIR}" ]]; then
   DEST_HOST="$(to_host_path "$(cd "${DEST_DIR}" && pwd -P)")"
-elif [[ -d "$(dirname "${DEST_DIR}")" ]]; then
-  DEST_HOST="$(to_host_path "$(cd "$(dirname "${DEST_DIR}")" && pwd -P)/$(basename "${DEST_DIR}")")"
+elif [[ -d "${LOCK_DIR}" ]]; then
+  DEST_HOST="$(to_host_path "$(cd "${LOCK_DIR}" && pwd -P)/$(basename "${DEST_DIR}")")"
 fi
 
 if [[ -e "${DEST_DIR}" ]]; then

@@ -857,3 +857,143 @@ def test_uninstall_holds_pointer_lock_against_concurrent_install_publication(tmp
         else:
             assert got_ptr == exp_b, f"Round {i}: pointer={got_ptr!r}, expected {exp_b!r}"
         assert not (h / ".gemini" / ".cli-anything-generator.root.lock").exists()
+
+
+def test_uninstall_serializes_with_same_root_reinstall_via_install_lock(tmp_path: Path) -> None:
+    import time
+
+    def _uninstall_cmd(script_dir: Path) -> list[str]:
+        if sys.platform == "win32":
+            shell = shutil.which("pwsh") or shutil.which("powershell")
+            assert shell, "PowerShell required on Windows"
+            return [
+                shell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_dir / "uninstall.ps1"),
+            ]
+        return ["bash", str(script_dir / "uninstall.sh")]
+
+    # Part 1 (deterministic): pause uninstall right after directory removal by holding the shared
+    # pointer lock, then launch a reinstall targeting the SAME plugins root. The reinstall MUST
+    # wait on the per-root `.cli-anything.lock` held by uninstall so it publishes its pointer
+    # only AFTER uninstall finishes cleanup.
+    det_dir = tmp_path / "same-root-det"
+    home = det_dir / "home"
+    plugins = det_dir / "plugins"
+    home.mkdir(parents=True)
+    plugins.mkdir(parents=True)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["ANTIGRAVITY_PLUGINS_HOME"] = str(plugins)
+
+    setup_res = subprocess.run(_installer_cmd(force=True), env=env, capture_output=True, text=True, check=False)
+    assert setup_res.returncode == 0, setup_res.stdout + setup_res.stderr
+
+    pointer = home / ".gemini" / "cli-anything-generator.root"
+    ptr_lock = home / ".gemini" / ".cli-anything-generator.root.lock"
+    root_lock = plugins / ".cli-anything.lock"
+    assert pointer.is_file()
+
+    ptr_lock.write_text("pause-after-rm\n", encoding="utf-8")
+    p_reinstall = None
+    try:
+        p_uninst = subprocess.Popen(
+            _uninstall_cmd(PLUGIN_SRC / "scripts"),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + 20.0
+        while (plugins / "cli-anything").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not (plugins / "cli-anything").exists(), "uninstall did not remove plugin directory in time"
+        time.sleep(0.25)
+        assert p_uninst.poll() is None, "uninstall did not wait on shared pointer lock"
+        assert root_lock.exists(), "uninstall did not hold per-root .cli-anything.lock across cleanup"
+
+        # Start reinstall into the same root while uninstall is paused between rm and pointer cleanup.
+        p_reinstall = subprocess.Popen(
+            _installer_cmd(force=True),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(0.35)
+        assert p_reinstall.poll() is None, "reinstall did not wait for per-root .cli-anything.lock"
+    finally:
+        if ptr_lock.exists():
+            ptr_lock.unlink()
+
+    u_out, u_err = p_uninst.communicate(timeout=30)
+    assert p_uninst.returncode == 0, f"uninstall failed:\n{u_out}{u_err}"
+    assert p_reinstall is not None
+    i_out, i_err = p_reinstall.communicate(timeout=30)
+    assert p_reinstall.returncode == 0, f"reinstall failed:\n{i_out}{i_err}"
+
+    expected = str((plugins / "cli-anything").resolve())
+    assert (plugins / "cli-anything" / "plugin.json").is_file(), "reinstalled plugin missing"
+    assert pointer.is_file(), "discovery pointer was deleted after same-root reinstall"
+    got = pointer.read_text(encoding="utf-8").strip()
+    if sys.platform == "win32":
+        assert got.lower() == expected.lower()
+    else:
+        assert got == expected
+    assert not root_lock.exists()
+    assert not ptr_lock.exists()
+
+    # Part 2 (concurrent stress): overlapping same-root uninstall + reinstall must always end in
+    # a consistent state where plugin presence and discovery pointer presence match.
+    rounds = 5 if sys.platform != "win32" else 3
+    for i in range(rounds):
+        case_dir = tmp_path / f"same-root-stress-{i}"
+        h = case_dir / "home"
+        pdir = case_dir / "plugins"
+        h.mkdir(parents=True)
+        pdir.mkdir(parents=True)
+
+        e = os.environ.copy()
+        e["HOME"] = str(h)
+        e["USERPROFILE"] = str(h)
+        e["ANTIGRAVITY_PLUGINS_HOME"] = str(pdir)
+
+        r0 = subprocess.run(_installer_cmd(force=True), env=e, capture_output=True, text=True, check=False)
+        assert r0.returncode == 0, r0.stdout + r0.stderr
+
+        pu = subprocess.Popen(
+            _uninstall_cmd(PLUGIN_SRC / "scripts"),
+            env=e,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        pi = subprocess.Popen(
+            _installer_cmd(force=True),
+            env=e,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        uo, ue = pu.communicate(timeout=45)
+        io, ie = pi.communicate(timeout=45)
+        assert pu.returncode == 0, f"Round {i} uninstall failed:\n{uo}{ue}"
+        assert pi.returncode == 0, f"Round {i} reinstall failed:\n{io}{ie}"
+
+        installed_exists = (pdir / "cli-anything" / "plugin.json").is_file()
+        ptr = h / ".gemini" / "cli-anything-generator.root"
+        if installed_exists:
+            assert ptr.is_file(), f"Round {i}: plugin present but discovery pointer missing"
+            exp = str((pdir / "cli-anything").resolve())
+            val = ptr.read_text(encoding="utf-8").strip()
+            assert (val.lower() == exp.lower()) if sys.platform == "win32" else (val == exp)
+        else:
+            assert not (pdir / "cli-anything").exists(), f"Round {i}: partial plugin directory left behind"
+            assert not ptr.exists(), f"Round {i}: plugin removed but stale discovery pointer remained"
+        assert not (pdir / ".cli-anything.lock").exists()
+        assert not (h / ".gemini" / ".cli-anything-generator.root.lock").exists()

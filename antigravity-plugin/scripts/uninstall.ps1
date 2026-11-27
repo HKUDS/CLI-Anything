@@ -44,15 +44,26 @@ if ((-not $selfVerified) -and (-not (Test-CliAnythingInstallPath -Path $destDir)
     throw "Refusing to uninstall unexpected path: $destDir"
 }
 
-$destReal = Resolve-CliAnythingRealPath -Path $destDir
+$lockDir = Split-Path -Parent $destDir
+$lockPath = Join-Path $lockDir ".cli-anything.lock"
+$lockHandle = $null
+try {
+    if (Test-Path -LiteralPath $lockDir -PathType Container) {
+        $lockHandle = Acquire-CliAnythingInstallLock -LockPath $lockPath
+    }
 
-if (Test-Path -LiteralPath $destDir) {
-    Remove-Item -LiteralPath $destDir -Recurse -Force
-    Write-Host "Removed plugin directory: $destDir"
-} else {
-    Write-Host "Plugin directory not found (already removed): $destDir"
+    $destReal = Resolve-CliAnythingRealPath -Path $destDir
+
+    if (Test-Path -LiteralPath $destDir) {
+        Remove-Item -LiteralPath $destDir -Recurse -Force
+        Write-Host "Removed plugin directory: $destDir"
+    } else {
+        Write-Host "Plugin directory not found (already removed): $destDir"
+    }
+
+    Remove-CliAnythingDiscoveryPointerIfMatches -PointerPath $discoveryPointer -DestDir $destDir -DestReal $destReal
+} finally {
+    Release-CliAnythingInstallLock -LockHandle $lockHandle -LockPath $lockPath
 }
-
-Remove-CliAnythingDiscoveryPointerIfMatches -PointerPath $discoveryPointer -DestDir $destDir -DestReal $destReal
 
 Write-Host "Uninstall complete."
