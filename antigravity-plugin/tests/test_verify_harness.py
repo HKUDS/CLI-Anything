@@ -3098,3 +3098,85 @@ entry-points = { attr = "cli_anything.dynep.dynep_cli:ENTRY_POINTS" }
     )
     assert r_attr["ok"] is False
     assert {c["id"]: c for c in r_attr["checks"]}["console-script"]["status"] == "fail"
+
+
+def test_verify_preserves_literal_whitespace_in_package_data_patterns(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "ws_glob", "wsglob")
+
+    # 1. Trailing or leading space in setup.py package_data must NOT match skills/SKILL.md.
+    for bad_pat in ("skills/*.md ", " skills/*.md", " ./skills/*.md"):
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-wsglob",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.wsglob": [{bad_pat!r}]}},
+    entry_points={{"console_scripts": ["cli-anything-wsglob=cli_anything.wsglob.wsglob_cli:main"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, bad_pat
+        assert {c["id"]: c for c in res["checks"]}["package-data-skills"]["status"] == "warn", bad_pat
+
+    # 2. Trailing space in exclude_package_data must NOT accidentally exclude skills/SKILL.md.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-wsglob",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.wsglob": ["skills/*.md"]},
+    exclude_package_data={"cli_anything.wsglob": ["skills/*.md "]},
+    entry_points={"console_scripts": ["cli-anything-wsglob=cli_anything.wsglob.wsglob_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 3. Trailing space in pyproject.toml [tool.setuptools.package-data] fails under both tomllib and Py3.10.
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-wsglob"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-wsglob = "cli_anything.wsglob.wsglob_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.wsglob" = ["skills/*.md "]
+""",
+        encoding="utf-8",
+    )
+    r_toml = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_toml["ok"] is False
+    assert {c["id"]: c for c in r_toml["checks"]}["package-data-skills"]["status"] == "warn"
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_toml_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_toml_310["ok"] is False
+        assert {c["id"]: c for c in r_toml_310["checks"]}["package-data-skills"]["status"] == "warn"
