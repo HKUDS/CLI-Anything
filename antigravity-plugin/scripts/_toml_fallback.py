@@ -6,6 +6,7 @@ interpret inline tables, dotted keys, arrays, strings, and syntax errors identic
 
 from __future__ import annotations
 
+from datetime import date, datetime, time, timedelta, timezone
 import re
 import string
 from typing import Any
@@ -15,6 +16,40 @@ _ILLEGAL_SINGLE_LINE_CHARS = _ASCII_CTRL - {"\t"}
 _ILLEGAL_MULTILINE_CHARS = _ASCII_CTRL - {"\t", "\n"}
 _BARE_KEY_CHARS = frozenset(string.ascii_letters + string.digits + "_-")
 _HEX_CHARS = frozenset("0123456789abcdefABCDEF")
+
+_TIME_RE_STR = r"([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])(?:\.([0-9]{1,6})[0-9]*)?"
+_RE_NUMBER = re.compile(
+    r"""
+0
+(?:
+    x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*
+    |
+    b[01](?:_?[01])*
+    |
+    o[0-7](?:_?[0-7])*
+)
+|
+[+-]?(?:0|[1-9](?:_?[0-9])*)
+(?P<floatpart>
+    (?:\.[0-9](?:_?[0-9])*)?
+    (?:[eE][+-]?[0-9](?:_?[0-9])*)?
+)
+""",
+    flags=re.VERBOSE,
+)
+_RE_SPECIAL_FLOAT = re.compile(r"^[+-]?(?:inf|nan)$")
+_RE_LOCALTIME = re.compile(_TIME_RE_STR)
+_RE_DATETIME = re.compile(
+    rf"""
+([0-9]{{4}})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])
+(?:
+    [Tt ]
+    {_TIME_RE_STR}
+    (?:([Zz])|([+-])([01][0-9]|2[0-3]):([0-5][0-9]))?
+)?
+""",
+    flags=re.VERBOSE,
+)
 
 
 class _TomlFlags:
@@ -356,26 +391,56 @@ class _TomlFallbackParser:
 
     def _parse_scalar(self) -> Any:
         start = self.pos
-        while self.pos < self.n and self.text[self.pos] not in {",", "]", "}", "#", "\r", "\n"}:
+        while self.pos < self.n and self.text[self.pos] not in {",", "]", "}", "#", "\n"}:
             self.pos += 1
-        raw = self.text[start : self.pos].strip()
+        raw = self.text[start : self.pos].strip(" \t")
         if not raw:
             raise ValueError(f"Missing TOML value at pos {start}")
         if raw == "true":
             return True
         if raw == "false":
             return False
-        cleaned = raw.replace("_", "")
-        try:
-            return int(cleaned, 0)
-        except ValueError:
-            pass
-        try:
-            return float(cleaned)
-        except ValueError:
-            pass
-        if re.match(r"^\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}|$)", raw) or re.match(r"^\d{2}:\d{2}:\d{2}", raw):
-            return raw
+        if _RE_SPECIAL_FLOAT.fullmatch(raw):
+            return float(raw)
+        num_m = _RE_NUMBER.fullmatch(raw)
+        if num_m is not None:
+            if num_m.group("floatpart"):
+                return float(raw)
+            return int(raw, 0)
+        dt_m = _RE_DATETIME.fullmatch(raw)
+        if dt_m is not None:
+            (
+                year_s,
+                month_s,
+                day_s,
+                hour_s,
+                minute_s,
+                sec_s,
+                micros_s,
+                zulu,
+                off_sign,
+                off_h,
+                off_m,
+            ) = dt_m.groups()
+            year, month, day = int(year_s), int(month_s), int(day_s)
+            if hour_s is None:
+                return date(year, month, day)
+            micros = int(micros_s.ljust(6, "0")) if micros_s else 0
+            if off_sign:
+                sign = 1 if off_sign == "+" else -1
+                tz: timezone | None = timezone(
+                    timedelta(hours=sign * int(off_h), minutes=sign * int(off_m))
+                )
+            elif zulu:
+                tz = timezone.utc
+            else:
+                tz = None
+            return datetime(year, month, day, int(hour_s), int(minute_s), int(sec_s), micros, tzinfo=tz)
+        tm_m = _RE_LOCALTIME.fullmatch(raw)
+        if tm_m is not None:
+            hour_s, minute_s, sec_s, micros_s = tm_m.groups()
+            micros = int(micros_s.ljust(6, "0")) if micros_s else 0
+            return time(int(hour_s), int(minute_s), int(sec_s), micros)
         raise ValueError(f"Invalid TOML scalar value: {raw!r}")
 
     @staticmethod

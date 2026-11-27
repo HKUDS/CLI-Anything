@@ -5025,3 +5025,365 @@ include = ["cli_anything.*"]
             assert {c["id"]: c for c in r_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
 
 
+def test_verify_rejects_provably_non_callable_local_class_instances(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "noncallable_inst", "ncinst")
+    pkg = harness / "cli_anything" / "ncinst"
+    cli_py = pkg / "ncinst_cli.py"
+    setup_py = harness / "setup.py"
+
+    def _set_target(target_spec: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-ncinst",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.ncinst": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-ncinst={target_spec}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+
+    cli_py.write_text(
+        """import click
+
+def make_callable(cls):
+    cls.__call__ = lambda self: cli()
+    return cls
+
+class Meta(type):
+    pass
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+class PlainRunner:
+    pass
+
+class PlainSub(PlainRunner):
+    pass
+
+class BadCallBase:
+    def __call__(self, argv):
+        cli(argv)
+
+class BadCallSub(BadCallBase):
+    pass
+
+class PropCall:
+    @property
+    def __call__(self):
+        return None
+
+class NonCallableCallAttr:
+    __call__ = 42
+
+plain_inst = PlainRunner()
+plain_sub_inst = PlainSub()
+bad_call_sub_inst = BadCallSub()
+prop_call_inst = PropCall()
+non_callable_attr_inst = NonCallableCallAttr()
+cli.bad_inst = PlainRunner()
+
+class Holder:
+    bad_inst = PlainRunner()
+
+class GoodCall:
+    def __call__(self):
+        cli()
+
+class MixinSub(PlainRunner, GoodCall):
+    pass
+
+class ExternalBaseSub(click.Group):
+    pass
+
+@make_callable
+class DecoratedRunner:
+    pass
+
+class MetaRunner(metaclass=Meta):
+    pass
+
+class CustomNewRunner:
+    def __new__(cls):
+        return cli
+
+class MonkeyPatchedRunner:
+    pass
+
+MonkeyPatchedRunner.__call__ = lambda self: cli()
+
+class DynamicAttrCall:
+    __call__ = staticmethod(lambda: cli())
+
+good_inst = GoodCall()
+mixin_inst = MixinSub()
+ext_inst = ExternalBaseSub()
+dec_inst = DecoratedRunner()
+meta_inst = MetaRunner()
+new_inst = CustomNewRunner()
+mp_inst = MonkeyPatchedRunner()
+dyn_inst = DynamicAttrCall()
+""",
+        encoding="utf-8",
+    )
+    (pkg / "__main__.py").write_text(
+        "from .ncinst_cli import plain_inst, good_inst\n",
+        encoding="utf-8",
+    )
+
+    invalid_targets = [
+        "cli_anything.ncinst.ncinst_cli:plain_inst",
+        "cli_anything.ncinst.ncinst_cli:plain_sub_inst",
+        "cli_anything.ncinst.__main__:plain_inst",
+        "cli_anything.ncinst.ncinst_cli:bad_call_sub_inst",
+        "cli_anything.ncinst.ncinst_cli:prop_call_inst",
+        "cli_anything.ncinst.ncinst_cli:non_callable_attr_inst",
+        "cli_anything.ncinst.ncinst_cli:cli.bad_inst",
+        "cli_anything.ncinst.ncinst_cli:Holder.bad_inst",
+    ]
+    for spec in invalid_targets:
+        _set_target(spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, spec
+        cs = {c["id"]: c for c in res["checks"]}["console-script"]
+        assert cs["status"] == "fail", (spec, cs)
+
+    valid_targets = [
+        "cli_anything.ncinst.ncinst_cli:good_inst",
+        "cli_anything.ncinst.__main__:good_inst",
+        "cli_anything.ncinst.ncinst_cli:mixin_inst",
+        "cli_anything.ncinst.ncinst_cli:ext_inst",
+        "cli_anything.ncinst.ncinst_cli:dec_inst",
+        "cli_anything.ncinst.ncinst_cli:meta_inst",
+        "cli_anything.ncinst.ncinst_cli:new_inst",
+        "cli_anything.ncinst.ncinst_cli:mp_inst",
+        "cli_anything.ncinst.ncinst_cli:dyn_inst",
+    ]
+    for spec in valid_targets:
+        _set_target(spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (spec, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "pass", spec
+
+
+def test_verify_parses_string_valued_console_scripts_in_setup_py(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "str_ep", "strep")
+    setup_py = harness / "setup.py"
+
+    valid_setup_variants = [
+        # 1. Single-line string value for console_scripts group
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-strep",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.strep": ["skills/*.md"]},
+    entry_points={"console_scripts": "cli-anything-strep=cli_anything.strep.strep_cli:main"},
+)
+""",
+        # 2. Multiline string value with comments and blank lines
+        '''from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-strep",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.strep": ["skills/*.md"]},
+    entry_points={
+        "console_scripts": """
+            # primary CLI entry point
+            cli-anything-strep = cli_anything.strep.strep_cli:main
+        """
+    },
+)
+''',
+        # 3. Module-level variable references for both group key and string value
+        """from setuptools import find_namespace_packages, setup
+GROUP = "console_scripts"
+SCRIPTS = "cli-anything-strep = cli_anything.strep.strep_cli:main"
+setup(
+    name="cli-anything-strep",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.strep": ["skills/*.md"]},
+    entry_points={GROUP: SCRIPTS},
+)
+""",
+        # 4. Top-level INI string entry_points
+        '''from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-strep",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.strep": ["skills/*.md"]},
+    entry_points="""
+[console_scripts]
+cli-anything-strep = cli_anything.strep.strep_cli:main
+""",
+)
+''',
+    ]
+    for idx, src in enumerate(valid_setup_variants):
+        setup_py.write_text(src, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (idx, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "pass", idx
+
+    # Broken target inside a string-valued group must still fail console-script.
+    setup_py.write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-strep",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={"cli_anything.strep": ["skills/*.md"]},
+    entry_points={"console_scripts": "cli-anything-strep=cli_anything.strep.strep_cli:missing_fn"},
+)
+""",
+        encoding="utf-8",
+    )
+    res_bad = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_bad["ok"] is False
+    assert {c["id"]: c for c in res_bad["checks"]}["console-script"]["status"] == "fail"
+
+
+def test_toml_fallback_validates_numeric_and_datetime_scalar_syntax(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import math  # noqa: PLC0415
+    import _toml_fallback  # noqa: PLC0415
+
+    try:
+        import tomllib  # noqa: PLC0415
+    except ModuleNotFoundError:
+        tomllib = None
+
+    invalid_docs = [
+        "count = 01\n",
+        "count = -01\n",
+        "count = +01\n",
+        "count = 00\n",
+        "count = 1__2\n",
+        "count = _1\n",
+        "count = 1_\n",
+        "count = 0X1a\n",
+        "count = +0x1a\n",
+        "count = -0x1a\n",
+        "count = 0x_1a\n",
+        "count = 0O77\n",
+        "count = 0B101\n",
+        "x = .5\n",
+        "x = 5.\n",
+        "x = 1.e5\n",
+        "x = 01.5\n",
+        "x = 1._5\n",
+        "x = 1_.5\n",
+        "x = 1e_5\n",
+        "x = INF\n",
+        "x = Infinity\n",
+        "x = NaN\n",
+        "x = True\n",
+        "d = 2024-02-30\n",
+        "d = 2024-13-01\n",
+        "d = 2024-01-01abc\n",
+        "t = 25:00:00\n",
+        "x = 1\x0c\n",
+    ]
+    for doc in invalid_docs:
+        with pytest.raises(ValueError):
+            _toml_fallback.loads_toml_fallback(doc)
+        if tomllib is not None:
+            with pytest.raises(ValueError):
+                tomllib.loads(doc)
+
+    valid_docs = [
+        "a = 0\nb = +0\nc = -0\nd = 1_000_000\n",
+        "a = 0xdead_beef\nb = 0o755\nc = 0b1101_0110\n",
+        "a = 3.14\nb = +1.0\nc = -0.01\nd = 5e+22\ne = 1e06\nf = -2E-2\ng = 224_617.445_991_228\n",
+        "a = inf\nb = +inf\nc = -inf\n",
+        "a = nan\nb = +nan\nc = -nan\n",
+        "d = 1979-05-27T07:32:00Z\n",
+        "d = 1979-05-27 07:32:00-07:00\n",
+        "d = 1979-05-27\nt = 07:32:00.999999\n",
+    ]
+    for doc in valid_docs:
+        parsed = _toml_fallback.loads_toml_fallback(doc)
+        if tomllib is not None:
+            expected = tomllib.loads(doc)
+            assert parsed.keys() == expected.keys(), doc
+            for k in parsed:
+                if isinstance(parsed[k], float) and math.isnan(parsed[k]):
+                    assert isinstance(expected[k], float) and math.isnan(expected[k]), (doc, k)
+                else:
+                    assert type(parsed[k]) is type(expected[k]) and parsed[k] == expected[k], (doc, k)
+
+    # End-to-end verify_harness check: leading-zero integer `count = 01` must fail pyproject-toml-syntax
+    # under both tomllib and the Python 3.10 fallback.
+    harness = _create_valid_harness(tmp_path / "bad_num_proj", "badnum")
+    (harness / "setup.py").unlink()
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-badnum"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-badnum = "cli_anything.badnum.badnum_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.badnum" = ["skills/*.md"]
+
+[tool.demo]
+count = 01
+""",
+        encoding="utf-8",
+    )
+    r_native = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_native["ok"] is False
+    assert {c["id"]: c for c in r_native["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_310["ok"] is False
+        assert {c["id"]: c for c in r_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+
+

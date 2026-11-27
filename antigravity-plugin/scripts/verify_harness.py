@@ -1161,32 +1161,159 @@ def _resolve_module_attr_path(
     root_names = _expand_aliases(attr_parts[0])
     first_local_err: str | None = None
 
+    def _class_instance_call_status(
+        cls_node: ast.ClassDef,
+        visited_cls: set[str],
+    ) -> tuple[str, str | None]:
+        """Return ('callable'|'unknown'|'bad_call'|'no_call', err) for calling an instance of cls_node."""
+        if cls_node.decorator_list or cls_node.keywords:
+            return "unknown", None
+        if (cls_node.name, "__call__") in attr_assign_values or (
+            cls_node.name,
+            "__new__",
+        ) in attr_assign_values:
+            return "unknown", None
+
+        has_new = False
+        has_dynamic_call = False
+        call_fn_nodes: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        call_non_callable = False
+
+        def _scan_for_dunder(stmts: list[ast.stmt], *, cls_top: bool) -> None:
+            nonlocal has_new, has_dynamic_call, call_non_callable
+            for cs in stmts:
+                if isinstance(cs, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if cs.name == "__new__":
+                        has_new = True
+                    elif cs.name == "__call__":
+                        if cls_top:
+                            call_fn_nodes.clear()
+                            call_non_callable = False
+                            has_dynamic_call = False
+                        call_fn_nodes.append(cs)
+                elif isinstance(cs, ast.Assign):
+                    for t in cs.targets:
+                        for bn in _collect_target_names(t):
+                            if bn == "__new__":
+                                has_new = True
+                            elif bn == "__call__":
+                                if cls_top:
+                                    call_fn_nodes.clear()
+                                    call_non_callable = False
+                                if _is_provably_non_callable_expr(cs.value):
+                                    call_non_callable = True
+                                else:
+                                    has_dynamic_call = True
+                elif isinstance(cs, ast.AnnAssign) and cs.value is not None:
+                    for bn in _collect_target_names(cs.target):
+                        if bn == "__new__":
+                            has_new = True
+                        elif bn == "__call__":
+                            if cls_top:
+                                call_fn_nodes.clear()
+                                call_non_callable = False
+                            if _is_provably_non_callable_expr(cs.value):
+                                call_non_callable = True
+                            else:
+                                has_dynamic_call = True
+                elif isinstance(cs, (ast.Import, ast.ImportFrom)):
+                    for a in cs.names:
+                        bound = a.asname or a.name.split(".", 1)[0]
+                        if bound == "__new__":
+                            has_new = True
+                        elif bound == "__call__":
+                            has_dynamic_call = True
+                elif isinstance(cs, ast.If):
+                    _scan_for_dunder(cs.body, cls_top=False)
+                    _scan_for_dunder(cs.orelse, cls_top=False)
+                elif isinstance(cs, (ast.For, ast.AsyncFor, ast.While)):
+                    _scan_for_dunder(cs.body, cls_top=False)
+                    _scan_for_dunder(cs.orelse, cls_top=False)
+                elif isinstance(cs, (ast.With, ast.AsyncWith)):
+                    _scan_for_dunder(cs.body, cls_top=False)
+                elif isinstance(cs, ast.Try) or (try_star and isinstance(cs, try_star)):
+                    _scan_for_dunder(cs.body, cls_top=False)
+                    _scan_for_dunder(cs.orelse, cls_top=False)
+                    _scan_for_dunder(cs.finalbody, cls_top=False)
+                    for h in cs.handlers:
+                        _scan_for_dunder(h.body, cls_top=False)
+                elif match_cls and isinstance(cs, match_cls):
+                    for c in cs.cases:
+                        _scan_for_dunder(c.body, cls_top=False)
+
+        _scan_for_dunder(cls_node.body, cls_top=True)
+        if has_new or has_dynamic_call:
+            return "unknown", None
+        if call_fn_nodes:
+            errs: list[str] = []
+            for cn in call_fn_nodes:
+                if any(isinstance(d, ast.Name) and d.id == "property" for d in cn.decorator_list):
+                    errs.append(
+                        f"callable '{cls_node.name}.__call__' in {py_file.name} is a @property and not callable"
+                    )
+                    continue
+                if cn.decorator_list:
+                    return "unknown", None
+                ok_fn, fn_err = _check_plain_func_console_callable(cn, bound_self=True)
+                if ok_fn:
+                    return "callable", None
+                errs.append(f"callable '{cls_node.name}.__call__' in {py_file.name} {fn_err}")
+            return "bad_call", errs[0]
+        if call_non_callable:
+            return (
+                "bad_call",
+                f"callable '{cls_node.name}.__call__' in {py_file.name} is assigned a non-callable value",
+            )
+
+        for base in cls_node.bases:
+            if isinstance(base, ast.Name) and base.id == "object":
+                continue
+            if not isinstance(base, ast.Name):
+                return "unknown", None
+            base_candidates = [
+                c for c in _expand_aliases(base.id) if c in classes and c not in visited_cls
+            ]
+            if not base_candidates:
+                return "unknown", None
+            for bname in base_candidates:
+                for bnode in classes[bname]:
+                    st, berr = _class_instance_call_status(bnode, visited_cls | {bname})
+                    if st == "callable":
+                        return "callable", None
+                    if st == "unknown":
+                        return "unknown", None
+                    if st == "bad_call":
+                        return "bad_call", berr
+
+        return (
+            "no_call",
+            f"instance of class '{cls_node.name}' in {py_file.name} defines no '__call__' method and is not callable",
+        )
+
+    def _cls_ref_instance_call_error(cls_ref: str) -> str | None:
+        expanded = [c for c in _expand_aliases(cls_ref) if c in classes]
+        if not expanded:
+            return None
+        errs: list[str] = []
+        for cls_name in expanded:
+            for cls_node in classes[cls_name]:
+                st, err = _class_instance_call_status(cls_node, {cls_name})
+                if st in {"callable", "unknown"}:
+                    return None
+                if err:
+                    errs.append(err)
+        return errs[0] if errs else None
+
     def _instance_call_sig_error(cand: str) -> str | None:
         cls_refs = instances.get(cand)
         if not cls_refs or cand in classes or cand in click_cmds:
             return None
         errs: list[str] = []
         for cls_ref in cls_refs:
-            expanded = [c for c in _expand_aliases(cls_ref) if c in classes]
-            if not expanded:
+            err = _cls_ref_instance_call_error(cls_ref)
+            if err is None:
                 return None
-            for cls_name in expanded:
-                for cls_node in classes[cls_name]:
-                    if cls_node.decorator_list or cls_node.keywords:
-                        return None
-                    call_node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
-                    for cs in cls_node.body:
-                        if (
-                            isinstance(cs, (ast.FunctionDef, ast.AsyncFunctionDef))
-                            and cs.name == "__call__"
-                        ):
-                            call_node = cs
-                    if call_node is None or call_node.decorator_list:
-                        return None
-                    ok_fn, fn_err = _check_plain_func_console_callable(call_node, bound_self=True)
-                    if ok_fn:
-                        return None
-                    errs.append(f"callable '{cls_node.name}.__call__' in {py_file.name} {fn_err}")
+            errs.append(err)
         return errs[0] if errs else None
 
     # Single-component callable (`module:main`): return directly if defined locally,
@@ -1353,6 +1480,11 @@ def _resolve_module_attr_path(
                     f"target '{target_label}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments",
                     None,
                 )
+            return True, None, py_file
+        if isinstance(val, ast.Call) and isinstance(val.func, ast.Name):
+            cls_err = _cls_ref_instance_call_error(val.func.id)
+            if cls_err is not None:
+                return False, cls_err, None
             return True, None, py_file
         if isinstance(val, ast.Name):
             ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
@@ -2846,13 +2978,22 @@ def _inspect_setup_py(
             if node.keys:
                 info["has_entry_points"] = True
             for k, v in zip(node.keys, node.values):
-                if isinstance(k, ast.Constant) and k.value == "console_scripts":
-                    vals = _const_str_list(_resolve(v))
-                    if vals:
-                        for spec in vals:
-                            if "=" in spec:
-                                name, target = spec.split("=", 1)
-                                info["console_scripts"].append((name.strip(), target.strip()))
+                k_node = _resolve(k)
+                if isinstance(k_node, ast.Constant) and k_node.value == "console_scripts":
+                    v_node = _resolve(v)
+                    if isinstance(v_node, ast.Constant) and isinstance(v_node.value, str):
+                        raw_items: list[str] | None = [v_node.value]
+                    else:
+                        raw_items = _const_str_list(v_node)
+                    if raw_items:
+                        for item in raw_items:
+                            for raw_line in item.splitlines():
+                                spec = raw_line.strip()
+                                if not spec or spec.startswith(("#", ";")):
+                                    continue
+                                if "=" in spec:
+                                    name, target = spec.split("=", 1)
+                                    info["console_scripts"].append((name.strip(), target.strip()))
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             if node.value:
                 info["has_entry_points"] = True
