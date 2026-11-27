@@ -104,6 +104,13 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   exit 0
 fi
 
+SRC_KEY="$(normalize_path_key "$(resolve_real_path "${PLUGIN_SRC}")")"
+DEST_CHECK_KEY="$(normalize_path_key "$(resolve_real_path "${DEST_DIR}")")"
+if [[ "${SRC_KEY}" == "${DEST_CHECK_KEY}" || "${SRC_KEY}" == "${DEST_CHECK_KEY}/"* ]]; then
+  echo "Refusing to install into source directory or an ancestor of it: ${DEST_DIR}" >&2
+  exit 1
+fi
+
 LOCK_PATH="${PLUGINS_HOME}/.cli-anything.lock"
 LOCK_HELD=0
 STAGING_DIR=""
@@ -132,24 +139,46 @@ if [[ -e "${DEST_DIR}" && "${FORCE}" -ne 1 ]]; then
 fi
 
 STAGING_DIR="$(mktemp -d "${PLUGINS_HOME}/.cli-anything.tmp.XXXXXX")"
+PLUGINS_HOME_KEY="$(normalize_path_key "$(resolve_real_path "${PLUGINS_HOME}")")"
 LOCK_KEY="$(normalize_path_key "$(resolve_real_path "${LOCK_PATH}")")"
 STAGING_KEY="$(normalize_path_key "$(resolve_real_path "${STAGING_DIR}")")"
 DEST_KEY="$(normalize_path_key "$(resolve_real_path "${DEST_DIR}")")"
 
-# Copy adapter package (exclude tests, .git, .agents, staging/dest subtrees, and references/ which is assembled cleanly below).
-while IFS= read -r -d '' entry; do
-  base="$(basename "${entry}")"
-  case "${base}" in
-    tests|references|.git|.agents|__pycache__)
+copy_plugin_tree() {
+  local src_dir="$1"
+  local dst_dir="$2"
+  local is_root="$3"
+  mkdir -p "${dst_dir}"
+  local entry base entry_key
+  while IFS= read -r -d '' entry; do
+    base="$(basename "${entry}")"
+    if [[ "${is_root}" -eq 1 ]]; then
+      case "${base}" in
+        tests|references|.git|.agents|__pycache__)
+          continue
+          ;;
+      esac
+    else
+      case "${base}" in
+        .git|.agents|__pycache__)
+          continue
+          ;;
+      esac
+    fi
+    entry_key="$(normalize_path_key "$(resolve_real_path "${entry}")")"
+    if [[ "${entry_key}" == "${PLUGINS_HOME_KEY}" || "${entry_key}" == "${STAGING_KEY}" || "${entry_key}" == "${DEST_KEY}" || "${entry_key}" == "${LOCK_KEY}" ]]; then
       continue
-      ;;
-  esac
-  entry_key="$(normalize_path_key "$(resolve_real_path "${entry}")")"
-  if [[ "${STAGING_KEY}" == "${entry_key}" || "${STAGING_KEY}" == "${entry_key}/"* || "${DEST_KEY}" == "${entry_key}" || "${DEST_KEY}" == "${entry_key}/"* || "${LOCK_KEY}" == "${entry_key}" || "${LOCK_KEY}" == "${entry_key}/"* ]]; then
-    continue
-  fi
-  cp -R "${entry}" "${STAGING_DIR}/"
-done < <(find "${PLUGIN_SRC}" -mindepth 1 -maxdepth 1 -print0)
+    fi
+    if [[ -d "${entry}" && ( "${PLUGINS_HOME_KEY}" == "${entry_key}/"* || "${STAGING_KEY}" == "${entry_key}/"* || "${DEST_KEY}" == "${entry_key}/"* || "${LOCK_KEY}" == "${entry_key}/"* ) ]]; then
+      copy_plugin_tree "${entry}" "${dst_dir}/${base}" 0
+      continue
+    fi
+    cp -R "${entry}" "${dst_dir}/"
+  done < <(find "${src_dir}" -mindepth 1 -maxdepth 1 -print0)
+}
+
+# Copy adapter package (preserve source contents when install roots are nested underneath source subdirs).
+copy_plugin_tree "${PLUGIN_SRC}" "${STAGING_DIR}" 1
 
 mkdir -p \
   "${STAGING_DIR}/references/commands" \
@@ -170,7 +199,31 @@ cp "${CANONICAL_PLUGIN}/skill_generator.py" "${STAGING_DIR}/scripts/skill_genera
 cp "${CANONICAL_PLUGIN}/templates/"* "${STAGING_DIR}/scripts/templates/"
 cp "${PREVIEW_PROTOCOL}" "${STAGING_DIR}/references/docs/PREVIEW_PROTOCOL.md"
 
-# Pre-publish integrity verification: byte-equality + Python syntax check before touching DEST_DIR.
+# Pre-publish integrity verification: required plugin files + byte-equality + Python syntax check before touching DEST_DIR.
+for req_staged in \
+  "plugin.json" \
+  "hooks.json" \
+  "rules/cli-anything-generator.md" \
+  "agents/cli-anything-auditor.md" \
+  "skills/cli-anything/SKILL.md" \
+  "skills/cli-anything-refine/SKILL.md" \
+  "skills/cli-anything-test/SKILL.md" \
+  "skills/cli-anything-validate/SKILL.md" \
+  "skills/cli-anything-list/SKILL.md" \
+  "references/HARNESS.md" \
+  "references/docs/PREVIEW_PROTOCOL.md" \
+  "scripts/verify_harness.py" \
+  "scripts/list_harnesses.py" \
+  "scripts/pep420_guard.py" \
+  "scripts/_toml_fallback.py" \
+  "scripts/repl_skin.py" \
+  "scripts/preview_bundle.py" \
+  "scripts/skill_generator.py"; do
+  if [[ ! -f "${STAGING_DIR}/${req_staged}" ]]; then
+    echo "Staged plugin is missing required file: ${req_staged}" >&2
+    exit 1
+  fi
+done
 cmp -s "${CANONICAL_PLUGIN}/HARNESS.md" "${STAGING_DIR}/references/HARNESS.md"
 cmp -s "${CANONICAL_PLUGIN}/repl_skin.py" "${STAGING_DIR}/scripts/repl_skin.py"
 cmp -s "${CANONICAL_PLUGIN}/preview_bundle.py" "${STAGING_DIR}/scripts/preview_bundle.py"

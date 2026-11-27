@@ -6947,6 +6947,141 @@ include = ["cli_anything.*"]
     assert {c["id"]: c for c in r_pyproj_sec["checks"]}["console-script"]["status"] == "fail"
 
 
+def test_verify_preserves_explicit_aliased_and_dynamic_setup_py_packages(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "aliased_pkgs", "alpkg")
+    setup_py = harness / "setup.py"
+
+    def _run_setup(src: str) -> dict[str, object]:
+        setup_py.write_text(src, encoding="utf-8")
+        return verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+
+    # 1. Aliased find_namespace_packages excluding cli_anything.* must FAIL (never fall back to auto-discovery).
+    bad_variants = [
+        """from setuptools import setup, find_namespace_packages as discover
+setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=discover(exclude=["cli_anything.*"]),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """import setuptools as st
+discover = st.find_namespace_packages
+st.setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=discover(exclude=["cli_anything.*"]),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from setuptools import setup as run_setup
+from setuptools.discovery import PEP420PackageFinder as NSFinder
+run_setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=NSFinder.find(exclude=["cli_anything.*"]),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from setuptools import setup, find_packages as fp
+setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=fp(),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        # Unverifiable dynamic helper call must NOT fall back to auto-discovery.
+        """from setuptools import setup
+def custom_pkgs():
+    return []
+setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=custom_pkgs(),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        # Unverifiable comprehension expression must NOT fall back to auto-discovery.
+        """from setuptools import setup
+setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=[p for p in ["other_pkg"]],
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+    ]
+    for idx, src in enumerate(bad_variants):
+        res = _run_setup(src)
+        assert res["ok"] is False, (idx, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["namespace-packages"]["status"] == "fail", idx
+
+    # 2. Aliased find_namespace_packages including cli_anything.* and packages=None (auto-discovery) must PASS.
+    good_variants = [
+        """from setuptools import setup, find_namespace_packages as discover
+setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=discover(include=["cli_anything.*"]),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """import setuptools as st
+discover = st.find_namespace_packages
+st.setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=discover(include=["cli_anything.*"]),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from setuptools import setup as run_setup
+from setuptools.discovery import PEP420PackageFinder as NSFinder
+run_setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=NSFinder.find(include=["cli_anything.*"]),
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        """from setuptools import setup
+setup(
+    name="cli-anything-alpkg",
+    version="1.0.0",
+    packages=None,
+    package_data={"cli_anything.alpkg": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-alpkg=cli_anything.alpkg.alpkg_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+    ]
+    for idx, src in enumerate(good_variants):
+        res = _run_setup(src)
+        assert res["ok"] is True, (idx, res["checks"])
+
+
+
 
 
 

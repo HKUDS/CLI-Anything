@@ -3258,6 +3258,7 @@ def _inspect_setup_py(
         "namespace_ok": False,
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
+        "unverifiable_packages": False,
         "declares_packages": False,
         "packages_nonempty": False,
         "pkg_spec": None,
@@ -3278,10 +3279,27 @@ def _inspect_setup_py(
     except SyntaxError:
         return info
 
-    # Collect simple module-level assignments so setup(packages=PKGS, entry_points=EPS) resolves cleanly.
+    # Collect simple module-level assignments and setuptools import aliases so
+    # setup(packages=PKGS, entry_points=EPS) and `from setuptools import find_namespace_packages as discover`
+    # resolve cleanly instead of falling back to automatic discovery.
     bindings: dict[str, ast.AST] = {}
+    setuptools_modules: set[str] = {"setuptools"}
+    callable_aliases: dict[str, str] = {}
     for stmt in tree.body:
-        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+        if isinstance(stmt, ast.Import):
+            for alias in stmt.names:
+                if alias.name == "setuptools":
+                    setuptools_modules.add(alias.asname or "setuptools")
+        elif isinstance(stmt, ast.ImportFrom):
+            if stmt.level == 0 and stmt.module == "setuptools":
+                for alias in stmt.names:
+                    if alias.name in {"setup", "find_namespace_packages", "find_packages"}:
+                        callable_aliases[alias.asname or alias.name] = alias.name
+            elif stmt.level == 0 and stmt.module == "setuptools.discovery":
+                for alias in stmt.names:
+                    if alias.name in {"PEP420PackageFinder", "PackageFinder"}:
+                        callable_aliases[alias.asname or alias.name] = alias.name
+        elif isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
             bindings[stmt.targets[0].id] = stmt.value
         elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
             bindings[stmt.target.id] = stmt.value
@@ -3294,10 +3312,43 @@ def _inspect_setup_py(
             cur = bindings[cur.id]
         return cur
 
+    def _resolve_setuptools_callable(func_node: ast.AST) -> str:
+        cur = _resolve(func_node)
+        if isinstance(cur, ast.Name):
+            return callable_aliases.get(cur.id, cur.id)
+        if isinstance(cur, ast.Attribute):
+            val = _resolve(cur.value)
+            if isinstance(val, ast.Name):
+                if val.id in setuptools_modules and cur.attr in {
+                    "setup",
+                    "find_namespace_packages",
+                    "find_packages",
+                }:
+                    return cur.attr
+                if cur.attr == "find":
+                    owner_name = callable_aliases.get(val.id, val.id)
+                    if owner_name == "PEP420PackageFinder":
+                        return "find_namespace_packages"
+                    if owner_name == "PackageFinder":
+                        return "find_packages"
+            elif isinstance(val, ast.Attribute) and cur.attr == "find":
+                if val.attr == "PEP420PackageFinder":
+                    return "find_namespace_packages"
+                if val.attr == "PackageFinder":
+                    return "find_packages"
+            if cur.attr in {"setup", "find_namespace_packages", "find_packages"}:
+                return cur.attr
+        return _call_func_name(cur)
+
     def _check_packages_expr(expr: ast.AST) -> None:
         node = _resolve(expr)
+        if isinstance(node, ast.Constant) and node.value is None:
+            return
+        # Any non-None packages= argument in setup() is an explicit package selection and
+        # must suppress automatic discovery even if statically unverifiable.
+        info["declares_packages"] = True
         if isinstance(node, ast.Call):
-            fname = _call_func_name(node.func)
+            fname = _resolve_setuptools_callable(node.func)
             if fname == "find_namespace_packages":
                 where_kw = next((kw.value for kw in node.keywords if kw.arg == "where"), None)
                 exc_kw = next((kw.value for kw in node.keywords if kw.arg == "exclude"), None)
@@ -3332,7 +3383,6 @@ def _inspect_setup_py(
                     if exc_vals is not None:
                         excludes = exc_vals
 
-                info["declares_packages"] = True
                 info["pkg_spec"] = {
                     "kind": "find",
                     "includes": includes,
@@ -3388,7 +3438,6 @@ def _inspect_setup_py(
                 fp_includes = _const_str_list(_resolve(inc_kw)) if inc_kw is not None else None
                 fp_excludes = _const_str_list(_resolve(exc_kw)) if exc_kw is not None else None
 
-                info["declares_packages"] = True
                 info["uses_regular_find_packages"] = True
                 if fp_dynamic_where or harness is None:
                     info["packages_nonempty"] = True
@@ -3400,16 +3449,21 @@ def _inspect_setup_py(
                             fp_excludes,
                         )
                     )
+            else:
+                info["packages_nonempty"] = True
+                info["unverifiable_packages"] = True
         else:
             explicit = _const_str_list(node)
             if explicit is not None:
-                info["declares_packages"] = True
                 info["packages_nonempty"] = bool(explicit)
                 info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
-            if explicit and _explicit_packages_cover(target_pkg, explicit):
-                info["namespace_ok"] = True
-            if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
-                info["skills_subpkg_ok"] = True
+                if explicit and _explicit_packages_cover(target_pkg, explicit):
+                    info["namespace_ok"] = True
+                if explicit and target_pkg and f"{target_pkg}.skills" in explicit:
+                    info["skills_subpkg_ok"] = True
+            else:
+                info["packages_nonempty"] = True
+                info["unverifiable_packages"] = True
 
     def _extract_entry_points(expr: ast.AST) -> None:
         node = _resolve(expr)
@@ -3463,7 +3517,7 @@ def _inspect_setup_py(
                         dest[k.value] = val.value
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and _call_func_name(node.func) == "setup":
+        if isinstance(node, ast.Call) and _resolve_setuptools_callable(node.func) == "setup":
             for kw in node.keywords:
                 if kw.arg == "packages":
                     _check_packages_expr(kw.value)
@@ -4428,6 +4482,7 @@ def _check_packaging(
         "namespace_ok": False,
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
+        "unverifiable_packages": False,
         "declares_packages": False,
         "packages_nonempty": False,
         "pkg_spec": None,
@@ -4840,6 +4895,15 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring {target_pkg_label} namespace packages",
+            )
+        )
+    elif pkg_source == "setup_py" and setup_info["unverifiable_packages"]:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                "setup.py specifies an explicit dynamic/unverifiable packages= expression that cannot be statically verified",
             )
         )
     elif pkg_source == "setup_py" and setup_info["uses_regular_find_packages"] and not setup_info["namespace_ok"]:

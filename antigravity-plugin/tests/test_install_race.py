@@ -1213,3 +1213,115 @@ def test_custom_plugins_home_inside_source_directory_excludes_staging_subtree(tm
     assert not (installed / "plugins").exists(), "plugins/ ancestor subtree leaked on force reinstall"
 
 
+def test_nested_install_inside_required_source_subdir_preserves_all_skills(tmp_path: Path) -> None:
+    """Installing with --workspace <plugin-src>/skills or ANTIGRAVITY_PLUGINS_HOME=<plugin-src>/skills/plugins
+    must preserve all required skills/*/SKILL.md files while excluding only the nested install root."""
+    expected_skills = (
+        "cli-anything",
+        "cli-anything-refine",
+        "cli-anything-test",
+        "cli-anything-validate",
+        "cli-anything-list",
+    )
+
+    def _clone_sandbox(name: str, *, dir_name: str | None = None) -> Path:
+        sandbox = tmp_path / name
+        if (PLUGIN_SRC.parent / "cli-anything-plugin" / "HARNESS.md").is_file():
+            src_copy = sandbox / (dir_name or "antigravity-plugin")
+            shutil.copytree(
+                PLUGIN_SRC,
+                src_copy,
+                ignore=shutil.ignore_patterns(".git", ".agents", "__pycache__", ".pytest_cache"),
+            )
+            shutil.copytree(
+                PLUGIN_SRC.parent / "cli-anything-plugin",
+                sandbox / "cli-anything-plugin",
+                ignore=shutil.ignore_patterns("__pycache__"),
+            )
+            (sandbox / "docs").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(
+                PLUGIN_SRC.parent / "docs" / "PREVIEW_PROTOCOL.md",
+                sandbox / "docs" / "PREVIEW_PROTOCOL.md",
+            )
+            return src_copy
+        src_copy = sandbox / (dir_name or "cli-anything-antigravity")
+        shutil.copytree(
+            PLUGIN_SRC,
+            src_copy,
+            ignore=shutil.ignore_patterns(".git", ".agents", "__pycache__", ".pytest_cache"),
+        )
+        return src_copy
+
+    def _run_install(src_copy: Path, env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
+        if sys.platform == "win32":
+            shell = shutil.which("pwsh") or shutil.which("powershell")
+            assert shell, "PowerShell required on Windows"
+            cmd = [
+                shell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(src_copy / "scripts" / "install.ps1"),
+                *extra,
+            ]
+        else:
+            cmd = ["bash", str(src_copy / "scripts" / "install.sh"), *extra]
+        return subprocess.run(cmd, cwd=src_copy, env=env, capture_output=True, text=True, check=False)
+
+    # Case 1: --workspace <plugin-src>/skills (workspace install nested inside skills/)
+    src1 = _clone_sandbox("nested_ws_skills")
+    home1 = tmp_path / "home1"
+    home1.mkdir(parents=True)
+    env1 = os.environ.copy()
+    env1["HOME"] = str(home1)
+    env1["USERPROFILE"] = str(home1)
+    env1.pop("ANTIGRAVITY_PLUGINS_HOME", None)
+    ws_flag = "-Workspace" if sys.platform == "win32" else "--workspace"
+    force_flag = "-Force" if sys.platform == "win32" else "--force"
+
+    r1 = _run_install(src1, env1, ws_flag, str(src1 / "skills"))
+    assert r1.returncode == 0, f"nested --workspace skills/ install failed:\n{r1.stdout}\n{r1.stderr}"
+    inst1 = src1 / "skills" / ".agents" / "plugins" / "cli-anything"
+    for sk in expected_skills:
+        assert (inst1 / "skills" / sk / "SKILL.md").is_file(), f"missing {sk}/SKILL.md in nested workspace install"
+    assert not (inst1 / "skills" / ".agents").exists(), ".agents subtree leaked inside installed skills/"
+
+    # Force upgrade in the same nested workspace must keep all skills intact.
+    r1_up = _run_install(src1, env1, ws_flag, str(src1 / "skills"), force_flag)
+    assert r1_up.returncode == 0, f"nested --workspace skills/ upgrade failed:\n{r1_up.stdout}\n{r1_up.stderr}"
+    for sk in expected_skills:
+        assert (inst1 / "skills" / sk / "SKILL.md").is_file(), f"missing {sk}/SKILL.md after upgrade"
+    assert not (inst1 / "skills" / ".agents").exists()
+
+    # Case 2: ANTIGRAVITY_PLUGINS_HOME=<plugin-src>/skills/plugins (custom plugins home nested inside skills/)
+    src2 = _clone_sandbox("nested_custom_skills_plugins")
+    home2 = tmp_path / "home2"
+    home2.mkdir(parents=True)
+    env2 = os.environ.copy()
+    env2["HOME"] = str(home2)
+    env2["USERPROFILE"] = str(home2)
+    env2["ANTIGRAVITY_PLUGINS_HOME"] = str(src2 / "skills" / "plugins")
+
+    r2 = _run_install(src2, env2)
+    assert r2.returncode == 0, f"nested skills/plugins install failed:\n{r2.stdout}\n{r2.stderr}"
+    inst2 = src2 / "skills" / "plugins" / "cli-anything"
+    for sk in expected_skills:
+        assert (inst2 / "skills" / sk / "SKILL.md").is_file(), f"missing {sk}/SKILL.md in skills/plugins install"
+    assert not (inst2 / "skills" / "plugins").exists(), "skills/plugins subtree leaked inside installed skills/"
+
+    # Case 3: Refusing to install when DEST_DIR equals PLUGIN_SRC (e.g. <plugins>/cli-anything).
+    src3 = _clone_sandbox("plugins", dir_name="cli-anything")
+    home3 = tmp_path / "home3"
+    home3.mkdir(parents=True)
+    env3 = os.environ.copy()
+    env3["HOME"] = str(home3)
+    env3["USERPROFILE"] = str(home3)
+    env3["ANTIGRAVITY_PLUGINS_HOME"] = str(src3.parent)
+
+    r3 = _run_install(src3, env3, force_flag)
+    assert r3.returncode != 0, "installer must refuse overwriting its own source directory"
+    assert (src3 / "plugin.json").is_file(), "source directory was modified on refused self-overwrite"
+
+
+
