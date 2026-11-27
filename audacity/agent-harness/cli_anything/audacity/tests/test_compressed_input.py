@@ -119,6 +119,16 @@ class CompressedInputTests(unittest.TestCase):
         self.assertAlmostEqual(clip["end_time"], FAKE_DURATION, places=2)
         self.assertAlmostEqual(clip["trim_end"], FAKE_DURATION, places=2)
 
+    def test_explicit_bounds_skip_duration_probe(self):
+        """Both clip bounds given: no SoX probe may run for the duration."""
+        project = create_project()
+        add_track(project, name="Track 1")
+        clip = add_clip(project, 0, self.mp3, end_time=0.5, trim_end=0.5)
+        self.assertEqual(
+            RECORDED_RUNS, [], "a duration probe ran despite explicit bounds"
+        )
+        self.assertAlmostEqual(clip["end_time"], 0.5)
+
     def test_render_decodes_compressed_source(self):
         project, _ = self._project(
             self.mp3, end_time=FAKE_DURATION, trim_end=FAKE_DURATION

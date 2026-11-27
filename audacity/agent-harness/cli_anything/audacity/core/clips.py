@@ -93,9 +93,11 @@ def add_clip(
 
     abs_source = os.path.abspath(source) if source else ""
 
-    # Determine duration from source if available
+    # Determine duration from source only when a bound still needs it: probing
+    # a compressed source decodes the whole file when soxi is unavailable.
     duration = 0.0
-    if abs_source and os.path.exists(abs_source):
+    needs_duration = end_time is None or trim_end is None
+    if abs_source and os.path.exists(abs_source) and needs_duration:
         duration = _probe_duration(abs_source)
 
     if end_time is None:
