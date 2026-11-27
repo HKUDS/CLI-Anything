@@ -6397,6 +6397,364 @@ def main():
         assert {c["id"]: c for c in res_bad["checks"]}["json-flag"]["status"] == "fail", idx
 
 
+def test_verify_validates_required_build_system_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "build_sys_meta", "bsapp")
+    (harness / "setup.py").unlink()
+    pyproject = harness / "pyproject.toml"
+
+    project_tail = """
+[project]
+name = "cli-anything-bsapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-bsapp = "cli_anything.bsapp.bsapp_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.bsapp" = ["skills/*.md"]
+"""
+
+    invalid_blocks = [
+        # Missing mandatory `requires` key (rejected by pip)
+        '[build-system]\nbuild-backend = "setuptools.build_meta"\n',
+        # Empty [build-system] table
+        "[build-system]\n",
+        # Non-table build-system
+        'build-system = "setuptools"\n',
+        # Non-list requires
+        '[build-system]\nrequires = "setuptools>=68"\nbuild-backend = "setuptools.build_meta"\n',
+        # Empty requirement string
+        '[build-system]\nrequires = [""]\nbuild-backend = "setuptools.build_meta"\n',
+        # Malformed PEP 508 requirement
+        '[build-system]\nrequires = [">=68"]\nbuild-backend = "setuptools.build_meta"\n',
+        '[build-system]\nrequires = ["setuptools bad"]\nbuild-backend = "setuptools.build_meta"\n',
+        # Empty / invalid build-backend
+        '[build-system]\nrequires = ["setuptools>=68"]\nbuild-backend = ""\n',
+        '[build-system]\nrequires = ["setuptools>=68"]\nbuild-backend = 123\n',
+        '[build-system]\nrequires = ["setuptools>=68"]\nbuild-backend = "setuptools:bad:obj"\n',
+        # Invalid / escaping backend-path
+        '[build-system]\nrequires = ["setuptools>=68"]\nbackend-path = "."\n',
+        '[build-system]\nrequires = ["setuptools>=68"]\nbackend-path = ["../escape"]\n',
+        '[build-system]\nrequires = ["setuptools>=68"]\nbackend-path = ["/abs/path"]\n',
+    ]
+
+    valid_blocks = [
+        # Absent [build-system] preserves default setuptools behavior
+        "",
+        # Valid requires without explicit build-backend
+        '[build-system]\nrequires = ["setuptools>=68"]\n',
+        # Valid requires + object backend + relative backend-path
+        '[build-system]\nrequires = ["setuptools>=68; python_version>=\'3.10\'"]\nbuild-backend = "setuptools.build_meta:__legacy__"\nbackend-path = ["."]\n',
+        # Empty requires list is valid per PEP 518 / pip
+        '[build-system]\nrequires = []\nbuild-backend = "setuptools.build_meta"\n',
+    ]
+
+    for use_fallback in (False, True):
+        if use_fallback:
+            monkeypatch.setattr(
+                verify_harness,
+                "_inspect_pyproject_toml",
+                verify_harness._inspect_pyproject_toml_fallback,
+            )
+        for idx, bad_bs in enumerate(invalid_blocks):
+            pyproject.write_text(bad_bs + project_tail, encoding="utf-8")
+            res_bad = verify_harness.verify_harness(
+                harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+            )
+            assert res_bad["ok"] is False, (use_fallback, idx, bad_bs)
+            by_id = {c["id"]: c for c in res_bad["checks"]}
+            assert by_id["pyproject-build-system"]["status"] == "fail", (use_fallback, idx, by_id)
+
+        for idx, ok_bs in enumerate(valid_blocks):
+            pyproject.write_text(ok_bs + project_tail, encoding="utf-8")
+            res_ok = verify_harness.verify_harness(
+                harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+            )
+            assert res_ok["ok"] is True, (use_fallback, idx, res_ok["checks"])
+
+
+def test_verify_ignores_type_checking_only_entry_point_bindings(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "tc_ep", "tcapp")
+    pkg = harness / "cli_anything" / "tcapp"
+    cli_py = pkg / "tcapp_cli.py"
+    impl_py = pkg / "impl.py"
+    impl_py.write_text(
+        """from typing import TYPE_CHECKING
+import click
+
+if TYPE_CHECKING:
+    __all__ = ["other"]
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def impl_cli(use_json):
+    pass
+
+def real_main():
+    impl_cli()
+""",
+        encoding="utf-8",
+    )
+
+    def _set_target(spec: str) -> None:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import setup, find_namespace_packages
+
+setup(
+    name="cli-anything-tcapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.tcapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-tcapp={spec}"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    base_cli_header = """import typing
+import typing as t
+from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING as TC
+import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.pass_context
+def cli(ctx, use_json):
+    pass
+"""
+
+    invalid_cases = [
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nif TYPE_CHECKING:\n    def main():\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nif typing.TYPE_CHECKING:\n    from .impl import real_main as main\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nif t.TYPE_CHECKING:\n    def main():\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nif TC:\n    def main():\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nflag = True\nif TYPE_CHECKING and flag:\n    def main():\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nif TYPE_CHECKING is True:\n    def main():\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nif False:\n    def main():\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header
+            + "\nif TYPE_CHECKING:\n    def main():\n        cli()\nelse:\n    def main(argv):\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:Runner.run",
+            base_cli_header
+            + "\nclass Runner:\n    if TYPE_CHECKING:\n        @staticmethod\n        def run():\n            cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:inst",
+            base_cli_header
+            + "\nclass CallableInst:\n    if TYPE_CHECKING:\n        def __call__(self):\n            cli()\ninst = CallableInst()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nmain = cli if TYPE_CHECKING else 0\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:real_main",
+            base_cli_header + "\nif TYPE_CHECKING:\n    from .impl import *\n",
+        ),
+    ]
+    for idx, (spec, src) in enumerate(invalid_cases):
+        cli_py.write_text(src, encoding="utf-8")
+        _set_target(spec)
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, spec)
+        assert {c["id"]: c for c in res_bad["checks"]}["console-script"]["status"] == "fail", (idx, spec)
+
+    valid_cases = [
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header
+            + "\nif not TYPE_CHECKING:\n    def main():\n        cli()\nelse:\n    main = 0\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header
+            + "\nif TYPE_CHECKING:\n    main = 0\nelse:\n    def main():\n        cli()\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header
+            + "\ndef main():\n    cli()\nif TYPE_CHECKING:\n    main = 0\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:main",
+            base_cli_header + "\nmain = cli if not TYPE_CHECKING else 0\n",
+        ),
+        (
+            "cli_anything.tcapp.tcapp_cli:real_main",
+            base_cli_header + "\nfrom .impl import *\n",
+        ),
+    ]
+    for idx, (spec, src) in enumerate(valid_cases):
+        cli_py.write_text(src, encoding="utf-8")
+        _set_target(spec)
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, spec, res_ok["checks"])
+
+
+def test_verify_allows_setup_cfg_to_populate_empty_setup_py_packages(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "empty_setup_pkgs", "emppkg")
+    setup_py = harness / "setup.py"
+    setup_cfg = harness / "setup.cfg"
+    pyproject = harness / "pyproject.toml"
+
+    cfg_find_ns = """[metadata]
+name = cli-anything-emppkg
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+
+[options.package_data]
+cli_anything.emppkg = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-emppkg = cli_anything.emppkg.emppkg_cli:main
+"""
+
+    # 1. setup(packages=[]) + setup.cfg `packages = find_namespace:` -> PASS (strict & non-strict).
+    setup_py.write_text("from setuptools import setup\nsetup(packages=[])\n", encoding="utf-8")
+    setup_cfg.write_text(cfg_find_ns, encoding="utf-8")
+    for strict_mode in (False, True):
+        res_ok = verify_harness.verify_harness(
+            harness, strict=strict_mode, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (strict_mode, res_ok["checks"])
+        assert {c["id"]: c for c in res_ok["checks"]}["namespace-packages"]["status"] == "pass"
+
+    # 2. setup(packages=find_packages()) returning [] on PEP 420 layout + setup.cfg find_namespace -> PASS.
+    setup_py.write_text(
+        "from setuptools import setup, find_packages\nsetup(packages=find_packages())\n",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 3. setup(packages=find_namespace_packages(include=["nonexistent*"])) returning [] + setup.cfg -> PASS.
+    setup_py.write_text(
+        'from setuptools import setup, find_namespace_packages\nsetup(packages=find_namespace_packages(include=["nonexistent*"]))\n',
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 4. setup(packages=[]) WITHOUT setup.cfg packages -> auto-discovery stays suppressed -> FAIL.
+    setup_py.write_text("from setuptools import setup\nsetup(packages=[])\n", encoding="utf-8")
+    setup_cfg.write_text(
+        """[metadata]
+name = cli-anything-emppkg
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+
+[options.package_data]
+cli_anything.emppkg = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-emppkg = cli_anything.emppkg.emppkg_cli:main
+""",
+        encoding="utf-8",
+    )
+    r_no_cfg_pkgs = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_no_cfg_pkgs["ok"] is False
+    assert {c["id"]: c for c in r_no_cfg_pkgs["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 5. setup(packages=["other"]) (non-empty) + setup.cfg find_namespace -> setup.py wins -> FAIL.
+    setup_cfg.write_text(cfg_find_ns, encoding="utf-8")
+    setup_py.write_text('from setuptools import setup\nsetup(packages=["other"])\n', encoding="utf-8")
+    r_nonempty_setup = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_nonempty_setup["ok"] is False
+    assert {c["id"]: c for c in r_nonempty_setup["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 6. setup(packages=find_packages()) when a regular package exists -> non-empty setup.py wins -> FAIL.
+    other_pkg = harness / "other_reg_pkg"
+    other_pkg.mkdir()
+    (other_pkg / "__init__.py").write_text("", encoding="utf-8")
+    setup_py.write_text(
+        "from setuptools import setup, find_packages\nsetup(packages=find_packages())\n",
+        encoding="utf-8",
+    )
+    r_nonempty_fp = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_nonempty_fp["ok"] is False
+    assert {c["id"]: c for c in r_nonempty_fp["checks"]}["namespace-packages"]["status"] == "fail"
+    shutil.rmtree(other_pkg)
+
+    # 7. pyproject.toml [tool.setuptools] packages = [] STILL overrides setup.cfg find_namespace -> FAIL.
+    setup_py.write_text("from setuptools import setup\nsetup(packages=[])\n", encoding="utf-8")
+    pyproject.write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-emppkg"
+version = "1.0.0"
+requires-python = ">=3.10"
+dynamic = ["scripts"]
+
+[tool.setuptools]
+packages = []
+""",
+        encoding="utf-8",
+    )
+    r_pyproj_empty = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_pyproj_empty["ok"] is False
+    assert {c["id"]: c for c in r_pyproj_empty["checks"]}["namespace-packages"]["status"] == "fail"
+
+
+
 
 
 

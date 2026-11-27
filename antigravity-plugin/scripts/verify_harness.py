@@ -19,6 +19,7 @@ import importlib.util
 import json
 import keyword
 import os
+import posixpath
 import re
 import sys
 import types
@@ -310,6 +311,110 @@ def _is_dunder_main_guard(test: ast.AST) -> bool:
     return False
 
 
+def _collect_type_checking_names(stmts: list[ast.stmt]) -> set[str]:
+    """Collect module-scope names statically bound to typing.TYPE_CHECKING (False at runtime)."""
+    names: set[str] = {"TYPE_CHECKING"}
+    for stmt in stmts:
+        if isinstance(stmt, ast.ImportFrom):
+            if stmt.level == 0 and stmt.module in {"typing", "typing_extensions"}:
+                for alias in stmt.names:
+                    if alias.name == "TYPE_CHECKING":
+                        names.add(alias.asname or alias.name)
+        elif isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+            tgt = stmt.targets[0].id
+            val = stmt.value
+            if (
+                (isinstance(val, ast.Name) and val.id in names)
+                or (isinstance(val, ast.Attribute) and val.attr == "TYPE_CHECKING")
+                or (tgt in names and isinstance(val, ast.Constant) and val.value is False)
+            ):
+                names.add(tgt)
+            elif tgt in names:
+                names.discard(tgt)
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
+            tgt = stmt.target.id
+            val = stmt.value
+            if (
+                (isinstance(val, ast.Name) and val.id in names)
+                or (isinstance(val, ast.Attribute) and val.attr == "TYPE_CHECKING")
+                or (tgt in names and isinstance(val, ast.Constant) and val.value is False)
+            ):
+                names.add(tgt)
+            elif tgt in names:
+                names.discard(tgt)
+    return names
+
+
+def _static_branch_truthiness(
+    test: ast.AST,
+    *,
+    tc_names: set[str] | frozenset[str] = frozenset({"TYPE_CHECKING"}),
+) -> bool | None:
+    """Return True/False if a branch condition has statically known runtime truthiness during import."""
+    if _is_dunder_main_guard(test):
+        return False
+    if (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and len(test.comparators) == 1
+    ):
+        op = test.ops[0]
+        left, right = test.left, test.comparators[0]
+        if isinstance(op, ast.NotEq) and (
+            (
+                isinstance(left, ast.Name)
+                and left.id == "__name__"
+                and isinstance(right, ast.Constant)
+                and right.value == "__main__"
+            )
+            or (
+                isinstance(right, ast.Name)
+                and right.id == "__name__"
+                and isinstance(left, ast.Constant)
+                and left.value == "__main__"
+            )
+        ):
+            return True
+        if isinstance(op, (ast.Eq, ast.NotEq, ast.Is, ast.IsNot)):
+            def _static_bool(node: ast.AST) -> bool | None:
+                if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+                    return node.value
+                if isinstance(node, ast.Name) and node.id in tc_names:
+                    return False
+                if isinstance(node, ast.Attribute) and node.attr == "TYPE_CHECKING":
+                    return False
+                return None
+
+            lb = _static_bool(left)
+            rb = _static_bool(right)
+            if lb is not None and rb is not None:
+                return (lb == rb) if isinstance(op, (ast.Eq, ast.Is)) else (lb != rb)
+    if isinstance(test, ast.Name) and test.id in tc_names:
+        return False
+    if isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING":
+        return False
+    if isinstance(test, ast.Constant):
+        return bool(test.value)
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        inner = _static_branch_truthiness(test.operand, tc_names=tc_names)
+        return (not inner) if inner is not None else None
+    if isinstance(test, ast.BoolOp):
+        vals = [_static_branch_truthiness(v, tc_names=tc_names) for v in test.values]
+        if isinstance(test.op, ast.And):
+            if any(v is False for v in vals):
+                return False
+            if all(v is True for v in vals):
+                return True
+            return None
+        if isinstance(test.op, ast.Or):
+            if any(v is True for v in vals):
+                return True
+            if all(v is False for v in vals):
+                return False
+            return None
+    return None
+
+
 def _extract_attr_chain(node: ast.AST) -> tuple[str, ...] | None:
     if isinstance(node, ast.Name):
         return (node.id,)
@@ -376,6 +481,7 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
 
     try_star = getattr(ast, "TryStar", ())
     match_cls = getattr(ast, "Match", ())
+    tc_names = _collect_type_checking_names(tree.body)
 
     def _scan_stmts(stmts: list[ast.stmt]) -> bool:
         for stmt in stmts:
@@ -402,8 +508,12 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
                     if bound == symbol:
                         return True
             elif isinstance(stmt, ast.If):
-                if _is_dunder_main_guard(stmt.test):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is False:
                     if _scan_stmts(stmt.orelse):
+                        return True
+                elif branch is True:
+                    if _scan_stmts(stmt.body):
                         return True
                 elif _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse):
                     return True
@@ -413,7 +523,11 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
                 if _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse):
                     return True
             elif isinstance(stmt, ast.While):
-                if _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is False:
+                    if _scan_stmts(stmt.orelse):
+                        return True
+                elif _scan_stmts(stmt.body) or _scan_stmts(stmt.orelse):
                     return True
             elif isinstance(stmt, (ast.With, ast.AsyncWith)):
                 for item in stmt.items:
@@ -608,6 +722,7 @@ def _extract_module_dunder_all(tree: ast.Module) -> tuple[str, set[str] | None]:
     str_seq_vars: dict[str, list[str]] = {}
     try_star = getattr(ast, "TryStar", ())
     match_cls = getattr(ast, "Match", ())
+    tc_names = _collect_type_checking_names(tree.body)
 
     for stmt in tree.body:
         if isinstance(stmt, ast.Assign):
@@ -706,7 +821,13 @@ def _extract_module_dunder_all(tree: ast.Module) -> tuple[str, set[str] | None]:
                 all_state = "dynamic"
                 str_seq_vars.pop("__all__", None)
         elif isinstance(stmt, ast.If):
-            sub_stmts = stmt.orelse if _is_dunder_main_guard(stmt.test) else (stmt.body + stmt.orelse)
+            branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+            if branch is False:
+                sub_stmts = stmt.orelse
+            elif branch is True:
+                sub_stmts = stmt.body
+            else:
+                sub_stmts = stmt.body + stmt.orelse
             if _stmts_mutate_dunder_all(sub_stmts):
                 all_state = "dynamic"
                 str_seq_vars.pop("__all__", None)
@@ -811,6 +932,7 @@ def _resolve_module_attr_path(
         mod_imports = _preparsed_env["mod_imports"]
         dotted_imports = _preparsed_env["dotted_imports"]
         star_imports = _preparsed_env["star_imports"]
+        type_checking_names = _preparsed_env["type_checking_names"]
         local_env = _preparsed_env
     else:
         ok_root, root_err = _module_defines_symbol(py_file, attr_parts[0])
@@ -822,6 +944,7 @@ def _resolve_module_attr_path(
         except SyntaxError as exc:
             return False, f"syntax error in {py_file.name}: {exc.msg}", None
 
+        type_checking_names = _collect_type_checking_names(tree.body)
         direct_local_defs: set[str] = set()
         non_callable_local_defs: set[str] = set()
         bad_sig_local_defs: dict[str, str] = {}
@@ -854,6 +977,7 @@ def _resolve_module_attr_path(
             "mod_imports": mod_imports,
             "dotted_imports": dotted_imports,
             "star_imports": star_imports,
+            "type_checking_names": type_checking_names,
         }
 
     is_pkg_init = py_file.name == "__init__.py"
@@ -1007,7 +1131,20 @@ def _resolve_module_attr_path(
             else:
                 attr_assign_values.setdefault(chain, []).append(None)
 
+    def _unwrap_static_ifexp(node: ast.AST | None) -> ast.AST | None:
+        cur = node
+        while isinstance(cur, ast.IfExp):
+            branch = _static_branch_truthiness(cur.test, tc_names=type_checking_names)
+            if branch is True:
+                cur = cur.body
+            elif branch is False:
+                cur = cur.orelse
+            else:
+                break
+        return cur
+
     def _record_binding(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
+        value = _unwrap_static_ifexp(value)
         _record_attr_chains(target, value, top_level=top_level)
         if value is None:
             return
@@ -1129,8 +1266,11 @@ def _resolve_module_attr_path(
                     if resolved_mod is not None:
                         from_imports.setdefault(bound, []).append((resolved_mod, alias.name, is_rel))
             elif isinstance(stmt, ast.If):
-                if _is_dunder_main_guard(stmt.test):
-                    _collect_stmts(stmt.orelse, top_level=False)
+                branch = _static_branch_truthiness(stmt.test, tc_names=type_checking_names)
+                if branch is False:
+                    _collect_stmts(stmt.orelse, top_level=top_level)
+                elif branch is True:
+                    _collect_stmts(stmt.body, top_level=top_level)
                 else:
                     _collect_stmts(stmt.body, top_level=False)
                     _collect_stmts(stmt.orelse, top_level=False)
@@ -1140,8 +1280,12 @@ def _resolve_module_attr_path(
                 _collect_stmts(stmt.body, top_level=False)
                 _collect_stmts(stmt.orelse, top_level=False)
             elif isinstance(stmt, ast.While):
-                _collect_stmts(stmt.body, top_level=False)
-                _collect_stmts(stmt.orelse, top_level=False)
+                branch = _static_branch_truthiness(stmt.test, tc_names=type_checking_names)
+                if branch is False:
+                    _collect_stmts(stmt.orelse, top_level=top_level)
+                else:
+                    _collect_stmts(stmt.body, top_level=False)
+                    _collect_stmts(stmt.orelse, top_level=False)
             elif isinstance(stmt, (ast.With, ast.AsyncWith)):
                 for item in stmt.items:
                     if item.optional_vars is not None:
@@ -1314,11 +1458,24 @@ def _resolve_module_attr_path(
                         elif bound == "__call__":
                             has_dynamic_call = True
                 elif isinstance(cs, ast.If):
+                    branch = _static_branch_truthiness(cs.test, tc_names=type_checking_names)
+                    if branch is False:
+                        _scan_for_dunder(cs.orelse, cls_top=cls_top)
+                    elif branch is True:
+                        _scan_for_dunder(cs.body, cls_top=cls_top)
+                    else:
+                        _scan_for_dunder(cs.body, cls_top=False)
+                        _scan_for_dunder(cs.orelse, cls_top=False)
+                elif isinstance(cs, (ast.For, ast.AsyncFor)):
                     _scan_for_dunder(cs.body, cls_top=False)
                     _scan_for_dunder(cs.orelse, cls_top=False)
-                elif isinstance(cs, (ast.For, ast.AsyncFor, ast.While)):
-                    _scan_for_dunder(cs.body, cls_top=False)
-                    _scan_for_dunder(cs.orelse, cls_top=False)
+                elif isinstance(cs, ast.While):
+                    branch = _static_branch_truthiness(cs.test, tc_names=type_checking_names)
+                    if branch is False:
+                        _scan_for_dunder(cs.orelse, cls_top=cls_top)
+                    else:
+                        _scan_for_dunder(cs.body, cls_top=False)
+                        _scan_for_dunder(cs.orelse, cls_top=False)
                 elif isinstance(cs, (ast.With, ast.AsyncWith)):
                     _scan_for_dunder(cs.body, cls_top=False)
                 elif isinstance(cs, ast.Try) or (try_star and isinstance(cs, try_star)):
@@ -1561,6 +1718,7 @@ def _resolve_module_attr_path(
         *,
         bound_self: bool = False,
     ) -> tuple[bool, str | None, Path | None]:
+        val = _unwrap_static_ifexp(val)
         if val is None:
             return True, None, py_file
         if _is_provably_non_callable_expr(val):
@@ -1698,6 +1856,7 @@ def _resolve_module_attr_path(
         cls_instances: dict[str, list[str]] = {}
 
         def _record_cls_assign(t: ast.AST, val: ast.AST | None, *, cls_top: bool) -> None:
+            val = _unwrap_static_ifexp(val)
             if isinstance(t, ast.Name):
                 if val is not None and _is_provably_non_callable_expr(val):
                     if cls_top:
@@ -1795,11 +1954,24 @@ def _resolve_module_attr_path(
                                 bad_sig_cls_names.pop(bound, None)
                             callable_names.add(bound)
                 elif isinstance(s, ast.If):
+                    branch = _static_branch_truthiness(s.test, tc_names=type_checking_names)
+                    if branch is False:
+                        _scan_cls_body(s.orelse, cls_top=cls_top)
+                    elif branch is True:
+                        _scan_cls_body(s.body, cls_top=cls_top)
+                    else:
+                        _scan_cls_body(s.body, cls_top=False)
+                        _scan_cls_body(s.orelse, cls_top=False)
+                elif isinstance(s, (ast.For, ast.AsyncFor)):
                     _scan_cls_body(s.body, cls_top=False)
                     _scan_cls_body(s.orelse, cls_top=False)
-                elif isinstance(s, (ast.For, ast.AsyncFor, ast.While)):
-                    _scan_cls_body(s.body, cls_top=False)
-                    _scan_cls_body(s.orelse, cls_top=False)
+                elif isinstance(s, ast.While):
+                    branch = _static_branch_truthiness(s.test, tc_names=type_checking_names)
+                    if branch is False:
+                        _scan_cls_body(s.orelse, cls_top=cls_top)
+                    else:
+                        _scan_cls_body(s.body, cls_top=False)
+                        _scan_cls_body(s.orelse, cls_top=False)
                 elif isinstance(s, (ast.With, ast.AsyncWith)):
                     _scan_cls_body(s.body, cls_top=False)
                 elif isinstance(s, ast.Try) or (try_star and isinstance(s, try_star)):
@@ -2117,6 +2289,39 @@ def _find_discovered_packages(
             if "." in d:
                 continue
             full_path = os.path.join(cur_root, d)
+            rel_path = os.path.relpath(full_path, str(root))
+            package = rel_path.replace(os.path.sep, ".")
+            is_excluded = any(fnmatch.fnmatchcase(package, pat) for pat in exc_patterns)
+            is_included = any(fnmatch.fnmatchcase(package, pat) for pat in inc_patterns)
+            if is_included and not is_excluded:
+                found.append(package)
+            if f"{package}*" in exc_patterns or f"{package}.*" in exc_patterns:
+                continue
+            dirs.append(d)
+    return found
+
+
+def _find_regular_packages(
+    root: Path,
+    includes: list[str] | None,
+    excludes: list[str] | None,
+) -> list[str]:
+    """Mirror setuptools.discovery.PackageFinder.find() (requires __init__.py at every level)."""
+    if not root.is_dir():
+        return []
+    inc_patterns = ["*"] if includes is None else includes
+    exc_patterns = ["ez_setup", "*__pycache__"] + (list(excludes) if excludes else [])
+    found: list[str] = []
+
+    for cur_root, dirs, _ in os.walk(str(root), followlinks=True):
+        all_dirs = sorted(dirs)
+        dirs[:] = []
+        for d in all_dirs:
+            if "." in d:
+                continue
+            full_path = os.path.join(cur_root, d)
+            if not os.path.isfile(os.path.join(full_path, "__init__.py")):
+                continue
             rel_path = os.path.relpath(full_path, str(root))
             package = rel_path.replace(os.path.sep, ".")
             is_excluded = any(fnmatch.fnmatchcase(package, pat) for pat in exc_patterns)
@@ -2972,6 +3177,7 @@ def _inspect_setup_py(
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
         "declares_packages": False,
+        "packages_nonempty": False,
         "pkg_spec": None,
         "package_dir": {},
         "declares_py_modules": False,
@@ -3070,13 +3276,53 @@ def _inspect_setup_py(
                     require_init=False,
                 ):
                     info["skills_subpkg_ok"] = True
+                if info["namespace_ok"] or dynamic_where or harness is None:
+                    info["packages_nonempty"] = True
+                else:
+                    info["packages_nonempty"] = any(
+                        bool(_find_discovered_packages(harness / (_norm_pkg_dir_value(w) or "."), includes, excludes))
+                        for w in (wheres or ["."])
+                    )
             elif fname == "find_packages":
+                where_kw = next((kw.value for kw in node.keywords if kw.arg == "where"), None)
+                exc_kw = next((kw.value for kw in node.keywords if kw.arg == "exclude"), None)
+                inc_kw = next((kw.value for kw in node.keywords if kw.arg == "include"), None)
+                if where_kw is None and len(node.args) >= 1:
+                    where_kw = node.args[0]
+                if exc_kw is None and len(node.args) >= 2:
+                    exc_kw = node.args[1]
+                if inc_kw is None and len(node.args) >= 3:
+                    inc_kw = node.args[2]
+
+                fp_where: str | None = "."
+                fp_dynamic_where = False
+                if where_kw is not None:
+                    resolved_where = _resolve(where_kw)
+                    if isinstance(resolved_where, ast.Constant) and isinstance(resolved_where.value, str):
+                        fp_where = resolved_where.value
+                    else:
+                        fp_where = None
+                        fp_dynamic_where = True
+                fp_includes = _const_str_list(_resolve(inc_kw)) if inc_kw is not None else None
+                fp_excludes = _const_str_list(_resolve(exc_kw)) if exc_kw is not None else None
+
                 info["declares_packages"] = True
                 info["uses_regular_find_packages"] = True
+                if fp_dynamic_where or harness is None:
+                    info["packages_nonempty"] = True
+                else:
+                    info["packages_nonempty"] = bool(
+                        _find_regular_packages(
+                            harness / (_norm_pkg_dir_value(fp_where or ".") or "."),
+                            fp_includes,
+                            fp_excludes,
+                        )
+                    )
         else:
             explicit = _const_str_list(node)
             if explicit is not None:
                 info["declares_packages"] = True
+                info["packages_nonempty"] = bool(explicit)
                 info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
             if explicit and _explicit_packages_cover(target_pkg, explicit):
                 info["namespace_ok"] = True
@@ -3189,6 +3435,7 @@ def _loads_toml_fallback(text: str) -> dict[str, Any]:
 def _empty_pyproject_info() -> dict[str, Any]:
     return {
         "parse_error": None,
+        "build_system_error": None,
         "project_metadata_error": None,
         "build_backend": None,
         "backend_kind": "setuptools",
@@ -3308,8 +3555,76 @@ def _inspect_pyproject_data(
     if not isinstance(data, dict):
         return info
 
+    _pep508_req_re = re.compile(
+        r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?(?:\s*(?:$|\[|@|\(|;|[=<>!~]))"
+    )
+    has_build_system = "build-system" in data
     build_system = data.get("build-system")
-    raw_backend = build_system.get("build-backend") if isinstance(build_system, dict) else None
+    raw_backend: Any = None
+    if has_build_system:
+        if not isinstance(build_system, dict):
+            info["build_system_error"] = "[build-system] must be a TOML table"
+        else:
+            if "requires" not in build_system:
+                info["build_system_error"] = (
+                    "[build-system] table is missing the mandatory 'requires' key (PEP 518)"
+                )
+            else:
+                requires = build_system["requires"]
+                if not isinstance(requires, list) or any(not isinstance(r, str) for r in requires):
+                    info["build_system_error"] = (
+                        "[build-system].requires must be a list of requirement strings (PEP 518)"
+                    )
+                else:
+                    for req in requires:
+                        req_s = req.strip()
+                        if not req_s or not _pep508_req_re.match(req_s):
+                            info["build_system_error"] = (
+                                f"[build-system].requires contains invalid PEP 508 requirement: {req!r}"
+                            )
+                            break
+            if info["build_system_error"] is None and "build-backend" in build_system:
+                raw_backend = build_system["build-backend"]
+                if not isinstance(raw_backend, str) or not raw_backend.strip():
+                    info["build_system_error"] = (
+                        "[build-system].build-backend must be a non-empty string (PEP 517)"
+                    )
+                else:
+                    stripped_be = raw_backend.strip()
+                    mod_part, sep, obj_part = stripped_be.partition(":")
+                    mod_parts = mod_part.split(".")
+                    valid_mod = bool(mod_parts) and all(
+                        p.isidentifier() and not keyword.iskeyword(p) for p in mod_parts
+                    )
+                    valid_obj = True if not sep else (
+                        bool(obj_part)
+                        and all(p.isidentifier() and not keyword.iskeyword(p) for p in obj_part.split("."))
+                    )
+                    if not (valid_mod and valid_obj):
+                        info["build_system_error"] = (
+                            f"[build-system].build-backend is not a valid PEP 517 module/object path: {raw_backend!r}"
+                        )
+            else:
+                raw_backend = build_system.get("build-backend")
+            if info["build_system_error"] is None and "backend-path" in build_system:
+                raw_bp = build_system["backend-path"]
+                if not isinstance(raw_bp, list) or any(not isinstance(p, str) or not p.strip() for p in raw_bp):
+                    info["build_system_error"] = (
+                        "[build-system].backend-path must be a list of non-empty relative path strings (PEP 517)"
+                    )
+                else:
+                    for bp in raw_bp:
+                        if _is_absolute_pattern(bp):
+                            info["build_system_error"] = (
+                                f"[build-system].backend-path entries must be relative: {bp!r}"
+                            )
+                            break
+                        norm_bp = posixpath.normpath(_normalize_platform_seps(bp))
+                        if norm_bp == ".." or norm_bp.startswith("../"):
+                            info["build_system_error"] = (
+                                f"[build-system].backend-path escapes project root: {bp!r}"
+                            )
+                            break
     build_backend = raw_backend.strip() if isinstance(raw_backend, str) and raw_backend.strip() else None
     backend_kind = _classify_build_backend(build_backend)
     info["build_backend"] = build_backend
@@ -4004,6 +4319,7 @@ def _check_packaging(
         "skills_subpkg_ok": False,
         "uses_regular_find_packages": False,
         "declares_packages": False,
+        "packages_nonempty": False,
         "pkg_spec": None,
         "package_dir": {},
         "declares_py_modules": False,
@@ -4034,6 +4350,17 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 f"invalid pyproject.toml: {pyproj_info['parse_error']}",
+            )
+        )
+        return checks, module, [], {}
+
+    if has_pyproject and pyproj_info["build_system_error"]:
+        checks.append(
+            CheckResult(
+                "pyproject-build-system",
+                "packaging",
+                FAIL,
+                f"invalid pyproject.toml [build-system]: {pyproj_info['build_system_error']}",
             )
         )
         return checks, module, [], {}
@@ -4083,7 +4410,12 @@ def _check_packaging(
     auto_discovery_error: str | None = None
     auto_discovered_py_modules: list[str] = []
 
-    # Determine effective package selection (setuptools precedence: pyproject.toml > setup.py > setup.cfg > auto-discovery).
+    # Determine effective package selection:
+    # - pyproject.toml [tool.setuptools] always takes precedence (even when empty).
+    # - setuptools ConfigHandler.__setitem__() only skips setup.cfg when setup.py's
+    #   packages value is truthy; an empty setup.py list (e.g. packages=[]) is populated
+    #   by setup.cfg when setup.cfg declares packages, while still blocking auto-discovery
+    #   if setup.cfg does not declare packages.
     if pyproj_info["namespaces_disabled"]:
         parent_selected = False
         skills_subpkg_selected = False
@@ -4094,7 +4426,10 @@ def _check_packaging(
         skills_subpkg_selected = bool(pyproj_info["skills_subpkg_ok"])
         eff_pkg_spec = pyproj_info["pkg_spec"]
         pkg_source = "pyproject"
-    elif uses_setup_py and setup_info["declares_packages"]:
+    elif uses_setup_py and setup_info["declares_packages"] and (
+        setup_info["packages_nonempty"]
+        or not (uses_setup_cfg and setup_cfg_info["declares_packages"])
+    ):
         parent_selected = bool(setup_info["namespace_ok"])
         skills_subpkg_selected = bool(setup_info["skills_subpkg_ok"])
         eff_pkg_spec = setup_info["pkg_spec"]
