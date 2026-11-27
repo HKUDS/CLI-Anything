@@ -143,6 +143,36 @@ class TestDocument:
         assert proj["metadata"]["software"] == "libreoffice-cli 1.0"
 
 
+class TestDocumentPageStyle:
+    """The writer master page must use Writer's built-in "Standard" page style."""
+
+    def test_writer_master_page_uses_standard_style(self):
+        proj = create_document(doc_type="writer", name="page_style")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "page_style.odt")
+            to_odt(proj, path)
+            styles_xml = parse_odf(path)["styles_xml"]
+
+        assert 'style:name="Standard"' in styles_xml
+        assert 'style:name="Default"' not in styles_xml
+        assert 'style:page-layout-name="PM1"' in styles_xml
+        assert 'fo:page-width="21cm"' in styles_xml
+        assert 'fo:page-height="29.7cm"' in styles_xml
+
+    def test_impress_keeps_default_master_page(self):
+        proj = create_document(doc_type="impress", name="slide_style")
+        add_slide(proj, title="Intro", content="Welcome")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "deck.odp")
+            to_odp(proj, path)
+            parsed = parse_odf(path)
+
+        assert 'style:name="Default"' in parsed["styles_xml"]
+        assert 'draw:master-page-name="Default"' in parsed["content_xml"]
+
+
 class TestImport:
     def test_list_import_formats_includes_office_and_odf(self):
         formats = importer_mod.list_import_formats()

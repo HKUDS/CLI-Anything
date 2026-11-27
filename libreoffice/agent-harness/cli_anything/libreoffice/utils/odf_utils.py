@@ -460,7 +460,11 @@ def create_styles_xml(doc_type: str, project: Dict[str, Any]) -> str:
     # Master styles
     master_styles = ET.SubElement(root, _ns("office", "master-styles"))
     mp = ET.SubElement(master_styles, _ns("style", "master-page"))
-    mp.set(_nsattr("style", "name"), "Default")
+    # Writer's built-in default page style is named "Standard"; a master page
+    # called "Default" is a new style LibreOffice does not bind to paragraphs,
+    # so the PM1 page layout (page size and margins) is silently ignored.
+    # Draw/Impress slides reference the "Default" master page, so keep it there.
+    mp.set(_nsattr("style", "name"), "Standard" if doc_type == "writer" else "Default")
     if doc_type == "writer":
         mp.set(_nsattr("style", "page-layout-name"), "PM1")
 
