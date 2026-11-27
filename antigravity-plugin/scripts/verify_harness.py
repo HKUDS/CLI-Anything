@@ -886,18 +886,21 @@ def _setuptools_translate_pattern(glob_pat: str) -> re.Pattern[str]:
 def _manifest_covers_skill(
     harness: Path | None,
     expected_manifest_rel: str | None,
+    *,
+    initially_included: bool = False,
 ) -> bool:
     """Evaluate MANIFEST.in directives in order (mirroring setuptools egg_info.FileList + build_py).
 
-    Tracks the exact relative paths emitted by inclusion directives (e.g. `./...` from
-    `recursive-include . <pat>` vs prefix-free paths from `include`/`global-include`/`graft`)
-    so regex-backed exclusions and `build_py.analyze_manifest()` path matching mirror setuptools.
+    When `initially_included=True` (package_data sdist survival check), starts with `canonical_rel`
+    seeded by `add_defaults()` and checks whether any matching path survives MANIFEST.in removals.
+    When `initially_included=False` (`include_package_data` check), tracks the exact emitted paths
+    (including `./...` from `recursive-include . <pat>`) so `build_py.analyze_manifest()` matches.
     """
     if harness is None or not expected_manifest_rel:
         return False
     manifest = harness / "MANIFEST.in"
     if not manifest.is_file():
-        return False
+        return initially_included
 
     expected_norm = _normalize_platform_seps(expected_manifest_rel)
     canonical_rel = PurePosixPath(expected_norm).as_posix()
@@ -921,7 +924,7 @@ def _manifest_covers_skill(
     if pending:
         logical_lines.append(pending.strip())
 
-    selected_paths: set[str] = set()
+    selected_paths: set[str] = {canonical_rel} if initially_included else set()
     for line in logical_lines:
         tokens = line.split()
         if len(tokens) < 2:
@@ -1003,6 +1006,8 @@ def _manifest_covers_skill(
                 rx = _setuptools_translate_pattern(f"{d}/**")
                 selected_paths = {fp for fp in selected_paths if not rx.match(fp)}
 
+    if initially_included:
+        return bool(selected_paths)
     return expected_norm in selected_paths
 
 
@@ -1620,17 +1625,14 @@ def _inspect_setup_cfg(
                 info["declares_packages"] = True
                 if raw_pkgs == "find_namespace:":
                     find_sec = cp["options.packages.find"] if cp.has_section("options.packages.find") else {}
-                    if "where" in find_sec:
-                        w_val = find_sec["where"].strip()
-                        wheres: list[str] | None = [w_val] if w_val else ["."]
-                    else:
-                        wheres = None
-                    includes: list[str] | None = (
-                        _parse_setup_cfg_list(find_sec["include"]) if "include" in find_sec else None
-                    )
-                    excludes: list[str] | None = (
-                        _parse_setup_cfg_list(find_sec["exclude"]) if "exclude" in find_sec else None
-                    )
+                    # Mirror setuptools setupcfg.parse_section_packages__find(): empty options are dropped
+                    # and revert to their discovery defaults (unlike TOML where `include = []` is empty).
+                    raw_wheres = _parse_setup_cfg_list(find_sec["where"]) if "where" in find_sec else []
+                    wheres: list[str] | None = [raw_wheres[0]] if raw_wheres else None
+                    raw_includes = _parse_setup_cfg_list(find_sec["include"]) if "include" in find_sec else []
+                    includes: list[str] | None = raw_includes or None
+                    raw_excludes = _parse_setup_cfg_list(find_sec["exclude"]) if "exclude" in find_sec else []
+                    excludes: list[str] | None = raw_excludes or None
                     info["pkg_spec"] = {
                         "kind": "find",
                         "includes": includes,
@@ -1899,11 +1901,18 @@ def _check_packaging(
             if mapped_pkg and mapped_pkg.startswith(f"{target_pkg}.") and _is_subpkg_selected(mapped_pkg):
                 _check_mapped_pkg_dir(mapped_pkg)
 
-        if _is_subpkg_selected("cli_anything"):
+        cli_anything_selected = _is_subpkg_selected("cli_anything")
+        if cli_anything_selected:
             _check_mapped_pkg_dir("cli_anything")
 
         raw_ns = _get_package_dir_rel("cli_anything", eff_package_dir)
-        eff_subpkg_dirs["__namespace__"] = (harness / raw_ns) if raw_ns else harness
+        cand_ns_dir = (harness / raw_ns) if raw_ns else harness
+        try:
+            ns_is_eff_parent = cand_ns_dir.resolve() == effective_module.parent.resolve()
+        except OSError:
+            ns_is_eff_parent = cand_ns_dir == effective_module.parent
+        if cli_anything_selected or ns_is_eff_parent:
+            eff_subpkg_dirs["__namespace__"] = cand_ns_dir
 
         for sub_name in ("core", "utils", "tests", "skills"):
             sub_pkg = f"{target_pkg}.{sub_name}"
@@ -2254,7 +2263,7 @@ def _check_packaging(
             skill_path = (harness / raw_pkg_dir / rel_path) if raw_pkg_dir else (harness / rel_path)
             if not skill_path.is_file():
                 continue
-            from_pd = _pkg_data_matches_file(
+            from_pd_raw = _pkg_data_matches_file(
                 eff_pkg_data,
                 pkg_name,
                 rel_path,
@@ -2262,6 +2271,9 @@ def _check_packaging(
                 exclusion=False,
             )
             expected_manifest_rel = f"{raw_pkg_dir}/{rel_path}" if raw_pkg_dir else rel_path
+            from_pd = from_pd_raw and _manifest_covers_skill(
+                harness, expected_manifest_rel, initially_included=True
+            )
             from_manifest = (
                 manifest_owner == pkg_name
                 and eff_include_pkg_data

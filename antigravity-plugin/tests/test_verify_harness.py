@@ -3401,3 +3401,108 @@ setup(
     assert verify_harness.verify_harness(
         harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
     )["ok"] is True
+
+
+def test_verify_applies_manifest_removals_to_package_data_files(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "sdist_excl", "sdapp")
+    # setup.py declares package_data={"cli_anything.sdapp": ["skills/*.md"]},
+    # but MANIFEST.in excludes SKILL.md from sdist -> must fail strict verification.
+    for bad_manifest in (
+        "exclude cli_anything/sdapp/skills/SKILL.md\n",
+        "global-exclude SKILL.md\n",
+        "prune cli_anything/sdapp/skills\n",
+    ):
+        (harness / "MANIFEST.in").write_text(bad_manifest, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, bad_manifest
+        assert {c["id"]: c for c in res["checks"]}["package-data-skills"]["status"] == "warn", bad_manifest
+
+    # Re-including SKILL.md after excluding keeps it in sdist -> passes strict verification.
+    (harness / "MANIFEST.in").write_text(
+        "exclude cli_anything/sdapp/skills/SKILL.md\nrecursive-include . *.md\n",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_applies_setup_cfg_defaults_to_empty_find_filters(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cfg_empty_find", "cfgfind")
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    (harness / "setup.cfg").write_text(
+        """[metadata]
+name = cli-anything-cfgfind
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+where =
+include =
+exclude =
+
+[options.package_data]
+cli_anything.cfgfind = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgfind = cli_anything.cfgfind.cfgfind_cli:main
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_skips_unselected_mapped_namespace_initializer(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "unsel_ns", "unselapp")
+    ns_root = harness / "namespace-root"
+    ns_root.mkdir()
+    (ns_root / "__init__.py").write_text("# unshipped initializer\n", encoding="utf-8")
+
+    # 1. include=["cli_anything.*"] does NOT select `cli_anything` itself -> unshipped
+    #    namespace-root/__init__.py must NOT block verification.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-unselapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"cli_anything": "namespace-root", "cli_anything.unselapp": "cli_anything/unselapp"},
+    package_data={"cli_anything.unselapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-unselapp=cli_anything.unselapp.unselapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+    # 2. Selecting `cli_anything` makes namespace-root/__init__.py ship in the wheel -> must fail.
+    (harness / "setup.py").write_text(
+        """from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-unselapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything", "cli_anything.*"]),
+    package_dir={"cli_anything": "namespace-root", "cli_anything.unselapp": "cli_anything/unselapp"},
+    package_data={"cli_anything.unselapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-unselapp=cli_anything.unselapp.unselapp_cli:main"]},
+)
+""",
+        encoding="utf-8",
+    )
+    r_sel = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_sel["ok"] is False
+    assert {c["id"]: c for c in r_sel["checks"]}["effective-namespace-package"]["status"] == "fail"
