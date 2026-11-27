@@ -72,60 +72,30 @@ _SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
 
 def _run_process(command, *, shell=False, timeout=None):
     """Run a package-manager process and turn common failures into results."""
-    kwargs = {"shell": shell, "text": True, "capture_output": True}
-    if timeout is not None and shell:
-        process_kwargs = {
-            "shell": True,
-            "text": True,
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
-        }
-        if os.name != "nt":
-            process_kwargs["start_new_session"] = True
-
-        try:
-            process = subprocess.Popen(command, **process_kwargs)
-            try:
-                stdout, stderr = process.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                _terminate_process_tree(process)
-                stdout, stderr = process.communicate()
-                timeout_message = f"Command timed out after {timeout} seconds."
-                if stderr:
-                    timeout_message = f"{timeout_message}\n{stderr}"
-                return subprocess.CompletedProcess(command, 124, stdout, timeout_message)
-            return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-        except FileNotFoundError as exc:
-            parts = shlex.split(command) if isinstance(command, str) else command
-            missing = exc.filename or (parts[0] if parts else "unknown command")
-            return subprocess.CompletedProcess(
-                args=command,
-                returncode=127,
-                stdout="",
-                stderr=f"Command not found: {missing}",
-            )
-
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-
     try:
-        return subprocess.run(command, check=False, **kwargs)
+        if timeout is None:
+            return subprocess.run(command, shell=shell, text=True, capture_output=True, check=False)
+        process = subprocess.Popen(
+            command, shell=shell, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            start_new_session=os.name != "nt",
+        )
     except FileNotFoundError as exc:
         parts = shlex.split(command) if isinstance(command, str) else command
         missing = exc.filename or (parts[0] if parts else "unknown command")
-        return subprocess.CompletedProcess(
-            args=command,
-            returncode=127,
-            stdout="",
-            stderr=f"Command not found: {missing}",
-        )
+        return subprocess.CompletedProcess(command, 127, "", f"Command not found: {missing}")
+
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(
-            args=command,
-            returncode=124,
-            stdout="",
-            stderr=f"Command timed out after {timeout} seconds.",
-        )
+        _terminate_process_tree(process)
+        stdout, stderr = process.communicate()
+        message = f"Command timed out after {timeout} seconds."
+        return subprocess.CompletedProcess(command, 124, stdout, f"{message}\n{stderr}" if stderr else message)
+    except BaseException:
+        _terminate_process_tree(process)
+        process.communicate()
+        raise
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def _terminate_process_tree(process):

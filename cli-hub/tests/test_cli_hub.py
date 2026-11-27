@@ -919,7 +919,7 @@ class TestInstaller:
             data = _load_installed()
             assert data["gimp"]["version"] == "1.0.0"
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_success(self, mock_get_cli, mock_run):
@@ -937,7 +937,7 @@ class TestInstaller:
         assert not success
         assert "not found" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_pip_failure(self, mock_get_cli, mock_run):
@@ -948,10 +948,20 @@ class TestInstaller:
         assert not success
         assert "failed" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._terminate_process_tree")
+    @patch("cli_hub.installer.subprocess.Popen")
+    def test_interrupted_install_reaps_process_tree(self, popen, terminate):
+        process = popen.return_value
+        process.communicate.side_effect = [KeyboardInterrupt(), ("", "")]
+        with pytest.raises(KeyboardInterrupt):
+            _run_command("installer | worker", timeout=60)
+        terminate.assert_called_once_with(process)
+        assert process.communicate.call_count == 2
+
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_pip_timeout_is_reported(self, mock_get_cli, mock_run):
+    def test_install_pip_timeout_is_reported(self, mock_get_cli, mock_popen):
         mock_get_cli.return_value = {
             "name": "hacker-feeds-cli",
             "display_name": "Hacker Feeds CLI",
@@ -959,20 +969,22 @@ class TestInstaller:
             "entry_point": "cli-anything-hacker-feeds-cli",
             "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git",
         }
-        mock_run.side_effect = subprocess.TimeoutExpired(
-            cmd="pip install hacker-feeds-cli", timeout=INSTALL_TIMEOUT_SECONDS
-        )
-
-        success, msg = install_cli("hacker-feeds-cli")
+        process = mock_popen.return_value
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("pip install", INSTALL_TIMEOUT_SECONDS), ("", ""),
+        ]
+        with patch("cli_hub.installer._terminate_process_tree") as terminate:
+            success, msg = install_cli("hacker-feeds-cli")
+        terminate.assert_called_once_with(process)
 
         assert not success
         assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
-        assert mock_run.call_args.kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
-        assert mock_run.call_args.kwargs["capture_output"] is True
+        assert process.communicate.call_args_list[0].kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
+        assert mock_popen.call_args.kwargs["start_new_session"] == (os.name != "nt")
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
-    def test_install_command_timeout_is_reported(self, mock_get_cli, mock_run):
+    def test_install_command_timeout_is_reported(self, mock_get_cli, mock_popen):
         mock_get_cli.return_value = {
             "name": "hacker-feeds-cli",
             "display_name": "Hacker Feeds CLI",
@@ -982,16 +994,18 @@ class TestInstaller:
             "install_strategy": "command",
             "install_cmd": "pip install hacker-feeds-cli",
         }
-        mock_run.side_effect = subprocess.TimeoutExpired(
-            cmd="pip install hacker-feeds-cli", timeout=INSTALL_TIMEOUT_SECONDS
-        )
-
-        success, msg = install_cli("hacker-feeds-cli")
+        process = mock_popen.return_value
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("pip install", INSTALL_TIMEOUT_SECONDS), ("", ""),
+        ]
+        with patch("cli_hub.installer._terminate_process_tree") as terminate:
+            success, msg = install_cli("hacker-feeds-cli")
+        terminate.assert_called_once_with(process)
 
         assert not success
         assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
-        assert mock_run.call_args.kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
-        assert mock_run.call_args.kwargs["capture_output"] is True
+        assert process.communicate.call_args_list[0].kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
+        assert mock_popen.call_args.kwargs["start_new_session"] == (os.name != "nt")
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
@@ -1004,7 +1018,7 @@ class TestInstaller:
         assert success
         assert "GIMP" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_command_strategy_success(self, mock_get_cli, mock_run):
@@ -1025,7 +1039,7 @@ class TestInstaller:
         assert success
         assert "1Password CLI" in msg
 
-    @patch("cli_hub.installer.subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "brew"))
+    @patch("cli_hub.installer.subprocess.Popen", side_effect=FileNotFoundError(2, "No such file or directory", "brew"))
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_command_strategy_missing_executable(self, mock_get_cli, mock_run):
@@ -1091,7 +1105,7 @@ class TestUvStrategy:
         cli = {**GENERATE_VEO_CLI, "install_strategy": "command"}
         assert _install_strategy(cli) == "command"
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
@@ -1143,7 +1157,7 @@ class TestUvStrategy:
         assert success
         assert "Generate Veo Video" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
     def test_install_uv_failure_propagated(self, mock_find_uv, mock_get_cli, mock_run):
