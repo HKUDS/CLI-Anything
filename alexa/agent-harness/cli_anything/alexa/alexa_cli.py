@@ -452,9 +452,16 @@ def repl():
     """Start the interactive REPL."""
     from cli_anything.alexa.utils.repl_skin import ReplSkin
 
+    import contextlib
     repl_json, repl_dry = _json_output, _dry_run  # keep root flags for every REPL line
+
+    def chrome():
+        """Banner/status/help text: on stderr in --json mode so stdout stays JSON."""
+        return contextlib.redirect_stdout(sys.stderr) if repl_json else contextlib.nullcontext()
+
     skin = ReplSkin("alexa", version=__version__)
-    skin.print_banner()
+    with chrome():
+        skin.print_banner()
     session = skin.create_prompt_session()
     commands = {
         "auth": "login|status|logout|locale",
@@ -472,22 +479,27 @@ def repl():
     }
     account = backend.load_account()
     if account:
-        skin.success(f"Logged in as {account['email']} ({account['domain']})")
+        with chrome():
+            skin.success(f"Logged in as {account['email']} ({account['domain']})")
     else:
-        skin.info("Not logged in. Run: auth login --email you@example.com")
+        with chrome():
+            skin.info("Not logged in. Run: auth login --email you@example.com")
     while True:
         try:
             line = skin.get_input(session, context=(account or {}).get("email", ""))
         except (EOFError, KeyboardInterrupt):
-            skin.print_goodbye()
+            with chrome():
+                skin.print_goodbye()
             break
         if not line:
             continue
         if line.lower() in ("quit", "exit", "q"):
-            skin.print_goodbye()
+            with chrome():
+                skin.print_goodbye()
             break
         if line.lower() == "help":
-            skin.help(commands)
+            with chrome():
+                skin.help(commands)
             continue
         try:
             args = shlex.split(line)
@@ -499,7 +511,8 @@ def repl():
         except SystemExit:
             pass
         except click.ClickException as exc:
-            skin.error(exc.format_message())
+            with chrome():
+                skin.error(exc.format_message())
         account = backend.load_account()
 
 

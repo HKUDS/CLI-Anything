@@ -637,3 +637,67 @@ def test_session_closed_when_startup_raises(home, monkeypatch):
     with pytest.raises(ConnectionError):
         asyncio.run(backend._open_session())
     assert closed == [True]
+
+
+# ── eighth Codex review round (commit 52aabb8) ────────────────────────
+
+def test_device_cache_scoped_to_account(fake_backend):
+    run("device", "list")  # cached for a@b.c
+    assert backend.cached_devices()
+    backend.save_account({"email": "other@b.c", "domain": "amazon.com", "oauth": {"refresh_token": "y"}})
+    assert backend.cached_devices() is None  # other account's devices never reused
+    result, data = run("--dry-run", "speak", "kitchen", "hi")
+    assert result.exit_code == 1 and data["error"] == "device_not_found"
+
+
+def test_logout_removes_device_cache(fake_backend, home):
+    run("device", "list")
+    run("auth", "logout")
+    assert not (home / "devices.json").exists()
+
+
+def test_session_start_does_not_resurrect_logged_out_account(home, monkeypatch):
+    import asyncio
+
+    class FakeLogin:
+        customer_id = "C"
+        access_token = refresh_token = mac_dms = expires_in = None
+        saved = []
+
+        def __init__(self, **kw):
+            pass
+
+        async def load_cookie(self):
+            return {}
+
+        async def login(self, cookies=None):
+            backend.delete_account()  # `auth logout` runs meanwhile
+
+        async def test_loggedin(self, rebuild_session=True):
+            return True
+
+        async def save_cookiefile(self):
+            FakeLogin.saved.append(True)
+
+        async def close(self):
+            pass
+
+    class FakeAlexapy:
+        AlexaLogin = FakeLogin
+
+    monkeypatch.setattr(backend, "_alexapy", lambda: FakeAlexapy)
+    backend.save_account({"email": "a@b.c", "domain": "amazon.com", "oauth": {"refresh_token": "x"}})
+    with pytest.raises(backend.NotLoggedIn, match="Logged out"):
+        asyncio.run(backend._open_session())
+    assert backend.load_account() is None and FakeLogin.saved == []
+
+
+def test_json_repl_keeps_stdout_pure_json(fake_backend, monkeypatch):
+    run("device", "list")
+    from cli_anything.alexa.utils import repl_skin
+    lines = iter(["help", "speak kitchen hello", "quit"])
+    monkeypatch.setattr(repl_skin.ReplSkin, "create_prompt_session", lambda self: None)
+    monkeypatch.setattr(repl_skin.ReplSkin, "get_input", lambda self, *a, **k: next(lines))
+    result = CliRunner().invoke(alexa_cli.cli, ["--json", "--dry-run", "repl"])
+    assert json.loads(result.stdout)["dry_run"] is True  # only the command's JSON on stdout
+    assert result.stderr.strip()  # banner/help/goodbye went to stderr

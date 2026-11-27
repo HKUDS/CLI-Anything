@@ -125,7 +125,7 @@ def delete_account() -> bool:
     """Remove stored tokens and cookies. Returns True if anything was removed."""
     removed = False
     d = config_dir()
-    for p in [d / "account.json", *(d / ".storage").glob("*")]:
+    for p in [d / "account.json", d / "devices.json", *(d / ".storage").glob("*")]:
         if p.is_file():
             p.unlink()
             removed = True
@@ -267,6 +267,9 @@ async def _open_session():
         account["customer_id"] = login.customer_id or account.get("customer_id")
         if getattr(login, "reported_account_domain", None):
             account["reported_domain"] = login.reported_account_domain
+        if not account_file().exists():
+            # `auth logout` ran while this command was starting; don't resurrect it.
+            raise NotLoggedIn("Logged out while this command was running. Run: cli-anything-alexa auth login")
         save_account(account)
         await login.save_cookiefile()
     except BaseException:
@@ -367,17 +370,34 @@ def fetch_network() -> Any:
     return run(lambda: _with_session(_go))
 
 
+def _current_email() -> str | None:
+    account = load_account()
+    return (account or {}).get("email")
+
+
 def cache_devices(devices: list[dict[str, Any]]) -> None:
-    _atomic_write_json(config_dir() / "devices.json", devices)
+    """Cache the device list, tagged with the account it belongs to."""
+    _atomic_write_json(config_dir() / "devices.json", {"account": _current_email(), "devices": devices})
 
 
 def cached_devices() -> list[dict[str, Any]] | None:
-    """The last fetched device list, or None if none was ever cached."""
+    """The cached device list for the current account, or None.
+
+    None means nothing usable is cached: no cache yet, or it was written for
+    a different Amazon account (so another account's devices are never shown
+    or targeted after switching accounts).
+    """
     f = config_dir() / "devices.json"
     if not f.exists():
         return None
     with open(f, encoding="utf-8") as fh:
-        return json.load(fh)
+        data = json.load(fh)
+    current = _current_email()
+    if isinstance(data, list):  # untagged (older) cache: only trust it when nobody is logged in
+        return data if current is None else None
+    if current is not None and data.get("account") != current:
+        return None
+    return data.get("devices")
 
 
 class _DeviceAdapter:
