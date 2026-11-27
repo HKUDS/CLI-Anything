@@ -99,14 +99,20 @@ def _visible_len(text: str) -> int:
 
 
 def _display_home_path(path: str) -> str:
-    """Display a path relative to the home directory when possible."""
-    expanded = Path(path).expanduser().resolve()
-    home = Path.home().resolve()
-    try:
-        relative = expanded.relative_to(home)
-        return f"~/{relative.as_posix()}"
-    except ValueError:
-        return str(expanded)
+    """Display a path relative to the home directory when possible.
+
+    Deliberately does not resolve symlinks: skill paths are often links
+    into synced storage, and the resolved target is long enough that the
+    banner truncates it.
+    """
+    expanded = Path(os.path.normpath(str(Path(path).expanduser())))
+    for home in (Path.home(), Path.home().resolve()):
+        try:
+            relative = expanded.relative_to(home)
+            return f"~/{relative.as_posix()}"
+        except ValueError:
+            continue
+    return str(expanded)
 
 
 class ReplSkin:

@@ -14,13 +14,14 @@ _SKILL_SOURCE_REPO = os.environ.get("CLI_ANYTHING_SKILL_REPO", "HKUDS/CLI-Anythi
 
 
 def _display_home_path(path: str) -> str:
-    expanded = Path(path).expanduser().resolve()
-    home = Path.home().resolve()
-    try:
-        relative = expanded.relative_to(home)
-        return f"~/{relative.as_posix()}"
-    except ValueError:
-        return str(expanded)
+    expanded = Path(os.path.normpath(str(Path(path).expanduser())))
+    for home in (Path.home(), Path.home().resolve()):
+        try:
+            relative = expanded.relative_to(home)
+            return f"~/{relative.as_posix()}"
+        except ValueError:
+            continue
+    return str(expanded)
 
 
 class ReplSkin:
