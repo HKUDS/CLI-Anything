@@ -14,7 +14,12 @@ Audit an existing CLI harness mechanically and thoroughly against `HARNESS.md`,
 ## 1. Resolve `PLUGIN_ROOT` and Read Canonical Spec
 
 Resolve `PLUGIN_ROOT` (two levels up from this `SKILL.md`, or discovery pointer
-`~/.gemini/cli-anything-generator.root`, or `~/.gemini/config/plugins/cli-anything`).
+`~/.gemini/cli-anything-generator.root`, or `~/.gemini/config/plugins/cli-anything`
+where `references/HARNESS.md` and `scripts/verify_harness.py` exist). In an
+uninstalled `CLI-Anything` source checkout (`{REPO_ROOT}`), either bootstrap with
+`{REPO_ROOT}/antigravity-plugin/scripts/install.{sh,ps1}` or read
+`{REPO_ROOT}/cli-anything-plugin/HARNESS.md` and `{REPO_ROOT}/cli-anything-plugin/commands/validate.md`
+while running `{REPO_ROOT}/antigravity-plugin/scripts/verify_harness.py`.
 
 Read with absolute paths via `read_file`:
 - `{PLUGIN_ROOT}/references/HARNESS.md`

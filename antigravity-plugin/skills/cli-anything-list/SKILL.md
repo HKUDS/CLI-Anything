@@ -14,7 +14,10 @@ and every local `agent-harness/cli_anything/*` directory under the target path.
 ## 1. Resolve `PLUGIN_ROOT`
 
 Resolve `PLUGIN_ROOT` (two levels up from this `SKILL.md`, or discovery pointer
-`~/.gemini/cli-anything-generator.root`, or `~/.gemini/config/plugins/cli-anything`).
+`~/.gemini/cli-anything-generator.root`, or `~/.gemini/config/plugins/cli-anything`
+where `scripts/list_harnesses.py` exists). In an uninstalled `CLI-Anything` source
+checkout (`{REPO_ROOT}`), either bootstrap with `{REPO_ROOT}/antigravity-plugin/scripts/install.{sh,ps1}`
+or use `{REPO_ROOT}/cli-anything-plugin/commands/list.md` and `{REPO_ROOT}/antigravity-plugin/scripts/list_harnesses.py`.
 
 Reference spec: `{PLUGIN_ROOT}/references/commands/list.md`.
 

@@ -13,10 +13,11 @@ broadly across the software or scoped to a specific `[focus]` area.
 
 ## 1. Resolve `PLUGIN_ROOT` and Read Canonical Spec
 
-Resolve `PLUGIN_ROOT` (first location with `references/HARNESS.md` wins):
+Resolve `PLUGIN_ROOT` (first location with `references/HARNESS.md` and `scripts/verify_harness.py` wins):
 1. Two levels up from this `SKILL.md` (`.../plugins/cli-anything`).
 2. Discovery pointer (`~/.gemini/cli-anything-generator.root` or `%USERPROFILE%\.gemini\cli-anything-generator.root`).
 3. `{workspace}/.agents/plugins/cli-anything`, `$ANTIGRAVITY_PLUGINS_HOME/cli-anything`, or `~/.gemini/config/plugins/cli-anything`.
+4. **Source checkout fallback (`{REPO_ROOT}`):** If running directly from an uninstalled `CLI-Anything` checkout (no vendored `references/` directory), either bootstrap via `{REPO_ROOT}/antigravity-plugin/scripts/install.{sh,ps1}` or read `{REPO_ROOT}/cli-anything-plugin/HARNESS.md` and `{REPO_ROOT}/cli-anything-plugin/commands/refine.md`, and run `{REPO_ROOT}/antigravity-plugin/scripts/verify_harness.py` and `{REPO_ROOT}/cli-anything-plugin/skill_generator.py`.
 
 Read with absolute paths via `read_file`:
 - `{PLUGIN_ROOT}/references/HARNESS.md`

@@ -24,11 +24,12 @@ harness format.
 
 ## 1. Resolve `PLUGIN_ROOT` (Absolute Paths Only)
 
-Never resolve `./HARNESS.md` against the user's workspace root. Resolve
-`PLUGIN_ROOT` in this order and stop at the first path where
-`{PLUGIN_ROOT}/references/HARNESS.md` exists:
+Never resolve `./HARNESS.md` against the user's workspace root. First resolve an
+**installed plugin root** (`{PLUGIN_ROOT}`) in order 1–3, stopping at the first
+path where `{PLUGIN_ROOT}/references/HARNESS.md` and
+`{PLUGIN_ROOT}/scripts/verify_harness.py` both exist:
 
-1. **Active skill parent (works for `agy plugin install`, global, and workspace installs):**
+1. **Active skill parent (works for `agy plugin install`, global, workspace, and standalone CE checkouts):**
    Take the absolute path to this `SKILL.md` and go up two directories
    (`.../plugins/cli-anything/skills/cli-anything/SKILL.md` -> `.../plugins/cli-anything`).
 2. **Global discovery pointer** (single-line absolute path):
@@ -38,31 +39,57 @@ Never resolve `./HARNESS.md` against the user's workspace root. Resolve
    - Workspace: `{workspace}/.agents/plugins/cli-anything`
    - Custom: `$ANTIGRAVITY_PLUGINS_HOME/cli-anything`
    - Global: `~/.gemini/config/plugins/cli-anything` (`%USERPROFILE%\.gemini\config\plugins\cli-anything`)
-4. **Monorepo fallback:** `{workspace}/cli-anything-plugin` (if inside a `CLI-Anything` checkout).
-5. **Remote fallback:** clone `https://github.com/HKUDS/CLI-Anything` and read `cli-anything-plugin/`.
+
+If no installed plugin layout is found, use a **source checkout fallback**
+(`{REPO_ROOT}`, where `{REPO_ROOT}/cli-anything-plugin/HARNESS.md` and
+`{REPO_ROOT}/antigravity-plugin/scripts/verify_harness.py` exist — note that a
+raw checkout does **not** have a vendored `references/` layout until installed):
+
+4. **Local monorepo checkout fallback:** Locate `{REPO_ROOT}` at `{workspace}`
+   (or an ancestor checkout of `CLI-Anything`). Either:
+   - **Bootstrap the installed layout (recommended):** run
+     `{REPO_ROOT}/antigravity-plugin/scripts/install.sh` (or `install.ps1` on
+     Windows; pass `--workspace "{workspace}"` / `-Workspace "{workspace}"` for
+     workspace-scoped install), then resolve `{PLUGIN_ROOT}` via steps 1–3; or
+   - **Read directly from the checkout:** use the **Source checkout path (`{REPO_ROOT}`)**
+     column in the Path Remapping Table below (canonical methodology and Python
+     helpers live under `{REPO_ROOT}/cli-anything-plugin/` and `{REPO_ROOT}/docs/`,
+     while Antigravity adapter tooling and verifier scripts live under
+     `{REPO_ROOT}/antigravity-plugin/`).
+5. **Remote fallback:** Clone `https://github.com/HKUDS/CLI-Anything` to
+   `{REPO_ROOT}`, then either run `{REPO_ROOT}/antigravity-plugin/scripts/install.sh`
+   (`install.ps1` on Windows) to bootstrap `{PLUGIN_ROOT}` or use the
+   **Source checkout path (`{REPO_ROOT}`)** column below.
 
 ## 2. Read the Canonical Methodology First
 
-1. Read `{PLUGIN_ROOT}/references/HARNESS.md` using `read_file` (absolute path).
-2. Read `{PLUGIN_ROOT}/references/commands/cli-anything.md`.
-3. Read `{PLUGIN_ROOT}/references/antigravity-tooling.md` for Antigravity
+Using `{PLUGIN_ROOT}` (installed plugin layout) or the corresponding
+**Source checkout path (`{REPO_ROOT}`)** from the table below:
+
+1. Read `{PLUGIN_ROOT}/references/HARNESS.md` (checkout: `{REPO_ROOT}/cli-anything-plugin/HARNESS.md`) using `read_file` (absolute path).
+2. Read `{PLUGIN_ROOT}/references/commands/cli-anything.md` (checkout: `{REPO_ROOT}/cli-anything-plugin/commands/cli-anything.md`).
+3. Read `{PLUGIN_ROOT}/references/antigravity-tooling.md` (checkout: `{REPO_ROOT}/antigravity-plugin/references/antigravity-tooling.md`) for Antigravity
    surface paths, `skills.json` registration, delegation recipes, and the
    failure playbook.
-4. Read guides under `{PLUGIN_ROOT}/references/guides/` and
-   `{PLUGIN_ROOT}/references/docs/PREVIEW_PROTOCOL.md` on demand when they
+4. Read guides under `{PLUGIN_ROOT}/references/guides/` (checkout: `{REPO_ROOT}/cli-anything-plugin/guides/`) and
+   `{PLUGIN_ROOT}/references/docs/PREVIEW_PROTOCOL.md` (checkout: `{REPO_ROOT}/docs/PREVIEW_PROTOCOL.md`) on demand when they
    apply to the target software.
 
 ### Path Remapping Table
 
-| Canonical reference | Installed plugin path |
-|---|---|
-| `./HARNESS.md` | `{PLUGIN_ROOT}/references/HARNESS.md` |
-| `guides/...` | `{PLUGIN_ROOT}/references/guides/...` |
-| `docs/PREVIEW_PROTOCOL.md` | `{PLUGIN_ROOT}/references/docs/PREVIEW_PROTOCOL.md` |
-| `cli-anything-plugin/repl_skin.py` | `{PLUGIN_ROOT}/scripts/repl_skin.py` |
-| `cli-anything-plugin/preview_bundle.py` | `{PLUGIN_ROOT}/scripts/preview_bundle.py` |
-| `cli-anything-plugin/skill_generator.py` | `{PLUGIN_ROOT}/scripts/skill_generator.py` |
-| `templates/SKILL.md.template` | `{PLUGIN_ROOT}/scripts/templates/SKILL.md.template` |
+| Canonical reference | Installed plugin path (`{PLUGIN_ROOT}`) | Source checkout path (`{REPO_ROOT}`) |
+|---|---|---|
+| `./HARNESS.md` | `{PLUGIN_ROOT}/references/HARNESS.md` | `{REPO_ROOT}/cli-anything-plugin/HARNESS.md` |
+| `commands/<cmd>.md` | `{PLUGIN_ROOT}/references/commands/<cmd>.md` | `{REPO_ROOT}/cli-anything-plugin/commands/<cmd>.md` |
+| `guides/...` | `{PLUGIN_ROOT}/references/guides/...` | `{REPO_ROOT}/cli-anything-plugin/guides/...` |
+| `docs/PREVIEW_PROTOCOL.md` | `{PLUGIN_ROOT}/references/docs/PREVIEW_PROTOCOL.md` | `{REPO_ROOT}/docs/PREVIEW_PROTOCOL.md` |
+| `antigravity-tooling.md` | `{PLUGIN_ROOT}/references/antigravity-tooling.md` | `{REPO_ROOT}/antigravity-plugin/references/antigravity-tooling.md` |
+| `cli-anything-plugin/repl_skin.py` | `{PLUGIN_ROOT}/scripts/repl_skin.py` | `{REPO_ROOT}/cli-anything-plugin/repl_skin.py` |
+| `cli-anything-plugin/preview_bundle.py` | `{PLUGIN_ROOT}/scripts/preview_bundle.py` | `{REPO_ROOT}/cli-anything-plugin/preview_bundle.py` |
+| `cli-anything-plugin/skill_generator.py` | `{PLUGIN_ROOT}/scripts/skill_generator.py` | `{REPO_ROOT}/cli-anything-plugin/skill_generator.py` |
+| `templates/SKILL.md.template` | `{PLUGIN_ROOT}/scripts/templates/SKILL.md.template` | `{REPO_ROOT}/cli-anything-plugin/templates/SKILL.md.template` |
+| `verify_harness.py` | `{PLUGIN_ROOT}/scripts/verify_harness.py` | `{REPO_ROOT}/antigravity-plugin/scripts/verify_harness.py` |
+| `list_harnesses.py` | `{PLUGIN_ROOT}/scripts/list_harnesses.py` | `{REPO_ROOT}/antigravity-plugin/scripts/list_harnesses.py` |
 
 ## 3. Arguments
 

@@ -14,7 +14,10 @@ script, then record passing results in `TEST.md`.
 ## 1. Resolve `PLUGIN_ROOT` and Read Canonical Spec
 
 Resolve `PLUGIN_ROOT` (two levels up from this `SKILL.md`, or discovery pointer
-`~/.gemini/cli-anything-generator.root`, or `~/.gemini/config/plugins/cli-anything`).
+`~/.gemini/cli-anything-generator.root`, or `~/.gemini/config/plugins/cli-anything`
+where `references/HARNESS.md` exists). In an uninstalled `CLI-Anything` source
+checkout (`{REPO_ROOT}`), either bootstrap with `{REPO_ROOT}/antigravity-plugin/scripts/install.{sh,ps1}`
+or read `{REPO_ROOT}/cli-anything-plugin/HARNESS.md` and `{REPO_ROOT}/cli-anything-plugin/commands/test.md` directly.
 
 Read with absolute paths via `read_file`:
 - `{PLUGIN_ROOT}/references/HARNESS.md`

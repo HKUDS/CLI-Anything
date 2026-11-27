@@ -7342,6 +7342,188 @@ def main():
         assert by_id["console-script"]["status"] == "pass", idx
 
 
+def test_verify_limits_cli_flag_detection_to_declarations_or_sys_argv(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "flag_scope", "flgapp")
+    cli_py = harness / "cli_anything" / "flgapp" / "flgapp_cli.py"
+
+    # Negative cases: backend subprocess args, default/help values, echo, or non-sys.argv compares must FAIL.
+    invalid_sources = [
+        """import subprocess
+import click
+
+@click.group(invoke_without_command=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+def cli(project_path, dry_run):
+    subprocess.run(["demo-backend", "--json"])
+
+@cli.result_callback()
+def auto_save(result, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+        """import subprocess
+import click
+
+BACKEND_CMD = ["demo-backend", "--json"]
+
+@click.group(invoke_without_command=True)
+def cli():
+    subprocess.check_output(BACKEND_CMD)
+
+def main():
+    cli()
+""",
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--format", default="--json", help="Emit --json output")
+def cli(format):
+    backend_args = ["tool"]
+    if "--json" in backend_args:
+        click.echo("--json")
+
+def main():
+    cli()
+""",
+    ]
+    for idx, src in enumerate(invalid_sources):
+        cli_py.write_text(src, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        assert {c["id"]: c for c in res_bad["checks"]}["json-flag"]["status"] == "fail", idx
+
+    # Positive cases: real Click/alias/argparse option declarations and direct sys.argv parsing must PASS.
+    valid_sources = [
+        """from click import group, option as opt
+
+@group(invoke_without_command=True)
+@opt("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        """import click
+
+my_opt = click.option
+
+@click.group(invoke_without_command=True)
+@my_opt("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        """import argparse
+import click
+
+def _build_parser():
+    p = argparse.ArgumentParser()
+    p.add_argument("--json", action="store_true")
+    return p
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+def main():
+    cli()
+""",
+        """import sys
+import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    _ = "--json" in sys.argv[1:]
+
+def main():
+    cli()
+""",
+        """from sys import argv as cli_argv
+import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    _ = "--json" in cli_argv
+
+def main():
+    cli()
+""",
+    ]
+    for idx, src in enumerate(valid_sources):
+        cli_py.write_text(src, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+        assert {c["id"]: c for c in res_ok["checks"]}["json-flag"]["status"] == "pass", idx
+
+
+def test_verify_validates_local_console_script_aliases_regardless_of_prefix(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "alias_ep", "alcmd")
+    pkg = harness / "cli_anything" / "alcmd"
+    cli_py = pkg / "alcmd_cli.py"
+    cli_py.write_text(
+        cli_py.read_text(encoding="utf-8")
+        + "\nnot_callable = 0\n\ndef needs_arg(x):\n    return x\n",
+        encoding="utf-8",
+    )
+    (pkg / "helper.py").write_text("def run_helper():\n    return None\n", encoding="utf-8")
+
+    def _set_scripts(extra_specs: list[str]) -> None:
+        all_specs = ["cli-anything-alcmd=cli_anything.alcmd.alcmd_cli:main", *extra_specs]
+        (harness / "setup.py").write_text(
+            f"""from setuptools import setup, find_namespace_packages
+
+setup(
+    name="cli-anything-alcmd",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.alcmd": ["skills/*.md"]}},
+    entry_points={{"console_scripts": {all_specs!r}}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    # Broken secondary aliases targeting the harness (or missing :callable) must FAIL console-script.
+    for bad_alias in (
+        "alcmd=cli_anything.alcmd.missing:main",
+        "alcmd=cli_anything.alcmd.alcmd_cli:missing_fn",
+        "alcmd=cli_anything.alcmd.alcmd_cli:not_callable",
+        "alcmd=cli_anything.alcmd.alcmd_cli:needs_arg",
+        "alcmd=cli_anything.alcmd.alcmd_cli",
+        "other-ns=cli_anything.other_pkg.mod:main",
+    ):
+        _set_scripts([bad_alias])
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, bad_alias
+        assert {c["id"]: c for c in res_bad["checks"]}["console-script"]["status"] == "fail", bad_alias
+
+    # Valid local short alias, valid non-Click helper alias, and valid external alias must PASS.
+    for ok_alias in (
+        "alcmd=cli_anything.alcmd.alcmd_cli:main",
+        "alcmd-helper=cli_anything.alcmd.helper:run_helper",
+        "ext-tool=external_dep.cli:main",
+    ):
+        _set_scripts([ok_alias])
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (ok_alias, res_ok["checks"])
+
+
+
 
 
 

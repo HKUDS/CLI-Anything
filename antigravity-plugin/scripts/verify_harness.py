@@ -5319,10 +5319,49 @@ def _check_packaging(
                 continue
             if not cmd_name:
                 invalid_targets.append(f"<empty>={target_spec} (empty console_scripts command name)")
-            elif not target_spec or not _ENTRY_POINT_VALUE_RE.match(target_spec):
+                continue
+            spec_s = target_spec.strip()
+            m_ep = re.match(
+                r"^(?P<module>[^:\s\[]+)\s*:\s*(?P<attr>[^:\s\[]+)(?:\s*\[[^\]]*\])?\s*$",
+                spec_s,
+            )
+            if not m_ep:
                 invalid_targets.append(
-                    f"{cmd_name}={target_spec} (malformed console_scripts entry-point reference)"
+                    f"{cmd_name}={target_spec} (expected 'module.path:callable')"
                 )
+                continue
+            ep_mod = m_ep.group("module")
+            ep_attr = m_ep.group("attr")
+            if not all(p.isidentifier() and not keyword.iskeyword(p) for p in ep_mod.split(".")):
+                invalid_targets.append(
+                    f"{cmd_name}={target_spec} (invalid module path '{ep_mod}')"
+                )
+                continue
+            if not all(p.isidentifier() and not keyword.iskeyword(p) for p in ep_attr.split(".")):
+                invalid_targets.append(
+                    f"{cmd_name}={target_spec} (invalid callable path '{ep_attr}')"
+                )
+                continue
+            is_local_alias = bool(
+                (target_pkg and (ep_mod == target_pkg or ep_mod.startswith(f"{target_pkg}.")))
+                or ep_mod == "cli_anything"
+                or ep_mod.startswith("cli_anything.")
+                or _resolve_local_module_file(ep_mod, harness, eff_package_dir)[0] is not None
+            )
+            if is_local_alias:
+                ok_alias, alias_reason, _ = _validate_console_script_target(
+                    target_spec,
+                    harness,
+                    target_pkg,
+                    parent_selected=parent_selected,
+                    pkg_spec=eff_pkg_spec,
+                    base_package_dir=eff_base_package_dir,
+                    excluded_files=poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
+                    hatch_exclude=pyproj_info["hatch_exclude"] if (has_pyproject and pyproj_info["backend_kind"] == "hatch") else None,
+                    check_manifest=uses_setuptools,
+                )
+                if not ok_alias:
+                    invalid_targets.append(f"{cmd_name}={target_spec} ({alias_reason})")
         for cmd_name, target_spec in matching_scripts:
             ok_target, reason, mod_file = _validate_console_script_target(
                 target_spec,
@@ -5771,11 +5810,102 @@ def _decl_matches_cli_flag(decl: str, flag: str) -> bool:
 
 
 def _file_declares_cli_flag(py_file: Path, text: str, flag: str) -> bool:
-    """Return True if py_file declares CLI option `flag` (single or Click paired boolean spelling)."""
+    """Return True if py_file declares CLI option `flag` (option declaration or sys.argv parsing)."""
     try:
         tree = ast.parse(text, filename=str(py_file))
     except SyntaxError:
         return f'"{flag}"' in text or f"'{flag}'" in text
+
+    click_mod_aliases: set[str] = set()
+    typer_mod_aliases: set[str] = set()
+    sys_mod_aliases: set[str] = set()
+    argv_aliases: set[str] = set()
+    option_factories: set[str] = set()
+    option_classes: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                if alias.name in {"click", "click.decorators", "click.core"}:
+                    click_mod_aliases.add(bound)
+                elif alias.name == "typer":
+                    typer_mod_aliases.add(bound)
+                elif alias.name == "sys":
+                    sys_mod_aliases.add(bound)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module in {"click", "click.decorators", "click.core"}:
+                for alias in node.names:
+                    if alias.name == "*":
+                        option_factories.update({"option", "Option"})
+                        option_classes.add("Option")
+                        continue
+                    bound = alias.asname or alias.name
+                    if alias.name in {"option", "Option"}:
+                        option_factories.add(bound)
+                    if alias.name == "Option":
+                        option_classes.add(bound)
+            elif node.level == 0 and node.module == "typer":
+                for alias in node.names:
+                    if alias.name == "*":
+                        option_factories.add("Option")
+                    elif alias.name == "Option":
+                        option_factories.add(alias.asname or alias.name)
+            elif node.level == 0 and node.module == "sys":
+                for alias in node.names:
+                    if alias.name == "argv":
+                        argv_aliases.add(alias.asname or alias.name)
+
+    def _expr_is_option_factory(expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in option_factories:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {"option", "Option"}:
+                return True
+            if chain in {("click", "decorators", "option"), ("click", "core", "Option")} and "click" in click_mod_aliases:
+                return True
+            if len(chain) == 2 and chain[0] in typer_mod_aliases and chain[1] == "Option":
+                return True
+        return False
+
+    def _expr_is_option_class(expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in option_classes:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] == "Option":
+                return True
+            if chain == ("click", "core", "Option") and "click" in click_mod_aliases:
+                return True
+        return False
+
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                if node.name not in option_classes and any(_expr_is_option_class(b) for b in node.bases):
+                    option_classes.add(node.name)
+                    option_factories.add(node.name)
+                    changed = True
+            elif isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name):
+                        if tgt.id not in option_factories and _expr_is_option_factory(node.value):
+                            option_factories.add(tgt.id)
+                            changed = True
+                        if tgt.id not in option_classes and _expr_is_option_class(node.value):
+                            option_classes.add(tgt.id)
+                            changed = True
+            elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
+                tname = node.target.id
+                if tname not in option_factories and _expr_is_option_factory(node.value):
+                    option_factories.add(tname)
+                    changed = True
+                if tname not in option_classes and _expr_is_option_class(node.value):
+                    option_classes.add(tname)
+                    changed = True
 
     str_bindings: dict[str, list[str]] = {}
     for stmt in tree.body:
@@ -5799,14 +5929,45 @@ def _file_declares_cli_flag(py_file: Path, text: str, flag: str) -> bool:
             return any(_expr_matches(e) for e in expr.elts)
         return False
 
+    def _is_option_decl_call(call: ast.Call) -> bool:
+        if _expr_is_option_factory(call.func):
+            return True
+        if isinstance(call.func, ast.Attribute) and call.func.attr in {"add_argument", "add_option"}:
+            return True
+        if any(kw.arg == "param_decls" for kw in call.keywords):
+            return True
+        return False
+
+    def _is_sys_argv_expr(expr: ast.AST) -> bool:
+        cur = expr
+        while isinstance(cur, ast.Subscript):
+            cur = cur.value
+        if isinstance(cur, ast.Name) and cur.id in argv_aliases:
+            return True
+        if (
+            isinstance(cur, ast.Attribute)
+            and isinstance(cur.value, ast.Name)
+            and cur.value.id in sys_mod_aliases
+            and cur.attr == "argv"
+        ):
+            return True
+        return False
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
+            if not _is_option_decl_call(node):
+                continue
             if any(_expr_matches(a) for a in node.args):
                 return True
             if any(kw.arg == "param_decls" and _expr_matches(kw.value) for kw in node.keywords):
                 return True
-        elif isinstance(node, ast.Compare):
-            if _expr_matches(node.left) or any(_expr_matches(c) for c in node.comparators):
+        elif (
+            isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], (ast.In, ast.NotIn))
+            and len(node.comparators) == 1
+        ):
+            if _is_sys_argv_expr(node.comparators[0]) and _expr_matches(node.left):
                 return True
     return False
 
