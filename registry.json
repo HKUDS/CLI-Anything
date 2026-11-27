@@ -1513,6 +1513,25 @@
           "url": "https://github.com/workcr"
         }
       ]
+    },
+    {
+      "name": "tgden",
+      "display_name": "TGDen Telegram Search",
+      "version": "1.1.0",
+      "description": "Find public Telegram groups, channels and bots, check @usernames, read public channel posts and see what people ask for in Telegram chats — no Telegram account or API key",
+      "requires": "Python 3.10+",
+      "homepage": "https://tgden.com",
+      "source_url": "https://github.com/JustJuice55/tgden-api",
+      "install_cmd": "pip install git+https://github.com/JustJuice55/tgden-api.git",
+      "entry_point": "tgden",
+      "skill_md": "https://github.com/JustJuice55/tgden-api/blob/main/skills/telegram-search/SKILL.md",
+      "category": "search",
+      "contributors": [
+        {
+          "name": "JustJuice55",
+          "url": "https://github.com/JustJuice55"
+        }
+      ]
     }
   ]
 }
