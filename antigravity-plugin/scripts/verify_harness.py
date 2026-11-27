@@ -2795,13 +2795,66 @@ def _apply_find_package_dir(
     return out
 
 
-def _collect_runtime_subpackages(pkg_dir: Path, target_pkg: str) -> list[str]:
-    """Collect runtime subpackage dotted names under pkg_dir (excluding tests/ and skills/)."""
+def _collect_runtime_subpackages(
+    pkg_dir: Path,
+    target_pkg: str,
+    *,
+    harness: Path | None = None,
+    package_dir: dict[str, str] | None = None,
+) -> list[str]:
+    """Collect runtime subpackage dotted names under pkg_dir and any remapped package_dir roots (excluding tests/ and skills/)."""
     skip_top = {"tests", "skills"}
     skip_dirs = {"__pycache__", ".pytest_cache", ".venv", "venv", "build", "dist", ".git"}
     found: list[str] = []
+    found_set: set[str] = set()
+    walked_pkgs: set[str] = set()
+    pkg_prefix = f"{target_pkg}."
 
-    def _walk(cur: Path, prefix: str, depth: int) -> None:
+    def _resolve_pkg_dir(pkg_name: str, fallback: Path) -> Path:
+        if harness is not None and package_dir:
+            raw = _get_package_dir_rel(pkg_name, package_dir)
+            return (harness / raw) if raw else harness
+        return fallback
+
+    def _is_skipped_pkg(pkg_name: str) -> bool:
+        if not pkg_name.startswith(pkg_prefix):
+            return True
+        parts = pkg_name[len(pkg_prefix):].split(".")
+        if not parts or parts[0] in skip_top:
+            return True
+        return any(
+            not p.isidentifier() or keyword.iskeyword(p) or p in skip_dirs
+            for p in parts
+        )
+
+    def _add_found(pkg_name: str) -> None:
+        if pkg_name not in found_set:
+            found_set.add(pkg_name)
+            found.append(pkg_name)
+
+    def _walk(cur: Path, prefix: str, depth: int, ancestors: frozenset[Path]) -> None:
+        if prefix in walked_pkgs:
+            return
+        walked_pkgs.add(prefix)
+        leaf = prefix.rsplit(".", 1)[-1]
+        if not cur.is_dir():
+            if depth == 1 and leaf in {"core", "utils"}:
+                _add_found(prefix)
+            return
+        try:
+            cur_res = cur.resolve()
+        except OSError:
+            cur_res = cur
+        if cur_res in ancestors:
+            return
+        next_ancestors = ancestors | {cur_res}
+        if depth > 0:
+            try:
+                has_py = any(p.is_file() for p in cur.glob("*.py"))
+            except OSError:
+                has_py = False
+            if (depth == 1 and leaf in {"core", "utils"}) or has_py:
+                _add_found(prefix)
         try:
             entries = sorted(cur.iterdir())
         except OSError:
@@ -2817,12 +2870,20 @@ def _collect_runtime_subpackages(pkg_dir: Path, target_pkg: str) -> list[str]:
             if not name.isidentifier() or keyword.iskeyword(name):
                 continue
             sub_pkg = f"{prefix}.{name}"
-            has_py = any(p.is_file() for p in child.glob("*.py"))
-            if (depth == 0 and name in {"core", "utils"}) or has_py:
-                found.append(sub_pkg)
-            _walk(child, sub_pkg, depth + 1)
+            eff_child = _resolve_pkg_dir(sub_pkg, child)
+            _walk(eff_child, sub_pkg, depth + 1, next_ancestors)
 
-    _walk(pkg_dir, target_pkg, 0)
+    _walk(pkg_dir, target_pkg, 0, frozenset())
+
+    if harness is not None and package_dir:
+        for mapped_pkg in sorted(package_dir):
+            if not mapped_pkg or _is_skipped_pkg(mapped_pkg):
+                continue
+            mapped_dir = _resolve_pkg_dir(mapped_pkg, pkg_dir)
+            if mapped_dir.is_dir():
+                mapped_depth = len(mapped_pkg[len(pkg_prefix):].split("."))
+                _walk(mapped_dir, mapped_pkg, mapped_depth, frozenset())
+
     return found
 
 
@@ -5541,7 +5602,12 @@ def _check_packaging(
         and target_pkg
         and effective_module is not None
     ):
-        runtime_subpkgs = _collect_runtime_subpackages(effective_module, target_pkg)
+        runtime_subpkgs = _collect_runtime_subpackages(
+            effective_module,
+            target_pkg,
+            harness=harness,
+            package_dir=eff_package_dir,
+        )
         checked_mapped: set[str] = {target_pkg}
         _check_runtime_pkg_files_survive(target_pkg)
 
@@ -7780,169 +7846,10 @@ def _tree_nodes_declare_cli_flag(
     tc_names: set[str] | frozenset[str],
     flag: str,
 ) -> bool:
-    click_mod_aliases: set[str] = set()
-    typer_mod_aliases: set[str] = set()
-    sys_mod_aliases: set[str] = set()
-    argv_aliases: set[str] = set()
-    option_factories: set[str] = set()
-    option_classes: set[str] = set()
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                bound = alias.asname or alias.name.split(".", 1)[0]
-                if alias.name in {"click", "click.decorators", "click.core"}:
-                    click_mod_aliases.add(bound)
-                elif alias.name == "typer":
-                    typer_mod_aliases.add(bound)
-                elif alias.name == "sys":
-                    sys_mod_aliases.add(bound)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level == 0 and node.module in {"click", "click.decorators", "click.core"}:
-                for alias in node.names:
-                    if alias.name == "*":
-                        option_factories.update({"option", "Option"})
-                        option_classes.add("Option")
-                        continue
-                    bound = alias.asname or alias.name
-                    if alias.name in {"option", "Option"}:
-                        option_factories.add(bound)
-                    if alias.name == "Option":
-                        option_classes.add(bound)
-            elif node.level == 0 and node.module == "typer":
-                for alias in node.names:
-                    if alias.name == "*":
-                        option_factories.add("Option")
-                    elif alias.name == "Option":
-                        option_factories.add(alias.asname or alias.name)
-            elif node.level == 0 and node.module == "sys":
-                for alias in node.names:
-                    if alias.name == "argv":
-                        argv_aliases.add(alias.asname or alias.name)
-
-    def _expr_is_option_factory(expr: ast.AST) -> bool:
-        if isinstance(expr, ast.Name) and expr.id in option_factories:
-            return True
-        chain = _extract_attr_chain(expr)
-        if chain is not None:
-            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {"option", "Option"}:
-                return True
-            if chain in {("click", "decorators", "option"), ("click", "core", "Option")} and "click" in click_mod_aliases:
-                return True
-            if len(chain) == 2 and chain[0] in typer_mod_aliases and chain[1] == "Option":
-                return True
-        return False
-
-    def _expr_is_option_class(expr: ast.AST) -> bool:
-        if isinstance(expr, ast.Name) and expr.id in option_classes:
-            return True
-        chain = _extract_attr_chain(expr)
-        if chain is not None:
-            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] == "Option":
-                return True
-            if chain == ("click", "core", "Option") and "click" in click_mod_aliases:
-                return True
-        return False
-
-    changed = True
-    while changed:
-        changed = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                if node.name not in option_classes and any(_expr_is_option_class(b) for b in node.bases):
-                    option_classes.add(node.name)
-                    option_factories.add(node.name)
-                    changed = True
-            elif isinstance(node, ast.Assign):
-                for tgt in node.targets:
-                    if isinstance(tgt, ast.Name):
-                        if tgt.id not in option_factories and _expr_is_option_factory(node.value):
-                            option_factories.add(tgt.id)
-                            changed = True
-                        if tgt.id not in option_classes and _expr_is_option_class(node.value):
-                            option_classes.add(tgt.id)
-                            changed = True
-            elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
-                tname = node.target.id
-                if tname not in option_factories and _expr_is_option_factory(node.value):
-                    option_factories.add(tname)
-                    changed = True
-                if tname not in option_classes and _expr_is_option_class(node.value):
-                    option_classes.add(tname)
-                    changed = True
-
-    str_bindings: dict[str, list[str]] = {}
-    for stmt in tree.body:
-        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
-            if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-                str_bindings[stmt.targets[0].id] = [stmt.value.value]
-            elif isinstance(stmt.value, (ast.List, ast.Tuple)):
-                strs = [e.value for e in stmt.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-                if strs:
-                    str_bindings[stmt.targets[0].id] = strs
-        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
-            if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-                str_bindings[stmt.target.id] = [stmt.value.value]
-
-    def _expr_matches(expr: ast.AST) -> bool:
-        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
-            return _decl_matches_cli_flag(expr.value, flag)
-        if isinstance(expr, ast.Name) and expr.id in str_bindings:
-            return any(_decl_matches_cli_flag(s, flag) for s in str_bindings[expr.id])
-        if isinstance(expr, (ast.List, ast.Tuple)):
-            return any(_expr_matches(e) for e in expr.elts)
-        return False
-
-    def _is_option_decl_call(call: ast.Call) -> bool:
-        if _expr_is_option_factory(call.func):
-            return True
-        if isinstance(call.func, ast.Attribute) and call.func.attr in {"add_argument", "add_option"}:
-            return True
-        if any(kw.arg == "param_decls" for kw in call.keywords):
-            return True
-        return False
-
-    def _is_sys_argv_expr(expr: ast.AST) -> bool:
-        cur = expr
-        while isinstance(cur, ast.Subscript):
-            cur = cur.value
-        if isinstance(cur, ast.Name) and cur.id in argv_aliases:
-            return True
-        if (
-            isinstance(cur, ast.Attribute)
-            and isinstance(cur.value, ast.Name)
-            and cur.value.id in sys_mod_aliases
-            and cur.attr == "argv"
-        ):
-            return True
-        return False
-
-    for node in _iter_live_ast_nodes(scan_roots, tc_names):
-        if isinstance(node, ast.Call):
-            if not _is_option_decl_call(node):
-                continue
-            if any(_expr_matches(a) for a in node.args):
-                return True
-            if any(kw.arg == "param_decls" and _expr_matches(kw.value) for kw in node.keywords):
-                return True
-        elif (
-            isinstance(node, ast.Compare)
-            and len(node.ops) == 1
-            and isinstance(node.ops[0], (ast.In, ast.NotIn))
-            and len(node.comparators) == 1
-        ):
-            if _is_sys_argv_expr(node.comparators[0]) and _expr_matches(node.left):
-                return True
-    for node in _iter_live_ast_nodes(live_top_tests, tc_names):
-        if (
-            isinstance(node, ast.Compare)
-            and len(node.ops) == 1
-            and isinstance(node.ops[0], (ast.In, ast.NotIn))
-            and len(node.comparators) == 1
-        ):
-            if _is_sys_argv_expr(node.comparators[0]) and _expr_matches(node.left):
-                return True
-    return False
+    single_rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] = {
+        Path("<inline>"): (tree, list(scan_roots), list(live_top_tests), set(tc_names), None)
+    }
+    return _cli_tree_declares_cli_flag(single_rmap, flag, None)
 
 
 def _file_declares_cli_flag(
@@ -8236,7 +8143,7 @@ def _cli_tree_declares_cli_flag(
     flag: str,
     cli_resolution_ctx: dict[str, Any] | None = None,
 ) -> bool:
-    """Return True if any reachable command tree node declares CLI option `flag` (resolving cross-file option classes/aliases)."""
+    """Return True if any reachable command tree node declares CLI option `flag` (resolving cross-file option classes/aliases and starred args)."""
     links = _build_rmap_import_links(rmap, cli_resolution_ctx)
     click_mod_aliases: dict[Path, set[str]] = {}
     typer_mod_aliases: dict[Path, set[str]] = {}
@@ -8244,9 +8151,58 @@ def _cli_tree_declares_cli_flag(
     argv_aliases: dict[Path, set[str]] = {}
     option_factories: dict[Path, set[str]] = {}
     option_classes: dict[Path, set[str]] = {}
-    str_bindings: dict[Path, dict[str, list[str]]] = {}
+    # Typed static bindings: name -> ("str", str) | ("seq", tuple[str, ...]) | ("dict_pd", tuple[str, ...])
+    flag_bindings: dict[Path, dict[str, tuple[str, Any]]] = {}
+    top_assigns: dict[Path, list[tuple[bool, str, ast.expr]]] = {}
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
 
-    for fpath, (ftree, _fscan, _ftests, _ftc, _fmod) in rmap.items():
+    def _collect_scope_assigns(
+        stmts: list[ast.stmt],
+        tc_names: set[str] | frozenset[str],
+        *,
+        unconditional: bool = True,
+    ) -> list[tuple[bool, str, ast.expr]]:
+        ops: list[tuple[bool, str, ast.expr]] = []
+        for stmt in stmts:
+            if isinstance(stmt, ast.Assign):
+                if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+                    ops.append((unconditional, stmt.targets[0].id, stmt.value))
+            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
+                ops.append((unconditional, stmt.target.id, stmt.value))
+            elif isinstance(stmt, ast.If):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is True:
+                    ops.extend(_collect_scope_assigns(stmt.body, tc_names, unconditional=unconditional))
+                elif branch is False:
+                    ops.extend(_collect_scope_assigns(stmt.orelse, tc_names, unconditional=unconditional))
+                else:
+                    ops.extend(_collect_scope_assigns(stmt.body, tc_names, unconditional=False))
+                    ops.extend(_collect_scope_assigns(stmt.orelse, tc_names, unconditional=False))
+            elif isinstance(stmt, ast.While):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is False:
+                    ops.extend(_collect_scope_assigns(stmt.orelse, tc_names, unconditional=unconditional))
+                else:
+                    ops.extend(_collect_scope_assigns(stmt.body, tc_names, unconditional=False))
+                    ops.extend(_collect_scope_assigns(stmt.orelse, tc_names, unconditional=False))
+            elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+                ops.extend(_collect_scope_assigns(stmt.body, tc_names, unconditional=False))
+                ops.extend(_collect_scope_assigns(stmt.orelse, tc_names, unconditional=False))
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+                ops.extend(_collect_scope_assigns(stmt.body, tc_names, unconditional=False))
+            elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
+                ops.extend(_collect_scope_assigns(stmt.body, tc_names, unconditional=False))
+                for h in getattr(stmt, "handlers", ()):
+                    ops.extend(_collect_scope_assigns(h.body, tc_names, unconditional=False))
+                ops.extend(_collect_scope_assigns(stmt.orelse, tc_names, unconditional=False))
+                ops.extend(_collect_scope_assigns(stmt.finalbody, tc_names, unconditional=False))
+            elif match_cls and isinstance(stmt, match_cls):
+                for case in getattr(stmt, "cases", ()):
+                    ops.extend(_collect_scope_assigns(case.body, tc_names, unconditional=False))
+        return ops
+
+    for fpath, (ftree, _fscan, _ftests, ftc, _fmod) in rmap.items():
         cm: set[str] = set()
         tm: set[str] = set()
         sm: set[str] = set()
@@ -8285,25 +8241,14 @@ def _cli_tree_declares_cli_flag(
                     for alias in node.names:
                         if alias.name == "argv":
                             av.add(alias.asname or alias.name)
-        sb: dict[str, list[str]] = {}
-        for stmt in ftree.body:
-            if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
-                if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-                    sb[stmt.targets[0].id] = [stmt.value.value]
-                elif isinstance(stmt.value, (ast.List, ast.Tuple)):
-                    strs = [e.value for e in stmt.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-                    if strs:
-                        sb[stmt.targets[0].id] = strs
-            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
-                if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-                    sb[stmt.target.id] = [stmt.value.value]
         click_mod_aliases[fpath] = cm
         typer_mod_aliases[fpath] = tm
         sys_mod_aliases[fpath] = sm
         argv_aliases[fpath] = av
         option_factories[fpath] = of
         option_classes[fpath] = oc
-        str_bindings[fpath] = sb
+        flag_bindings[fpath] = {}
+        top_assigns[fpath] = _collect_scope_assigns(ftree.body, ftc)
 
     def _chain_in_imported_set(fpath: Path, chain: tuple[str, ...], per_file_sets: dict[Path, set[str]]) -> bool:
         fl = links[fpath]
@@ -8315,6 +8260,172 @@ def _cli_tree_declares_cli_flag(
                 if chain[-1] in per_file_sets[tf]:
                     return True
         return False
+
+    def _lookup_imported_binding(fpath: Path, chain: tuple[str, ...]) -> tuple[str, Any] | None:
+        fl = links[fpath]
+        if len(chain) == 2 and chain[0] in fl["mod_aliases"]:
+            for tf in fl["mod_aliases"][chain[0]]:
+                val = flag_bindings[tf].get(chain[1])
+                if val is not None:
+                    return val
+        for imp_parts, tf in fl["dotted_mods"]:
+            if len(chain) == len(imp_parts) + 1 and chain[:-1] == imp_parts:
+                val = flag_bindings[tf].get(chain[-1])
+                if val is not None:
+                    return val
+        return None
+
+    def _eval_static_str(
+        fpath: Path,
+        expr: ast.AST,
+        env: dict[str, tuple[str, Any]],
+        tc_names: set[str] | frozenset[str],
+    ) -> str | None:
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return expr.value
+        if isinstance(expr, ast.IfExp):
+            branch = _static_branch_truthiness(expr.test, tc_names=tc_names)
+            if branch is True:
+                return _eval_static_str(fpath, expr.body, env, tc_names)
+            if branch is False:
+                return _eval_static_str(fpath, expr.orelse, env, tc_names)
+            return None
+        if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add):
+            left = _eval_static_str(fpath, expr.left, env, tc_names)
+            right = _eval_static_str(fpath, expr.right, env, tc_names)
+            if left is not None and right is not None:
+                return left + right
+            return None
+        if isinstance(expr, ast.Name):
+            val = env.get(expr.id)
+            if val is not None and val[0] == "str":
+                return val[1]
+            return None
+        chain = _extract_attr_chain(expr)
+        if chain is not None and len(chain) >= 2:
+            val = _lookup_imported_binding(fpath, chain)
+            if val is not None and val[0] == "str":
+                return val[1]
+        return None
+
+    def _eval_static_str_seq(
+        fpath: Path,
+        expr: ast.AST,
+        env: dict[str, tuple[str, Any]],
+        tc_names: set[str] | frozenset[str],
+    ) -> tuple[str, ...] | None:
+        if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):
+            items: list[str] = []
+            for elt in expr.elts:
+                if isinstance(elt, ast.Starred):
+                    sub = _eval_static_str_seq(fpath, elt.value, env, tc_names)
+                    if sub is not None:
+                        items.extend(sub)
+                else:
+                    s = _eval_static_str(fpath, elt, env, tc_names)
+                    if s is not None:
+                        items.append(s)
+            return tuple(dict.fromkeys(items))
+        if isinstance(expr, ast.IfExp):
+            branch = _static_branch_truthiness(expr.test, tc_names=tc_names)
+            if branch is True:
+                return _eval_static_str_seq(fpath, expr.body, env, tc_names)
+            if branch is False:
+                return _eval_static_str_seq(fpath, expr.orelse, env, tc_names)
+            return None
+        if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add):
+            left = _eval_static_str_seq(fpath, expr.left, env, tc_names)
+            right = _eval_static_str_seq(fpath, expr.right, env, tc_names)
+            if left is not None and right is not None:
+                return tuple(dict.fromkeys([*left, *right]))
+            return None
+        if (
+            isinstance(expr, ast.Call)
+            and isinstance(expr.func, ast.Name)
+            and expr.func.id in {"tuple", "list", "set", "frozenset"}
+            and len(expr.args) == 1
+            and not expr.keywords
+            and not isinstance(expr.args[0], ast.Starred)
+        ):
+            return _eval_static_str_seq(fpath, expr.args[0], env, tc_names)
+        if isinstance(expr, ast.Name):
+            val = env.get(expr.id)
+            if val is not None and val[0] == "seq":
+                return val[1]
+            return None
+        chain = _extract_attr_chain(expr)
+        if chain is not None and len(chain) >= 2:
+            val = _lookup_imported_binding(fpath, chain)
+            if val is not None and val[0] == "seq":
+                return val[1]
+        return None
+
+    def _eval_static_param_decls_dict(
+        fpath: Path,
+        expr: ast.AST,
+        env: dict[str, tuple[str, Any]],
+        tc_names: set[str] | frozenset[str],
+    ) -> tuple[str, ...] | None:
+        if isinstance(expr, ast.Dict):
+            found_pd: tuple[str, ...] | None = None
+            for k, v in zip(expr.keys, expr.values):
+                if k is None:
+                    sub = _eval_static_param_decls_dict(fpath, v, env, tc_names)
+                    if sub is not None:
+                        found_pd = sub
+                elif isinstance(k, ast.Constant) and k.value == "param_decls":
+                    found_pd = _eval_static_str_seq(fpath, v, env, tc_names)
+            return found_pd
+        if (
+            isinstance(expr, ast.Call)
+            and isinstance(expr.func, ast.Name)
+            and expr.func.id == "dict"
+            and not expr.args
+        ):
+            found_pd = None
+            for kw in expr.keywords:
+                if kw.arg is None:
+                    sub = _eval_static_param_decls_dict(fpath, kw.value, env, tc_names)
+                    if sub is not None:
+                        found_pd = sub
+                elif kw.arg == "param_decls":
+                    found_pd = _eval_static_str_seq(fpath, kw.value, env, tc_names)
+            return found_pd
+        if isinstance(expr, ast.Name):
+            val = env.get(expr.id)
+            if val is not None and val[0] == "dict_pd":
+                return val[1]
+            return None
+        chain = _extract_attr_chain(expr)
+        if chain is not None and len(chain) >= 2:
+            val = _lookup_imported_binding(fpath, chain)
+            if val is not None and val[0] == "dict_pd":
+                return val[1]
+        return None
+
+    def _apply_scope_assigns(
+        fpath: Path,
+        base_env: dict[str, tuple[str, Any]],
+        ops: list[tuple[bool, str, ast.expr]],
+        tc_names: set[str] | frozenset[str],
+    ) -> dict[str, tuple[str, Any]]:
+        env = dict(base_env)
+        for uncond, name, val_expr in ops:
+            s = _eval_static_str(fpath, val_expr, env, tc_names)
+            if s is not None:
+                env[name] = ("str", s)
+                continue
+            seq = _eval_static_str_seq(fpath, val_expr, env, tc_names)
+            if seq is not None:
+                env[name] = ("seq", seq)
+                continue
+            dpd = _eval_static_param_decls_dict(fpath, val_expr, env, tc_names)
+            if dpd is not None:
+                env[name] = ("dict_pd", dpd)
+                continue
+            if uncond:
+                env.pop(name, None)
+        return env
 
     def _expr_is_option_factory(fpath: Path, expr: ast.AST) -> bool:
         if isinstance(expr, ast.Name) and expr.id in option_factories[fpath]:
@@ -8348,13 +8459,16 @@ def _cli_tree_declares_cli_flag(
         return False
 
     changed = True
-    while changed:
+    iters = 0
+    max_iters = max(8, len(rmap) * 4)
+    while changed and iters < max_iters:
         changed = False
-        for fpath, (ftree, _fscan, _ftests, _ftc, _fmod) in rmap.items():
+        iters += 1
+        for fpath, (ftree, _fscan, _ftests, ftc, _fmod) in rmap.items():
             fl = links[fpath]
             of = option_factories[fpath]
             oc = option_classes[fpath]
-            sb = str_bindings[fpath]
+            imported_env: dict[str, tuple[str, Any]] = {}
             for bound, targets in fl["import_from"].items():
                 for tf, orig_name in targets:
                     if orig_name in option_classes[tf] and bound not in oc:
@@ -8364,9 +8478,8 @@ def _cli_tree_declares_cli_flag(
                     if orig_name in option_factories[tf] and bound not in of:
                         of.add(bound)
                         changed = True
-                    if orig_name in str_bindings[tf] and bound not in sb:
-                        sb[bound] = list(str_bindings[tf][orig_name])
-                        changed = True
+                    if orig_name in flag_bindings[tf] and bound not in imported_env:
+                        imported_env[bound] = flag_bindings[tf][orig_name]
             for tf in fl["star_files"]:
                 for sym in option_classes[tf]:
                     if sym not in oc and _module_wildcard_allows(tf, sym)[0]:
@@ -8377,10 +8490,13 @@ def _cli_tree_declares_cli_flag(
                     if sym not in of and _module_wildcard_allows(tf, sym)[0]:
                         of.add(sym)
                         changed = True
-                for sym, vals in str_bindings[tf].items():
-                    if sym not in sb and _module_wildcard_allows(tf, sym)[0]:
-                        sb[sym] = list(vals)
-                        changed = True
+                for sym, val in flag_bindings[tf].items():
+                    if sym not in imported_env and _module_wildcard_allows(tf, sym)[0]:
+                        imported_env[sym] = val
+            new_fb = _apply_scope_assigns(fpath, imported_env, top_assigns[fpath], ftc)
+            if new_fb != flag_bindings[fpath]:
+                flag_bindings[fpath] = new_fb
+                changed = True
             for node in ast.walk(ftree):
                 if isinstance(node, ast.ClassDef):
                     if node.name not in oc and any(_expr_is_option_class(fpath, b) for b in node.bases):
@@ -8405,28 +8521,57 @@ def _cli_tree_declares_cli_flag(
                         oc.add(tname)
                         changed = True
 
-    def _expr_matches(fpath: Path, expr: ast.AST) -> bool:
-        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
-            return _decl_matches_cli_flag(expr.value, flag)
-        if isinstance(expr, ast.Name) and expr.id in str_bindings[fpath]:
-            return any(_decl_matches_cli_flag(s, flag) for s in str_bindings[fpath][expr.id])
-        chain = _extract_attr_chain(expr)
-        if chain is not None and len(chain) == 2 and chain[0] in links[fpath]["mod_aliases"]:
-            for tf in links[fpath]["mod_aliases"][chain[0]]:
-                if chain[1] in str_bindings[tf]:
-                    if any(_decl_matches_cli_flag(s, flag) for s in str_bindings[tf][chain[1]]):
-                        return True
-        if isinstance(expr, (ast.List, ast.Tuple)):
-            return any(_expr_matches(fpath, e) for e in expr.elts)
-        return False
-
-    def _is_option_decl_call(fpath: Path, call: ast.Call) -> bool:
+    def _is_option_decl_call(
+        fpath: Path,
+        call: ast.Call,
+        env: dict[str, tuple[str, Any]],
+        tc_names: set[str] | frozenset[str],
+    ) -> bool:
         if _expr_is_option_factory(fpath, call.func):
             return True
         if isinstance(call.func, ast.Attribute) and call.func.attr in {"add_argument", "add_option"}:
             return True
-        if any(kw.arg == "param_decls" for kw in call.keywords):
-            return True
+        for kw in call.keywords:
+            if kw.arg == "param_decls":
+                return True
+            if kw.arg is None and _eval_static_param_decls_dict(fpath, kw.value, env, tc_names) is not None:
+                return True
+        return False
+
+    def _call_declares_flag(
+        fpath: Path,
+        call: ast.Call,
+        env: dict[str, tuple[str, Any]],
+        tc_names: set[str] | frozenset[str],
+    ) -> bool:
+        is_opt_cls = _expr_is_option_class(fpath, call.func)
+        for a in call.args:
+            if isinstance(a, ast.Starred):
+                if is_opt_cls and isinstance(a.value, (ast.List, ast.Tuple)):
+                    for inner in a.value.elts:
+                        inner_seq = _eval_static_str_seq(fpath, inner, env, tc_names)
+                        if inner_seq is not None and any(_decl_matches_cli_flag(s, flag) for s in inner_seq):
+                            return True
+                seq = _eval_static_str_seq(fpath, a.value, env, tc_names)
+                if seq is not None and any(_decl_matches_cli_flag(s, flag) for s in seq):
+                    return True
+            else:
+                s = _eval_static_str(fpath, a, env, tc_names)
+                if s is not None and _decl_matches_cli_flag(s, flag):
+                    return True
+                if is_opt_cls:
+                    seq = _eval_static_str_seq(fpath, a, env, tc_names)
+                    if seq is not None and any(_decl_matches_cli_flag(x, flag) for x in seq):
+                        return True
+        for kw in call.keywords:
+            if kw.arg == "param_decls":
+                seq = _eval_static_str_seq(fpath, kw.value, env, tc_names)
+                if seq is not None and any(_decl_matches_cli_flag(s, flag) for s in seq):
+                    return True
+            elif kw.arg is None:
+                pd_seq = _eval_static_param_decls_dict(fpath, kw.value, env, tc_names)
+                if pd_seq is not None and any(_decl_matches_cli_flag(s, flag) for s in pd_seq):
+                    return True
         return False
 
     def _is_sys_argv_expr(fpath: Path, expr: ast.AST) -> bool:
@@ -8444,14 +8589,23 @@ def _cli_tree_declares_cli_flag(
             return True
         return False
 
-    for fpath, (_ftree, fscan, ftests, ftc, _fmod) in rmap.items():
-        for node in _iter_live_ast_nodes(fscan, ftc):
-            if isinstance(node, ast.Call):
-                if not _is_option_decl_call(fpath, node):
-                    continue
-                if any(_expr_matches(fpath, a) for a in node.args):
-                    return True
-                if any(kw.arg == "param_decls" and _expr_matches(fpath, kw.value) for kw in node.keywords):
+    def _scan_live_nodes(
+        fpath: Path,
+        roots: list[ast.AST],
+        base_env: dict[str, tuple[str, Any]],
+        tc_names: set[str] | frozenset[str],
+        *,
+        allow_calls: bool,
+    ) -> bool:
+        stack: list[tuple[ast.AST, dict[str, tuple[str, Any]]]] = [
+            (n, base_env) for n in reversed(roots)
+        ]
+        while stack:
+            node, env = stack.pop()
+            if allow_calls and isinstance(node, ast.Call):
+                if _is_option_decl_call(fpath, node, env, tc_names) and _call_declares_flag(
+                    fpath, node, env, tc_names
+                ):
                     return True
             elif (
                 isinstance(node, ast.Compare)
@@ -8459,17 +8613,67 @@ def _cli_tree_declares_cli_flag(
                 and isinstance(node.ops[0], (ast.In, ast.NotIn))
                 and len(node.comparators) == 1
             ):
-                if _is_sys_argv_expr(fpath, node.comparators[0]) and _expr_matches(fpath, node.left):
-                    return True
-        for node in _iter_live_ast_nodes(ftests, ftc):
-            if (
-                isinstance(node, ast.Compare)
-                and len(node.ops) == 1
-                and isinstance(node.ops[0], (ast.In, ast.NotIn))
-                and len(node.comparators) == 1
-            ):
-                if _is_sys_argv_expr(fpath, node.comparators[0]) and _expr_matches(fpath, node.left):
-                    return True
+                if _is_sys_argv_expr(fpath, node.comparators[0]):
+                    s = _eval_static_str(fpath, node.left, env, tc_names)
+                    if s is not None and _decl_matches_cli_flag(s, flag):
+                        return True
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                fn_ops = _collect_scope_assigns(node.body, tc_names)
+                inner_env = _apply_scope_assigns(fpath, env, fn_ops, tc_names) if fn_ops else env
+                for stmt in reversed(node.body):
+                    stack.append((stmt, inner_env))
+                if node.returns is not None:
+                    stack.append((node.returns, env))
+                stack.append((node.args, env))
+                for dec in reversed(node.decorator_list):
+                    stack.append((dec, env))
+            elif isinstance(node, ast.If):
+                branch = _static_branch_truthiness(node.test, tc_names=tc_names)
+                if branch is True:
+                    for s in reversed(node.body):
+                        stack.append((s, env))
+                elif branch is False:
+                    for s in reversed(node.orelse):
+                        stack.append((s, env))
+                else:
+                    for s in reversed(node.orelse):
+                        stack.append((s, env))
+                    for s in reversed(node.body):
+                        stack.append((s, env))
+                    stack.append((node.test, env))
+            elif isinstance(node, ast.While):
+                branch = _static_branch_truthiness(node.test, tc_names=tc_names)
+                if branch is False:
+                    for s in reversed(node.orelse):
+                        stack.append((s, env))
+                else:
+                    for s in reversed(node.orelse):
+                        stack.append((s, env))
+                    for s in reversed(node.body):
+                        stack.append((s, env))
+                    stack.append((node.test, env))
+            elif isinstance(node, ast.IfExp):
+                branch = _static_branch_truthiness(node.test, tc_names=tc_names)
+                if branch is True:
+                    stack.append((node.body, env))
+                elif branch is False:
+                    stack.append((node.orelse, env))
+                else:
+                    stack.append((node.orelse, env))
+                    stack.append((node.body, env))
+                    stack.append((node.test, env))
+            else:
+                children = list(ast.iter_child_nodes(node))
+                if children:
+                    for ch in reversed(children):
+                        stack.append((ch, env))
+        return False
+
+    for fpath, (_ftree, fscan, ftests, ftc, _fmod) in rmap.items():
+        if _scan_live_nodes(fpath, fscan, flag_bindings[fpath], ftc, allow_calls=True):
+            return True
+        if _scan_live_nodes(fpath, ftests, flag_bindings[fpath], ftc, allow_calls=False):
+            return True
     return False
 
 

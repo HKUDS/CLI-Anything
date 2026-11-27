@@ -8752,6 +8752,346 @@ cli-anything-mrtapp = "cli_anything.mrtapp.mrtapp_cli:main"
     assert {c["id"]: c for c in res_poetry["checks"]}["namespace-packages"]["status"] == "fail"
 
 
+def test_verify_walks_remapped_package_dir_roots_for_runtime_subpackages(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "remap_rt", "rmpapp")
+    pkg_dir = harness / "cli_anything" / "rmpapp"
+    orig_utils = pkg_dir / "utils"
+    shared_utils = harness / "shared_utils"
+    shutil.move(str(orig_utils), str(shared_utils))
+
+    # Create a nested runtime subpackage inside the remapped directory and import it from utils.
+    engine_dir = shared_utils / "engine"
+    engine_dir.mkdir(parents=True)
+    (engine_dir / "__init__.py").write_text("VALUE = 42\n", encoding="utf-8")
+    (shared_utils / "__init__.py").write_text("from .engine import VALUE\n", encoding="utf-8")
+
+    setup_py = harness / "setup.py"
+
+    # 1. Exact repro from review 6086739083: package_dir remaps utils -> shared_utils,
+    #    packages omits cli_anything.rmpapp.utils.engine -> MUST FAIL namespace-packages.
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-rmpapp",
+    version="1.0.0",
+    packages=[
+        "cli_anything.rmpapp",
+        "cli_anything.rmpapp.core",
+        "cli_anything.rmpapp.utils",
+        "cli_anything.rmpapp.skills",
+    ],
+    package_dir={"cli_anything.rmpapp.utils": "shared_utils"},
+    package_data={"cli_anything.rmpapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rmpapp=cli_anything.rmpapp.rmpapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_missing = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_missing["ok"] is False
+    ns_chk = {c["id"]: c for c in res_missing["checks"]}["namespace-packages"]
+    assert ns_chk["status"] == "fail"
+    assert "cli_anything.rmpapp.utils.engine" in ns_chk["detail"]
+
+    # 2. find_namespace_packages(include=["cli_anything.*"]) with an empty physical utils/ dir
+    #    also fails to discover shared_utils/engine -> MUST FAIL namespace-packages.
+    orig_utils.mkdir(parents=True)
+    setup_py.write_text(
+        """from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-rmpapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_dir={"cli_anything.rmpapp.utils": "shared_utils"},
+    package_data={"cli_anything.rmpapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rmpapp=cli_anything.rmpapp.rmpapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_find = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_find["ok"] is False
+    assert {c["id"]: c for c in res_find["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 3. Adding stale_unused/ under shadowed physical cli_anything/rmpapp/utils/ must NOT trigger
+    #    a false failure once shared_utils and shared_utils/engine are explicitly packaged.
+    stale_dir = orig_utils / "stale_unused"
+    stale_dir.mkdir(parents=True)
+    (stale_dir / "old.py").write_text("OLD = True\n", encoding="utf-8")
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-rmpapp",
+    version="1.0.0",
+    packages=[
+        "cli_anything.rmpapp",
+        "cli_anything.rmpapp.core",
+        "cli_anything.rmpapp.utils",
+        "cli_anything.rmpapp.utils.engine",
+        "cli_anything.rmpapp.skills",
+    ],
+    package_dir={"cli_anything.rmpapp.utils": "shared_utils"},
+    package_data={"cli_anything.rmpapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rmpapp=cli_anything.rmpapp.rmpapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_ok["ok"] is True, res_ok["checks"]
+
+    # 4. Excluding shared_utils/engine/*.py via MANIFEST.in must FAIL namespace-packages.
+    manifest = harness / "MANIFEST.in"
+    manifest.write_text("exclude shared_utils/engine/*.py\n", encoding="utf-8")
+    res_excl = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_excl["ok"] is False
+    assert {c["id"]: c for c in res_excl["checks"]}["namespace-packages"]["status"] == "fail"
+    manifest.unlink()
+
+    # 5. Nested child remapping (utils.engine -> vendor_engine containing v2/__init__.py).
+    vendor_v2 = harness / "vendor_engine" / "v2"
+    vendor_v2.mkdir(parents=True)
+    (harness / "vendor_engine" / "__init__.py").write_text("from .v2 import V\n", encoding="utf-8")
+    (vendor_v2 / "__init__.py").write_text("V = 2\n", encoding="utf-8")
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-rmpapp",
+    version="1.0.0",
+    packages=[
+        "cli_anything.rmpapp",
+        "cli_anything.rmpapp.core",
+        "cli_anything.rmpapp.utils",
+        "cli_anything.rmpapp.utils.engine",
+        "cli_anything.rmpapp.skills",
+    ],
+    package_dir={
+        "cli_anything.rmpapp.utils": "shared_utils",
+        "cli_anything.rmpapp.utils.engine": "vendor_engine",
+    },
+    package_data={"cli_anything.rmpapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rmpapp=cli_anything.rmpapp.rmpapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_nested_bad = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_nested_bad["ok"] is False
+    ns_nested = {c["id"]: c for c in res_nested_bad["checks"]}["namespace-packages"]
+    assert ns_nested["status"] == "fail"
+    assert "cli_anything.rmpapp.utils.engine.v2" in ns_nested["detail"]
+
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-rmpapp",
+    version="1.0.0",
+    packages=[
+        "cli_anything.rmpapp",
+        "cli_anything.rmpapp.core",
+        "cli_anything.rmpapp.utils",
+        "cli_anything.rmpapp.utils.engine",
+        "cli_anything.rmpapp.utils.engine.v2",
+        "cli_anything.rmpapp.skills",
+    ],
+    package_dir={
+        "cli_anything.rmpapp.utils": "shared_utils",
+        "cli_anything.rmpapp.utils.engine": "vendor_engine",
+    },
+    package_data={"cli_anything.rmpapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-rmpapp=cli_anything.rmpapp.rmpapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_nested_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_nested_ok["ok"] is True, res_nested_ok["checks"]
+
+
+def test_verify_expands_starred_option_arguments_for_cli_flags(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "starred_opt", "stopt")
+    pkg_dir = harness / "cli_anything" / "stopt"
+    cli_py = pkg_dir / "stopt_cli.py"
+    (pkg_dir / "shared_opts.py").write_text(
+        """JSON_DECLS: tuple[str, ...] = ("--json", "use_json")
+BASE_DECLS = ("--json",)
+COMPOSED_DECLS = (*BASE_DECLS, "use_json")
+OPTION_KWARGS = {"param_decls": ("--json", "use_json"), "is_flag": True}
+""",
+        encoding="utf-8",
+    )
+
+    valid_variants = [
+        # 1. Exact repro from review 6086739083: starred tuple constant in @click.option.
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option(*("--json", "use_json"), is_flag=True)
+def main(use_json):
+    pass
+""",
+        # 2. Starred list and set literals.
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option(*["--json", "-j"], is_flag=True)
+def main(json):
+    pass
+""",
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option(*{"--json", "-j"}, is_flag=True)
+def main(json):
+    pass
+""",
+        # 3. Module-level annotated tuple, concatenation, and nested starred expansion.
+        """import click
+
+BASE = ("--json",)
+DECLS: tuple[str, ...] = BASE + ("use_json",)
+
+@click.group(invoke_without_command=True)
+@click.option(*DECLS, is_flag=True)
+def main(use_json):
+    pass
+""",
+        # 4. Cross-module imported tuple constant and module-attribute starred expansion.
+        """import click
+from .shared_opts import JSON_DECLS
+
+@click.group(invoke_without_command=True)
+@click.option(*JSON_DECLS, is_flag=True)
+def main(use_json):
+    pass
+""",
+        """import click
+from . import shared_opts
+
+@click.group(invoke_without_command=True)
+@click.option(*shared_opts.COMPOSED_DECLS, is_flag=True)
+def main(use_json):
+    pass
+""",
+        # 5. click.Option with starred positional param_decls or **kwargs dict.
+        """import click
+
+main = click.Group("main", invoke_without_command=True, params=[click.Option(*(["--json", "use_json"],), is_flag=True)])
+""",
+        """import click
+from .shared_opts import OPTION_KWARGS
+
+main = click.Group("main", invoke_without_command=True, params=[click.Option(**OPTION_KWARGS)])
+""",
+        # 6. Local tuple binding inside a reachable argparse helper.
+        """import argparse
+import click
+
+def _build_parser():
+    p = argparse.ArgumentParser()
+    flags = ("--json", "-j")
+    p.add_argument(*flags, action="store_true")
+    return p
+
+@click.group(invoke_without_command=True)
+def main():
+    _build_parser()
+""",
+    ]
+
+    for idx, src in enumerate(valid_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+        assert {c["id"]: c for c in res_ok["checks"]}["json-flag"]["status"] == "pass", idx
+
+    invalid_variants = [
+        # 1. Starred string literal unpacks individual characters ('-', '-', 'j', 's', 'o', 'n').
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option(*"--json", is_flag=True)
+def main(*args, **kwargs):
+    pass
+""",
+        # 2. Starred scalar string variable also unpacks individual characters.
+        """import click
+
+FLAG = "--json"
+
+@click.group(invoke_without_command=True)
+@click.option(*FLAG, is_flag=True)
+def main(*args, **kwargs):
+    pass
+""",
+        # 3. Unstarred tuple passed directly to click.option() fails at runtime in Click.
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option(("--json", "use_json"), is_flag=True)
+def main(use_json):
+    pass
+""",
+        # 4. Unconditionally overwritten module binding must not match the old value.
+        """import click
+
+JSON_DECLS = ("--json", "use_json")
+JSON_DECLS = ("--other",)
+
+@click.group(invoke_without_command=True)
+@click.option(*JSON_DECLS, is_flag=True)
+def main(other):
+    pass
+""",
+        # 5. Tuple compared with `in sys.argv` never matches a CLI flag string.
+        """import sys
+import click
+
+@click.group(invoke_without_command=True)
+def main():
+    _ = ("--json",) in sys.argv
+""",
+    ]
+
+    for idx, src in enumerate(invalid_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        assert {c["id"]: c for c in res_bad["checks"]}["json-flag"]["status"] == "fail", idx
+
+
+
 
 
 
