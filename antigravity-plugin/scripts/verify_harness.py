@@ -287,6 +287,85 @@ def _collect_target_names(node: ast.AST) -> set[str]:
     return names
 
 
+def _is_dunder_main_guard(test: ast.AST) -> bool:
+    if (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
+        and len(test.comparators) == 1
+    ):
+        left, right = test.left, test.comparators[0]
+        return (
+            isinstance(left, ast.Name)
+            and left.id == "__name__"
+            and isinstance(right, ast.Constant)
+            and right.value == "__main__"
+        ) or (
+            isinstance(right, ast.Name)
+            and right.id == "__name__"
+            and isinstance(left, ast.Constant)
+            and left.value == "__main__"
+        )
+    return False
+
+
+def _extract_attr_chain(node: ast.AST) -> tuple[str, ...] | None:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        prefix = _extract_attr_chain(node.value)
+        if prefix is not None:
+            return (*prefix, node.attr)
+    return None
+
+
+def _collect_target_attr_chains(node: ast.AST) -> list[tuple[str, ...]]:
+    chains: list[tuple[str, ...]] = []
+    chain = _extract_attr_chain(node)
+    if chain is not None and len(chain) >= 2:
+        chains.append(chain)
+    elif isinstance(node, (ast.Tuple, ast.List)):
+        for elt in node.elts:
+            chains.extend(_collect_target_attr_chains(elt))
+    elif isinstance(node, ast.Starred):
+        chains.extend(_collect_target_attr_chains(node.value))
+    return chains
+
+
+def _resolve_local_module_file(
+    module_path: str,
+    harness: Path,
+    eff_pkg_dir: dict[str, str],
+) -> tuple[Path | None, bool]:
+    """Resolve a dotted module path to a local .py file inside harness via eff_pkg_dir."""
+    parts = [p for p in module_path.split(".") if p]
+    if not parts or not all(p.isidentifier() and not keyword.iskeyword(p) for p in parts):
+        return None, False
+    root_resolved = harness.resolve()
+    pkg_dir_rel = _get_package_dir_rel(module_path, eff_pkg_dir)
+    pkg_init = (harness / pkg_dir_rel / "__init__.py") if pkg_dir_rel else (harness / "__init__.py")
+    if pkg_init.is_file():
+        try:
+            pkg_init.resolve().relative_to(root_resolved)
+            return pkg_init, True
+        except (OSError, ValueError):
+            pass
+    parent_pkg = ".".join(parts[:-1])
+    parent_dir_rel = _get_package_dir_rel(parent_pkg, eff_pkg_dir) if parent_pkg else ""
+    mod_py = (
+        (harness / parent_dir_rel / f"{parts[-1]}.py")
+        if parent_dir_rel
+        else (harness / f"{parts[-1]}.py")
+    )
+    if mod_py.is_file():
+        try:
+            mod_py.resolve().relative_to(root_resolved)
+            return mod_py, False
+        except (OSError, ValueError):
+            pass
+    return None, False
+
+
 def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None]:
     """Check statically whether py_file defines or imports `symbol` at module scope."""
     try:
@@ -296,27 +375,6 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
 
     try_star = getattr(ast, "TryStar", ())
     match_cls = getattr(ast, "Match", ())
-
-    def _is_dunder_main_guard(test: ast.AST) -> bool:
-        if (
-            isinstance(test, ast.Compare)
-            and len(test.ops) == 1
-            and isinstance(test.ops[0], ast.Eq)
-            and len(test.comparators) == 1
-        ):
-            left, right = test.left, test.comparators[0]
-            return (
-                isinstance(left, ast.Name)
-                and left.id == "__name__"
-                and isinstance(right, ast.Constant)
-                and right.value == "__main__"
-            ) or (
-                isinstance(right, ast.Name)
-                and right.id == "__name__"
-                and isinstance(left, ast.Constant)
-                and left.value == "__main__"
-            )
-        return False
 
     def _scan_stmts(stmts: list[ast.stmt]) -> bool:
         for stmt in stmts:
@@ -377,6 +435,387 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
     if _scan_stmts(tree.body):
         return True, None
     return False, f"attribute '{symbol}' not defined or imported in {py_file.name}"
+
+
+def _module_defines_attr_path(
+    py_file: Path,
+    attr_parts: list[str],
+    *,
+    module_path: str | None = None,
+    harness: Path | None = None,
+    eff_pkg_dir: dict[str, str] | None = None,
+    _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
+) -> tuple[bool, str | None]:
+    """Statically validate the full dotted callable path in py_file.
+
+    For single-component callables (`attr_parts == ["main"]`), delegates directly to
+    `_module_defines_symbol()`. For multi-component paths (`a.b` / `a.b.c`), verifies the
+    entire attribute chain via explicit module-scope attribute assignments, Click command
+    `.main` entrypoints, local class definitions (including nested classes, local bases,
+    and local class instances/aliases), or local module imports. Unverifiable or missing
+    trailing attributes fail rather than certifying only the first component.
+    """
+    if len(attr_parts) == 1:
+        return _module_defines_symbol(py_file, attr_parts[0])
+
+    try:
+        resolved_self = py_file.resolve()
+    except OSError:
+        resolved_self = py_file
+    visit_key = (resolved_self, tuple(attr_parts))
+    if visit_key in _visited:
+        return False, f"cyclic dotted callable '{'.'.join(attr_parts)}' in {py_file.name}"
+    next_visited = _visited | {visit_key}
+
+    ok_root, root_err = _module_defines_symbol(py_file, attr_parts[0])
+    if not ok_root:
+        return False, root_err
+
+    try:
+        tree = ast.parse(_read_text(py_file), filename=str(py_file))
+    except SyntaxError as exc:
+        return False, f"syntax error in {py_file.name}: {exc.msg}"
+
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
+
+    click_modules: set[str] = set()
+    click_factories: set[str] = set()
+    click_cmds: set[str] = set()
+    classes: dict[str, list[ast.ClassDef]] = {}
+    attr_assigns: set[tuple[str, ...]] = set()
+    aliases: dict[str, list[str]] = {}
+    instances: dict[str, list[str]] = {}
+    from_imports: dict[str, list[tuple[str, str]]] = {}
+    mod_imports: dict[str, list[str]] = {}
+    dotted_imports: list[tuple[str, ...]] = []
+    star_imports: list[str] = []
+
+    is_pkg_init = py_file.name == "__init__.py"
+    cur_pkg_parts = (
+        module_path.split(".")
+        if (module_path and is_pkg_init)
+        else (module_path.split(".")[:-1] if module_path else [])
+    )
+
+    def _resolve_import_from_module(stmt: ast.ImportFrom) -> str | None:
+        if stmt.level == 0:
+            return stmt.module or ""
+        if not module_path:
+            return None
+        up = stmt.level - 1
+        if up > len(cur_pkg_parts):
+            return None
+        base_parts = cur_pkg_parts[: len(cur_pkg_parts) - up]
+        if stmt.module:
+            return ".".join([*base_parts, *stmt.module.split(".")])
+        return ".".join(base_parts)
+
+    def _is_click_cmd_expr(expr: ast.AST) -> bool:
+        target = expr.func if isinstance(expr, ast.Call) else expr
+        if isinstance(target, ast.Name) and target.id in click_factories:
+            return True
+        if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+            if target.value.id in click_modules and target.attr in {"group", "command", "Group", "Command"}:
+                return True
+            if target.value.id in click_cmds and target.attr in {"group", "command"}:
+                return True
+        return False
+
+    def _is_click_cmd_value(val: ast.AST) -> bool:
+        if isinstance(val, ast.Call):
+            if _is_click_cmd_expr(val):
+                return True
+            if isinstance(val.func, ast.Call) and _is_click_cmd_expr(val.func):
+                return True
+        return False
+
+    def _record_binding(target: ast.AST, value: ast.AST | None) -> None:
+        for chain in _collect_target_attr_chains(target):
+            attr_assigns.add(chain)
+        if value is None or not isinstance(target, ast.Name):
+            return
+        name = target.id
+        if isinstance(value, ast.Name):
+            aliases.setdefault(name, []).append(value.id)
+        elif _is_click_cmd_value(value):
+            click_cmds.add(name)
+        elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+            instances.setdefault(name, []).append(value.func.id)
+
+    def _collect_stmts(stmts: list[ast.stmt]) -> None:
+        for stmt in stmts:
+            if isinstance(stmt, ast.ClassDef):
+                classes.setdefault(stmt.name, []).append(stmt)
+            elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if any(_is_click_cmd_expr(dec) for dec in stmt.decorator_list):
+                    click_cmds.add(stmt.name)
+            elif isinstance(stmt, ast.Assign):
+                for tgt in stmt.targets:
+                    _record_binding(tgt, stmt.value)
+            elif isinstance(stmt, ast.AnnAssign):
+                if stmt.value is not None:
+                    _record_binding(stmt.target, stmt.value)
+            elif isinstance(stmt, ast.Import):
+                for alias in stmt.names:
+                    if alias.name == "click":
+                        click_modules.add(alias.asname or "click")
+                    if alias.asname:
+                        mod_imports.setdefault(alias.asname, []).append(alias.name)
+                    else:
+                        top = alias.name.split(".", 1)[0]
+                        mod_imports.setdefault(top, []).append(top)
+                        if "." in alias.name:
+                            dotted_imports.append(tuple(alias.name.split(".")))
+            elif isinstance(stmt, ast.ImportFrom):
+                resolved_mod = _resolve_import_from_module(stmt)
+                for alias in stmt.names:
+                    if alias.name == "*":
+                        if resolved_mod:
+                            star_imports.append(resolved_mod)
+                        continue
+                    bound = alias.asname or alias.name
+                    if stmt.level == 0 and stmt.module == "click" and alias.name in {
+                        "group",
+                        "command",
+                        "Group",
+                        "Command",
+                    }:
+                        click_factories.add(bound)
+                    if resolved_mod is not None:
+                        from_imports.setdefault(bound, []).append((resolved_mod, alias.name))
+            elif isinstance(stmt, ast.If):
+                if _is_dunder_main_guard(stmt.test):
+                    _collect_stmts(stmt.orelse)
+                else:
+                    _collect_stmts(stmt.body)
+                    _collect_stmts(stmt.orelse)
+            elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+                _collect_stmts(stmt.body)
+                _collect_stmts(stmt.orelse)
+            elif isinstance(stmt, ast.While):
+                _collect_stmts(stmt.body)
+                _collect_stmts(stmt.orelse)
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+                _collect_stmts(stmt.body)
+            elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
+                _collect_stmts(stmt.body)
+                _collect_stmts(stmt.orelse)
+                _collect_stmts(stmt.finalbody)
+                for handler in stmt.handlers:
+                    _collect_stmts(handler.body)
+            elif match_cls and isinstance(stmt, match_cls):
+                for case in stmt.cases:
+                    _collect_stmts(case.body)
+
+    _collect_stmts(tree.body)
+
+    def _expand_aliases(start_name: str) -> set[str]:
+        seen: set[str] = {start_name}
+        stack = [start_name]
+        while stack:
+            cur = stack.pop()
+            for nxt in aliases.get(cur, ()):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
+        return seen
+
+    root_names = _expand_aliases(attr_parts[0])
+    tail = tuple(attr_parts[1:])
+
+    # 1. Explicit module-scope attribute assignment (e.g. `main.sub = ...` or `A.B.c = ...`).
+    if any((cand, *tail) in attr_assigns for cand in root_names):
+        return True, None
+
+    # 2. Click Command / Group `.main` entrypoint (e.g. `@click.group() def cli(): ...` -> `cli.main`).
+    if len(attr_parts) == 2 and attr_parts[1] == "main" and any(c in click_cmds for c in root_names):
+        return True, None
+
+    # 3. Local class (or alias / direct instance of a local class) attribute/method chain.
+    def _class_defines_chain(
+        cls_node: ast.ClassDef,
+        rest: list[str],
+        visited_cls: set[str],
+    ) -> bool:
+        if not rest:
+            return True
+        direct_names: set[str] = set()
+        nested_classes: dict[str, list[ast.ClassDef]] = {}
+        cls_aliases: dict[str, list[str]] = {}
+        cls_instances: dict[str, list[str]] = {}
+
+        def _scan_cls_body(body: list[ast.stmt]) -> None:
+            for s in body:
+                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    direct_names.add(s.name)
+                elif isinstance(s, ast.ClassDef):
+                    direct_names.add(s.name)
+                    nested_classes.setdefault(s.name, []).append(s)
+                elif isinstance(s, ast.Assign):
+                    for t in s.targets:
+                        direct_names.update(_collect_target_names(t))
+                        if isinstance(t, ast.Name):
+                            if isinstance(s.value, ast.Name):
+                                cls_aliases.setdefault(t.id, []).append(s.value.id)
+                            elif isinstance(s.value, ast.Call) and isinstance(s.value.func, ast.Name):
+                                cls_instances.setdefault(t.id, []).append(s.value.func.id)
+                elif isinstance(s, ast.AnnAssign) and s.value is not None:
+                    direct_names.update(_collect_target_names(s.target))
+                    if isinstance(s.target, ast.Name):
+                        if isinstance(s.value, ast.Name):
+                            cls_aliases.setdefault(s.target.id, []).append(s.value.id)
+                        elif isinstance(s.value, ast.Call) and isinstance(s.value.func, ast.Name):
+                            cls_instances.setdefault(s.target.id, []).append(s.value.func.id)
+                elif isinstance(s, ast.Import):
+                    for a in s.names:
+                        direct_names.add(a.asname or a.name.split(".", 1)[0])
+                elif isinstance(s, ast.ImportFrom):
+                    for a in s.names:
+                        if a.name != "*":
+                            direct_names.add(a.asname or a.name)
+                elif isinstance(s, ast.If):
+                    _scan_cls_body(s.body)
+                    _scan_cls_body(s.orelse)
+                elif isinstance(s, (ast.For, ast.AsyncFor, ast.While)):
+                    _scan_cls_body(s.body)
+                    _scan_cls_body(s.orelse)
+                elif isinstance(s, (ast.With, ast.AsyncWith)):
+                    _scan_cls_body(s.body)
+                elif isinstance(s, ast.Try) or (try_star and isinstance(s, try_star)):
+                    _scan_cls_body(s.body)
+                    _scan_cls_body(s.orelse)
+                    _scan_cls_body(s.finalbody)
+                    for h in s.handlers:
+                        _scan_cls_body(h.body)
+                elif match_cls and isinstance(s, match_cls):
+                    for c in s.cases:
+                        _scan_cls_body(c.body)
+
+        _scan_cls_body(cls_node.body)
+        head = rest[0]
+        if len(rest) == 1:
+            if head in direct_names:
+                return True
+        else:
+            for nested in nested_classes.get(head, ()):
+                if _class_defines_chain(nested, rest[1:], set()):
+                    return True
+            for ref in (*cls_aliases.get(head, ()), *cls_instances.get(head, ())):
+                for nested in nested_classes.get(ref, ()):
+                    if _class_defines_chain(nested, rest[1:], set()):
+                        return True
+                for top_cls in classes.get(ref, ()):
+                    if ref not in visited_cls and _class_defines_chain(top_cls, rest[1:], visited_cls | {ref}):
+                        return True
+            if (cls_node.name, *rest) in attr_assigns:
+                return True
+
+        for base in cls_node.bases:
+            if isinstance(base, ast.Name) and base.id not in visited_cls:
+                for base_cls in classes.get(base.id, ()):
+                    if _class_defines_chain(base_cls, rest, visited_cls | {base.id}):
+                        return True
+        return False
+
+    candidate_class_names: set[str] = set()
+    for cand in root_names:
+        if cand in classes:
+            candidate_class_names.add(cand)
+        for cls_ref in instances.get(cand, ()):
+            for expanded_cls in _expand_aliases(cls_ref):
+                if expanded_cls in classes:
+                    candidate_class_names.add(expanded_cls)
+    for cls_name in candidate_class_names:
+        for cls_node in classes.get(cls_name, ()):
+            if _class_defines_chain(cls_node, attr_parts[1:], {cls_name}):
+                return True, None
+
+    # 4. Local imported submodule / symbol chain inside the harness.
+    if harness is not None and eff_pkg_dir is not None:
+        # 4a. Dotted `import a.b.c` where attr_parts starts with `a.b.c` (or a prefix).
+        for imp_parts in dotted_imports:
+            max_k = min(len(imp_parts), len(attr_parts) - 1)
+            for k in range(max_k, 0, -1):
+                if tuple(attr_parts[:k]) == imp_parts[:k]:
+                    target_mod = ".".join(attr_parts[:k])
+                    target_file, _ = _resolve_local_module_file(target_mod, harness, eff_pkg_dir)
+                    if target_file is not None:
+                        ok_sub, _ = _module_defines_attr_path(
+                            target_file,
+                            attr_parts[k:],
+                            module_path=target_mod,
+                            harness=harness,
+                            eff_pkg_dir=eff_pkg_dir,
+                            _visited=next_visited,
+                        )
+                        if ok_sub:
+                            return True, None
+
+        for cand in root_names:
+            # 4b. `import pkg.sub as alias` -> resolve `attr_parts[1:]` in `pkg.sub`.
+            for target_mod in mod_imports.get(cand, ()):
+                target_file, _ = _resolve_local_module_file(target_mod, harness, eff_pkg_dir)
+                if target_file is not None:
+                    ok_sub, _ = _module_defines_attr_path(
+                        target_file,
+                        attr_parts[1:],
+                        module_path=target_mod,
+                        harness=harness,
+                        eff_pkg_dir=eff_pkg_dir,
+                        _visited=next_visited,
+                    )
+                    if ok_sub:
+                        return True, None
+
+            # 4c. `from base_mod import orig_name [as cand]` -> submodule or symbol in base_mod.
+            for base_mod, orig_name in from_imports.get(cand, ()):
+                sub_mod = f"{base_mod}.{orig_name}" if base_mod else orig_name
+                sub_file, _ = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
+                if sub_file is not None:
+                    ok_sub, _ = _module_defines_attr_path(
+                        sub_file,
+                        attr_parts[1:],
+                        module_path=sub_mod,
+                        harness=harness,
+                        eff_pkg_dir=eff_pkg_dir,
+                        _visited=next_visited,
+                    )
+                    if ok_sub:
+                        return True, None
+                if base_mod:
+                    base_file, _ = _resolve_local_module_file(base_mod, harness, eff_pkg_dir)
+                    if base_file is not None:
+                        ok_sub, _ = _module_defines_attr_path(
+                            base_file,
+                            [orig_name, *attr_parts[1:]],
+                            module_path=base_mod,
+                            harness=harness,
+                            eff_pkg_dir=eff_pkg_dir,
+                            _visited=next_visited,
+                        )
+                        if ok_sub:
+                            return True, None
+
+        # 4d. Local `from .other import *`.
+        for star_mod in star_imports:
+            star_file, _ = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+            if star_file is not None:
+                ok_sub, _ = _module_defines_attr_path(
+                    star_file,
+                    attr_parts,
+                    module_path=star_mod,
+                    harness=harness,
+                    eff_pkg_dir=eff_pkg_dir,
+                    _visited=next_visited,
+                )
+                if ok_sub:
+                    return True, None
+
+    return (
+        False,
+        f"dotted callable '{'.'.join(attr_parts)}' could not be statically verified in {py_file.name}",
+    )
 
 
 def _is_windows_path_semantics() -> bool:
@@ -552,6 +991,7 @@ def _validate_console_script_target(
     parent_selected: bool = False,
     pkg_spec: dict[str, Any] | None = None,
     base_package_dir: dict[str, str] | None = None,
+    excluded_files: set[str] | None = None,
 ) -> tuple[bool, str, Path | None]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
     spec = target_spec.strip()
@@ -594,6 +1034,14 @@ def _validate_console_script_target(
         src_hint = parent_dir_rel or "."
         return False, f"module '{module_path}' not found in effective package source directory '{src_hint}'", None
 
+    if excluded_files:
+        try:
+            mod_rel = mod_file.relative_to(harness).as_posix()
+        except ValueError:
+            mod_rel = ""
+        if mod_rel and _poetry_is_excluded(mod_rel, excluded_files):
+            return False, f"module '{module_path}' is excluded from wheel by packaging rules", None
+
     if target_pkg and parent_selected and owner_pkg != target_pkg and pkg_spec is not None:
         if pkg_spec["kind"] == "find":
             if not _find_selects_package(
@@ -609,9 +1057,15 @@ def _validate_console_script_target(
             if owner_pkg not in pkg_spec["packages"]:
                 return False, f"package '{owner_pkg}' is not listed in packaging packages", None
 
-    ok_sym, sym_err = _module_defines_symbol(mod_file, attr_parts[0])
+    ok_sym, sym_err = _module_defines_attr_path(
+        mod_file,
+        attr_parts,
+        module_path=module_path,
+        harness=harness,
+        eff_pkg_dir=eff_pkg_dir,
+    )
     if not ok_sym:
-        return False, sym_err or f"callable '{attr_parts[0]}' not found in '{module_path}'", None
+        return False, sym_err or f"callable '{attr_path}' not found in '{module_path}'", None
     return True, "", mod_file
 
 
@@ -684,30 +1138,117 @@ def _hatch_packages_dir(
     return None
 
 
+def _poetry_entry_has_wheel_format(
+    entry: dict[str, Any],
+    *,
+    default_formats: tuple[str, ...],
+) -> bool:
+    """Mirror poetry-core Factory._prepare_formats() + WheelBuilder format filtering."""
+    if "format" not in entry:
+        return "wheel" in default_formats
+    raw_fmt = entry["format"]
+    if isinstance(raw_fmt, str):
+        return raw_fmt == "wheel"
+    if isinstance(raw_fmt, list):
+        return any(isinstance(f, str) and f == "wheel" for f in raw_fmt)
+    return False
+
+
+def _poetry_collect_glob_files(harness: Path, patterns: list[str]) -> set[str]:
+    """Mirror poetry-core Builder add_all_files() over harness.glob() patterns."""
+    files: set[str] = set()
+    root_resolved = harness.resolve()
+    for pat in patterns:
+        if not pat or _is_absolute_pattern(pat):
+            continue
+        try:
+            matches = list(harness.glob(pat))
+        except (OSError, ValueError, NotImplementedError):
+            continue
+        for matched in matches:
+            try:
+                matched.resolve().relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+            if matched.is_dir():
+                for child in matched.glob("**/*"):
+                    if child.is_file():
+                        try:
+                            files.add(child.relative_to(harness).as_posix())
+                        except ValueError:
+                            pass
+            elif matched.is_file():
+                try:
+                    files.add(matched.relative_to(harness).as_posix())
+                except ValueError:
+                    pass
+    return files
+
+
+def _poetry_wheel_file_sets(
+    harness: Path,
+    excludes: list[str],
+    wheel_includes: list[str],
+) -> tuple[set[str], set[str]]:
+    """Return (excluded_files, explicitly_included_files) for a Poetry wheel build."""
+    explicitly_excluded = _poetry_collect_glob_files(harness, excludes)
+    explicitly_included = _poetry_collect_glob_files(harness, wheel_includes)
+    return explicitly_excluded - explicitly_included, explicitly_included
+
+
+def _poetry_is_excluded(rel_posix: str, excluded_files: set[str]) -> bool:
+    """Mirror poetry-core Builder.is_excluded() for a project-root-relative POSIX path."""
+    p = PurePosixPath(rel_posix)
+    if "__pycache__" in p.parts or p.suffix == ".pyc":
+        return True
+    cur = p
+    while True:
+        if cur.as_posix() in excluded_files:
+            return True
+        if len(cur.parts) > 1:
+            cur = cur.parent
+        else:
+            break
+    return False
+
+
 def _poetry_packages_dir(
     target_pkg: str | None,
-    entries: list[tuple[str, str]],
+    entries: list[tuple[str, ...]],
     harness: Path | None = None,
 ) -> dict[str, str] | None:
-    """Return effective package_dir mapping if Poetry packages cover target_pkg, else None."""
+    """Return effective package_dir mapping if wheel-eligible Poetry packages cover target_pkg, else None."""
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
-    for raw_inc, raw_from in entries:
-        norm = _normalize_platform_seps(raw_inc).strip("/")
+    for entry in entries:
+        raw_inc = entry[0]
+        raw_from = entry[1] if len(entry) > 1 else "."
+        raw_to = entry[2] if len(entry) > 2 else ""
+        if not raw_inc or _is_absolute_pattern(raw_inc):
+            continue
+        norm = _norm_pkg_dir_value(raw_inc)
         norm_from = _norm_pkg_dir_value(raw_from)
+        norm_to = _norm_pkg_dir_value(raw_to)
+        if norm_to == ".":
+            norm_to = ""
         base_root = (harness / norm_from) if (harness is not None and norm_from not in {"", "."}) else harness
-        pkg_dir = {"": norm_from} if norm_from not in {"", "."} else {}
-        if norm == "cli_anything":
-            if base_root is None or not target_pkg:
+        if not norm_to:
+            pkg_dir = {"": norm_from} if norm_from not in {"", "."} else {}
+            if norm == "cli_anything":
+                if base_root is None or not target_pkg:
+                    return pkg_dir
+                if _package_exists_under(base_root, target_pkg):
+                    return pkg_dir
+            elif mod and norm == f"cli_anything/{mod}":
+                if base_root is None or not target_pkg:
+                    return pkg_dir
+                if _package_exists_under(base_root, target_pkg):
+                    return pkg_dir
+            elif not mod and norm.startswith("cli_anything/"):
                 return pkg_dir
-            if _package_exists_under(base_root, target_pkg):
-                return pkg_dir
-        elif mod and norm in {f"cli_anything/{mod}", f"cli_anything.{mod}"}:
-            if base_root is None or not target_pkg:
-                return pkg_dir
-            if _package_exists_under(base_root, target_pkg):
-                return pkg_dir
-        elif not mod and (norm.startswith("cli_anything/") or norm.startswith("cli_anything.")):
-            return pkg_dir
+        elif norm_to == "cli_anything" and mod and norm == mod:
+            src_rel = f"{norm_from}/{mod}" if norm_from not in {"", "."} else mod
+            if base_root is None or (base_root / mod / "__init__.py").is_file():
+                return {target_pkg: src_rel}  # type: ignore[dict-item]
     return None
 
 
@@ -1249,6 +1790,8 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "declares_exclude_package_data": False,
         "exclude_package_data": {},
         "include_package_data": None,
+        "poetry_exclude": [],
+        "poetry_wheel_include": [],
         "has_python_requires": False,
     }
 
@@ -1443,21 +1986,42 @@ def _inspect_pyproject_data(
         poetry_deps = poetry_cfg.get("dependencies") if isinstance(poetry_cfg, dict) else None
         if isinstance(poetry_deps, dict) and "python" in poetry_deps:
             info["has_python_requires"] = True
+        if isinstance(poetry_cfg, dict):
+            poetry_excl = poetry_cfg.get("exclude")
+            if isinstance(poetry_excl, list):
+                info["poetry_exclude"] = [x for x in poetry_excl if isinstance(x, str)]
+            poetry_inc = poetry_cfg.get("include")
+            if isinstance(poetry_inc, list):
+                wheel_incs: list[str] = []
+                for inc_item in poetry_inc:
+                    # Bare string entries in [tool.poetry].include default to format=["sdist"] only.
+                    if isinstance(inc_item, dict):
+                        raw_path = inc_item.get("path")
+                        if isinstance(raw_path, str) and _poetry_entry_has_wheel_format(
+                            inc_item, default_formats=("sdist",)
+                        ):
+                            wheel_incs.append(raw_path)
+                info["poetry_wheel_include"] = wheel_incs
+        package_mode_disabled = isinstance(poetry_cfg, dict) and poetry_cfg.get("package-mode") is False
         poetry_pkgs = poetry_cfg.get("packages") if isinstance(poetry_cfg, dict) else None
         if isinstance(poetry_pkgs, list):
             info["declares_packages"] = True
-            pkg_entries = [
-                (
-                    str(p["include"]),
-                    str(p.get("from", ".")) if isinstance(p.get("from", "."), str) else ".",
-                )
-                for p in poetry_pkgs
-                if isinstance(p, dict) and isinstance(p.get("include"), str)
-            ]
-            poetry_pkg_dir = _poetry_packages_dir(target_pkg, pkg_entries, harness=harness)
-            if poetry_pkg_dir is not None:
-                info["namespace_ok"] = True
-                info["package_dir"].update(poetry_pkg_dir)
+            if not package_mode_disabled:
+                pkg_entries: list[tuple[str, ...]] = [
+                    (
+                        str(p["include"]),
+                        str(p.get("from", ".")) if isinstance(p.get("from", "."), str) else ".",
+                        str(p.get("to", "")) if isinstance(p.get("to"), str) else "",
+                    )
+                    for p in poetry_pkgs
+                    if isinstance(p, dict)
+                    and isinstance(p.get("include"), str)
+                    and _poetry_entry_has_wheel_format(p, default_formats=("sdist", "wheel"))
+                ]
+                poetry_pkg_dir = _poetry_packages_dir(target_pkg, pkg_entries, harness=harness)
+                if poetry_pkg_dir is not None:
+                    info["namespace_ok"] = True
+                    info["package_dir"].update(poetry_pkg_dir)
 
     project_cfg = data.get("project")
     dynamic_fields: set[str] = set()
@@ -2095,6 +2659,15 @@ def _check_packaging(
         for name, target in declared_scripts
         if name in expected_prefixes or re.match(r"^cli-anything-[a-z0-9_-]+$", name)
     ]
+    poetry_excluded_files: set[str] = set()
+    poetry_wheel_included_files: set[str] = set()
+    if has_pyproject and pyproj_info["backend_kind"] == "poetry":
+        poetry_excluded_files, poetry_wheel_included_files = _poetry_wheel_file_sets(
+            harness,
+            pyproj_info["poetry_exclude"],
+            pyproj_info["poetry_wheel_include"],
+        )
+
     primary_cli_files: list[Path] = []
     all_resolved_cli_files: list[Path] = []
     if pyproj_info["dynamic_scripts_error"]:
@@ -2116,6 +2689,7 @@ def _check_packaging(
                 parent_selected=parent_selected,
                 pkg_spec=eff_pkg_spec,
                 base_package_dir=eff_base_package_dir,
+                excluded_files=poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
             )
             if not ok_target:
                 invalid_targets.append(f"{cmd_name}={target_spec} ({reason})")
@@ -2182,8 +2756,8 @@ def _check_packaging(
     declared_cli_files = primary_cli_files or all_resolved_cli_files
 
     skill_data_ok = False
-    if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
-        # Hatch and Poetry include non-Python assets inside declared package directories automatically.
+    if has_pyproject and pyproj_info["backend_kind"] == "hatch":
+        # Hatch includes non-Python assets inside declared package directories automatically.
         if pyproj_info["namespace_ok"] and target_pkg:
             raw_pkg_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
             skill_path = (
@@ -2194,6 +2768,31 @@ def _check_packaging(
             skill_data_ok = skill_path.is_file()
         else:
             skill_data_ok = bool(pyproj_info["namespace_ok"])
+    elif has_pyproject and pyproj_info["backend_kind"] == "poetry":
+        # Poetry includes non-Python assets inside wheel-selected packages unless excluded
+        # by [tool.poetry].exclude (and not re-included with format="wheel").
+        if pyproj_info["namespace_ok"] and target_pkg:
+            raw_pkg_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
+            skill_path = (
+                (harness / raw_pkg_dir / "skills" / "SKILL.md")
+                if raw_pkg_dir
+                else (harness / "skills" / "SKILL.md")
+            )
+            expected_wheel_rel = f"{target_pkg.replace('.', '/')}/skills/SKILL.md"
+            pkg_skill_included = False
+            if skill_path.is_file():
+                try:
+                    skill_rel = skill_path.relative_to(harness).as_posix()
+                except ValueError:
+                    skill_rel = (
+                        f"{raw_pkg_dir}/skills/SKILL.md" if raw_pkg_dir else "skills/SKILL.md"
+                    )
+                pkg_skill_included = not _poetry_is_excluded(skill_rel, poetry_excluded_files)
+            skill_data_ok = pkg_skill_included or (
+                expected_wheel_rel in poetry_wheel_included_files
+            )
+        else:
+            skill_data_ok = False
     else:
         if pyproj_info["declares_package_data"]:
             eff_pkg_data = pyproj_info["package_data"]

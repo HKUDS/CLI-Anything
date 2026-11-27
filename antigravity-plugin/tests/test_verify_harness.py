@@ -3506,3 +3506,251 @@ setup(
     )
     assert r_sel["ok"] is False
     assert {c["id"]: c for c in r_sel["checks"]}["effective-namespace-package"]["status"] == "fail"
+
+
+def test_verify_validates_full_dotted_console_script_callable(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "dotted_ep", "dotapp")
+    cli_py = harness / "cli_anything" / "dotapp" / "dotapp_cli.py"
+    init_py = harness / "cli_anything" / "dotapp" / "__init__.py"
+    cli_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+
+main.sub = main
+
+class BaseRunner:
+    @staticmethod
+    def inherited():
+        cli()
+
+class Runner(BaseRunner):
+    @staticmethod
+    def run():
+        cli()
+
+runner = Runner()
+opaque = object()
+
+if __name__ == "__main__":
+    main.only_in_main = main
+""",
+        encoding="utf-8",
+    )
+    init_py.write_text(
+        '"""DotApp harness."""\nfrom . import dotapp_cli\n',
+        encoding="utf-8",
+    )
+
+    def _set_target(target: str) -> dict:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-dotapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.dotapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-dotapp={target}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        return verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+
+    # Invalid / unverifiable dotted attribute chains must fail.
+    for bad_target in (
+        "cli_anything.dotapp.dotapp_cli:main.missing",
+        "cli_anything.dotapp.dotapp_cli:main.only_in_main",
+        "cli_anything.dotapp.dotapp_cli:cli.missing",
+        "cli_anything.dotapp.dotapp_cli:cli.main.missing",
+        "cli_anything.dotapp.dotapp_cli:Runner.missing",
+        "cli_anything.dotapp.dotapp_cli:Runner.run.missing",
+        "cli_anything.dotapp.dotapp_cli:opaque.run",
+        "cli_anything.dotapp:dotapp_cli.main.missing",
+    ):
+        res = _set_target(bad_target)
+        assert res["ok"] is False, (bad_target, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "fail", bad_target
+
+    # Valid statically verifiable dotted callables must pass.
+    for good_target in (
+        "cli_anything.dotapp.dotapp_cli:cli.main",
+        "cli_anything.dotapp.dotapp_cli:main.sub",
+        "cli_anything.dotapp.dotapp_cli:Runner.run",
+        "cli_anything.dotapp.dotapp_cli:Runner.inherited",
+        "cli_anything.dotapp.dotapp_cli:runner.run",
+        "cli_anything.dotapp:dotapp_cli.main",
+    ):
+        res = _set_target(good_target)
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "pass", (
+            good_target,
+            res["checks"],
+        )
+
+
+def test_verify_filters_poetry_packages_by_wheel_format(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "poetry_fmt", "pfmt")
+    (harness / "setup.py").unlink()
+
+    def _write_poetry(extra_body: str) -> None:
+        (harness / "pyproject.toml").write_text(
+            f"""[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-pfmt"
+version = "1.0.0"
+{extra_body}
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-pfmt = "cli_anything.pfmt.pfmt_cli:main"
+""",
+            encoding="utf-8",
+        )
+
+    # 1. sdist-only package entries must fail (wheel build fails in poetry-core).
+    for bad_cfg in (
+        'packages = [{include = "cli_anything", format = "sdist"}]',
+        'packages = [{include = "cli_anything", format = ["sdist"]}]',
+        'packages = [{include = "cli_anything", to = "vendor"}]',
+        'package-mode = false\npackages = [{include = "cli_anything"}]',
+    ):
+        _write_poetry(bad_cfg)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, (bad_cfg, res["checks"])
+        checks = {c["id"]: c for c in res["checks"]}
+        assert checks["namespace-packages"]["status"] == "fail", bad_cfg
+        assert checks["package-data-skills"]["status"] == "warn", bad_cfg
+
+    # Verify Py3.10 fallback matches tomllib for sdist-only rejection.
+    _write_poetry('packages = [{include = "cli_anything", format = "sdist"}]')
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        res_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_310["ok"] is False
+        assert {c["id"]: c for c in res_310["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 2. Wheel-eligible package entries (`format = "wheel"` or `["sdist", "wheel"]`) pass.
+    for good_cfg in (
+        'packages = [{include = "cli_anything", format = "wheel"}]',
+        'packages = [{include = "cli_anything", format = ["sdist", "wheel"]}]',
+    ):
+        _write_poetry(good_cfg)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (good_cfg, res["checks"])
+
+    # 3. Mixed sdist-only + wheel entries resolve source root strictly from the wheel entry.
+    src_copy = harness / "src" / "cli_anything"
+    shutil.copytree(harness / "cli_anything", src_copy)
+    _write_poetry(
+        'packages = [\n'
+        '    {include = "cli_anything", from = "missing_sdist", format = "sdist"},\n'
+        '    {include = "cli_anything", from = "src", format = "wheel"},\n'
+        ']'
+    )
+    res_mixed = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_mixed["ok"] is True, res_mixed["checks"]
+
+
+def test_verify_respects_poetry_exclusions_for_packaged_skills(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "poetry_excl", "pexcl")
+    (harness / "setup.py").unlink()
+
+    def _write_poetry(extra_body: str) -> None:
+        (harness / "pyproject.toml").write_text(
+            f"""[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-pexcl"
+version = "1.0.0"
+packages = [{{include = "cli_anything"}}]
+{extra_body}
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-pexcl = "cli_anything.pexcl.pexcl_cli:main"
+""",
+            encoding="utf-8",
+        )
+
+    # 1. File, directory, and glob exclusions remove SKILL.md from the wheel.
+    for excl_cfg in (
+        'exclude = ["cli_anything/pexcl/skills/SKILL.md"]',
+        'exclude = ["cli_anything/pexcl/skills"]',
+        'exclude = ["**/SKILL.md"]',
+        # Bare string include defaults to format=["sdist"] in poetry-core, so wheel still lacks SKILL.md.
+        'exclude = ["cli_anything/pexcl/skills/SKILL.md"]\ninclude = ["cli_anything/pexcl/skills/SKILL.md"]',
+        'exclude = ["cli_anything/pexcl/skills/SKILL.md"]\ninclude = [{path = "cli_anything/pexcl/skills/SKILL.md", format = "sdist"}]',
+    ):
+        _write_poetry(excl_cfg)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, (excl_cfg, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["package-data-skills"]["status"] == "warn", excl_cfg
+
+    # Verify Py3.10 fallback matches tomllib on Poetry exclude/include rules.
+    _write_poetry('exclude = ["cli_anything/pexcl/skills/SKILL.md"]')
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        res_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_310["ok"] is False
+        assert {c["id"]: c for c in res_310["checks"]}["package-data-skills"]["status"] == "warn"
+
+    # 2. Explicit wheel re-inclusion overrides exclude and passes strict verification.
+    for reincl_cfg in (
+        'exclude = ["cli_anything/pexcl/skills/SKILL.md"]\ninclude = [{path = "cli_anything/pexcl/skills/SKILL.md", format = "wheel"}]',
+        'exclude = ["cli_anything/pexcl/skills"]\ninclude = [{path = "cli_anything/pexcl/skills/SKILL.md", format = ["sdist", "wheel"]}]',
+    ):
+        _write_poetry(reincl_cfg)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (reincl_cfg, res["checks"])
+
+    # 3. Excluding the CLI module itself fails console-script.
+    _write_poetry('exclude = ["cli_anything/pexcl/pexcl_cli.py"]')
+    res_cli_excl = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_cli_excl["ok"] is False
+    assert {c["id"]: c for c in res_cli_excl["checks"]}["console-script"]["status"] == "fail"
