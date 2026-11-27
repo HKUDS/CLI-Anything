@@ -461,6 +461,41 @@ def _args_allow_zero_call(
     return True, None
 
 
+def _is_generator_function(fn_node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Return True if fn_node directly yields in its own scope (making it a generator function)."""
+    stack: list[ast.AST] = list(fn_node.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.Yield, ast.YieldFrom)):
+            return True
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+    return False
+
+
+def _check_plain_func_console_callable(
+    fn_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    bound_self: bool = False,
+) -> tuple[bool, str | None]:
+    """Validate that an undecorated (or staticmethod/classmethod) function can run synchronously via func()."""
+    if isinstance(fn_node, ast.AsyncFunctionDef):
+        return (
+            False,
+            "is an async function (returns an unawaited coroutine) and cannot be invoked as a synchronous console script",
+        )
+    if _is_generator_function(fn_node):
+        return (
+            False,
+            "is a generator function (returns an uniterated generator) and cannot be invoked as a synchronous console script",
+        )
+    ok_zero, sig_err = _args_allow_zero_call(fn_node.args, bound_self=bound_self)
+    if not ok_zero:
+        return False, f"{sig_err} and cannot be invoked with zero arguments"
+    return True, None
+
+
 def _is_provably_non_callable_expr(node: ast.AST) -> bool:
     """Return True if an AST expression provably evaluates to a non-callable value."""
     if isinstance(
@@ -931,12 +966,9 @@ def _resolve_module_attr_path(
                             elif cls_stmt.name == "__init__":
                                 init_node = cls_stmt
                     if not has_new and init_node is not None and not init_node.decorator_list:
-                        ok_zero, sig_err = _args_allow_zero_call(init_node.args, bound_self=True)
-                        if not ok_zero:
-                            init_err = (
-                                f"class '{stmt.name}.__init__' in {py_file.name} {sig_err} "
-                                "and cannot be invoked with zero arguments"
-                            )
+                        ok_fn, fn_err = _check_plain_func_console_callable(init_node, bound_self=True)
+                        if not ok_fn:
+                            init_err = f"class '{stmt.name}.__init__' in {py_file.name} {fn_err}"
                 if init_err is not None:
                     if top_level:
                         direct_local_defs.discard(stmt.name)
@@ -948,13 +980,11 @@ def _resolve_module_attr_path(
                     _clear_reexports(stmt.name)
                     non_callable_local_defs.discard(stmt.name)
                 if not stmt.decorator_list:
-                    ok_zero, sig_err = _args_allow_zero_call(stmt.args, bound_self=False)
-                    if not ok_zero:
+                    ok_fn, fn_err = _check_plain_func_console_callable(stmt, bound_self=False)
+                    if not ok_fn:
                         if top_level:
                             direct_local_defs.discard(stmt.name)
-                        bad_sig_local_defs[stmt.name] = (
-                            f"function '{stmt.name}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments"
-                        )
+                        bad_sig_local_defs[stmt.name] = f"function '{stmt.name}' in {py_file.name} {fn_err}"
                         continue
                 if top_level:
                     bad_sig_local_defs.pop(stmt.name, None)
@@ -1153,13 +1183,10 @@ def _resolve_module_attr_path(
                             call_node = cs
                     if call_node is None or call_node.decorator_list:
                         return None
-                    ok_zero, sig_err = _args_allow_zero_call(call_node.args, bound_self=True)
-                    if ok_zero:
+                    ok_fn, fn_err = _check_plain_func_console_callable(call_node, bound_self=True)
+                    if ok_fn:
                         return None
-                    errs.append(
-                        f"callable '{cls_node.name}.__call__' in {py_file.name} {sig_err} "
-                        "and cannot be invoked with zero arguments"
-                    )
+                    errs.append(f"callable '{cls_node.name}.__call__' in {py_file.name} {fn_err}")
         return errs[0] if errs else None
 
     # Single-component callable (`module:main`): return directly if defined locally,
@@ -1487,15 +1514,14 @@ def _resolve_module_attr_path(
                                 if builtin_dec == "staticmethod"
                                 else (True if builtin_dec == "classmethod" else accessed_on_instance)
                             )
-                            ok_zero, sig_err = _args_allow_zero_call(s.args, bound_self=is_bound)
-                            if not ok_zero:
+                            ok_fn, fn_err = _check_plain_func_console_callable(s, bound_self=is_bound)
+                            if not ok_fn:
                                 if cls_top:
                                     callable_names.discard(s.name)
                                     non_callable_names.discard(s.name)
                                     cls_attr_vals.pop(s.name, None)
                                 bad_sig_cls_names[s.name] = (
-                                    f"method '{cls_node.name}.{s.name}' in {py_file.name} {sig_err} "
-                                    "and cannot be invoked with zero arguments"
+                                    f"method '{cls_node.name}.{s.name}' in {py_file.name} {fn_err}"
                                 )
                                 continue
                         if cls_top:

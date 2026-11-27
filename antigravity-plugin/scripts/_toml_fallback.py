@@ -7,7 +7,14 @@ interpret inline tables, dotted keys, arrays, strings, and syntax errors identic
 from __future__ import annotations
 
 import re
+import string
 from typing import Any
+
+_ASCII_CTRL = frozenset(chr(i) for i in range(0x20)) | {chr(0x7F)}
+_ILLEGAL_SINGLE_LINE_CHARS = _ASCII_CTRL - {"\t"}
+_ILLEGAL_MULTILINE_CHARS = _ASCII_CTRL - {"\t", "\n"}
+_BARE_KEY_CHARS = frozenset(string.ascii_letters + string.digits + "_-")
+_HEX_CHARS = frozenset("0123456789abcdefABCDEF")
 
 
 class _TomlFlags:
@@ -131,27 +138,31 @@ class _TomlFallbackParser:
         while self.pos < self.n and self.text[self.pos] in {" ", "\t"}:
             self.pos += 1
 
+    def _skip_comment(self) -> None:
+        self.pos += 1  # '#'
+        while self.pos < self.n and self.text[self.pos] != "\n":
+            ch = self.text[self.pos]
+            if ch in _ILLEGAL_SINGLE_LINE_CHARS:
+                raise ValueError(f"Illegal character {ch!r} in TOML comment")
+            self.pos += 1
+
     def _skip_ws_and_comments(self, *, allow_newlines: bool) -> None:
-        ws = {" ", "\t", "\r", "\n"} if allow_newlines else {" ", "\t"}
+        ws = {" ", "\t", "\n"} if allow_newlines else {" ", "\t"}
         while self.pos < self.n:
             ch = self.text[self.pos]
             if ch in ws:
                 self.pos += 1
             elif ch == "#":
-                while self.pos < self.n and self.text[self.pos] != "\n":
-                    self.pos += 1
+                self._skip_comment()
             else:
                 break
 
     def _skip_to_eol(self) -> None:
         self._skip_ws_inline()
         if self.pos < self.n and self.text[self.pos] == "#":
-            while self.pos < self.n and self.text[self.pos] != "\n":
-                self.pos += 1
-        if self.pos < self.n and self.text[self.pos] not in {"\r", "\n"}:
+            self._skip_comment()
+        if self.pos < self.n and self.text[self.pos] != "\n":
             raise ValueError(f"Unexpected trailing content in TOML at pos {self.pos}")
-        if self.pos < self.n and self.text[self.pos] == "\r":
-            self.pos += 1
         if self.pos < self.n and self.text[self.pos] == "\n":
             self.pos += 1
 
@@ -165,7 +176,7 @@ class _TomlFallbackParser:
         if ch == "'":
             return self._parse_literal_string(multiline=False)
         start = self.pos
-        while self.pos < self.n and (self.text[self.pos].isalnum() or self.text[self.pos] in {"_", "-"}):
+        while self.pos < self.n and self.text[self.pos] in _BARE_KEY_CHARS:
             self.pos += 1
         if self.pos == start:
             raise ValueError(f"Invalid TOML bare key at pos {self.pos}")
@@ -204,23 +215,21 @@ class _TomlFallbackParser:
     def _parse_basic_string(self, *, multiline: bool) -> str:
         delim = '"""' if multiline else '"'
         self.pos += len(delim)
-        if multiline:
-            if self.text.startswith("\r\n", self.pos):
-                self.pos += 2
-            elif self.text.startswith("\n", self.pos):
-                self.pos += 1
+        if multiline and self.text.startswith("\n", self.pos):
+            self.pos += 1
+        illegal = _ILLEGAL_MULTILINE_CHARS if multiline else _ILLEGAL_SINGLE_LINE_CHARS
         out: list[str] = []
         while self.pos < self.n:
             if multiline and self.text.startswith('"""', self.pos):
-                # Allow 1 or 2 trailing quotes immediately before closing delimiter.
+                # TOML 1.0 allows at most 2 extra quotes immediately before closing """.
                 run = 0
                 while self.pos + run < self.n and self.text[self.pos + run] == '"':
                     run += 1
+                if run > 5:
+                    raise ValueError("Too many consecutive quotes in multiline basic string")
                 if run > 3:
                     out.append('"' * (run - 3))
-                    self.pos += run
-                    return "".join(out)
-                self.pos += 3
+                self.pos += run
                 return "".join(out)
             ch = self.text[self.pos]
             if not multiline and ch == '"':
@@ -231,28 +240,32 @@ class _TomlFallbackParser:
                 if self.pos >= self.n:
                     raise ValueError("Unterminated escape")
                 esc = self.text[self.pos]
-                if multiline and esc in {" ", "\t", "\r", "\n"}:
-                    while self.pos < self.n and self.text[self.pos] in {" ", "\t", "\r", "\n"}:
+                if multiline and esc in {" ", "\t", "\n"}:
+                    while self.pos < self.n and self.text[self.pos] in {" ", "\t"}:
+                        self.pos += 1
+                    if self.pos >= self.n or self.text[self.pos] != "\n":
+                        raise ValueError("Invalid line-ending backslash in multiline basic string")
+                    while self.pos < self.n and self.text[self.pos] in {" ", "\t", "\n"}:
                         self.pos += 1
                     continue
                 if esc in self._ESCAPES:
                     out.append(self._ESCAPES[esc])
                     self.pos += 1
-                elif esc == "u":
-                    hex_part = self.text[self.pos + 1 : self.pos + 5]
-                    if len(hex_part) != 4:
-                        raise ValueError("Invalid \\u escape in TOML string")
-                    out.append(chr(int(hex_part, 16)))
-                    self.pos += 5
-                elif esc == "U":
-                    hex_part = self.text[self.pos + 1 : self.pos + 9]
-                    if len(hex_part) != 8:
-                        raise ValueError("Invalid \\U escape in TOML string")
-                    out.append(chr(int(hex_part, 16)))
-                    self.pos += 9
+                elif esc in {"u", "U"}:
+                    width = 4 if esc == "u" else 8
+                    hex_part = self.text[self.pos + 1 : self.pos + 1 + width]
+                    if len(hex_part) != width or any(c not in _HEX_CHARS for c in hex_part):
+                        raise ValueError(f"Invalid \\{esc} escape in TOML string")
+                    cp = int(hex_part, 16)
+                    if (0xD800 <= cp <= 0xDFFF) or cp > 0x10FFFF:
+                        raise ValueError(f"Invalid Unicode scalar value \\{esc}{hex_part}")
+                    out.append(chr(cp))
+                    self.pos += 1 + width
                 else:
                     raise ValueError(f"Invalid TOML escape sequence: \\{esc}")
             else:
+                if ch in illegal:
+                    raise ValueError(f"Illegal character {ch!r} in TOML basic string")
                 out.append(ch)
                 self.pos += 1
         raise ValueError("Unterminated TOML basic string")
@@ -260,11 +273,8 @@ class _TomlFallbackParser:
     def _parse_literal_string(self, *, multiline: bool) -> str:
         delim = "'''" if multiline else "'"
         self.pos += len(delim)
-        if multiline:
-            if self.text.startswith("\r\n", self.pos):
-                self.pos += 2
-            elif self.text.startswith("\n", self.pos):
-                self.pos += 1
+        if multiline and self.text.startswith("\n", self.pos):
+            self.pos += 1
         start = self.pos
         if multiline:
             end = self.text.find("'''", self.pos)
@@ -273,14 +283,22 @@ class _TomlFallbackParser:
             run = 0
             while end + run < self.n and self.text[end + run] == "'":
                 run += 1
+            if run > 5:
+                raise ValueError("Too many consecutive quotes in multiline literal string")
             extra = run - 3
             val = self.text[start : end + extra]
+            for ch in val:
+                if ch in _ILLEGAL_MULTILINE_CHARS:
+                    raise ValueError(f"Illegal character {ch!r} in TOML multiline literal string")
             self.pos = end + run
             return val
         end = self.text.find("'", self.pos)
         if end == -1:
             raise ValueError("Unterminated TOML literal string")
         val = self.text[start:end]
+        for ch in val:
+            if ch in _ILLEGAL_SINGLE_LINE_CHARS:
+                raise ValueError(f"Illegal character {ch!r} in TOML literal string")
         self.pos = end + 1
         return val
 
@@ -308,13 +326,14 @@ class _TomlFallbackParser:
         self.pos += 1  # '{'
         table: dict[str, Any] = {}
         inline_flags = _TomlFlags()
+        self._skip_ws_inline()
+        if self.pos < self.n and self.text[self.pos] == "}":
+            self.pos += 1
+            return table
         while True:
-            self._skip_ws_and_comments(allow_newlines=True)
+            self._skip_ws_inline()
             if self.pos >= self.n:
                 raise ValueError("Unterminated TOML inline table")
-            if self.text[self.pos] == "}":
-                self.pos += 1
-                return table
             keys = self._parse_key_path()
             self._skip_ws_inline()
             if self.pos >= self.n or self.text[self.pos] != "=":
@@ -323,9 +342,12 @@ class _TomlFallbackParser:
             self._skip_ws_inline()
             val = self._parse_value()
             self._assign_path(table, keys, val, header=(), flags=inline_flags, access_lists=False)
-            self._skip_ws_and_comments(allow_newlines=True)
+            self._skip_ws_inline()
             if self.pos < self.n and self.text[self.pos] == ",":
                 self.pos += 1
+                self._skip_ws_inline()
+                if self.pos < self.n and self.text[self.pos] == "}":
+                    raise ValueError("Trailing comma is not allowed in TOML inline table")
             elif self.pos < self.n and self.text[self.pos] == "}":
                 self.pos += 1
                 return table

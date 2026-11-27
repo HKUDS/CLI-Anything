@@ -4774,3 +4774,254 @@ include = ["cli_anything.*"]
         assert r_310["ok"] is False
         assert {c["id"]: c for c in r_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
 
+
+def test_verify_rejects_undecorated_async_and_generator_console_targets(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "async_cli", "asynapp")
+    pkg = harness / "cli_anything" / "asynapp"
+    cli_py = pkg / "asynapp_cli.py"
+    setup_py = harness / "setup.py"
+
+    def _set_target(target_spec: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-asynapp",
+    version="1.2.3",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.asynapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-asynapp={target_spec}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+
+    cli_py.write_text(
+        """import asyncio
+import click
+
+def sync_adapter(fn):
+    def wrapper():
+        return asyncio.run(fn())
+    return wrapper
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+async def bad_async():
+    cli()
+
+bad_async_alias = bad_async
+
+def bad_gen():
+    yield cli()
+
+def bad_gen_from():
+    yield from (1, 2)
+
+@sync_adapter
+async def ok_decorated_async():
+    cli()
+
+async def _wrapped_async():
+    cli()
+
+ok_wrapped_async = sync_adapter(_wrapped_async)
+
+def ok_nested_gen():
+    def _helper():
+        yield 1
+    list(_helper())
+    cli()
+
+class AsyncRunner:
+    async def bad_method(self):
+        cli()
+
+    @staticmethod
+    async def bad_static():
+        cli()
+
+    @classmethod
+    async def bad_cls(cls):
+        cli()
+
+    @sync_adapter
+    async def ok_decorated_method(self):
+        cli()
+
+    def bad_gen_method(self):
+        yield 1
+
+runner = AsyncRunner()
+bad_method_alias = AsyncRunner.bad_static
+
+class AsyncCallApp:
+    async def __call__(self):
+        cli()
+
+bad_call_app = AsyncCallApp()
+
+class AsyncInitApp:
+    async def __init__(self):
+        cli()
+""",
+        encoding="utf-8",
+    )
+    (pkg / "__main__.py").write_text(
+        "from .asynapp_cli import bad_async, ok_decorated_async\n",
+        encoding="utf-8",
+    )
+
+    invalid_targets = [
+        "cli_anything.asynapp.asynapp_cli:bad_async",
+        "cli_anything.asynapp.asynapp_cli:bad_async_alias",
+        "cli_anything.asynapp.__main__:bad_async",
+        "cli_anything.asynapp.asynapp_cli:bad_gen",
+        "cli_anything.asynapp.asynapp_cli:bad_gen_from",
+        "cli_anything.asynapp.asynapp_cli:runner.bad_method",
+        "cli_anything.asynapp.asynapp_cli:AsyncRunner.bad_static",
+        "cli_anything.asynapp.asynapp_cli:AsyncRunner.bad_cls",
+        "cli_anything.asynapp.asynapp_cli:bad_method_alias",
+        "cli_anything.asynapp.asynapp_cli:runner.bad_gen_method",
+        "cli_anything.asynapp.asynapp_cli:bad_call_app",
+        "cli_anything.asynapp.asynapp_cli:AsyncInitApp",
+    ]
+    for spec in invalid_targets:
+        _set_target(spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, spec
+        cs = {c["id"]: c for c in res["checks"]}["console-script"]
+        assert cs["status"] == "fail", (spec, cs)
+        assert "synchronous console script" in cs["detail"], (spec, cs)
+
+    valid_targets = [
+        "cli_anything.asynapp.asynapp_cli:ok_decorated_async",
+        "cli_anything.asynapp.__main__:ok_decorated_async",
+        "cli_anything.asynapp.asynapp_cli:ok_wrapped_async",
+        "cli_anything.asynapp.asynapp_cli:ok_nested_gen",
+        "cli_anything.asynapp.asynapp_cli:runner.ok_decorated_method",
+    ]
+    for spec in valid_targets:
+        _set_target(spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (spec, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "pass", spec
+
+
+def test_toml_fallback_rejects_illegal_string_chars_newlines_and_invalid_inline_tables(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import _toml_fallback  # noqa: PLC0415
+
+    try:
+        import tomllib  # noqa: PLC0415
+    except ModuleNotFoundError:
+        tomllib = None
+
+    invalid_docs = [
+        'description = "hello\nworld"\n',
+        'description = "hello\r\nworld"\n',
+        'description = "hello\rworld"\n',
+        'description = "hello\x00world"\n',
+        'description = "hello\x7fworld"\n',
+        "description = 'hello\nworld'\n",
+        "description = 'hello\r\nworld'\n",
+        "description = 'hello\rworld'\n",
+        "description = 'hello\x07world'\n",
+        'a = """hello\rworld"""\n',
+        'a = """hello\x00world"""\n',
+        'a = """hello""""""\n',
+        'a = """hello \\  world"""\n',
+        "a = '''hello\rworld'''\n",
+        "a = '''hello''''''\n",
+        'a = "\\uD800"\n',
+        'a = "\\U00110000"\n',
+        'a = "\\u+123"\n',
+        'a = { b = 1, }\n',
+        'a = {\nb = 1\n}\n',
+        'a = { b = 1 # comment\n}\n',
+        '# bad\x07comment\na = 1\n',
+        '# bad\rcomment\na = 1\n',
+        '"bad\nkey" = 1\n',
+        "'bad\nkey' = 1\n",
+    ]
+    for doc in invalid_docs:
+        with pytest.raises(ValueError):
+            _toml_fallback.loads_toml_fallback(doc)
+        if tomllib is not None:
+            with pytest.raises(ValueError):
+                tomllib.loads(doc)
+
+    valid_docs = [
+        ('a = "hi\\nthere"\n', {"a": "hi\nthere"}),
+        ('a = "hi\tthere"\n', {"a": "hi\tthere"}),
+        ("a = 'hi\tthere'\n", {"a": "hi\tthere"}),
+        ('a = """\r\nhello\r\nworld"""\n', {"a": "hello\nworld"}),
+        ('a = """hello"""""\n', {"a": 'hello""'}),
+        ('a = """hello \\  \n   world"""\n', {"a": "hello world"}),
+        ("a = '''hello'''''\n", {"a": "hello''"}),
+        ('a = { b = """x\ny""", c = [\n1,\n2,\n] }\n', {"a": {"b": "x\ny", "c": [1, 2]}}),
+    ]
+    for doc, expected in valid_docs:
+        parsed = _toml_fallback.loads_toml_fallback(doc)
+        assert parsed == expected, doc
+        if tomllib is not None:
+            assert tomllib.loads(doc) == parsed, doc
+
+    # End-to-end verify_harness check: unescaped literal newline in single-line description
+    # must fail pyproject-toml-syntax under both tomllib and the Python 3.10 fallback.
+    harness = _create_valid_harness(tmp_path / "nl_str_proj", "nlstr")
+    (harness / "setup.py").unlink()
+    for bad_desc in ('"line1\nline2"', "'line1\nline2'"):
+        (harness / "pyproject.toml").write_text(
+            f"""[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-nlstr"
+version = "1.0.0"
+description = {bad_desc}
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-nlstr = "cli_anything.nlstr.nlstr_cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+
+[tool.setuptools.package-data]
+"cli_anything.nlstr" = ["skills/*.md"]
+""",
+            encoding="utf-8",
+        )
+        r_native = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_native["ok"] is False, bad_desc
+        assert {c["id"]: c for c in r_native["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+        with monkeypatch.context() as mp:
+            mp.setitem(sys.modules, "tomllib", None)
+            r_310 = verify_harness.verify_harness(
+                harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+            )
+            assert r_310["ok"] is False, bad_desc
+            assert {c["id"]: c for c in r_310["checks"]}["pyproject-toml-syntax"]["status"] == "fail"
+
+
