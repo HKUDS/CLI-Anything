@@ -5054,7 +5054,8 @@ def make_callable(cls):
     return cls
 
 class Meta(type):
-    pass
+    def __call__(cls, *args, **kwargs):
+        return cli
 
 @click.group(invoke_without_command=True)
 @click.option("--json", "use_json", is_flag=True)
@@ -5131,7 +5132,10 @@ class DynamicAttrCall:
 
 good_inst = GoodCall()
 mixin_inst = MixinSub()
-ext_inst = ExternalBaseSub()
+ext_inst = ExternalBaseSub(
+    params=[click.Option(["--json"], is_flag=True)],
+    invoke_without_command=True,
+)
 dec_inst = DecoratedRunner()
 meta_inst = MetaRunner()
 new_inst = CustomNewRunner()
@@ -7434,6 +7438,7 @@ def cli():
     pass
 
 def main():
+    _build_parser()
     cli()
 """,
         """import sys
@@ -7521,6 +7526,430 @@ setup(
             harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
         )
         assert res_ok["ok"] is True, (ok_alias, res_ok["checks"])
+
+
+def test_verify_preserves_unresolved_finder_filters_and_setup_kwargs(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "finder_kw", "fkwapp")
+    setup_py = harness / "setup.py"
+    setup_cfg = harness / "setup.cfg"
+
+    def _run() -> dict[str, object]:
+        return verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+
+    # 1. Concatenated exclude=["cli_anything.*"] + [] evaluates statically and must FAIL.
+    setup_py.write_text(
+        """from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-fkwapp",
+    version="1.0.0",
+    packages=find_namespace_packages(exclude=["cli_anything.*"] + []),
+    package_data={"cli_anything.fkwapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-fkwapp=cli_anything.fkwapp.fkwapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res = _run()
+    assert res["ok"] is False
+    assert {c["id"]: c for c in res["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 2. Unverifiable dynamic finder filters / **kwargs must FAIL rather than treating filters as default.
+    dynamic_finder_variants = [
+        'packages=find_namespace_packages(exclude=get_excludes())',
+        'packages=find_namespace_packages(include=get_includes())',
+        'packages=find_namespace_packages(**unknown_finder_kw)',
+        'packages=find_namespace_packages(*unknown_args)',
+    ]
+    for expr in dynamic_finder_variants:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+
+def get_excludes():
+    return ["cli_anything.*"]
+
+def get_includes():
+    return ["other.*"]
+
+unknown_finder_kw = dict(exclude=get_excludes())
+unknown_args = (".", ["cli_anything.*"])
+
+setup(
+    name="cli-anything-fkwapp",
+    version="1.0.0",
+    {expr},
+    package_data={{"cli_anything.fkwapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-fkwapp=cli_anything.fkwapp.fkwapp_cli:main"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+        res = _run()
+        assert res["ok"] is False, expr
+        assert {c["id"]: c for c in res["checks"]}["namespace-packages"]["status"] == "fail", expr
+
+    # 3. setup(**{"packages": []}) without setup.cfg must FAIL (must not fall back to auto-discovery).
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-fkwapp",
+    version="1.0.0",
+    **{"packages": []},
+    package_data={"cli_anything.fkwapp": ["skills/*.md"]},
+    entry_points={"console_scripts": ["cli-anything-fkwapp=cli_anything.fkwapp.fkwapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res = _run()
+    assert res["ok"] is False
+    assert {c["id"]: c for c in res["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 4. setup(**{"packages": []}) paired with setup.cfg find_namespace: must PASS (matches setuptools).
+    setup_cfg.write_text(
+        """[options]
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+""",
+        encoding="utf-8",
+    )
+    res = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res["ok"] is True, res["checks"]
+    setup_cfg.unlink()
+
+    # 5. Unresolved setup(**build_kwargs()) must FAIL rather than falling back to auto-discovery.
+    setup_py.write_text(
+        """from setuptools import setup
+
+def build_kwargs():
+    return {"packages": []}
+
+setup(
+    name="cli-anything-fkwapp",
+    version="1.0.0",
+    entry_points={"console_scripts": ["cli-anything-fkwapp=cli_anything.fkwapp.fkwapp_cli:main"]},
+    **build_kwargs(),
+)
+""",
+        encoding="utf-8",
+    )
+    res = _run()
+    assert res["ok"] is False
+    assert {c["id"]: c for c in res["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 6. Mutated KWARGS dict must be treated as unverifiable rather than trusting its stale literal.
+    setup_py.write_text(
+        """from setuptools import find_namespace_packages, setup
+
+KWARGS = {
+    "name": "cli-anything-fkwapp",
+    "version": "1.0.0",
+    "packages": find_namespace_packages(include=["cli_anything.*"]),
+    "package_data": {"cli_anything.fkwapp": ["skills/*.md"]},
+    "entry_points": {"console_scripts": ["cli-anything-fkwapp=cli_anything.fkwapp.fkwapp_cli:main"]},
+    "python_requires": ">=3.10",
+}
+KWARGS["packages"] = []
+setup(**KWARGS)
+""",
+        encoding="utf-8",
+    )
+    res = _run()
+    assert res["ok"] is False
+    assert {c["id"]: c for c in res["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 7. Valid concatenated include + static expanded **KWARGS / dict(...) / | must PASS strictly.
+    valid_setup_variants = [
+        """from setuptools import find_namespace_packages, setup
+
+KWARGS = {
+    "name": "cli-anything-fkwapp",
+    "version": "1.0.0",
+    "packages": find_namespace_packages(include=["cli_anything.*"] + []),
+    "package_data": {"cli_anything.fkwapp": ["skills/*.md"]},
+    "entry_points": {"console_scripts": ["cli-anything-fkwapp=cli_anything.fkwapp.fkwapp_cli:main"]},
+    "python_requires": ">=3.10",
+}
+setup(**KWARGS)
+""",
+        """from setuptools import find_namespace_packages, setup
+
+BASE = dict(name="cli-anything-fkwapp", version="1.0.0", python_requires=">=3.10")
+EXTRA = {
+    "packages": find_namespace_packages(include=("cli_anything.*",)),
+    "package_data": {"cli_anything.fkwapp": ["skills/*.md"]},
+    "entry_points": {"console_scripts": ["cli-anything-fkwapp=cli_anything.fkwapp.fkwapp_cli:main"]},
+}
+setup(**(BASE | EXTRA))
+""",
+    ]
+    for idx, src in enumerate(valid_setup_variants):
+        setup_py.write_text(src, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+
+
+def test_verify_associates_option_declarations_with_published_command(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cmd_tree", "ctapp")
+    cli_py = harness / "cli_anything" / "ctapp" / "ctapp_cli.py"
+
+    # Negative cases: --json declared only on unreachable/unregistered/shadowed/main-guarded code must FAIL.
+    invalid_cli_variants = [
+        # 1. Exact repro: unregistered @click.command() carries the only --json option.
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+def cli(project_path, dry_run):
+    pass
+
+@cli.result_callback()
+def auto_save(result, project_path, dry_run):
+    return result
+
+@click.command()
+@click.option("--json", "use_json", is_flag=True)
+def unused_aux(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        # 2. Unreferenced click.Command object with click.Option(["--json"]).
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+unused_cmd = click.Command("unused", params=[click.Option(["--json"], is_flag=True)])
+
+def main():
+    cli()
+""",
+        # 3. Unused option decorator factory helper.
+        """import click
+
+def unused_json_opt():
+    return click.option("--json", "use_json", is_flag=True)
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+def main():
+    cli()
+""",
+        # 4. Separate unreferenced Click group (even with its own subcommand and add_command(cli)).
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+@click.group()
+@click.option("--json", "use_json", is_flag=True)
+def other_group(use_json):
+    pass
+
+other_group.add_command(cli)
+
+def main():
+    cli()
+""",
+        # 5. Shadowed/redefined cli: earlier @cli.command() attached to the overwritten group.
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+@cli.command()
+@click.option("--json", "use_json", is_flag=True)
+def old_sub(use_json):
+    pass
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+def main():
+    cli()
+""",
+        # 6. Registration only inside `if __name__ == "__main__":` (skipped by console_scripts).
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+@click.command()
+@click.option("--json", "use_json", is_flag=True)
+def aux(use_json):
+    pass
+
+def main():
+    cli()
+
+if __name__ == "__main__":
+    cli.add_command(aux)
+    main()
+""",
+    ]
+    for idx, src in enumerate(invalid_cli_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        assert {c["id"]: c for c in res_bad["checks"]}["json-flag"]["status"] == "fail", idx
+
+    # Also verify an unused @click.group() does not satisfy click-groups when main() never touches it.
+    cli_py.write_text(
+        """import sys
+import click
+
+@click.group(invoke_without_command=True)
+def unused_group():
+    pass
+
+def main():
+    _ = "--json" in sys.argv
+""",
+        encoding="utf-8",
+    )
+    res_no_grp = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_no_grp["ok"] is False
+    assert {c["id"]: c for c in res_no_grp["checks"]}["click-groups"]["status"] == "fail"
+
+    # Positive cases: reachable command tree patterns must PASS strictly.
+    valid_cli_variants = [
+        # 1. Subcommand registered via @cli.command() declares --json.
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+@cli.command()
+@click.option("--json", "use_json", is_flag=True)
+def status(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        # 2. Imperative registration via cli.add_command(aux).
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+@click.command()
+@click.option("--json", "use_json", is_flag=True)
+def aux(use_json):
+    pass
+
+cli.add_command(aux)
+
+def main():
+    cli()
+""",
+        # 3. Reusable option decorator factory applied to registered subcommand (nslogger pattern).
+        """import click
+
+def json_option():
+    return click.option("--json", "use_json", is_flag=True)
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+@cli.command()
+@json_option()
+def tail(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        # 4. Multi-hop call chain entrypoint -> dispatch -> cli.main() (mubu/zotero pattern).
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+def dispatch():
+    cli.main()
+
+def main():
+    dispatch()
+""",
+        # 5. click.CommandCollection pulling options from source group.
+        """import click
+
+@click.group()
+@click.option("--json", "use_json", is_flag=True)
+def src_grp(use_json):
+    pass
+
+cli = click.CommandCollection(sources=[src_grp], invoke_without_command=True)
+
+def main():
+    cli()
+""",
+        # 6. Functional option wrapping + in-place decorator mutation on reachable group.
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+click.option("--json", "use_json", is_flag=True)(cli)
+
+def main():
+    cli()
+""",
+        # 7. Alias main = cli with subcommand registered after alias.
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+main = cli
+
+@cli.command()
+@click.option("--json", "use_json", is_flag=True)
+def info(use_json):
+    pass
+""",
+    ]
+    for idx, src in enumerate(valid_cli_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+
 
 
 

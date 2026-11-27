@@ -976,6 +976,7 @@ def _resolve_module_attr_path(
     check_manifest: bool = False,
     _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
     _preparsed_env: dict[str, Any] | None = None,
+    _resolved_target_out: list[tuple[Path, str]] | None = None,
 ) -> tuple[bool, str | None, Path | None]:
     """Validate a console-script attribute chain and resolve local re-exports to the implementation file.
 
@@ -1600,7 +1601,21 @@ def _resolve_module_attr_path(
             hatch_exclude=hatch_exclude,
             check_manifest=check_manifest,
             _visited=next_visited,
+            _resolved_target_out=_resolved_target_out,
         )
+
+    def _canonical_symbol_name(sym: str) -> str:
+        if sym in snap_star_info:
+            return snap_star_info[sym][0]
+        if sym.startswith("\x00snap:"):
+            parts = sym.split(":")
+            if len(parts) >= 3:
+                return parts[1]
+        return sym
+
+    def _record_resolved(target_file: Path, sym: str) -> None:
+        if _resolved_target_out is not None:
+            _resolved_target_out.append((target_file, _canonical_symbol_name(sym)))
 
     root_names = _expand_aliases(attr_parts[0])
     first_local_err: str | None = None
@@ -1860,6 +1875,7 @@ def _resolve_module_attr_path(
                     if first_local_err is None:
                         first_local_err = inst_err
                     continue
+                _record_resolved(py_file, attr_parts[0])
                 return True, None, py_file
 
         for cand in root_names:
@@ -1884,6 +1900,7 @@ def _resolve_module_attr_path(
                     first_local_err = bad_sig_local_defs[cand]
 
             for attr_chain in attr_aliases.get(cand, ()):
+                sub_out: list[tuple[Path, str]] | None = [] if _resolved_target_out is not None else None
                 ok_sub, sub_err, impl = _resolve_module_attr_path(
                     py_file,
                     list(attr_chain),
@@ -1898,8 +1915,14 @@ def _resolve_module_attr_path(
                     check_manifest=check_manifest,
                     _visited=next_visited,
                     _preparsed_env=local_env,
+                    _resolved_target_out=sub_out,
                 )
                 if ok_sub:
+                    if _resolved_target_out is not None:
+                        if impl is not None and impl != py_file and sub_out:
+                            _resolved_target_out.extend(sub_out)
+                        else:
+                            _record_resolved(py_file, attr_parts[0])
                     return True, None, impl or py_file
                 chain_roots = _expand_aliases(attr_chain[0])
                 is_local_chain = any(
@@ -1970,6 +1993,7 @@ def _resolve_module_attr_path(
                     has_external_binding = True
 
         if has_external_binding or first_local_err is None:
+            _record_resolved(py_file, attr_parts[0])
             return True, None, py_file
         return False, first_local_err, None
 
@@ -2003,6 +2027,7 @@ def _resolve_module_attr_path(
                 return False, cls_err, None
             return True, None, py_file
         if isinstance(val, ast.Name):
+            sub_out: list[tuple[Path, str]] | None = [] if _resolved_target_out is not None else None
             ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
                 py_file,
                 [val.id],
@@ -2017,12 +2042,19 @@ def _resolve_module_attr_path(
                 check_manifest=check_manifest,
                 _visited=next_visited,
                 _preparsed_env=local_env,
+                _resolved_target_out=sub_out,
             )
             if ok_ref:
+                if _resolved_target_out is not None:
+                    if ref_impl is not None and ref_impl != py_file and sub_out:
+                        _resolved_target_out.extend(sub_out)
+                    else:
+                        _record_resolved(py_file, attr_parts[0])
                 return True, None, ref_impl or py_file
             return False, ref_err, None
         rhs_chain = _extract_attr_chain(val)
         if rhs_chain is not None and len(rhs_chain) >= 2:
+            sub_out = [] if _resolved_target_out is not None else None
             ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
                 py_file,
                 list(rhs_chain),
@@ -2037,8 +2069,14 @@ def _resolve_module_attr_path(
                 check_manifest=check_manifest,
                 _visited=next_visited,
                 _preparsed_env=local_env,
+                _resolved_target_out=sub_out,
             )
             if ok_ref:
+                if _resolved_target_out is not None:
+                    if ref_impl is not None and ref_impl != py_file and sub_out:
+                        _resolved_target_out.extend(sub_out)
+                    else:
+                        _record_resolved(py_file, attr_parts[0])
                 return True, None, ref_impl or py_file
             chain_roots = _expand_aliases(rhs_chain[0])
             is_local_ref = any(
@@ -2071,10 +2109,13 @@ def _resolve_module_attr_path(
     if matched_attr_vals:
         attr_err: str | None = None
         for assigned_val in matched_attr_vals:
+            before_n = len(_resolved_target_out) if _resolved_target_out is not None else 0
             ok_val, val_err, impl = _check_assigned_value_callable(
                 assigned_val, ".".join(attr_parts)
             )
             if ok_val:
+                if _resolved_target_out is not None and len(_resolved_target_out) == before_n:
+                    _record_resolved(py_file, attr_parts[0])
                 return True, None, impl or py_file
             if attr_err is None and val_err:
                 attr_err = val_err
@@ -2083,6 +2124,7 @@ def _resolve_module_attr_path(
 
     # 2. Click Command / Group `.main` entrypoint (e.g. `@click.group() def cli(): ...` -> `cli.main`).
     if len(attr_parts) == 2 and attr_parts[1] == "main" and any(c in click_cmds for c in root_names):
+        _record_resolved(py_file, attr_parts[0])
         return True, None, py_file
 
     # 3. Local class (or alias / direct instance of a local class) attribute/method chain.
@@ -2379,10 +2421,13 @@ def _resolve_module_attr_path(
                     candidate_classes.append((expanded_cls, True))
     for cls_name, is_inst in candidate_classes:
         for cls_node in classes.get(cls_name, ()):
+            before_n = len(_resolved_target_out) if _resolved_target_out is not None else 0
             ok_cls, cls_err, cls_impl = _class_defines_chain(
                 cls_node, attr_parts[1:], {cls_name}, accessed_on_instance=is_inst
             )
             if ok_cls:
+                if _resolved_target_out is not None and len(_resolved_target_out) == before_n:
+                    _record_resolved(py_file, attr_parts[0])
                 return True, None, cls_impl or py_file
             if first_local_err is None and cls_err:
                 first_local_err = cls_err
@@ -2390,6 +2435,7 @@ def _resolve_module_attr_path(
     # 4. Local attribute aliases (e.g. `sub = demoapp_cli.Runner` -> `sub.run`).
     for cand in root_names:
         for attr_chain in attr_aliases.get(cand, ()):
+            sub_out: list[tuple[Path, str]] | None = [] if _resolved_target_out is not None else None
             ok_sub, sub_err, impl = _resolve_module_attr_path(
                 py_file,
                 [*attr_chain, *attr_parts[1:]],
@@ -2404,8 +2450,14 @@ def _resolve_module_attr_path(
                 check_manifest=check_manifest,
                 _visited=next_visited,
                 _preparsed_env=local_env,
+                _resolved_target_out=sub_out,
             )
             if ok_sub:
+                if _resolved_target_out is not None:
+                    if impl is not None and impl != py_file and sub_out:
+                        _resolved_target_out.extend(sub_out)
+                    else:
+                        _record_resolved(py_file, attr_parts[0])
                 return True, None, impl or py_file
             if first_local_err is None and sub_err:
                 first_local_err = sub_err
@@ -2732,6 +2784,7 @@ def _validate_console_script_target(
     excluded_files: set[str] | None = None,
     hatch_exclude: list[str] | None = None,
     check_manifest: bool = False,
+    resolved_target_out: list[tuple[Path, str]] | None = None,
 ) -> tuple[bool, str, Path | None]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
     spec = target_spec.strip()
@@ -2817,6 +2870,7 @@ def _validate_console_script_target(
         excluded_files=excluded_files,
         hatch_exclude=hatch_exclude,
         check_manifest=check_manifest,
+        _resolved_target_out=resolved_target_out,
     )
     if not ok_sym:
         return False, sym_err or f"callable '{attr_path}' not found in '{module_path}'", None
@@ -3507,10 +3561,41 @@ def _inspect_setup_py(
                 for alias in stmt.names:
                     if alias.name in {"PEP420PackageFinder", "PackageFinder"}:
                         callable_aliases[alias.asname or alias.name] = alias.name
-        elif isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
-            bindings[stmt.targets[0].id] = stmt.value
-        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
-            bindings[stmt.target.id] = stmt.value
+        elif isinstance(stmt, ast.Assign):
+            if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+                bindings[stmt.targets[0].id] = stmt.value
+            else:
+                for tgt in stmt.targets:
+                    if isinstance(tgt, ast.Name):
+                        bindings[tgt.id] = stmt.value
+                    elif isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name):
+                        bindings.pop(tgt.value.id, None)
+                    else:
+                        for bn in _collect_target_names(tgt):
+                            bindings.pop(bn, None)
+        elif isinstance(stmt, ast.AnnAssign):
+            if isinstance(stmt.target, ast.Name) and stmt.value is not None:
+                bindings[stmt.target.id] = stmt.value
+            elif isinstance(stmt.target, ast.Subscript) and isinstance(stmt.target.value, ast.Name):
+                bindings.pop(stmt.target.value.id, None)
+        elif isinstance(stmt, ast.AugAssign):
+            if isinstance(stmt.target, ast.Name):
+                bindings.pop(stmt.target.id, None)
+            elif isinstance(stmt.target, ast.Subscript) and isinstance(stmt.target.value, ast.Name):
+                bindings.pop(stmt.target.value.id, None)
+        elif isinstance(stmt, ast.Delete):
+            for tgt in stmt.targets:
+                if isinstance(tgt, ast.Name):
+                    bindings.pop(tgt.id, None)
+                elif isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name):
+                    bindings.pop(tgt.value.id, None)
+        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            if (
+                isinstance(stmt.value.func, ast.Attribute)
+                and isinstance(stmt.value.func.value, ast.Name)
+                and stmt.value.func.attr in {"update", "pop", "popitem", "clear", "setdefault", "append", "extend", "insert", "remove"}
+            ):
+                bindings.pop(stmt.value.func.value.id, None)
 
     def _resolve(node: ast.AST) -> ast.AST:
         seen: set[str] = set()
@@ -3548,6 +3633,136 @@ def _inspect_setup_py(
                 return cur.attr
         return _call_func_name(cur)
 
+    def _eval_setup_str_list(node: ast.AST, _seen: frozenset[str] = frozenset()) -> list[str] | None:
+        cur = node
+        seen = set(_seen)
+        while isinstance(cur, ast.Name) and cur.id in bindings and cur.id not in seen:
+            seen.add(cur.id)
+            cur = bindings[cur.id]
+        next_seen = frozenset(seen)
+        if isinstance(cur, (ast.List, ast.Tuple, ast.Set)):
+            out: list[str] = []
+            for elt in cur.elts:
+                if isinstance(elt, ast.Starred):
+                    sub = _eval_setup_str_list(elt.value, next_seen)
+                    if sub is None:
+                        return None
+                    out.extend(sub)
+                else:
+                    r_elt = _resolve(elt)
+                    if isinstance(r_elt, ast.Constant) and isinstance(r_elt.value, str):
+                        out.append(r_elt.value)
+                    else:
+                        return None
+            return out
+        if isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.Add):
+            left = _eval_setup_str_list(cur.left, next_seen)
+            right = _eval_setup_str_list(cur.right, next_seen)
+            if left is not None and right is not None:
+                return left + right
+            return None
+        if (
+            isinstance(cur, ast.Call)
+            and isinstance(cur.func, ast.Name)
+            and cur.func.id in {"list", "tuple", "set", "sorted"}
+            and len(cur.args) == 1
+            and not cur.keywords
+            and not isinstance(cur.args[0], ast.Starred)
+        ):
+            inner = _eval_setup_str_list(cur.args[0], next_seen)
+            if inner is not None:
+                return sorted(inner) if cur.func.id == "sorted" else list(inner)
+        return None
+
+    def _eval_static_dict_items(
+        node: ast.AST,
+        _seen: frozenset[str] = frozenset(),
+    ) -> list[tuple[str, ast.AST]] | None:
+        cur = node
+        seen = set(_seen)
+        while isinstance(cur, ast.Name) and cur.id in bindings and cur.id not in seen:
+            seen.add(cur.id)
+            cur = bindings[cur.id]
+        next_seen = frozenset(seen)
+        if isinstance(cur, ast.Dict):
+            merged: dict[str, ast.AST] = {}
+            for k, v in zip(cur.keys, cur.values):
+                if k is None:
+                    sub_items = _eval_static_dict_items(v, next_seen)
+                    if sub_items is None:
+                        return None
+                    for sk, sv in sub_items:
+                        merged[sk] = sv
+                else:
+                    rk = _resolve(k)
+                    if not (isinstance(rk, ast.Constant) and isinstance(rk.value, str)):
+                        return None
+                    merged[rk.value] = v
+            return list(merged.items())
+        if isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.BitOr):
+            left = _eval_static_dict_items(cur.left, next_seen)
+            right = _eval_static_dict_items(cur.right, next_seen)
+            if left is None or right is None:
+                return None
+            merged = dict(left)
+            for rk, rv in right:
+                merged[rk] = rv
+            return list(merged.items())
+        if (
+            isinstance(cur, ast.Call)
+            and isinstance(cur.func, ast.Name)
+            and cur.func.id == "dict"
+            and len(cur.args) <= 1
+        ):
+            merged = {}
+            if len(cur.args) == 1:
+                arg0 = cur.args[0]
+                if isinstance(arg0, ast.Starred):
+                    return None
+                sub_map = _eval_static_dict_items(arg0, next_seen)
+                if sub_map is not None:
+                    for sk, sv in sub_map:
+                        merged[sk] = sv
+                else:
+                    r_arg0 = _resolve(arg0)
+                    if not isinstance(r_arg0, (ast.List, ast.Tuple)):
+                        return None
+                    for pair_node in r_arg0.elts:
+                        r_pair = _resolve(pair_node)
+                        if not isinstance(r_pair, (ast.List, ast.Tuple)) or len(r_pair.elts) != 2:
+                            return None
+                        rk = _resolve(r_pair.elts[0])
+                        if not (isinstance(rk, ast.Constant) and isinstance(rk.value, str)):
+                            return None
+                        merged[rk.value] = r_pair.elts[1]
+            for kw in cur.keywords:
+                if kw.arg is None:
+                    sub_items = _eval_static_dict_items(kw.value, next_seen)
+                    if sub_items is None:
+                        return None
+                    for sk, sv in sub_items:
+                        merged[sk] = sv
+                else:
+                    merged[kw.arg] = kw.value
+            return list(merged.items())
+        return None
+
+    def _expand_call_keywords(
+        keywords: list[ast.keyword],
+    ) -> tuple[list[tuple[str, ast.AST]], bool]:
+        expanded: list[tuple[str, ast.AST]] = []
+        unresolved = False
+        for kw in keywords:
+            if kw.arg is not None:
+                expanded.append((kw.arg, kw.value))
+            else:
+                items = _eval_static_dict_items(kw.value)
+                if items is None:
+                    unresolved = True
+                else:
+                    expanded.extend(items)
+        return expanded, unresolved
+
     def _check_packages_expr(expr: ast.AST) -> None:
         node = _resolve(expr)
         if isinstance(node, ast.Constant) and node.value is None:
@@ -3558,9 +3773,15 @@ def _inspect_setup_py(
         if isinstance(node, ast.Call):
             fname = _resolve_setuptools_callable(node.func)
             if fname == "find_namespace_packages":
-                where_kw = next((kw.value for kw in node.keywords if kw.arg == "where"), None)
-                exc_kw = next((kw.value for kw in node.keywords if kw.arg == "exclude"), None)
-                inc_kw = next((kw.value for kw in node.keywords if kw.arg == "include"), None)
+                kw_pairs, kw_unresolved = _expand_call_keywords(node.keywords)
+                if kw_unresolved or any(isinstance(a, ast.Starred) for a in node.args):
+                    info["packages_nonempty"] = True
+                    info["unverifiable_packages"] = True
+                    return
+                kw_map = dict(kw_pairs)
+                where_kw = kw_map.get("where")
+                exc_kw = kw_map.get("exclude")
+                inc_kw = kw_map.get("include")
                 if where_kw is None and len(node.args) >= 1:
                     where_kw = node.args[0]
                 if exc_kw is None and len(node.args) >= 2:
@@ -3581,15 +3802,21 @@ def _inspect_setup_py(
 
                 includes: list[str] | None = None
                 if inc_kw is not None:
-                    inc_vals = _const_str_list(_resolve(inc_kw))
-                    if inc_vals is not None:
-                        includes = inc_vals
+                    inc_vals = _eval_setup_str_list(inc_kw)
+                    if inc_vals is None:
+                        info["packages_nonempty"] = True
+                        info["unverifiable_packages"] = True
+                        return
+                    includes = inc_vals
 
                 excludes: list[str] | None = None
                 if exc_kw is not None:
-                    exc_vals = _const_str_list(_resolve(exc_kw))
-                    if exc_vals is not None:
-                        excludes = exc_vals
+                    exc_vals = _eval_setup_str_list(exc_kw)
+                    if exc_vals is None:
+                        info["packages_nonempty"] = True
+                        info["unverifiable_packages"] = True
+                        return
+                    excludes = exc_vals
 
                 info["pkg_spec"] = {
                     "kind": "find",
@@ -3624,18 +3851,20 @@ def _inspect_setup_py(
                         for w in (wheres or ["."])
                     )
             elif fname == "find_packages":
-                where_kw = next((kw.value for kw in node.keywords if kw.arg == "where"), None)
-                exc_kw = next((kw.value for kw in node.keywords if kw.arg == "exclude"), None)
-                inc_kw = next((kw.value for kw in node.keywords if kw.arg == "include"), None)
-                if where_kw is None and len(node.args) >= 1:
+                kw_pairs, kw_unresolved = _expand_call_keywords(node.keywords)
+                kw_map = dict(kw_pairs)
+                where_kw = kw_map.get("where")
+                exc_kw = kw_map.get("exclude")
+                inc_kw = kw_map.get("include")
+                if where_kw is None and len(node.args) >= 1 and not isinstance(node.args[0], ast.Starred):
                     where_kw = node.args[0]
-                if exc_kw is None and len(node.args) >= 2:
+                if exc_kw is None and len(node.args) >= 2 and not isinstance(node.args[1], ast.Starred):
                     exc_kw = node.args[1]
-                if inc_kw is None and len(node.args) >= 3:
+                if inc_kw is None and len(node.args) >= 3 and not isinstance(node.args[2], ast.Starred):
                     inc_kw = node.args[2]
 
                 fp_where: str | None = "."
-                fp_dynamic_where = False
+                fp_dynamic_where = kw_unresolved or any(isinstance(a, ast.Starred) for a in node.args)
                 if where_kw is not None:
                     resolved_where = _resolve(where_kw)
                     if isinstance(resolved_where, ast.Constant) and isinstance(resolved_where.value, str):
@@ -3643,8 +3872,16 @@ def _inspect_setup_py(
                     else:
                         fp_where = None
                         fp_dynamic_where = True
-                fp_includes = _const_str_list(_resolve(inc_kw)) if inc_kw is not None else None
-                fp_excludes = _const_str_list(_resolve(exc_kw)) if exc_kw is not None else None
+                fp_includes: list[str] | None = None
+                if inc_kw is not None:
+                    fp_includes = _eval_setup_str_list(inc_kw)
+                    if fp_includes is None:
+                        fp_dynamic_where = True
+                fp_excludes: list[str] | None = None
+                if exc_kw is not None:
+                    fp_excludes = _eval_setup_str_list(exc_kw)
+                    if fp_excludes is None:
+                        fp_dynamic_where = True
 
                 info["uses_regular_find_packages"] = True
                 if fp_dynamic_where or harness is None:
@@ -3661,7 +3898,7 @@ def _inspect_setup_py(
                 info["packages_nonempty"] = True
                 info["unverifiable_packages"] = True
         else:
-            explicit = _const_str_list(node)
+            explicit = _eval_setup_str_list(node)
             if explicit is not None:
                 info["packages_nonempty"] = bool(explicit)
                 info["pkg_spec"] = {"kind": "explicit", "packages": explicit}
@@ -3675,21 +3912,16 @@ def _inspect_setup_py(
 
     def _extract_entry_points(expr: ast.AST) -> None:
         node = _resolve(expr)
-        if isinstance(node, ast.Dict):
-            if node.keys:
+        dict_items = _eval_static_dict_items(node)
+        if dict_items is not None:
+            if dict_items:
                 info["has_entry_points"] = True
-            for k, v in zip(node.keys, node.values):
-                if k is None:
-                    continue
-                k_node = _resolve(k)
-                if not (isinstance(k_node, ast.Constant) and isinstance(k_node.value, str)):
-                    continue
-                group_name = k_node.value
+            for group_name, v in dict_items:
                 v_node = _resolve(v)
                 if isinstance(v_node, ast.Constant) and isinstance(v_node.value, str):
                     raw_items: list[str] | None = [v_node.value]
                 else:
-                    raw_items = _const_str_list(v_node)
+                    raw_items = _eval_setup_str_list(v_node)
                 if raw_items is not None:
                     pairs, ep_err = _parse_entry_point_group_items(
                         raw_items, group=group_name, allow_semicolon_comments=False
@@ -3707,55 +3939,58 @@ def _inspect_setup_py(
             info["console_scripts"].extend(cs_pairs)
 
     def _extract_pkg_data_mapping(expr: ast.AST, dest: dict[str, list[str]]) -> None:
-        node = _resolve(expr)
-        if isinstance(node, ast.Dict):
-            for k, v in zip(node.keys, node.values):
-                if isinstance(k, ast.Constant) and isinstance(k.value, str):
-                    vals = _const_str_list(_resolve(v))
-                    if vals is not None:
-                        dest[k.value] = vals
+        dict_items = _eval_static_dict_items(expr)
+        if dict_items is not None:
+            for k, v in dict_items:
+                vals = _eval_setup_str_list(v)
+                if vals is not None:
+                    dest[k] = vals
 
     def _extract_str_mapping(expr: ast.AST, dest: dict[str, str]) -> None:
-        node = _resolve(expr)
-        if isinstance(node, ast.Dict):
-            for k, v in zip(node.keys, node.values):
-                if isinstance(k, ast.Constant) and isinstance(k.value, str):
-                    val = _resolve(v)
-                    if isinstance(val, ast.Constant) and isinstance(val.value, str):
-                        dest[k.value] = val.value
+        dict_items = _eval_static_dict_items(expr)
+        if dict_items is not None:
+            for k, v in dict_items:
+                val = _resolve(v)
+                if isinstance(val, ast.Constant) and isinstance(val.value, str):
+                    dest[k] = val.value
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _resolve_setuptools_callable(node.func) == "setup":
-            for kw in node.keywords:
-                if kw.arg == "packages":
-                    _check_packages_expr(kw.value)
-                elif kw.arg == "py_modules":
-                    val = _resolve(kw.value)
+            kw_pairs, has_unresolved_kwargs = _expand_call_keywords(node.keywords)
+            for kw_name, kw_val in kw_pairs:
+                if kw_name == "packages":
+                    _check_packages_expr(kw_val)
+                elif kw_name == "py_modules":
+                    val = _resolve(kw_val)
                     if not (isinstance(val, ast.Constant) and val.value is None):
                         info["declares_py_modules"] = True
-                    mods = _const_str_list(val)
+                    mods = _eval_setup_str_list(val)
                     if mods:
                         info["py_modules"] = list(mods)
-                elif kw.arg == "ext_modules":
-                    val = _resolve(kw.value)
+                elif kw_name == "ext_modules":
+                    val = _resolve(kw_val)
                     if not (isinstance(val, ast.Constant) and val.value is None):
                         info["has_ext_modules"] = True
-                elif kw.arg == "package_dir":
-                    _extract_str_mapping(kw.value, info["package_dir"])
-                elif kw.arg == "entry_points":
-                    _extract_entry_points(kw.value)
-                elif kw.arg == "package_data":
-                    _extract_pkg_data_mapping(kw.value, info["package_data"])
-                elif kw.arg == "exclude_package_data":
-                    _extract_pkg_data_mapping(kw.value, info["exclude_package_data"])
-                elif kw.arg == "include_package_data":
-                    val = _resolve(kw.value)
+                elif kw_name == "package_dir":
+                    _extract_str_mapping(kw_val, info["package_dir"])
+                elif kw_name == "entry_points":
+                    _extract_entry_points(kw_val)
+                elif kw_name == "package_data":
+                    _extract_pkg_data_mapping(kw_val, info["package_data"])
+                elif kw_name == "exclude_package_data":
+                    _extract_pkg_data_mapping(kw_val, info["exclude_package_data"])
+                elif kw_name == "include_package_data":
+                    val = _resolve(kw_val)
                     if isinstance(val, ast.Constant) and isinstance(val.value, bool):
                         info["include_package_data"] = val.value
-                elif kw.arg == "python_requires":
-                    val = _resolve(kw.value)
+                elif kw_name == "python_requires":
+                    val = _resolve(kw_val)
                     if isinstance(val, ast.Constant) and isinstance(val.value, str) and val.value.strip():
                         info["has_python_requires"] = True
+            if has_unresolved_kwargs and not info["declares_packages"]:
+                info["declares_packages"] = True
+                info["packages_nonempty"] = True
+                info["unverifiable_packages"] = True
 
     return info
 
@@ -4651,7 +4886,7 @@ def _check_packaging(
     harness: Path,
     software_slug: str,
     module: Path | None,
-) -> tuple[list[CheckResult], Path | None, list[Path], dict[str, Path]]:
+) -> tuple[list[CheckResult], Path | None, list[Path], dict[str, Path], dict[Path, set[str]]]:
     checks: list[CheckResult] = []
     setup_py = harness / "setup.py"
     pyproject = harness / "pyproject.toml"
@@ -4668,7 +4903,7 @@ def _check_packaging(
             if has_setup_cfg
             else "missing setup.py (or pyproject.toml)"
         )
-        return [CheckResult("packaging-file", "packaging", FAIL, detail)], module, [], {}
+        return [CheckResult("packaging-file", "packaging", FAIL, detail)], module, [], {}, {}
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
@@ -4725,7 +4960,7 @@ def _check_packaging(
                 f"invalid pyproject.toml: {pyproj_info['parse_error']}",
             )
         )
-        return checks, module, [], {}
+        return checks, module, [], {}, {}
 
     if has_pyproject and pyproj_info["build_system_error"]:
         checks.append(
@@ -4736,7 +4971,7 @@ def _check_packaging(
                 f"invalid pyproject.toml [build-system]: {pyproj_info['build_system_error']}",
             )
         )
-        return checks, module, [], {}
+        return checks, module, [], {}, {}
 
     if has_pyproject and pyproj_info["project_metadata_error"]:
         checks.append(
@@ -4747,7 +4982,7 @@ def _check_packaging(
                 f"invalid pyproject.toml [project] metadata: {pyproj_info['project_metadata_error']}",
             )
         )
-        return checks, module, [], {}
+        return checks, module, [], {}, {}
 
     uses_setuptools = not has_pyproject or pyproj_info["backend_kind"] == "setuptools"
     uses_setup_py = has_setup and uses_setuptools
@@ -4767,7 +5002,7 @@ def _check_packaging(
                 f"invalid setup.cfg: {setup_cfg_info['parse_error']}",
             )
         )
-        return checks, module, [], {}
+        return checks, module, [], {}, {}
 
     if has_pyproject and pyproj_info["backend_kind"] in {"hatch", "poetry"}:
         eff_base_package_dir = dict(pyproj_info["package_dir"])
@@ -5276,6 +5511,8 @@ def _check_packaging(
     ]
     primary_cli_files: list[Path] = []
     all_resolved_cli_files: list[Path] = []
+    primary_cli_symbols: dict[Path, set[str]] = {}
+    all_cli_symbols: dict[Path, set[str]] = {}
     uses_setup_cfg_scripts = (
         uses_setuptools
         and uses_setup_cfg
@@ -5363,6 +5600,7 @@ def _check_packaging(
                 if not ok_alias:
                     invalid_targets.append(f"{cmd_name}={target_spec} ({alias_reason})")
         for cmd_name, target_spec in matching_scripts:
+            resolved_targets: list[tuple[Path, str]] = []
             ok_target, reason, mod_file = _validate_console_script_target(
                 target_spec,
                 harness,
@@ -5373,14 +5611,25 @@ def _check_packaging(
                 excluded_files=poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
                 hatch_exclude=pyproj_info["hatch_exclude"] if (has_pyproject and pyproj_info["backend_kind"] == "hatch") else None,
                 check_manifest=uses_setuptools,
+                resolved_target_out=resolved_targets,
             )
             if not ok_target:
                 invalid_targets.append(f"{cmd_name}={target_spec} ({reason})")
             elif mod_file is not None:
                 if mod_file not in all_resolved_cli_files:
                     all_resolved_cli_files.append(mod_file)
-                if cmd_name in expected_prefixes and mod_file not in primary_cli_files:
-                    primary_cli_files.append(mod_file)
+                matched_syms = [sym for t_file, sym in resolved_targets if t_file == mod_file]
+                if not matched_syms and ":" in target_spec:
+                    raw_attr = target_spec.split(":", 1)[1].split("[", 1)[0].strip()
+                    if raw_attr:
+                        matched_syms = [raw_attr.split(".", 1)[0]]
+                if matched_syms:
+                    all_cli_symbols.setdefault(mod_file, set()).add(matched_syms[-1])
+                if cmd_name in expected_prefixes:
+                    if mod_file not in primary_cli_files:
+                        primary_cli_files.append(mod_file)
+                    if matched_syms:
+                        primary_cli_symbols.setdefault(mod_file, set()).add(matched_syms[-1])
         if not invalid_targets:
             first_name, first_target = matching_scripts[0]
             checks.append(
@@ -5437,6 +5686,7 @@ def _check_packaging(
             )
         )
     declared_cli_files = primary_cli_files or all_resolved_cli_files
+    cli_entry_symbols = primary_cli_symbols if primary_cli_files else all_cli_symbols
 
     skill_data_ok = False
     if has_pyproject and pyproj_info["backend_kind"] == "hatch":
@@ -5619,10 +5869,533 @@ def _check_packaging(
             CheckResult("python-requires", "packaging", WARN, "python_requires not declared", severity="warn")
         )
 
-    return checks, effective_module, declared_cli_files, eff_subpkg_dirs
+    return checks, effective_module, declared_cli_files, eff_subpkg_dirs, cli_entry_symbols
 
 
-def _file_declares_click_group(py_file: Path) -> bool:
+def _iter_live_ast_nodes(
+    roots: Iterable[ast.AST],
+    tc_names: set[str] | frozenset[str],
+) -> Iterable[ast.AST]:
+    """Yield AST nodes from `roots`, skipping statically unreachable If/While/IfExp branches."""
+    stack: list[ast.AST] = list(reversed(list(roots)))
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, ast.If):
+            branch = _static_branch_truthiness(node.test, tc_names=tc_names)
+            if branch is True:
+                stack.extend(reversed(node.body))
+            elif branch is False:
+                stack.extend(reversed(node.orelse))
+            else:
+                stack.extend(reversed(node.orelse))
+                stack.extend(reversed(node.body))
+                stack.append(node.test)
+        elif isinstance(node, ast.While):
+            branch = _static_branch_truthiness(node.test, tc_names=tc_names)
+            if branch is False:
+                stack.extend(reversed(node.orelse))
+            else:
+                stack.extend(reversed(node.orelse))
+                stack.extend(reversed(node.body))
+                stack.append(node.test)
+        elif isinstance(node, ast.IfExp):
+            branch = _static_branch_truthiness(node.test, tc_names=tc_names)
+            if branch is True:
+                stack.append(node.body)
+            elif branch is False:
+                stack.append(node.orelse)
+            else:
+                stack.append(node.orelse)
+                stack.append(node.body)
+                stack.append(node.test)
+        else:
+            children = list(ast.iter_child_nodes(node))
+            if children:
+                stack.extend(reversed(children))
+
+
+def _collect_load_names_split(
+    node: ast.AST,
+    tc_names: set[str] | frozenset[str],
+    *,
+    exclude_names: set[str] | frozenset[str] = frozenset(),
+) -> tuple[set[str], set[str]]:
+    """Return (eager_load_names, late_load_names) where ast.Lambda bodies are late-bound."""
+    eager: set[str] = set()
+    late: set[str] = set()
+    stack: list[tuple[ast.AST, bool, frozenset[str]]] = [(node, False, frozenset(exclude_names))]
+    while stack:
+        cur, is_late, excl = stack.pop()
+        if isinstance(cur, ast.Name) and isinstance(cur.ctx, ast.Load):
+            if cur.id not in excl:
+                (late if is_late else eager).add(cur.id)
+            continue
+        if isinstance(cur, ast.Lambda):
+            for d in cur.args.defaults:
+                stack.append((d, is_late, excl))
+            for d in cur.args.kw_defaults:
+                if d is not None:
+                    stack.append((d, is_late, excl))
+            lam_params = {
+                a.arg for a in (*cur.args.posonlyargs, *cur.args.args, *cur.args.kwonlyargs)
+            }
+            if cur.args.vararg is not None:
+                lam_params.add(cur.args.vararg.arg)
+            if cur.args.kwarg is not None:
+                lam_params.add(cur.args.kwarg.arg)
+            stack.append((cur.body, True, excl | frozenset(lam_params)))
+            continue
+        if isinstance(cur, ast.If):
+            branch = _static_branch_truthiness(cur.test, tc_names=tc_names)
+            if branch is True:
+                for s in reversed(cur.body):
+                    stack.append((s, is_late, excl))
+            elif branch is False:
+                for s in reversed(cur.orelse):
+                    stack.append((s, is_late, excl))
+            else:
+                for s in reversed(cur.orelse):
+                    stack.append((s, is_late, excl))
+                for s in reversed(cur.body):
+                    stack.append((s, is_late, excl))
+                stack.append((cur.test, is_late, excl))
+            continue
+        if isinstance(cur, ast.While):
+            branch = _static_branch_truthiness(cur.test, tc_names=tc_names)
+            if branch is False:
+                for s in reversed(cur.orelse):
+                    stack.append((s, is_late, excl))
+            else:
+                for s in reversed(cur.orelse):
+                    stack.append((s, is_late, excl))
+                for s in reversed(cur.body):
+                    stack.append((s, is_late, excl))
+                stack.append((cur.test, is_late, excl))
+            continue
+        if isinstance(cur, ast.IfExp):
+            branch = _static_branch_truthiness(cur.test, tc_names=tc_names)
+            if branch is True:
+                stack.append((cur.body, is_late, excl))
+            elif branch is False:
+                stack.append((cur.orelse, is_late, excl))
+            else:
+                stack.append((cur.orelse, is_late, excl))
+                stack.append((cur.body, is_late, excl))
+                stack.append((cur.test, is_late, excl))
+            continue
+        for ch in reversed(list(ast.iter_child_nodes(cur))):
+            stack.append((ch, is_late, excl))
+    return eager, late
+
+
+def _collect_fn_free_load_names_split(
+    fn: ast.FunctionDef | ast.AsyncFunctionDef,
+    tc_names: set[str] | frozenset[str],
+) -> tuple[set[str], set[str]]:
+    eager: set[str] = set()
+    late: set[str] = set()
+    for dec in fn.decorator_list:
+        e, l = _collect_load_names_split(dec, tc_names)
+        eager.update(e)
+        late.update(l)
+    for d in fn.args.defaults:
+        e, l = _collect_load_names_split(d, tc_names)
+        eager.update(e)
+        late.update(l)
+    for d in fn.args.kw_defaults:
+        if d is not None:
+            e, l = _collect_load_names_split(d, tc_names)
+            eager.update(e)
+            late.update(l)
+    for arg in (*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs):
+        if arg.annotation is not None:
+            e, l = _collect_load_names_split(arg.annotation, tc_names)
+            eager.update(e)
+            late.update(l)
+
+    local_bound: set[str] = set()
+    for arg in (*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs):
+        local_bound.add(arg.arg)
+    if fn.args.vararg is not None:
+        local_bound.add(fn.args.vararg.arg)
+    if fn.args.kwarg is not None:
+        local_bound.add(fn.args.kwarg.arg)
+
+    explicit_globals: set[str] = set()
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
+
+    def _scan_local_bindings(stmts: list[ast.stmt]) -> None:
+        for s in stmts:
+            if isinstance(s, (ast.Global, ast.Nonlocal)):
+                explicit_globals.update(s.names)
+            elif isinstance(s, ast.Assign):
+                for t in s.targets:
+                    local_bound.update(_collect_target_names(t))
+            elif isinstance(s, ast.AnnAssign):
+                local_bound.update(_collect_target_names(s.target))
+            elif isinstance(s, ast.AugAssign):
+                local_bound.update(_collect_target_names(s.target))
+            elif isinstance(s, (ast.For, ast.AsyncFor)):
+                local_bound.update(_collect_target_names(s.target))
+                _scan_local_bindings(s.body)
+                _scan_local_bindings(s.orelse)
+            elif isinstance(s, (ast.With, ast.AsyncWith)):
+                for item in s.items:
+                    if item.optional_vars is not None:
+                        local_bound.update(_collect_target_names(item.optional_vars))
+                _scan_local_bindings(s.body)
+            elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                local_bound.add(s.name)
+            elif isinstance(s, (ast.Import, ast.ImportFrom)):
+                for a in s.names:
+                    if a.name != "*":
+                        local_bound.add(a.asname or a.name.split(".", 1)[0])
+            elif isinstance(s, ast.If):
+                branch = _static_branch_truthiness(s.test, tc_names=tc_names)
+                if branch is True:
+                    _scan_local_bindings(s.body)
+                elif branch is False:
+                    _scan_local_bindings(s.orelse)
+                else:
+                    _scan_local_bindings(s.body)
+                    _scan_local_bindings(s.orelse)
+            elif isinstance(s, ast.While):
+                branch = _static_branch_truthiness(s.test, tc_names=tc_names)
+                if branch is False:
+                    _scan_local_bindings(s.orelse)
+                else:
+                    _scan_local_bindings(s.body)
+                    _scan_local_bindings(s.orelse)
+            elif isinstance(s, ast.Try) or (try_star and isinstance(s, try_star)):
+                _scan_local_bindings(s.body)
+                _scan_local_bindings(s.orelse)
+                _scan_local_bindings(s.finalbody)
+                for h in s.handlers:
+                    if h.name:
+                        local_bound.add(h.name)
+                    _scan_local_bindings(h.body)
+            elif match_cls and isinstance(s, match_cls):
+                for c in s.cases:
+                    _scan_local_bindings(c.body)
+
+    _scan_local_bindings(fn.body)
+    local_bound -= explicit_globals
+
+    for stmt in fn.body:
+        e, l = _collect_load_names_split(stmt, tc_names, exclude_names=local_bound)
+        late.update(e)
+        late.update(l)
+    return eager, late
+
+
+def _collect_cls_free_load_names_split(
+    cls_node: ast.ClassDef,
+    tc_names: set[str] | frozenset[str],
+) -> tuple[set[str], set[str]]:
+    eager: set[str] = set()
+    late: set[str] = set()
+    for node in (*cls_node.decorator_list, *cls_node.bases):
+        e, l = _collect_load_names_split(node, tc_names)
+        eager.update(e)
+        late.update(l)
+    for kw in cls_node.keywords:
+        e, l = _collect_load_names_split(kw.value, tc_names)
+        eager.update(e)
+        late.update(l)
+    for stmt in cls_node.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            e, l = _collect_fn_free_load_names_split(stmt, tc_names)
+            eager.update(e)
+            late.update(l)
+        elif isinstance(stmt, ast.ClassDef):
+            e, l = _collect_cls_free_load_names_split(stmt, tc_names)
+            eager.update(e)
+            late.update(l)
+        else:
+            e, l = _collect_load_names_split(stmt, tc_names)
+            eager.update(e)
+            late.update(l)
+    return eager, late
+
+
+def _collect_reachable_cli_nodes(
+    tree: ast.Module,
+    entry_symbols: set[str],
+    *,
+    ignored_owners: set[str] | frozenset[str] = frozenset(),
+) -> tuple[list[ast.AST], list[ast.AST], set[str]]:
+    """Collect AST subtrees reachable from `entry_symbols` in the published command tree.
+
+    Tracks temporal module-scope rebindings (SSA windows) so aliases captured before a source
+    rebind, swap assignments, and shadowed definitions all resolve to the active version.
+    Returns (scan_nodes, live_top_tests, tc_names).
+    """
+    tc_names = _collect_type_checking_names(tree.body)
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
+    inf_seq = 10**9
+
+    flat_stmts: list[tuple[int, bool, ast.stmt, list[ast.AST]]] = []
+    live_top_tests: list[ast.AST] = []
+    seq = 0
+
+    def _flatten(stmts: list[ast.stmt], *, top_level: bool, for_iters: list[ast.AST]) -> None:
+        nonlocal seq
+        for stmt in stmts:
+            if isinstance(stmt, ast.If):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is True:
+                    _flatten(stmt.body, top_level=top_level, for_iters=for_iters)
+                elif branch is False:
+                    _flatten(stmt.orelse, top_level=top_level, for_iters=for_iters)
+                else:
+                    live_top_tests.append(stmt.test)
+                    _flatten(stmt.body, top_level=False, for_iters=for_iters)
+                    _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, ast.While):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is False:
+                    _flatten(stmt.orelse, top_level=top_level, for_iters=for_iters)
+                else:
+                    live_top_tests.append(stmt.test)
+                    _flatten(stmt.body, top_level=False, for_iters=for_iters)
+                    _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+                next_iters = [*for_iters, stmt.iter]
+                _flatten(stmt.body, top_level=False, for_iters=next_iters)
+                _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+                _flatten(stmt.body, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
+                _flatten(stmt.body, top_level=False, for_iters=for_iters)
+                _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+                _flatten(stmt.finalbody, top_level=False, for_iters=for_iters)
+                for h in stmt.handlers:
+                    _flatten(h.body, top_level=False, for_iters=for_iters)
+            elif match_cls and isinstance(stmt, match_cls):
+                for c in stmt.cases:
+                    _flatten(c.body, top_level=False, for_iters=for_iters)
+            else:
+                seq += 1
+                flat_stmts.append((seq, top_level, stmt, list(for_iters)))
+
+    _flatten(tree.body, top_level=True, for_iters=[])
+
+    def _unpack_assign_targets(target: ast.AST, value: ast.AST) -> list[tuple[str, ast.AST]]:
+        if isinstance(target, ast.Name):
+            return [(target.id, value)]
+        if (
+            isinstance(target, (ast.Tuple, ast.List))
+            and isinstance(value, (ast.Tuple, ast.List))
+            and len(target.elts) == len(value.elts)
+            and not any(isinstance(e, ast.Starred) for e in target.elts)
+            and not any(isinstance(e, ast.Starred) for e in value.elts)
+        ):
+            pairs: list[tuple[str, ast.AST]] = []
+            for t_elt, v_elt in zip(target.elts, value.elts):
+                pairs.extend(_unpack_assign_targets(t_elt, v_elt))
+            return pairs
+        return [(n, value) for n in _collect_target_names(target)]
+
+    # Each entry in def_versions[name] is (seq, is_redef, ast_node_or_None_for_delete).
+    def_versions: dict[str, list[tuple[int, bool, ast.AST | None]]] = {}
+    registered_by_owner: dict[str, list[tuple[int, str, ast.FunctionDef | ast.AsyncFunctionDef]]] = {}
+    mutations_by_owner: dict[str, list[tuple[int, ast.AST, list[ast.AST]]]] = {}
+    decorator_owner_alias: dict[str, str] = {}
+
+    mutator_attrs = {"add_command", "add_typer", "add_source", "params", "commands", "sources"}
+    reg_dec_attrs = {"command", "group", "callback", "result_callback"}
+
+    def _record_assign(cur_seq: int, top_level: bool, target: ast.AST, value: ast.AST, for_iters: list[ast.AST]) -> None:
+        t_chain = _extract_attr_chain(target)
+        if t_chain is not None and len(t_chain) >= 2 and t_chain[0] not in ignored_owners:
+            mutations_by_owner.setdefault(t_chain[0], []).append((cur_seq, value, for_iters))
+            return
+        if isinstance(target, ast.Subscript):
+            sub_chain = _extract_attr_chain(target.value)
+            if sub_chain is not None and sub_chain[0] not in ignored_owners:
+                mutations_by_owner.setdefault(sub_chain[0], []).append((cur_seq, value, for_iters))
+                return
+        for t_name, sub_val in _unpack_assign_targets(target, value):
+            val_chain = _extract_attr_chain(sub_val)
+            if (
+                val_chain is not None
+                and len(val_chain) >= 2
+                and val_chain[-1] in reg_dec_attrs
+                and val_chain[0] not in ignored_owners
+            ):
+                decorator_owner_alias[t_name] = val_chain[0]
+            elif top_level:
+                decorator_owner_alias.pop(t_name, None)
+            e_names, l_names = _collect_load_names_split(sub_val, tc_names)
+            refs_self = t_name in (e_names | l_names)
+            is_redef = top_level and not refs_self
+            def_versions.setdefault(t_name, []).append((cur_seq, is_redef, sub_val))
+
+    for cur_seq, top_level, stmt, for_iters in flat_stmts:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            def_versions.setdefault(stmt.name, []).append((cur_seq, top_level, stmt))
+            if top_level:
+                decorator_owner_alias.pop(stmt.name, None)
+            for dec in stmt.decorator_list:
+                dec_target = dec.func if isinstance(dec, ast.Call) else dec
+                owner: str | None = None
+                chain = _extract_attr_chain(dec_target)
+                if (
+                    chain is not None
+                    and len(chain) >= 2
+                    and chain[-1] in reg_dec_attrs
+                    and chain[0] not in ignored_owners
+                ):
+                    owner = chain[0]
+                elif isinstance(dec_target, ast.Name) and dec_target.id in decorator_owner_alias:
+                    cand_owner = decorator_owner_alias[dec_target.id]
+                    if cand_owner not in ignored_owners:
+                        owner = cand_owner
+                if owner is not None:
+                    registered_by_owner.setdefault(owner, []).append((cur_seq, stmt.name, stmt))
+        elif isinstance(stmt, ast.ClassDef):
+            def_versions.setdefault(stmt.name, []).append((cur_seq, top_level, stmt))
+            if top_level:
+                decorator_owner_alias.pop(stmt.name, None)
+        elif isinstance(stmt, ast.Assign):
+            for tgt in stmt.targets:
+                _record_assign(cur_seq, top_level, tgt, stmt.value, for_iters)
+        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+            _record_assign(cur_seq, top_level, stmt.target, stmt.value, for_iters)
+        elif isinstance(stmt, ast.AugAssign):
+            t_chain = _extract_attr_chain(stmt.target)
+            if t_chain is not None and len(t_chain) >= 2 and t_chain[0] not in ignored_owners:
+                mutations_by_owner.setdefault(t_chain[0], []).append((cur_seq, stmt, for_iters))
+            elif isinstance(stmt.target, ast.Name) and stmt.target.id not in ignored_owners:
+                def_versions.setdefault(stmt.target.id, []).append((cur_seq, False, stmt.value))
+        elif isinstance(stmt, ast.Delete):
+            if top_level:
+                for tgt in stmt.targets:
+                    if isinstance(tgt, ast.Name):
+                        def_versions.setdefault(tgt.id, []).append((cur_seq, True, None))
+                        decorator_owner_alias.pop(tgt.id, None)
+        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            call = stmt.value
+            chain = _extract_attr_chain(call.func)
+            if chain is not None and len(chain) >= 2 and chain[1] in mutator_attrs:
+                if chain[0] not in ignored_owners:
+                    mutations_by_owner.setdefault(chain[0], []).append((cur_seq, call, for_iters))
+            else:
+                arg_owners: set[str] = set()
+                for arg in call.args:
+                    arg_node = arg.value if isinstance(arg, ast.Starred) else arg
+                    arg_chain = _extract_attr_chain(arg_node)
+                    if arg_chain is not None and arg_chain[0] not in ignored_owners:
+                        arg_owners.add(arg_chain[0])
+                for kw in call.keywords:
+                    kw_chain = _extract_attr_chain(kw.value)
+                    if kw_chain is not None and kw_chain[0] not in ignored_owners:
+                        arg_owners.add(kw_chain[0])
+                for own in arg_owners:
+                    mutations_by_owner.setdefault(own, []).append((cur_seq, call, for_iters))
+
+    def _resolve_active_defs(
+        name: str,
+        before_seq: int,
+    ) -> tuple[list[tuple[int, ast.AST]], int, int]:
+        entries = def_versions.get(name, ())
+        earlier = [e for e in entries if e[0] < before_seq]
+        last_redef_idx = -1
+        for idx, (_dseq, is_redef, _node) in enumerate(earlier):
+            if is_redef:
+                last_redef_idx = idx
+        if last_redef_idx >= 0:
+            window_start = earlier[last_redef_idx][0]
+            active_slice = earlier[last_redef_idx:]
+        else:
+            window_start = -1
+            active_slice = earlier
+        active_nodes = [(dseq, node) for dseq, _ir, node in active_slice if node is not None]
+        window_end = inf_seq
+        for dseq, is_redef, _node in entries:
+            if dseq >= before_seq and is_redef:
+                window_end = dseq
+                break
+        return active_nodes, window_start, window_end
+
+    def _split_names_of(node: ast.AST) -> tuple[set[str], set[str]]:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            e, l = _collect_fn_free_load_names_split(node, tc_names)
+        elif isinstance(node, ast.ClassDef):
+            e, l = _collect_cls_free_load_names_split(node, tc_names)
+        else:
+            e, l = _collect_load_names_split(node, tc_names)
+        return e - set(ignored_owners), l - set(ignored_owners)
+
+    scan_nodes: list[ast.AST] = []
+    added_node_ids: set[int] = set()
+    visited_queries: set[tuple[str, int]] = set()
+    worklist: list[tuple[str, int]] = []
+
+    def _enqueue(name: str, before_seq: int) -> None:
+        if name in ignored_owners:
+            return
+        key = (name, before_seq)
+        if key not in visited_queries:
+            visited_queries.add(key)
+            worklist.append(key)
+
+    def _add_scan(node: ast.AST) -> None:
+        nid = id(node)
+        if nid not in added_node_ids:
+            added_node_ids.add(nid)
+            scan_nodes.append(node)
+
+    for sym in entry_symbols:
+        _enqueue(sym, inf_seq)
+
+    while worklist:
+        name, before_seq = worklist.pop()
+        active_nodes, w_start, w_end = _resolve_active_defs(name, before_seq)
+        for dseq, def_node in active_nodes:
+            _add_scan(def_node)
+            e_names, l_names = _split_names_of(def_node)
+            for n in e_names:
+                _enqueue(n, dseq)
+            for n in l_names:
+                _enqueue(n, inf_seq)
+        for rseq, sub_name, sub_node in registered_by_owner.get(name, ()):
+            if not (w_start <= rseq < w_end):
+                continue
+            _add_scan(sub_node)
+            _enqueue(sub_name, rseq + 1)
+            e_names, l_names = _split_names_of(sub_node)
+            for n in e_names:
+                _enqueue(n, rseq)
+            for n in l_names:
+                _enqueue(n, inf_seq)
+        for mseq, mut_node, for_iters in mutations_by_owner.get(name, ()):
+            if not (w_start <= mseq < w_end):
+                continue
+            _add_scan(mut_node)
+            e_names, l_names = _split_names_of(mut_node)
+            for n in e_names:
+                _enqueue(n, mseq)
+            for n in l_names:
+                _enqueue(n, inf_seq)
+            for it_expr in for_iters:
+                it_e, it_l = _split_names_of(it_expr)
+                for n in it_e:
+                    _enqueue(n, mseq)
+                for n in it_l:
+                    _enqueue(n, inf_seq)
+
+    return scan_nodes, live_top_tests, tc_names
+
+
+def _file_declares_click_group(
+    py_file: Path,
+    *,
+    entry_symbols: set[str] | None = None,
+) -> bool:
     """Return True if py_file declares a Click command group (resolving import and local aliases)."""
     text = _read_text(py_file)
     try:
@@ -5757,7 +6530,17 @@ def _file_declares_click_group(py_file: Path) -> bool:
                         return True
         return False
 
-    for node in ast.walk(tree):
+    if entry_symbols:
+        scan_roots, _, tc_names = _collect_reachable_cli_nodes(
+            tree,
+            entry_symbols,
+            ignored_owners=click_mod_aliases,
+        )
+    else:
+        tc_names = _collect_type_checking_names(tree.body)
+        scan_roots = [tree]
+
+    for node in _iter_live_ast_nodes(scan_roots, tc_names):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if any(_is_group_decorator_or_call(dec) for dec in node.decorator_list):
                 return True
@@ -5768,14 +6551,32 @@ def _file_declares_click_group(py_file: Path) -> bool:
     return False
 
 
-def _file_has_invoke_without_command(py_file: Path, text: str) -> bool:
-    if "invoke_without_command=True" in text:
-        return True
+def _file_has_invoke_without_command(
+    py_file: Path,
+    text: str,
+    *,
+    entry_symbols: set[str] | None = None,
+) -> bool:
     try:
         tree = ast.parse(text, filename=str(py_file))
     except SyntaxError:
-        return False
-    for node in ast.walk(tree):
+        return "invoke_without_command=True" in text
+    if entry_symbols:
+        ignored: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in {"click", "click.decorators", "click.core", "typer"}:
+                        ignored.add(alias.asname or alias.name.split(".", 1)[0])
+        scan_roots, _, tc_names = _collect_reachable_cli_nodes(
+            tree,
+            entry_symbols,
+            ignored_owners=ignored,
+        )
+    else:
+        tc_names = _collect_type_checking_names(tree.body)
+        scan_roots = [tree]
+    for node in _iter_live_ast_nodes(scan_roots, tc_names):
         if isinstance(node, ast.Call):
             for kw in node.keywords:
                 if (
@@ -5809,8 +6610,14 @@ def _decl_matches_cli_flag(decl: str, flag: str) -> bool:
     return first == flag or second == flag
 
 
-def _file_declares_cli_flag(py_file: Path, text: str, flag: str) -> bool:
-    """Return True if py_file declares CLI option `flag` (option declaration or sys.argv parsing)."""
+def _file_declares_cli_flag(
+    py_file: Path,
+    text: str,
+    flag: str,
+    *,
+    entry_symbols: set[str] | None = None,
+) -> bool:
+    """Return True if py_file declares CLI option `flag` on the published command tree or sys.argv."""
     try:
         tree = ast.parse(text, filename=str(py_file))
     except SyntaxError:
@@ -5953,7 +6760,18 @@ def _file_declares_cli_flag(py_file: Path, text: str, flag: str) -> bool:
             return True
         return False
 
-    for node in ast.walk(tree):
+    if entry_symbols:
+        scan_roots, live_top_tests, tc_names = _collect_reachable_cli_nodes(
+            tree,
+            entry_symbols,
+            ignored_owners=click_mod_aliases | typer_mod_aliases | sys_mod_aliases,
+        )
+    else:
+        tc_names = _collect_type_checking_names(tree.body)
+        scan_roots = [tree]
+        live_top_tests = []
+
+    for node in _iter_live_ast_nodes(scan_roots, tc_names):
         if isinstance(node, ast.Call):
             if not _is_option_decl_call(node):
                 continue
@@ -5969,6 +6787,15 @@ def _file_declares_cli_flag(py_file: Path, text: str, flag: str) -> bool:
         ):
             if _is_sys_argv_expr(node.comparators[0]) and _expr_matches(node.left):
                 return True
+    for node in _iter_live_ast_nodes(live_top_tests, tc_names):
+        if (
+            isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], (ast.In, ast.NotIn))
+            and len(node.comparators) == 1
+        ):
+            if _is_sys_argv_expr(node.comparators[0]) and _expr_matches(node.left):
+                return True
     return False
 
 
@@ -5977,6 +6804,7 @@ def _check_cli_surface(
     canonical_repl_skin: Path | None,
     *,
     cli_entry_files: list[Path] | None = None,
+    cli_entry_symbols: dict[Path, set[str]] | None = None,
     subpkg_dirs: dict[str, Path] | None = None,
 ) -> list[CheckResult]:
     checks: list[CheckResult] = []
@@ -5986,17 +6814,18 @@ def _check_cli_surface(
 
     if cli_files:
         cli_texts = [_read_text(p) for p in cli_files]
-        if all(_file_declares_click_group(p) for p in cli_files):
+        sym_map = cli_entry_symbols or {}
+        if all(_file_declares_click_group(p, entry_symbols=sym_map.get(p) or None) for p in cli_files):
             checks.append(CheckResult("click-groups", "cli", PASS, "uses Click command groups"))
         else:
             checks.append(CheckResult("click-groups", "cli", FAIL, "CLI does not declare a Click command group"))
 
-        if all(_file_declares_cli_flag(p, t, "--json") for p, t in zip(cli_files, cli_texts)):
+        if all(_file_declares_cli_flag(p, t, "--json", entry_symbols=sym_map.get(p) or None) for p, t in zip(cli_files, cli_texts)):
             checks.append(CheckResult("json-flag", "cli", PASS, "--json output flag declared"))
         else:
             checks.append(CheckResult("json-flag", "cli", FAIL, "missing --json flag in CLI entry point"))
 
-        if all(_file_has_invoke_without_command(p, t) for p, t in zip(cli_files, cli_texts)):
+        if all(_file_has_invoke_without_command(p, t, entry_symbols=sym_map.get(p) or None) for p, t in zip(cli_files, cli_texts)):
             checks.append(CheckResult("repl-default", "cli", PASS, "default REPL mode configured (invoke_without_command=True)"))
         else:
             checks.append(
@@ -6011,11 +6840,14 @@ def _check_cli_surface(
 
         has_session = (core_dir / "session.py").is_file()
         session_clis = [
-            (p, t) for p, t in zip(cli_files, cli_texts) if _file_declares_cli_flag(p, t, "--project")
+            (p, t)
+            for p, t in zip(cli_files, cli_texts)
+            if _file_declares_cli_flag(p, t, "--project", entry_symbols=sym_map.get(p) or None)
         ]
         if has_session and session_clis:
             if all(
-                _file_declares_cli_flag(p, t, "--dry-run") and ("result_callback" in t or "call_on_close" in t)
+                _file_declares_cli_flag(p, t, "--dry-run", entry_symbols=sym_map.get(p) or None)
+                and ("result_callback" in t or "call_on_close" in t)
                 for p, t in session_clis
             ):
                 checks.append(CheckResult("auto-save-dry-run", "cli", PASS, "auto-save and --dry-run implemented"))
@@ -6301,7 +7133,7 @@ def verify_harness(
     repl_skin_ref = _find_canonical_repl_skin(canonical_repl_skin, repo_root)
 
     checks, module = _check_layout(harness)
-    pkg_checks, effective_module, declared_cli_files, eff_subpkg_dirs = _check_packaging(
+    pkg_checks, effective_module, declared_cli_files, eff_subpkg_dirs, cli_entry_symbols = _check_packaging(
         harness, _slugify(software_dir_name), module
     )
     checks.extend(pkg_checks)
@@ -6362,6 +7194,7 @@ def verify_harness(
                 active_module,
                 repl_skin_ref,
                 cli_entry_files=declared_cli_files,
+                cli_entry_symbols=cli_entry_symbols,
                 subpkg_dirs=eff_subpkg_dirs,
             )
         )
