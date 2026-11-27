@@ -5483,7 +5483,17 @@ def _check_packaging(
 
     missing_runtime_subpkgs: list[str] = []
     missing_subpkg_dirs: list[str] = []
+    excluded_runtime_files: list[str] = []
     eff_subpkg_dirs: dict[str, Path] = {}
+
+    poetry_excluded_files: set[str] = set()
+    poetry_wheel_included_files: set[str] = set()
+    if has_pyproject and pyproj_info["backend_kind"] == "poetry":
+        poetry_excluded_files, poetry_wheel_included_files = _poetry_wheel_file_sets(
+            harness,
+            pyproj_info["poetry_exclude"],
+            pyproj_info["poetry_wheel_include"],
+        )
 
     def _is_subpkg_selected(pkg_name: str) -> bool:
         if eff_pkg_spec is None:
@@ -5501,6 +5511,30 @@ def _check_packaging(
             return pkg_name in eff_pkg_spec["packages"]
         return True
 
+    def _check_runtime_pkg_files_survive(pkg_name: str) -> None:
+        raw_dir = _get_package_dir_rel(pkg_name, eff_package_dir)
+        dir_path = (harness / raw_dir) if raw_dir else harness
+        if not dir_path.is_dir():
+            return
+        try:
+            py_files = sorted(p for p in dir_path.glob("*.py") if p.is_file())
+        except OSError:
+            return
+        for py_file in py_files:
+            try:
+                rel_posix = py_file.relative_to(harness).as_posix()
+            except ValueError:
+                continue
+            if uses_setuptools:
+                if not _manifest_covers_skill(harness, rel_posix, initially_included=True):
+                    excluded_runtime_files.append(rel_posix)
+            elif has_pyproject and pyproj_info["backend_kind"] == "poetry":
+                if _poetry_is_excluded(rel_posix, poetry_excluded_files):
+                    excluded_runtime_files.append(rel_posix)
+            elif has_pyproject and pyproj_info["backend_kind"] == "hatch":
+                if _hatch_is_excluded(rel_posix, pyproj_info["hatch_exclude"]):
+                    excluded_runtime_files.append(rel_posix)
+
     if (
         parent_selected
         and not missing_effective_dir
@@ -5509,6 +5543,7 @@ def _check_packaging(
     ):
         runtime_subpkgs = _collect_runtime_subpackages(effective_module, target_pkg)
         checked_mapped: set[str] = {target_pkg}
+        _check_runtime_pkg_files_survive(target_pkg)
 
         def _check_mapped_pkg_dir(pkg_name: str) -> None:
             if not pkg_name or pkg_name in checked_mapped:
@@ -5525,6 +5560,7 @@ def _check_packaging(
                 checked_mapped.add(sub_pkg)
                 continue
             _check_mapped_pkg_dir(sub_pkg)
+            _check_runtime_pkg_files_survive(sub_pkg)
 
         if eff_pkg_spec is not None:
             if eff_pkg_spec["kind"] == "find" and not eff_pkg_spec.get("dynamic_where"):
@@ -5567,15 +5603,6 @@ def _check_packaging(
                 eff_subpkg_dirs[sub_name] = (harness / raw_sub) if raw_sub else harness
             else:
                 eff_subpkg_dirs[sub_name] = effective_module / sub_name
-
-    poetry_excluded_files: set[str] = set()
-    poetry_wheel_included_files: set[str] = set()
-    if has_pyproject and pyproj_info["backend_kind"] == "poetry":
-        poetry_excluded_files, poetry_wheel_included_files = _poetry_wheel_file_sets(
-            harness,
-            pyproj_info["poetry_exclude"],
-            pyproj_info["poetry_wheel_include"],
-        )
 
     # Detect packaged top-level `cli_anything.py` modules that shadow the PEP 420 namespace.
     shadowing_ns_module: str | None = None
@@ -5694,6 +5721,26 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 "setup.py specifies an explicit dynamic/unverifiable package_dir= mapping that cannot be statically verified",
+            )
+        )
+    elif excluded_runtime_files:
+        reason_src = (
+            "MANIFEST.in"
+            if uses_setuptools
+            else (
+                "Poetry exclude rules"
+                if (has_pyproject and pyproj_info["backend_kind"] == "poetry")
+                else "Hatch exclude rules"
+            )
+        )
+        sample = ", ".join(excluded_runtime_files[:3])
+        extra = f" (+{len(excluded_runtime_files) - 3} more)" if len(excluded_runtime_files) > 3 else ""
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"required runtime module(s) excluded by {reason_src}: {sample}{extra}",
             )
         )
     elif pyproj_info["declares_packages"]:

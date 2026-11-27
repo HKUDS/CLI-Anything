@@ -8665,6 +8665,94 @@ setup(
         assert res_ok["ok"] is True, (ok_sym, res_ok["checks"])
 
 
+def test_verify_checks_manifest_and_backend_survival_of_runtime_modules(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "manifest_rt", "mrtapp")
+    manifest = harness / "MANIFEST.in"
+
+    # 1. Exact repro from review 6086536401: recursive-exclude removing core/*.py must FAIL.
+    bad_manifests = [
+        "recursive-exclude cli_anything/mrtapp/core *.py\n",
+        "exclude cli_anything/mrtapp/core/session.py\n",
+        "prune cli_anything/mrtapp/utils\n",
+        "exclude cli_anything/mrtapp/__init__.py\n",
+    ]
+    for idx, content in enumerate(bad_manifests):
+        manifest.write_text(content, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        assert {c["id"]: c for c in res_bad["checks"]}["namespace-packages"]["status"] == "fail", idx
+
+    # 2. Re-including removed runtime files, or pruning non-runtime tests/, must PASS strictly.
+    ok_manifests = [
+        "recursive-exclude cli_anything/mrtapp/core *.py\nrecursive-include cli_anything/mrtapp/core *.py\n",
+        "prune cli_anything/mrtapp/tests\n",
+    ]
+    for idx, content in enumerate(ok_manifests):
+        manifest.write_text(content, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+    manifest.unlink()
+
+    # 3. Hatch exclude removing a required runtime subpackage module must FAIL.
+    (harness / "setup.py").unlink()
+    pyproject = harness / "pyproject.toml"
+    pyproject.write_text(
+        """[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-mrtapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-mrtapp = "cli_anything.mrtapp.mrtapp_cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cli_anything/mrtapp"]
+exclude = ["cli_anything/mrtapp/core/*.py"]
+""",
+        encoding="utf-8",
+    )
+    res_hatch = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_hatch["ok"] is False
+    assert {c["id"]: c for c in res_hatch["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 4. Poetry exclude removing a required runtime subpackage module must FAIL.
+    pyproject.write_text(
+        """[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cli-anything-mrtapp"
+version = "1.0.0"
+packages = [{ include = "cli_anything/mrtapp" }]
+exclude = ["cli_anything/mrtapp/core/*.py"]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[tool.poetry.scripts]
+cli-anything-mrtapp = "cli_anything.mrtapp.mrtapp_cli:main"
+""",
+        encoding="utf-8",
+    )
+    res_poetry = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_poetry["ok"] is False
+    assert {c["id"]: c for c in res_poetry["checks"]}["namespace-packages"]["status"] == "fail"
+
+
+
 
 
 
