@@ -714,17 +714,35 @@ def _is_provably_non_callable_expr(node: ast.AST) -> bool:
     ):
         return True
     if isinstance(node, ast.UnaryOp):
+        # `not x` always evaluates to a bool in Python regardless of operand callability.
+        if isinstance(node.op, ast.Not):
+            return True
         return _is_provably_non_callable_expr(node.operand)
     if isinstance(node, ast.BinOp):
         return _is_provably_non_callable_expr(node.left) and _is_provably_non_callable_expr(node.right)
     if isinstance(node, ast.BoolOp):
-        return all(_is_provably_non_callable_expr(v) for v in node.values)
+        if all(_is_provably_non_callable_expr(v) for v in node.values):
+            return True
+        if isinstance(node.op, ast.And) and any(
+            isinstance(v, ast.Constant) and not bool(v.value) for v in node.values
+        ):
+            return True
+        if isinstance(node.op, ast.Or) and any(
+            isinstance(v, ast.Constant) and bool(v.value) for v in node.values
+        ):
+            return True
+        return False
     if isinstance(node, ast.Compare):
+        # Identity (`is`/`is not`) and membership (`in`/`not in`) always evaluate to bool in Python.
+        if node.ops and all(isinstance(op, (ast.Is, ast.IsNot, ast.In, ast.NotIn)) for op in node.ops):
+            return True
         return _is_provably_non_callable_expr(node.left) and all(
             _is_provably_non_callable_expr(c) for c in node.comparators
         )
     if isinstance(node, ast.IfExp):
         return _is_provably_non_callable_expr(node.body) and _is_provably_non_callable_expr(node.orelse)
+    if isinstance(node, ast.NamedExpr):
+        return _is_provably_non_callable_expr(node.value)
     return False
 
 
@@ -3570,6 +3588,8 @@ def _inspect_setup_py(
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
+        "unverifiable_exclude_package_data_all": False,
+        "unverifiable_exclude_package_data_keys": set(),
         "include_package_data": None,
         "has_python_requires": False,
     }
@@ -3866,7 +3886,7 @@ def _inspect_setup_py(
         if (
             isinstance(cur, ast.Call)
             and isinstance(cur.func, ast.Name)
-            and cur.func.id in {"list", "tuple", "set", "sorted"}
+            and cur.func.id in {"list", "tuple", "set", "sorted", "frozenset"}
             and len(cur.args) == 1
             and not cur.keywords
             and not isinstance(cur.args[0], ast.Starred)
@@ -3874,6 +3894,52 @@ def _inspect_setup_py(
             inner = _eval_setup_str_list(cur.args[0], next_seen)
             if inner is not None:
                 return sorted(inner) if cur.func.id == "sorted" else list(inner)
+        if (
+            isinstance(cur, ast.Call)
+            and isinstance(cur.func, ast.Attribute)
+            and cur.func.attr in {"split", "splitlines"}
+            and not any(isinstance(a, ast.Starred) for a in cur.args)
+        ):
+            recv = _resolve(cur.func.value)
+            if isinstance(recv, ast.Constant) and isinstance(recv.value, str):
+                if cur.func.attr == "split" and len(cur.args) <= 2:
+                    sep_val: str | None = None
+                    maxsplit_val = -1
+                    ok_args = True
+                    if len(cur.args) >= 1:
+                        r0 = _resolve(cur.args[0])
+                        if isinstance(r0, ast.Constant) and (r0.value is None or isinstance(r0.value, str)):
+                            sep_val = r0.value
+                        else:
+                            ok_args = False
+                    if len(cur.args) == 2:
+                        r1 = _resolve(cur.args[1])
+                        if isinstance(r1, ast.Constant) and isinstance(r1.value, int) and not isinstance(r1.value, bool):
+                            maxsplit_val = r1.value
+                        else:
+                            ok_args = False
+                    for kw in cur.keywords:
+                        if kw.arg == "sep":
+                            rv = _resolve(kw.value)
+                            if isinstance(rv, ast.Constant) and (rv.value is None or isinstance(rv.value, str)):
+                                sep_val = rv.value
+                            else:
+                                ok_args = False
+                        elif kw.arg == "maxsplit":
+                            rv = _resolve(kw.value)
+                            if isinstance(rv, ast.Constant) and isinstance(rv.value, int) and not isinstance(rv.value, bool):
+                                maxsplit_val = rv.value
+                            else:
+                                ok_args = False
+                        else:
+                            ok_args = False
+                    if ok_args:
+                        try:
+                            return recv.value.split(sep_val, maxsplit_val)
+                        except ValueError:
+                            return None
+                elif cur.func.attr == "splitlines" and not cur.args and not cur.keywords:
+                    return recv.value.splitlines()
         return None
 
     def _eval_static_dict_items(
@@ -4145,6 +4211,21 @@ def _inspect_setup_py(
                 if vals is not None:
                     dest[k] = vals
 
+    def _extract_exclude_pkg_data_mapping(expr: ast.AST) -> None:
+        resolved = _resolve(expr)
+        if isinstance(resolved, ast.Constant) and resolved.value is None:
+            return
+        dict_items = _eval_static_dict_items(resolved)
+        if dict_items is None:
+            info["unverifiable_exclude_package_data_all"] = True
+            return
+        for k, v in dict_items:
+            vals = _eval_setup_str_list(v)
+            if vals is None:
+                info["unverifiable_exclude_package_data_keys"].add(k)
+            else:
+                info["exclude_package_data"][k] = vals
+
     def _extract_package_dir_mapping(expr: ast.AST) -> None:
         resolved = _resolve(expr)
         if isinstance(resolved, ast.Constant) and resolved.value is None:
@@ -4185,7 +4266,7 @@ def _inspect_setup_py(
                 elif kw_name == "package_data":
                     _extract_pkg_data_mapping(kw_val, info["package_data"])
                 elif kw_name == "exclude_package_data":
-                    _extract_pkg_data_mapping(kw_val, info["exclude_package_data"])
+                    _extract_exclude_pkg_data_mapping(kw_val)
                 elif kw_name == "include_package_data":
                     val = _resolve(kw_val)
                     if isinstance(val, ast.Constant) and isinstance(val.value, bool):
@@ -4202,6 +4283,12 @@ def _inspect_setup_py(
                 if not info["declares_package_dir"]:
                     info["declares_package_dir"] = True
                     info["unverifiable_package_dir"] = True
+                if (
+                    not info["exclude_package_data"]
+                    and not info["unverifiable_exclude_package_data_all"]
+                    and not info["unverifiable_exclude_package_data_keys"]
+                ):
+                    info["unverifiable_exclude_package_data_all"] = True
 
     return info
 
@@ -4843,6 +4930,8 @@ def _empty_setup_cfg_info() -> dict[str, Any]:
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
+        "unverifiable_exclude_package_data_all": False,
+        "unverifiable_exclude_package_data_keys": set(),
         "include_package_data": None,
         "has_python_requires": False,
     }
@@ -5230,6 +5319,8 @@ def _check_packaging(
         "console_scripts": [],
         "package_data": {},
         "exclude_package_data": {},
+        "unverifiable_exclude_package_data_all": False,
+        "unverifiable_exclude_package_data_keys": set(),
         "include_package_data": None,
         "has_python_requires": False,
     }
@@ -6020,6 +6111,8 @@ def _check_packaging(
     }
 
     skill_data_ok = False
+    unverifiable_excl_all = False
+    unverifiable_excl_keys: set[str] = set()
     if has_pyproject and pyproj_info["backend_kind"] == "hatch":
         # Hatch includes non-Python assets inside selected package directories unless excluded.
         if pyproj_info["namespace_ok"] and target_pkg:
@@ -6078,12 +6171,20 @@ def _check_packaging(
             eff_pkg_data = {}
             eff_pkg_star = False
 
+        unverifiable_excl_all = False
+        unverifiable_excl_keys: set[str] = set()
         if pyproj_info["declares_exclude_package_data"]:
             eff_excl_data = pyproj_info["exclude_package_data"]
             eff_excl_star = True
-        elif uses_setup_py and setup_info["exclude_package_data"]:
+        elif uses_setup_py and (
+            setup_info["exclude_package_data"]
+            or setup_info["unverifiable_exclude_package_data_all"]
+            or setup_info["unverifiable_exclude_package_data_keys"]
+        ):
             eff_excl_data = setup_info["exclude_package_data"]
             eff_excl_star = False
+            unverifiable_excl_all = bool(setup_info["unverifiable_exclude_package_data_all"])
+            unverifiable_excl_keys = set(setup_info["unverifiable_exclude_package_data_keys"])
         elif uses_setup_cfg and setup_cfg_info["exclude_package_data"]:
             eff_excl_data = setup_cfg_info["exclude_package_data"]
             eff_excl_star = True
@@ -6151,7 +6252,13 @@ def _check_packaging(
             )
             if not (from_pd or from_manifest):
                 continue
-            excluded = _pkg_data_matches_file(
+            excluded_unverifiable = unverifiable_excl_all or any(
+                ek in {"", pkg_name}
+                or (eff_excl_star and ek == "*")
+                or fnmatch.fnmatchcase(pkg_name, ek)
+                for ek in unverifiable_excl_keys
+            )
+            excluded = excluded_unverifiable or _pkg_data_matches_file(
                 eff_excl_data,
                 pkg_name,
                 rel_path,
@@ -6165,12 +6272,17 @@ def _check_packaging(
     if skill_data_ok:
         checks.append(CheckResult("package-data-skills", "packaging", PASS, f"packaged SKILL.md included in package data for {target_pkg_label}"))
     else:
+        pd_detail = (
+            f"{pkg_file.name} specifies unverifiable exclude_package_data that may exclude skills/SKILL.md for {target_pkg_label}"
+            if (unverifiable_excl_all or unverifiable_excl_keys)
+            else f"{pkg_file.name} does not declare package_data shipping skills/SKILL.md for {target_pkg_label}"
+        )
         checks.append(
             CheckResult(
                 "package-data-skills",
                 "packaging",
                 WARN,
-                f"{pkg_file.name} does not declare package_data shipping skills/SKILL.md for {target_pkg_label}",
+                pd_detail,
                 severity="warn",
             )
         )
@@ -6789,7 +6901,7 @@ def _collect_reachable_cli_tree(
     entry_file: Path,
     entry_targets: list[tuple[str, str | None]],
     cli_resolution_ctx: dict[str, Any] | None = None,
-) -> dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None:
+) -> dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] | None:
     """Collect reachable AST subtrees across `entry_file` and any shipped local modules it calls/imports.
 
     Tracks temporal module-scope SSA rebindings within each module and follows local `from ... import`,
@@ -7088,11 +7200,17 @@ def _collect_reachable_cli_tree(
                 for ch in it_lc:
                     _follow_attr_chain(idx, ch, inf_seq)
 
-    result: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] = {}
+    result: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] = {}
     for fpath, nodes in scan_nodes_by_file.items():
         fidx = mod_cache.get(fpath)
         if fidx is not None:
-            result[fpath] = (fidx["tree"], nodes, fidx["live_top_tests"], fidx["tc_names"])
+            result[fpath] = (
+                fidx["tree"],
+                nodes,
+                fidx["live_top_tests"],
+                fidx["tc_names"],
+                fidx["module_path"],
+            )
     return result
 
 
@@ -7811,6 +7929,503 @@ def _file_declares_cli_flag(
     return _tree_nodes_declare_cli_flag(tree, scan_roots, live_top_tests, tc_names, flag)
 
 
+def _build_rmap_import_links(
+    rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]],
+    cli_resolution_ctx: dict[str, Any] | None,
+) -> dict[Path, dict[str, Any]]:
+    """Build inter-file import maps among modules already reached in `rmap`."""
+    ctx = cli_resolution_ctx or {}
+    harness: Path | None = ctx.get("harness")
+    eff_pkg_dir: dict[str, str] | None = ctx.get("eff_pkg_dir")
+    links: dict[Path, dict[str, Any]] = {}
+    for fpath, (ftree, _fscan, _ftests, ftc, fmod_path) in rmap.items():
+        import_from_map: dict[str, list[tuple[Path, str]]] = {}
+        star_files: list[Path] = []
+        mod_alias_map: dict[str, list[Path]] = {}
+        dotted_mod_map: list[tuple[tuple[str, ...], Path]] = []
+        if harness is not None and eff_pkg_dir is not None:
+            for node in _iter_live_ast_nodes([ftree], ftc):
+                if isinstance(node, ast.ImportFrom):
+                    rmod = _resolve_relative_import_mod(node, fpath, fmod_path)
+                    for alias in node.names:
+                        if alias.name == "*":
+                            if rmod:
+                                t_file, _ = _resolve_local_module_file(rmod, harness, eff_pkg_dir)
+                                if t_file is not None and t_file in rmap and t_file not in star_files:
+                                    star_files.append(t_file)
+                            continue
+                        bound = alias.asname or alias.name
+                        if rmod:
+                            t_file, _ = _resolve_local_module_file(rmod, harness, eff_pkg_dir)
+                            if t_file is not None and t_file in rmap:
+                                import_from_map.setdefault(bound, []).append((t_file, alias.name))
+                        sub_mod = f"{rmod}.{alias.name}" if rmod else alias.name
+                        sub_file, _ = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
+                        if sub_file is not None and sub_file in rmap:
+                            mod_alias_map.setdefault(bound, []).append(sub_file)
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        bound = alias.asname or alias.name.split(".", 1)[0]
+                        t_mod = alias.name if alias.asname else bound
+                        t_file, _ = _resolve_local_module_file(t_mod, harness, eff_pkg_dir)
+                        if t_file is not None and t_file in rmap:
+                            mod_alias_map.setdefault(bound, []).append(t_file)
+                        if not alias.asname and "." in alias.name:
+                            dt_file, _ = _resolve_local_module_file(alias.name, harness, eff_pkg_dir)
+                            if dt_file is not None and dt_file in rmap:
+                                dotted_mod_map.append((tuple(alias.name.split(".")), dt_file))
+        links[fpath] = {
+            "import_from": import_from_map,
+            "star_files": star_files,
+            "mod_aliases": mod_alias_map,
+            "dotted_mods": dotted_mod_map,
+        }
+    return links
+
+
+def _cli_tree_declares_click_group(
+    rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]],
+    cli_resolution_ctx: dict[str, Any] | None = None,
+) -> bool:
+    """Return True if any reachable command tree node declares a Click group (resolving cross-file subclasses/aliases)."""
+    links = _build_rmap_import_links(rmap, cli_resolution_ctx)
+    click_mod_aliases: dict[Path, set[str]] = {}
+    group_factories: dict[Path, set[str]] = {}
+    command_factories: dict[Path, set[str]] = {}
+    group_classes: dict[Path, set[str]] = {}
+
+    for fpath, (ftree, _fscan, _ftests, _ftc, _fmod) in rmap.items():
+        cm: set[str] = set()
+        gf: set[str] = set()
+        cf: set[str] = set()
+        gc: set[str] = set()
+        for node in ast.walk(ftree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in {"click", "click.decorators", "click.core"}:
+                        cm.add(alias.asname or alias.name.split(".", 1)[0])
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 0 and node.module in {"click", "click.decorators", "click.core"}:
+                    for alias in node.names:
+                        if alias.name == "*":
+                            gf.update({"group", "Group", "MultiCommand", "CommandCollection"})
+                            gc.update({"Group", "MultiCommand", "CommandCollection"})
+                            cf.add("command")
+                            continue
+                        bound = alias.asname or alias.name
+                        if alias.name in {"group", "Group", "MultiCommand", "CommandCollection"}:
+                            gf.add(bound)
+                        if alias.name in {"Group", "MultiCommand", "CommandCollection"}:
+                            gc.add(bound)
+                        if alias.name == "command":
+                            cf.add(bound)
+        click_mod_aliases[fpath] = cm
+        group_factories[fpath] = gf
+        command_factories[fpath] = cf
+        group_classes[fpath] = gc
+
+    def _chain_in_imported_set(fpath: Path, chain: tuple[str, ...], per_file_sets: dict[Path, set[str]]) -> bool:
+        fl = links[fpath]
+        if len(chain) == 2 and chain[0] in fl["mod_aliases"]:
+            if any(chain[1] in per_file_sets[tf] for tf in fl["mod_aliases"][chain[0]]):
+                return True
+        for imp_parts, tf in fl["dotted_mods"]:
+            if len(chain) == len(imp_parts) + 1 and chain[:-1] == imp_parts:
+                if chain[-1] in per_file_sets[tf]:
+                    return True
+        return False
+
+    def _expr_is_click_group_factory(fpath: Path, expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in group_factories[fpath]:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            cm = click_mod_aliases[fpath]
+            if len(chain) == 2 and chain[0] in cm and chain[1] in {
+                "group",
+                "Group",
+                "MultiCommand",
+                "CommandCollection",
+            }:
+                return True
+            if chain in {
+                ("click", "decorators", "group"),
+                ("click", "core", "Group"),
+                ("click", "core", "MultiCommand"),
+                ("click", "core", "CommandCollection"),
+            } and "click" in cm:
+                return True
+            if _chain_in_imported_set(fpath, chain, group_factories):
+                return True
+        return False
+
+    def _expr_is_click_group_class(fpath: Path, expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in group_classes[fpath]:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            cm = click_mod_aliases[fpath]
+            if len(chain) == 2 and chain[0] in cm and chain[1] in {
+                "Group",
+                "MultiCommand",
+                "CommandCollection",
+            }:
+                return True
+            if chain in {
+                ("click", "core", "Group"),
+                ("click", "core", "MultiCommand"),
+                ("click", "core", "CommandCollection"),
+            } and "click" in cm:
+                return True
+            if _chain_in_imported_set(fpath, chain, group_classes):
+                return True
+        return False
+
+    def _expr_is_click_command_factory(fpath: Path, expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in command_factories[fpath]:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            cm = click_mod_aliases[fpath]
+            if len(chain) == 2 and chain[0] in cm and chain[1] == "command":
+                return True
+            if chain == ("click", "decorators", "command") and "click" in cm:
+                return True
+            if _chain_in_imported_set(fpath, chain, command_factories):
+                return True
+        return False
+
+    changed = True
+    while changed:
+        changed = False
+        for fpath, (ftree, _fscan, _ftests, _ftc, _fmod) in rmap.items():
+            fl = links[fpath]
+            gf = group_factories[fpath]
+            gc = group_classes[fpath]
+            cf = command_factories[fpath]
+
+            for bound, targets in fl["import_from"].items():
+                for tf, orig_name in targets:
+                    if orig_name in group_classes[tf] and bound not in gc:
+                        gc.add(bound)
+                        gf.add(bound)
+                        changed = True
+                    if orig_name in group_factories[tf] and bound not in gf:
+                        gf.add(bound)
+                        changed = True
+                    if orig_name in command_factories[tf] and bound not in cf:
+                        cf.add(bound)
+                        changed = True
+            for tf in fl["star_files"]:
+                for sym in group_classes[tf]:
+                    if sym not in gc and _module_wildcard_allows(tf, sym)[0]:
+                        gc.add(sym)
+                        gf.add(sym)
+                        changed = True
+                for sym in group_factories[tf]:
+                    if sym not in gf and _module_wildcard_allows(tf, sym)[0]:
+                        gf.add(sym)
+                        changed = True
+                for sym in command_factories[tf]:
+                    if sym not in cf and _module_wildcard_allows(tf, sym)[0]:
+                        cf.add(sym)
+                        changed = True
+
+            for node in ast.walk(ftree):
+                if isinstance(node, ast.ClassDef):
+                    if node.name not in gc and any(_expr_is_click_group_class(fpath, b) for b in node.bases):
+                        gc.add(node.name)
+                        gf.add(node.name)
+                        changed = True
+                elif isinstance(node, ast.Assign):
+                    for tgt in node.targets:
+                        if isinstance(tgt, ast.Name):
+                            if tgt.id not in gf and _expr_is_click_group_factory(fpath, node.value):
+                                gf.add(tgt.id)
+                                changed = True
+                            if tgt.id not in gc and _expr_is_click_group_class(fpath, node.value):
+                                gc.add(tgt.id)
+                                changed = True
+                            if tgt.id not in cf and _expr_is_click_command_factory(fpath, node.value):
+                                cf.add(tgt.id)
+                                changed = True
+                elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
+                    tname = node.target.id
+                    if tname not in gf and _expr_is_click_group_factory(fpath, node.value):
+                        gf.add(tname)
+                        changed = True
+                    if tname not in gc and _expr_is_click_group_class(fpath, node.value):
+                        gc.add(tname)
+                        changed = True
+                    if tname not in cf and _expr_is_click_command_factory(fpath, node.value):
+                        cf.add(tname)
+                        changed = True
+
+    def _is_group_decorator_or_call(fpath: Path, expr: ast.AST) -> bool:
+        if _expr_is_click_group_factory(fpath, expr):
+            return True
+        if isinstance(expr, ast.Call):
+            if _expr_is_click_group_factory(fpath, expr.func):
+                return True
+            if _expr_is_click_command_factory(fpath, expr.func):
+                for kw in expr.keywords:
+                    if kw.arg == "cls" and _expr_is_click_group_class(fpath, kw.value):
+                        return True
+        return False
+
+    for fpath, (_ftree, fscan, _ftests, ftc, _fmod) in rmap.items():
+        for node in _iter_live_ast_nodes(fscan, ftc):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if any(_is_group_decorator_or_call(fpath, dec) for dec in node.decorator_list):
+                    return True
+            elif isinstance(node, ast.Call):
+                if _is_group_decorator_or_call(fpath, node):
+                    return True
+    return False
+
+
+def _cli_tree_declares_cli_flag(
+    rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]],
+    flag: str,
+    cli_resolution_ctx: dict[str, Any] | None = None,
+) -> bool:
+    """Return True if any reachable command tree node declares CLI option `flag` (resolving cross-file option classes/aliases)."""
+    links = _build_rmap_import_links(rmap, cli_resolution_ctx)
+    click_mod_aliases: dict[Path, set[str]] = {}
+    typer_mod_aliases: dict[Path, set[str]] = {}
+    sys_mod_aliases: dict[Path, set[str]] = {}
+    argv_aliases: dict[Path, set[str]] = {}
+    option_factories: dict[Path, set[str]] = {}
+    option_classes: dict[Path, set[str]] = {}
+    str_bindings: dict[Path, dict[str, list[str]]] = {}
+
+    for fpath, (ftree, _fscan, _ftests, _ftc, _fmod) in rmap.items():
+        cm: set[str] = set()
+        tm: set[str] = set()
+        sm: set[str] = set()
+        av: set[str] = set()
+        of: set[str] = set()
+        oc: set[str] = set()
+        for node in ast.walk(ftree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    if alias.name in {"click", "click.decorators", "click.core"}:
+                        cm.add(bound)
+                    elif alias.name == "typer":
+                        tm.add(bound)
+                    elif alias.name == "sys":
+                        sm.add(bound)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 0 and node.module in {"click", "click.decorators", "click.core"}:
+                    for alias in node.names:
+                        if alias.name == "*":
+                            of.update({"option", "Option"})
+                            oc.add("Option")
+                            continue
+                        bound = alias.asname or alias.name
+                        if alias.name in {"option", "Option"}:
+                            of.add(bound)
+                        if alias.name == "Option":
+                            oc.add(bound)
+                elif node.level == 0 and node.module == "typer":
+                    for alias in node.names:
+                        if alias.name == "*":
+                            of.add("Option")
+                        elif alias.name == "Option":
+                            of.add(alias.asname or alias.name)
+                elif node.level == 0 and node.module == "sys":
+                    for alias in node.names:
+                        if alias.name == "argv":
+                            av.add(alias.asname or alias.name)
+        sb: dict[str, list[str]] = {}
+        for stmt in ftree.body:
+            if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+                if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+                    sb[stmt.targets[0].id] = [stmt.value.value]
+                elif isinstance(stmt.value, (ast.List, ast.Tuple)):
+                    strs = [e.value for e in stmt.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+                    if strs:
+                        sb[stmt.targets[0].id] = strs
+            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
+                if isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+                    sb[stmt.target.id] = [stmt.value.value]
+        click_mod_aliases[fpath] = cm
+        typer_mod_aliases[fpath] = tm
+        sys_mod_aliases[fpath] = sm
+        argv_aliases[fpath] = av
+        option_factories[fpath] = of
+        option_classes[fpath] = oc
+        str_bindings[fpath] = sb
+
+    def _chain_in_imported_set(fpath: Path, chain: tuple[str, ...], per_file_sets: dict[Path, set[str]]) -> bool:
+        fl = links[fpath]
+        if len(chain) == 2 and chain[0] in fl["mod_aliases"]:
+            if any(chain[1] in per_file_sets[tf] for tf in fl["mod_aliases"][chain[0]]):
+                return True
+        for imp_parts, tf in fl["dotted_mods"]:
+            if len(chain) == len(imp_parts) + 1 and chain[:-1] == imp_parts:
+                if chain[-1] in per_file_sets[tf]:
+                    return True
+        return False
+
+    def _expr_is_option_factory(fpath: Path, expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in option_factories[fpath]:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            cm = click_mod_aliases[fpath]
+            tm = typer_mod_aliases[fpath]
+            if len(chain) == 2 and chain[0] in cm and chain[1] in {"option", "Option"}:
+                return True
+            if chain in {("click", "decorators", "option"), ("click", "core", "Option")} and "click" in cm:
+                return True
+            if len(chain) == 2 and chain[0] in tm and chain[1] == "Option":
+                return True
+            if _chain_in_imported_set(fpath, chain, option_factories):
+                return True
+        return False
+
+    def _expr_is_option_class(fpath: Path, expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in option_classes[fpath]:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            cm = click_mod_aliases[fpath]
+            if len(chain) == 2 and chain[0] in cm and chain[1] == "Option":
+                return True
+            if chain == ("click", "core", "Option") and "click" in cm:
+                return True
+            if _chain_in_imported_set(fpath, chain, option_classes):
+                return True
+        return False
+
+    changed = True
+    while changed:
+        changed = False
+        for fpath, (ftree, _fscan, _ftests, _ftc, _fmod) in rmap.items():
+            fl = links[fpath]
+            of = option_factories[fpath]
+            oc = option_classes[fpath]
+            sb = str_bindings[fpath]
+            for bound, targets in fl["import_from"].items():
+                for tf, orig_name in targets:
+                    if orig_name in option_classes[tf] and bound not in oc:
+                        oc.add(bound)
+                        of.add(bound)
+                        changed = True
+                    if orig_name in option_factories[tf] and bound not in of:
+                        of.add(bound)
+                        changed = True
+                    if orig_name in str_bindings[tf] and bound not in sb:
+                        sb[bound] = list(str_bindings[tf][orig_name])
+                        changed = True
+            for tf in fl["star_files"]:
+                for sym in option_classes[tf]:
+                    if sym not in oc and _module_wildcard_allows(tf, sym)[0]:
+                        oc.add(sym)
+                        of.add(sym)
+                        changed = True
+                for sym in option_factories[tf]:
+                    if sym not in of and _module_wildcard_allows(tf, sym)[0]:
+                        of.add(sym)
+                        changed = True
+                for sym, vals in str_bindings[tf].items():
+                    if sym not in sb and _module_wildcard_allows(tf, sym)[0]:
+                        sb[sym] = list(vals)
+                        changed = True
+            for node in ast.walk(ftree):
+                if isinstance(node, ast.ClassDef):
+                    if node.name not in oc and any(_expr_is_option_class(fpath, b) for b in node.bases):
+                        oc.add(node.name)
+                        of.add(node.name)
+                        changed = True
+                elif isinstance(node, ast.Assign):
+                    for tgt in node.targets:
+                        if isinstance(tgt, ast.Name):
+                            if tgt.id not in of and _expr_is_option_factory(fpath, node.value):
+                                of.add(tgt.id)
+                                changed = True
+                            if tgt.id not in oc and _expr_is_option_class(fpath, node.value):
+                                oc.add(tgt.id)
+                                changed = True
+                elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
+                    tname = node.target.id
+                    if tname not in of and _expr_is_option_factory(fpath, node.value):
+                        of.add(tname)
+                        changed = True
+                    if tname not in oc and _expr_is_option_class(fpath, node.value):
+                        oc.add(tname)
+                        changed = True
+
+    def _expr_matches(fpath: Path, expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return _decl_matches_cli_flag(expr.value, flag)
+        if isinstance(expr, ast.Name) and expr.id in str_bindings[fpath]:
+            return any(_decl_matches_cli_flag(s, flag) for s in str_bindings[fpath][expr.id])
+        chain = _extract_attr_chain(expr)
+        if chain is not None and len(chain) == 2 and chain[0] in links[fpath]["mod_aliases"]:
+            for tf in links[fpath]["mod_aliases"][chain[0]]:
+                if chain[1] in str_bindings[tf]:
+                    if any(_decl_matches_cli_flag(s, flag) for s in str_bindings[tf][chain[1]]):
+                        return True
+        if isinstance(expr, (ast.List, ast.Tuple)):
+            return any(_expr_matches(fpath, e) for e in expr.elts)
+        return False
+
+    def _is_option_decl_call(fpath: Path, call: ast.Call) -> bool:
+        if _expr_is_option_factory(fpath, call.func):
+            return True
+        if isinstance(call.func, ast.Attribute) and call.func.attr in {"add_argument", "add_option"}:
+            return True
+        if any(kw.arg == "param_decls" for kw in call.keywords):
+            return True
+        return False
+
+    def _is_sys_argv_expr(fpath: Path, expr: ast.AST) -> bool:
+        cur = expr
+        while isinstance(cur, ast.Subscript):
+            cur = cur.value
+        if isinstance(cur, ast.Name) and cur.id in argv_aliases[fpath]:
+            return True
+        if (
+            isinstance(cur, ast.Attribute)
+            and isinstance(cur.value, ast.Name)
+            and cur.value.id in sys_mod_aliases[fpath]
+            and cur.attr == "argv"
+        ):
+            return True
+        return False
+
+    for fpath, (_ftree, fscan, ftests, ftc, _fmod) in rmap.items():
+        for node in _iter_live_ast_nodes(fscan, ftc):
+            if isinstance(node, ast.Call):
+                if not _is_option_decl_call(fpath, node):
+                    continue
+                if any(_expr_matches(fpath, a) for a in node.args):
+                    return True
+                if any(kw.arg == "param_decls" and _expr_matches(fpath, kw.value) for kw in node.keywords):
+                    return True
+            elif (
+                isinstance(node, ast.Compare)
+                and len(node.ops) == 1
+                and isinstance(node.ops[0], (ast.In, ast.NotIn))
+                and len(node.comparators) == 1
+            ):
+                if _is_sys_argv_expr(fpath, node.comparators[0]) and _expr_matches(fpath, node.left):
+                    return True
+        for node in _iter_live_ast_nodes(ftests, ftc):
+            if (
+                isinstance(node, ast.Compare)
+                and len(node.ops) == 1
+                and isinstance(node.ops[0], (ast.In, ast.NotIn))
+                and len(node.comparators) == 1
+            ):
+                if _is_sys_argv_expr(fpath, node.comparators[0]) and _expr_matches(fpath, node.left):
+                    return True
+    return False
+
+
 def _check_cli_surface(
     module: Path,
     canonical_repl_skin: Path | None,
@@ -7829,7 +8444,13 @@ def _check_cli_surface(
         entry_targets_map: dict[Path, list[tuple[str, str | None]]] = (
             (cli_resolution_ctx or {}).get("entry_targets") or {}
         )
-        cli_trees: list[tuple[Path, str, dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None]] = []
+        cli_trees: list[
+            tuple[
+                Path,
+                str,
+                dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] | None,
+            ]
+        ] = []
         for p, t in zip(cli_files, cli_texts):
             targets = entry_targets_map.get(p)
             if targets:
@@ -7837,7 +8458,7 @@ def _check_cli_surface(
             else:
                 try:
                     ptree = ast.parse(t, filename=str(p))
-                    rmap = {p: (ptree, [ptree], [], _collect_type_checking_names(ptree.body))}
+                    rmap = {p: (ptree, [ptree], [], _collect_type_checking_names(ptree.body), None)}
                 except SyntaxError:
                     rmap = None
             cli_trees.append((p, t, rmap))
@@ -7845,50 +8466,44 @@ def _check_cli_surface(
         def _entry_has_click_group(
             p: Path,
             t: str,
-            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] | None,
         ) -> bool:
             if rmap is None:
                 return "click" in t and ("@click.group" in t or "click.group" in t)
-            return any(
-                _tree_nodes_declare_click_group(ftree, fscan, ftc)
-                for ftree, fscan, _ftests, ftc in rmap.values()
-            )
+            return _cli_tree_declares_click_group(rmap, cli_resolution_ctx)
 
         def _entry_has_flag(
             p: Path,
             t: str,
-            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] | None,
             flag: str,
         ) -> bool:
             if rmap is None:
                 return f'"{flag}"' in t or f"'{flag}'" in t
-            return any(
-                _tree_nodes_declare_cli_flag(ftree, fscan, ftests, ftc, flag)
-                for ftree, fscan, ftests, ftc in rmap.values()
-            )
+            return _cli_tree_declares_cli_flag(rmap, flag, cli_resolution_ctx)
 
         def _entry_has_repl_default(
             p: Path,
             t: str,
-            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] | None,
         ) -> bool:
             if rmap is None:
                 return "invoke_without_command=True" in t
             return any(
                 _tree_nodes_have_invoke_without_command(fscan, ftc)
-                for _ftree, fscan, _ftests, ftc in rmap.values()
+                for _ftree, fscan, _ftests, ftc, _fmod in rmap.values()
             )
 
         def _entry_has_auto_save(
             p: Path,
             t: str,
-            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str], str | None]] | None,
         ) -> bool:
             if rmap is None:
                 return "result_callback" in t or "call_on_close" in t
             return any(
                 _tree_nodes_have_auto_save_callback(fscan, ftc)
-                for _ftree, fscan, _ftests, ftc in rmap.values()
+                for _ftree, fscan, _ftests, ftc, _fmod in rmap.values()
             )
 
         if all(_entry_has_click_group(p, t, rmap) for p, t, rmap in cli_trees):

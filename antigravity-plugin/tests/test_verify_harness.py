@@ -8435,6 +8435,237 @@ def cli(use_json):
     assert {c["id"]: c for c in res_mod["checks"]}["console-script"]["status"] == "fail"
 
 
+def test_verify_resolves_imported_click_group_and_option_subclasses(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "imp_cls", "icapp")
+    pkg = harness / "cli_anything" / "icapp"
+    cli_py = pkg / "icapp_cli.py"
+    base_py = pkg / "base_group.py"
+    custom_py = pkg / "custom_group.py"
+
+    base_py.write_text(
+        """import click
+
+class BaseGroup(click.Group):
+    pass
+
+class BaseOption(click.Option):
+    pass
+
+JSON_FLAG = "--json"
+""",
+        encoding="utf-8",
+    )
+    custom_py.write_text(
+        """import click
+from .base_group import BaseGroup, BaseOption, JSON_FLAG
+
+class CustomGroup(BaseGroup):
+    pass
+
+class CustomOption(BaseOption):
+    pass
+
+class PlainCommand(click.Command):
+    pass
+
+my_opt = click.option
+""",
+        encoding="utf-8",
+    )
+
+    valid_variants = [
+        # 1. Exact repro: locally imported CustomGroup passed to @click.command(cls=CustomGroup)
+        """import click
+from .custom_group import CustomGroup
+
+@click.command(cls=CustomGroup, invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        # 2. Module-qualified imported CustomGroup + imported option class & flag constant
+        """import click
+from . import custom_group
+
+@click.command(cls=custom_group.CustomGroup, invoke_without_command=True)
+@custom_group.my_opt(custom_group.JSON_FLAG, "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        # 3. Direct instantiation of imported CustomGroup with imported CustomOption
+        """from .custom_group import CustomGroup, CustomOption
+
+cli = CustomGroup(
+    name="icapp",
+    invoke_without_command=True,
+    params=[CustomOption(["--json"], is_flag=True)],
+)
+
+def main():
+    cli()
+""",
+    ]
+    for idx, src in enumerate(valid_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, res_ok["checks"])
+
+    # Negative: imported PlainCommand(click.Command) is NOT a Click Group -> must FAIL click-groups.
+    cli_py.write_text(
+        """import click
+from .custom_group import PlainCommand
+
+@click.command(cls=PlainCommand, invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        encoding="utf-8",
+    )
+    res_bad = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_bad["ok"] is False
+    assert {c["id"]: c for c in res_bad["checks"]}["click-groups"]["status"] == "fail"
+
+
+def test_verify_preserves_unresolved_and_split_exclude_package_data(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "excl_pd", "epdapp")
+    setup_py = harness / "setup.py"
+
+    # Negative cases (must warn package-data-skills and fail strict verification):
+    # 1. Exact repro: "skills/*.md".split() excludes skills/SKILL.md.
+    # 2. Unverifiable dynamic list for target package.
+    # 3. Unverifiable dynamic list for wildcard "" key.
+    # 4. Unverifiable dynamic exclude_package_data dict.
+    bad_variants = [
+        'exclude_package_data={"cli_anything.epdapp": "skills/*.md".split()}',
+        'exclude_package_data={"cli_anything.epdapp": get_exclusions()}',
+        'exclude_package_data={"": get_exclusions()}',
+        'exclude_package_data=build_exclusions()',
+    ]
+    for expr in bad_variants:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+
+def get_exclusions():
+    return ["skills/*.md"]
+
+def build_exclusions():
+    return {{"cli_anything.epdapp": ["skills/*.md"]}}
+
+setup(
+    name="cli-anything-epdapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.epdapp": ["skills/*.md"]}},
+    {expr},
+    entry_points={{"console_scripts": ["cli-anything-epdapp=cli_anything.epdapp.epdapp_cli:main"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (expr, res_bad["checks"])
+        assert {c["id"]: c for c in res_bad["checks"]}["package-data-skills"]["status"] == "warn", expr
+
+    # Positive cases: .split() excluding only unrelated files, or dynamic exclusion on an unrelated package.
+    ok_variants = [
+        'exclude_package_data={"cli_anything.epdapp": "*.bak *.tmp".split()}',
+        'exclude_package_data={"other_pkg": get_exclusions()}',
+    ]
+    for expr in ok_variants:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+
+def get_exclusions():
+    return ["skills/*.md"]
+
+setup(
+    name="cli-anything-epdapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.epdapp": ["skills/*.md"]}},
+    {expr},
+    entry_points={{"console_scripts": ["cli-anything-epdapp=cli_anything.epdapp.epdapp_cli:main"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (expr, res_ok["checks"])
+
+
+def test_verify_rejects_boolean_negation_and_identity_console_targets(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "bool_ep", "blapp")
+    cli_py = harness / "cli_anything" / "blapp" / "blapp_cli.py"
+    setup_py = harness / "setup.py"
+
+    cli_py.write_text(
+        cli_py.read_text(encoding="utf-8")
+        + """
+run_not = not main
+run_is = main is not None
+run_in = main in (1, 2)
+run_false_and = False and main
+run_true_or = True or main
+run_walrus = (dummy_val := 0)
+run_ok_and = True and main
+run_ok_or = False or main
+""",
+        encoding="utf-8",
+    )
+
+    def _set_target(sym: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-blapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.blapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-blapp=cli_anything.blapp.blapp_cli:{sym}"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    for bad_sym in ("run_not", "run_is", "run_in", "run_false_and", "run_true_or", "run_walrus"):
+        _set_target(bad_sym)
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, bad_sym
+        assert {c["id"]: c for c in res_bad["checks"]}["console-script"]["status"] == "fail", bad_sym
+
+    for ok_sym in ("run_ok_and", "run_ok_or"):
+        _set_target(ok_sym)
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (ok_sym, res_ok["checks"])
+
+
+
 
 
 
