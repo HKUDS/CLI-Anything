@@ -3847,3 +3847,156 @@ setup(
     r_broken = _set_ep("cli_anything.facapp.broken_facade:does_not_exist")
     assert r_broken["ok"] is False
     assert {c["id"]: c for c in r_broken["checks"]}["console-script"]["status"] == "fail"
+
+
+def test_verify_rejects_module_objects_and_non_callables_as_console_scripts(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "mod_obj_ep", "modapp")
+    pkg = harness / "cli_anything" / "modapp"
+    (pkg / "modapp_cli.py").write_text(
+        """import click
+import click as c
+import os
+from os import path
+from urllib import parse
+
+VERSION = "1.0.0"
+mod_alias = click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+
+# Top-level function shadowing an imported module IS callable.
+def os():
+    cli()
+""",
+        encoding="utf-8",
+    )
+    (pkg / "__init__.py").write_text(
+        '"""ModApp harness."""\nfrom . import modapp_cli\n',
+        encoding="utf-8",
+    )
+    (pkg / "__main__.py").write_text(
+        "from .modapp_cli import click, main\n",
+        encoding="utf-8",
+    )
+
+    def _set_ep(target: str) -> dict:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-modapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.modapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-modapp={target}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        return verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+
+    for bad_target in (
+        "cli_anything.modapp.modapp_cli:click",
+        "cli_anything.modapp.modapp_cli:c",
+        "cli_anything.modapp.modapp_cli:mod_alias",
+        "cli_anything.modapp.modapp_cli:path",
+        "cli_anything.modapp.modapp_cli:parse",
+        "cli_anything.modapp.modapp_cli:VERSION",
+        "cli_anything.modapp:modapp_cli",
+        "cli_anything.modapp.__main__:click",
+        "cli_anything.modapp:modapp_cli.click",
+    ):
+        res = _set_ep(bad_target)
+        assert res["ok"] is False, (bad_target, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "fail", bad_target
+
+    # Valid callables (including shadowed top-level function) still pass.
+    assert _set_ep("cli_anything.modapp.modapp_cli:main")["ok"] is True
+    assert _set_ep("cli_anything.modapp.modapp_cli:os")["ok"] is True
+
+
+def test_verify_honors_dunder_all_for_wildcard_entrypoint_reexports(
+    tmp_path: Path,
+) -> None:
+    harness = _create_valid_harness(tmp_path / "wildcard_all", "wcall")
+    pkg = harness / "cli_anything" / "wcall"
+    base_cli = (pkg / "wcall_cli.py").read_text(encoding="utf-8") + "\ndef _private_main():\n    cli()\n"
+
+    (pkg / "__main__.py").write_text(
+        "from .wcall_cli import *\n",
+        encoding="utf-8",
+    )
+
+    def _set_ep(target: str) -> dict:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-wcall",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.wcall": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-wcall={target}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        return verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+
+    # 1. __all__ = ["cli"] excludes `main` from `from .wcall_cli import *`.
+    (pkg / "wcall_cli.py").write_text(base_cli + '\n__all__ = ["cli"]\n', encoding="utf-8")
+    r_omitted = _set_ep("cli_anything.wcall.__main__:main")
+    assert r_omitted["ok"] is False
+    assert {c["id"]: c for c in r_omitted["checks"]}["console-script"]["status"] == "fail"
+    # Exported symbols (both single and dotted) pass and inspect wcall_cli.py.
+    assert _set_ep("cli_anything.wcall.__main__:cli")["ok"] is True
+    assert _set_ep("cli_anything.wcall.__main__:cli.main")["ok"] is True
+
+    # 2. Extending __all__ statically via append/+= makes `main` exported -> passes.
+    (pkg / "wcall_cli.py").write_text(
+        base_cli + '\n__all__ = ["cli"]\n__all__.append("main")\n', encoding="utf-8"
+    )
+    assert _set_ep("cli_anything.wcall.__main__:main")["ok"] is True
+
+    # 3. Empty __all__ = [] exports nothing -> fails.
+    (pkg / "wcall_cli.py").write_text(base_cli + "\n__all__ = []\n", encoding="utf-8")
+    assert {c["id"]: c for c in _set_ep("cli_anything.wcall.__main__:main")["checks"]}["console-script"]["status"] == "fail"
+
+    # 4. Absent __all__ excludes leading-underscore names; explicit __all__ = ["_private_main"] exports it.
+    (pkg / "wcall_cli.py").write_text(base_cli, encoding="utf-8")
+    assert {c["id"]: c for c in _set_ep("cli_anything.wcall.__main__:_private_main")["checks"]}["console-script"]["status"] == "fail"
+    (pkg / "wcall_cli.py").write_text(
+        base_cli + '\n__all__ = ["_private_main"]\n', encoding="utf-8"
+    )
+    assert _set_ep("cli_anything.wcall.__main__:_private_main")["ok"] is True
+
+    # 5. Dynamic __all__ cannot be statically certified for wildcard re-export -> fails.
+    (pkg / "wcall_cli.py").write_text(
+        base_cli + '\n__all__ = [name for name in ("main",)]\n', encoding="utf-8"
+    )
+    assert {c["id"]: c for c in _set_ep("cli_anything.wcall.__main__:main")["checks"]}["console-script"]["status"] == "fail"
+
+    # 6. Explicit (non-wildcard) import ignores __all__ in Python -> passes.
+    (pkg / "wcall_cli.py").write_text(base_cli + '\n__all__ = ["cli"]\n', encoding="utf-8")
+    (pkg / "__main__.py").write_text("from .wcall_cli import main\n", encoding="utf-8")
+    assert _set_ep("cli_anything.wcall.__main__:main")["ok"] is True

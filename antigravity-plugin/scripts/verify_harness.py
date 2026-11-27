@@ -21,6 +21,7 @@ import keyword
 import os
 import re
 import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
@@ -437,6 +438,241 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
     return False, f"attribute '{symbol}' not defined or imported in {py_file.name}"
 
 
+def _is_provably_non_callable_expr(node: ast.AST) -> bool:
+    """Return True if an AST expression provably evaluates to a non-callable literal/container."""
+    return isinstance(
+        node,
+        (ast.Constant, ast.List, ast.Tuple, ast.Set, ast.Dict, ast.JoinedStr, ast.FormattedValue),
+    )
+
+
+def _is_known_external_module(base_mod: str, orig_name: str) -> bool:
+    """Return True if `from base_mod import orig_name` provably binds a module without executing user code."""
+    if not base_mod:
+        return False
+    full_name = f"{base_mod}.{orig_name}"
+    if isinstance(sys.modules.get(full_name), types.ModuleType):
+        return True
+    parent_mod = sys.modules.get(base_mod)
+    if isinstance(parent_mod, types.ModuleType):
+        attr_val = getattr(parent_mod, orig_name, None)
+        if isinstance(attr_val, types.ModuleType):
+            return True
+    top_pkg = base_mod.split(".", 1)[0]
+    stdlib_names = getattr(sys, "stdlib_module_names", frozenset())
+    if top_pkg in stdlib_names:
+        try:
+            if importlib.util.find_spec(full_name) is not None:
+                return True
+        except (ImportError, ValueError, AttributeError):
+            pass
+    return False
+
+
+def _eval_static_str_seq(node: ast.AST, str_seq_vars: dict[str, list[str]]) -> list[str] | None:
+    if isinstance(node, (ast.List, ast.Tuple)):
+        out: list[str] = []
+        for elt in node.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                out.append(elt.value)
+            elif (
+                isinstance(elt, ast.Starred)
+                and isinstance(elt.value, ast.Name)
+                and elt.value.id in str_seq_vars
+            ):
+                out.extend(str_seq_vars[elt.value.id])
+            else:
+                return None
+        return out
+    if isinstance(node, ast.Name) and node.id in str_seq_vars:
+        return list(str_seq_vars[node.id])
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _eval_static_str_seq(node.left, str_seq_vars)
+        right = _eval_static_str_seq(node.right, str_seq_vars)
+        if left is not None and right is not None:
+            return left + right
+    return None
+
+
+def _stmts_mutate_dunder_all(stmts: list[ast.stmt]) -> bool:
+    for node in ast.walk(ast.Module(body=stmts, type_ignores=[])):
+        if isinstance(node, ast.Name) and node.id == "__all__" and isinstance(
+            node.ctx, (ast.Store, ast.Del)
+        ):
+            return True
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "__all__"
+        ):
+            return True
+    return False
+
+
+def _extract_module_dunder_all(tree: ast.Module) -> tuple[str, set[str] | None]:
+    """Extract effective `__all__` state from a module AST.
+
+    Returns:
+      - ("absent", None): module does not define `__all__` (Python wildcard exports non-`_` names)
+      - ("static", set[str]): statically resolved `__all__` export names
+      - ("dynamic", None): `__all__` is defined or mutated dynamically and cannot be statically verified
+    """
+    all_state = "absent"
+    all_list: list[str] = []
+    str_seq_vars: dict[str, list[str]] = {}
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
+
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign):
+            targets_all = any("__all__" in _collect_target_names(t) for t in stmt.targets)
+            if targets_all:
+                seq = _eval_static_str_seq(stmt.value, str_seq_vars)
+                if seq is not None:
+                    all_state = "static"
+                    all_list = list(seq)
+                    str_seq_vars["__all__"] = list(all_list)
+                else:
+                    all_state = "dynamic"
+                    str_seq_vars.pop("__all__", None)
+            elif len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+                vname = stmt.targets[0].id
+                seq = _eval_static_str_seq(stmt.value, str_seq_vars)
+                if seq is not None:
+                    str_seq_vars[vname] = list(seq)
+                else:
+                    str_seq_vars.pop(vname, None)
+        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+            if "__all__" in _collect_target_names(stmt.target):
+                seq = _eval_static_str_seq(stmt.value, str_seq_vars)
+                if seq is not None:
+                    all_state = "static"
+                    all_list = list(seq)
+                    str_seq_vars["__all__"] = list(all_list)
+                else:
+                    all_state = "dynamic"
+                    str_seq_vars.pop("__all__", None)
+            elif isinstance(stmt.target, ast.Name):
+                vname = stmt.target.id
+                seq = _eval_static_str_seq(stmt.value, str_seq_vars)
+                if seq is not None:
+                    str_seq_vars[vname] = list(seq)
+                else:
+                    str_seq_vars.pop(vname, None)
+        elif (
+            isinstance(stmt, ast.AugAssign)
+            and isinstance(stmt.target, ast.Name)
+            and stmt.target.id == "__all__"
+        ):
+            if isinstance(stmt.op, ast.Add) and all_state == "static":
+                rhs = _eval_static_str_seq(stmt.value, str_seq_vars)
+                if rhs is not None:
+                    all_list.extend(rhs)
+                    str_seq_vars["__all__"] = list(all_list)
+                else:
+                    all_state = "dynamic"
+                    str_seq_vars.pop("__all__", None)
+            else:
+                all_state = "dynamic"
+                str_seq_vars.pop("__all__", None)
+        elif isinstance(stmt, ast.Delete):
+            if any(isinstance(t, ast.Name) and t.id == "__all__" for t in stmt.targets):
+                all_state = "absent"
+                all_list = []
+                str_seq_vars.pop("__all__", None)
+        elif (
+            isinstance(stmt, ast.Expr)
+            and isinstance(stmt.value, ast.Call)
+            and isinstance(stmt.value.func, ast.Attribute)
+            and isinstance(stmt.value.func.value, ast.Name)
+            and stmt.value.func.value.id == "__all__"
+        ):
+            method = stmt.value.func.attr
+            args = stmt.value.args
+            if all_state == "static" and not stmt.value.keywords and len(args) == 1:
+                if (
+                    method == "append"
+                    and isinstance(args[0], ast.Constant)
+                    and isinstance(args[0].value, str)
+                ):
+                    all_list.append(args[0].value)
+                    str_seq_vars["__all__"] = list(all_list)
+                elif method == "extend":
+                    ext = _eval_static_str_seq(args[0], str_seq_vars)
+                    if ext is not None:
+                        all_list.extend(ext)
+                        str_seq_vars["__all__"] = list(all_list)
+                    else:
+                        all_state = "dynamic"
+                        str_seq_vars.pop("__all__", None)
+                elif (
+                    method == "remove"
+                    and isinstance(args[0], ast.Constant)
+                    and isinstance(args[0].value, str)
+                ):
+                    if args[0].value in all_list:
+                        all_list.remove(args[0].value)
+                        str_seq_vars["__all__"] = list(all_list)
+                else:
+                    all_state = "dynamic"
+                    str_seq_vars.pop("__all__", None)
+            else:
+                all_state = "dynamic"
+                str_seq_vars.pop("__all__", None)
+        elif isinstance(stmt, ast.If):
+            sub_stmts = stmt.orelse if _is_dunder_main_guard(stmt.test) else (stmt.body + stmt.orelse)
+            if _stmts_mutate_dunder_all(sub_stmts):
+                all_state = "dynamic"
+                str_seq_vars.pop("__all__", None)
+        elif isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
+            if _stmts_mutate_dunder_all(stmt.body + stmt.orelse):
+                all_state = "dynamic"
+                str_seq_vars.pop("__all__", None)
+        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            if _stmts_mutate_dunder_all(stmt.body):
+                all_state = "dynamic"
+                str_seq_vars.pop("__all__", None)
+        elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
+            sub_stmts = list(stmt.body) + list(stmt.orelse) + list(stmt.finalbody)
+            for h in stmt.handlers:
+                sub_stmts.extend(h.body)
+            if _stmts_mutate_dunder_all(sub_stmts):
+                all_state = "dynamic"
+                str_seq_vars.pop("__all__", None)
+        elif match_cls and isinstance(stmt, match_cls):
+            sub_stmts = [s for c in stmt.cases for s in c.body]
+            if _stmts_mutate_dunder_all(sub_stmts):
+                all_state = "dynamic"
+                str_seq_vars.pop("__all__", None)
+
+    if all_state == "static":
+        return "static", set(all_list)
+    return all_state, None
+
+
+def _module_wildcard_allows(py_file: Path, symbol: str) -> tuple[bool, str | None]:
+    """Check whether `from <py_file> import *` exports `symbol` (honoring `__all__` and `_` rules)."""
+    try:
+        tree = ast.parse(_read_text(py_file), filename=str(py_file))
+    except SyntaxError as exc:
+        return False, f"syntax error in {py_file.name}: {exc.msg}"
+
+    state, exports = _extract_module_dunder_all(tree)
+    if state == "absent":
+        if symbol.startswith("_"):
+            return False, f"private symbol '{symbol}' is not exported by wildcard import from {py_file.name}"
+        return True, None
+    if state == "static" and exports is not None:
+        if symbol in exports:
+            return True, None
+        return False, f"symbol '{symbol}' is not listed in __all__ of {py_file.name}"
+    return (
+        False,
+        f"wildcard import from {py_file.name} uses dynamic __all__ that cannot be statically verified for '{symbol}'",
+    )
+
+
 def _resolve_module_attr_path(
     py_file: Path,
     attr_parts: list[str],
@@ -483,6 +719,7 @@ def _resolve_module_attr_path(
     match_cls = getattr(ast, "Match", ())
 
     direct_local_defs: set[str] = set()
+    non_callable_local_defs: set[str] = set()
     click_modules: set[str] = set()
     click_factories: set[str] = set()
     click_cmds: set[str] = set()
@@ -551,6 +788,7 @@ def _resolve_module_attr_path(
             if isinstance(value, ast.Name):
                 if top_level:
                     direct_local_defs.discard(name)
+                    non_callable_local_defs.discard(name)
                     _clear_reexports(name)
                 aliases.setdefault(name, []).append(value.id)
                 return
@@ -558,11 +796,19 @@ def _resolve_module_attr_path(
             if val_chain is not None and len(val_chain) >= 2:
                 if top_level:
                     direct_local_defs.discard(name)
+                    non_callable_local_defs.discard(name)
                     _clear_reexports(name)
                 attr_aliases.setdefault(name, []).append(val_chain)
                 return
             if top_level:
                 _clear_reexports(name)
+            if _is_provably_non_callable_expr(value):
+                if top_level:
+                    direct_local_defs.discard(name)
+                non_callable_local_defs.add(name)
+                return
+            if top_level:
+                non_callable_local_defs.discard(name)
             direct_local_defs.add(name)
             if _is_click_cmd_value(value):
                 click_cmds.add(name)
@@ -572,6 +818,7 @@ def _resolve_module_attr_path(
             for bound_name in _collect_target_names(target):
                 if top_level:
                     _clear_reexports(bound_name)
+                    non_callable_local_defs.discard(bound_name)
                 direct_local_defs.add(bound_name)
 
     def _collect_stmts(stmts: list[ast.stmt], *, top_level: bool) -> None:
@@ -579,11 +826,13 @@ def _resolve_module_attr_path(
             if isinstance(stmt, ast.ClassDef):
                 if top_level:
                     _clear_reexports(stmt.name)
+                    non_callable_local_defs.discard(stmt.name)
                 direct_local_defs.add(stmt.name)
                 classes.setdefault(stmt.name, []).append(stmt)
             elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if top_level:
                     _clear_reexports(stmt.name)
+                    non_callable_local_defs.discard(stmt.name)
                 direct_local_defs.add(stmt.name)
                 if any(_is_click_cmd_expr(dec) for dec in stmt.decorator_list):
                     click_cmds.add(stmt.name)
@@ -598,6 +847,7 @@ def _resolve_module_attr_path(
                     bound = alias.asname or alias.name.split(".", 1)[0]
                     if top_level:
                         direct_local_defs.discard(bound)
+                        non_callable_local_defs.discard(bound)
                         _clear_reexports(bound)
                     if alias.name == "click":
                         click_modules.add(alias.asname or "click")
@@ -619,6 +869,7 @@ def _resolve_module_attr_path(
                     bound = alias.asname or alias.name
                     if top_level:
                         direct_local_defs.discard(bound)
+                        non_callable_local_defs.discard(bound)
                         _clear_reexports(bound)
                     if stmt.level == 0 and stmt.module == "click" and alias.name in {
                         "group",
@@ -749,15 +1000,26 @@ def _resolve_module_attr_path(
     first_local_err: str | None = None
 
     # Single-component callable (`module:main`): return directly if defined locally,
-    # otherwise follow local re-exports (`from .demoapp_cli import main`, `main = cli_mod.main`, etc.).
+    # reject imported module objects and non-callable literals, and follow local re-exports
+    # (`from .demoapp_cli import main`, `main = cli_mod.main`, wildcard exports honoring `__all__`, etc.).
     if len(attr_parts) == 1:
         if any(cand in direct_local_defs for cand in root_names):
-            return True, None, py_file
-        if harness is None or eff_pkg_dir is None:
             return True, None, py_file
 
         has_external_binding = False
         for cand in root_names:
+            # Module objects bound via `import ...` are never callable console-script targets.
+            for target_mod in mod_imports.get(cand, ()):
+                if first_local_err is None:
+                    first_local_err = (
+                        f"target '{attr_parts[0]}' resolves to imported module '{target_mod}' which is not callable"
+                    )
+            if cand in non_callable_local_defs:
+                if first_local_err is None:
+                    first_local_err = (
+                        f"target '{attr_parts[0]}' resolves to a non-callable value in {py_file.name}"
+                    )
+
             for attr_chain in attr_aliases.get(cand, ()):
                 ok_sub, sub_err, impl = _resolve_module_attr_path(
                     py_file,
@@ -790,61 +1052,72 @@ def _resolve_module_attr_path(
                     has_external_binding = True
 
             for base_mod, orig_name, is_rel in from_imports.get(cand, ()):
-                sub_mod = f"{base_mod}.{orig_name}" if base_mod else orig_name
-                sub_file, sub_is_pkg = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
-                if sub_file is not None:
-                    ship_err = _check_local_module_shipped(sub_mod, sub_file, sub_is_pkg)
-                    if ship_err is None:
-                        return True, None, sub_file
-                    if first_local_err is None:
-                        first_local_err = ship_err
-                    continue
-                if base_mod:
-                    base_file, base_is_pkg = _resolve_local_module_file(base_mod, harness, eff_pkg_dir)
-                    if base_file is not None:
-                        ok_sub, sub_err, impl = _recurse_local(
-                            base_mod, base_file, base_is_pkg, [orig_name]
+                if harness is not None and eff_pkg_dir is not None:
+                    # Check defining package/module symbol first (Python checks package attributes
+                    # before falling back to importing a submodule of the same name).
+                    if base_mod:
+                        base_file, base_is_pkg = _resolve_local_module_file(
+                            base_mod, harness, eff_pkg_dir
                         )
-                        if ok_sub:
-                            return True, None, impl or base_file
-                        if first_local_err is None and sub_err:
-                            first_local_err = sub_err
+                        if base_file is not None:
+                            ok_sub, sub_err, impl = _recurse_local(
+                                base_mod, base_file, base_is_pkg, [orig_name]
+                            )
+                            if ok_sub:
+                                return True, None, impl or base_file
+                            sub_mod = f"{base_mod}.{orig_name}"
+                            sub_file, _ = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
+                            if sub_file is not None:
+                                if first_local_err is None:
+                                    first_local_err = (
+                                        f"target '{attr_parts[0]}' resolves to module '{sub_mod}' which is not callable"
+                                    )
+                            elif first_local_err is None and sub_err:
+                                first_local_err = sub_err
+                            continue
+                    sub_mod = f"{base_mod}.{orig_name}" if base_mod else orig_name
+                    sub_file, _ = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
+                    if sub_file is not None:
+                        if first_local_err is None:
+                            first_local_err = (
+                                f"target '{attr_parts[0]}' resolves to module '{sub_mod}' which is not callable"
+                            )
                         continue
-                if _is_harness_mod_ref(base_mod or orig_name, is_rel):
+                    if _is_harness_mod_ref(base_mod or orig_name, is_rel):
+                        if first_local_err is None:
+                            first_local_err = (
+                                f"re-exported module '{base_mod or orig_name}' not found in harness"
+                            )
+                        continue
+                if _is_known_external_module(base_mod, orig_name):
                     if first_local_err is None:
                         first_local_err = (
-                            f"re-exported module '{base_mod or orig_name}' not found in harness"
+                            f"target '{attr_parts[0]}' resolves to module '{base_mod}.{orig_name}' which is not callable"
                         )
-                else:
-                    has_external_binding = True
-
-            for target_mod in mod_imports.get(cand, ()):
-                target_file, target_is_pkg = _resolve_local_module_file(target_mod, harness, eff_pkg_dir)
-                if target_file is not None:
-                    ship_err = _check_local_module_shipped(target_mod, target_file, target_is_pkg)
-                    if ship_err is None:
-                        return True, None, target_file
-                    if first_local_err is None:
-                        first_local_err = ship_err
-                elif _is_harness_mod_ref(target_mod, False):
-                    if first_local_err is None:
-                        first_local_err = f"re-exported module '{target_mod}' not found in harness"
                 else:
                     has_external_binding = True
 
         for star_mod, is_rel in star_imports:
-            star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
-            if star_file is not None:
-                ok_sub, sub_err, impl = _recurse_local(
-                    star_mod, star_file, star_is_pkg, [attr_parts[0]]
-                )
-                if ok_sub:
-                    return True, None, impl or star_file
-                if first_local_err is None and sub_err:
-                    first_local_err = sub_err
-            elif _is_harness_mod_ref(star_mod, is_rel):
-                if first_local_err is None:
-                    first_local_err = f"re-exported module '{star_mod}' not found in harness"
+            if harness is not None and eff_pkg_dir is not None:
+                star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+                if star_file is not None:
+                    allowed, wc_err = _module_wildcard_allows(star_file, attr_parts[0])
+                    if not allowed:
+                        if first_local_err is None and wc_err:
+                            first_local_err = wc_err
+                        continue
+                    ok_sub, sub_err, impl = _recurse_local(
+                        star_mod, star_file, star_is_pkg, [attr_parts[0]]
+                    )
+                    if ok_sub:
+                        return True, None, impl or star_file
+                    if first_local_err is None and sub_err:
+                        first_local_err = sub_err
+                elif _is_harness_mod_ref(star_mod, is_rel):
+                    if first_local_err is None:
+                        first_local_err = f"re-exported module '{star_mod}' not found in harness"
+                else:
+                    has_external_binding = True
             else:
                 has_external_binding = True
 
@@ -897,9 +1170,6 @@ def _resolve_module_attr_path(
                             cls_aliases.setdefault(s.target.id, []).append(s.value.id)
                         elif isinstance(s.value, ast.Call) and isinstance(s.value.func, ast.Name):
                             cls_instances.setdefault(s.target.id, []).append(s.value.func.id)
-                elif isinstance(s, ast.Import):
-                    for a in s.names:
-                        direct_names.add(a.asname or a.name.split(".", 1)[0])
                 elif isinstance(s, ast.ImportFrom):
                     for a in s.names:
                         if a.name != "*":
@@ -1040,10 +1310,15 @@ def _resolve_module_attr_path(
                         if first_local_err is None and sub_err:
                             first_local_err = sub_err
 
-        # 5d. Local `from .other import *`.
+        # 5d. Local `from .other import *` (must honor `__all__` and `_` visibility for `attr_parts[0]`).
         for star_mod, _is_rel in star_imports:
             star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
             if star_file is not None:
+                allowed, wc_err = _module_wildcard_allows(star_file, attr_parts[0])
+                if not allowed:
+                    if first_local_err is None and wc_err:
+                        first_local_err = wc_err
+                    continue
                 ok_sub, sub_err, impl = _recurse_local(
                     star_mod, star_file, star_is_pkg, attr_parts
                 )
