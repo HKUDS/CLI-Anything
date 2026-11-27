@@ -276,7 +276,10 @@ def _decode_compressed_source(source: str, read_error: Exception, channels: int)
     The clip renderer only understands mono and stereo buffers, so SoX is
     asked to remix the decoded source to the project's channel count instead
     of returning the source's native layout (a 5.1 source would otherwise be
-    inserted frame-by-frame as if it were mono/stereo).
+    inserted frame-by-frame as if it were mono/stereo). The decoded file is
+    also pinned to 16-bit PCM: SoX writes WAVE_FORMAT_EXTENSIBLE for some
+    high-bit-depth sources, which the stdlib wave reader rejects before
+    Python 3.12 (this package still supports 3.10 and 3.11).
     """
     try:
         from cli_anything.audacity.utils.sox_backend import decode_to_wav, find_sox
@@ -291,7 +294,7 @@ def _decode_compressed_source(source: str, read_error: Exception, channels: int)
     with tempfile.TemporaryDirectory(prefix="cli-anything-source-") as tmp_dir:
         wav_path = os.path.join(tmp_dir, "source.wav")
         try:
-            decode_to_wav(source, wav_path, channels=channels)
+            decode_to_wav(source, wav_path, channels=channels, bits=16)
         except (RuntimeError, OSError) as exc:
             raise RuntimeError(
                 f"Could not decode audio source '{source}' with SoX: {exc}"

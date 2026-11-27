@@ -35,13 +35,18 @@ def import_audio(path: str) -> Dict[str, Any]:
     except (wave.Error, EOFError, struct_error()):
         # Not a WAV or unreadable: let SoX probe compressed containers.
         info["format"] = _guess_format(abs_path)
-        info["duration"] = _probe_duration(abs_path)
+        info["duration"] = _probe_duration(abs_path) or 0.0
 
     return info
 
 
-def _probe_duration(path: str) -> float:
-    """Read WAV durations directly and ask SoX about other containers."""
+def _probe_duration(path: str) -> Optional[float]:
+    """Read WAV durations directly and ask SoX about other containers.
+
+    Returns ``None`` when the source exists but neither the stdlib reader nor
+    SoX could determine a duration. A zero-frame WAV is a successful probe
+    and returns ``0.0``, which callers must not confuse with a failed probe.
+    """
     try:
         with wave.open(path, "r") as wf:
             return wf.getnframes() / wf.getframerate()
@@ -52,7 +57,7 @@ def _probe_duration(path: str) -> float:
         from cli_anything.audacity.utils.sox_backend import probe_duration
         return probe_duration(path)
     except (RuntimeError, FileNotFoundError, OSError, ValueError, wave.Error):
-        return 0.0
+        return None
 
 
 def struct_error():
@@ -98,26 +103,29 @@ def add_clip(
     # unavailable. With an explicit end the trim bound is derived from the
     # timeline below, so probing would only stretch the rendered clip past its
     # declared end.
-    duration = 0.0
+    duration: Optional[float] = None
     needs_duration = end_time is None
     if abs_source and os.path.exists(abs_source) and needs_duration:
         duration = _probe_duration(abs_source)
 
     if end_time is None:
-        if duration <= 0:
-            if abs_source and os.path.exists(abs_source):
-                raise ValueError(
-                    f"Cannot determine the duration of '{abs_source or source}'. "
-                    "Pass --end explicitly, or install SoX so compressed formats "
-                    "can be probed."
-                )
+        if duration is None and abs_source and os.path.exists(abs_source):
+            raise ValueError(
+                f"Cannot determine the duration of '{abs_source or source}'. "
+                "Pass --end explicitly, or install SoX so compressed formats "
+                "can be probed."
+            )
+        if duration:
+            end_time = start_time + (duration - trim_start)
+        else:
             # An absent source keeps the historical placeholder so projects can
             # reference offline media; rendering skips it until the file exists.
+            # A readable zero-frame WAV is a successful probe with no frames,
+            # so it keeps the same placeholder instead of being reported as an
+            # unreadable source.
             end_time = start_time + 10.0
-        else:
-            end_time = start_time + (duration - trim_start)
     if trim_end is None:
-        if needs_duration and duration > 0:
+        if duration:
             trim_end = duration
         else:
             # An explicit timeline end bounds the clip: trim exactly that much

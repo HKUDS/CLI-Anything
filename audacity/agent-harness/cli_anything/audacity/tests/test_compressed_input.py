@@ -240,6 +240,51 @@ class CompressedInputTests(unittest.TestCase):
         self.assertAlmostEqual(result["duration"], 10.0, places=2)
         self.assertEqual(result["peak_level"], 0.0)
 
+    def test_render_decode_asks_sox_for_plain_16_bit_pcm(self):
+        """A decoded source must be readable by wave on Python 3.10/3.11."""
+        project, _ = self._project(
+            self.mp3, end_time=FAKE_DURATION, trim_end=FAKE_DURATION
+        )
+        output = os.path.join(self.root, "plain-pcm-out.wav")
+        render_mix(project, output, preset="wav")
+
+        decode_cmds = [
+            cmd for cmd in RECORDED_RUNS
+            if os.path.basename(str(cmd[0])) == "sox"
+            and str(cmd[-1]).endswith(".wav")
+        ]
+        self.assertTrue(decode_cmds, "the source was not decoded through SoX")
+        cmd = decode_cmds[-1]
+        self.assertIn(
+            "-b", cmd, "the render decode kept the source's high bit depth"
+        )
+        self.assertEqual(cmd[cmd.index("-b") + 1], "16")
+
+    def test_zero_frame_wav_keeps_ten_second_placeholder(self):
+        """A readable but empty WAV is a successful probe, not a failure."""
+        wav_path = os.path.join(self.root, "empty.wav")
+        with wave.open(wav_path, "w") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(8000)
+            handle.writeframes(b"")
+
+        info = import_audio(wav_path)
+        self.assertEqual(info["format"], "WAV")
+        self.assertEqual(
+            info["duration"], 0.0,
+            "a zero-frame WAV must keep the historical zero duration",
+        )
+
+        project = create_project()
+        add_track(project, name="Track 1")
+        clip = add_clip(project, 0, wav_path)
+        self.assertEqual(
+            RECORDED_RUNS, [], "a readable zero-frame WAV was sent to SoX"
+        )
+        self.assertAlmostEqual(clip["end_time"], 10.0)
+        self.assertAlmostEqual(clip["trim_end"], 10.0)
+
     def test_wav_control_unchanged(self):
         wav_path = os.path.join(self.root, "tone.wav")
         samples = generate_sine_wave(440.0, 0.25, 44100, 0.5, 1)
