@@ -27,6 +27,9 @@ cli-hub search "3d modeling"
 # Show details for a CLI
 cli-hub info gimp
 
+# Machine-readable details (registry fields + installed state)
+cli-hub info gimp --json
+
 # Install a CLI harness
 cli-hub install gimp
 
