@@ -208,3 +208,51 @@ function Get-CliAnythingDiscoveryPointerPath {
     }
     return (Join-Path $userGemini "cli-anything-generator.root")
 }
+
+function Write-CliAnythingDiscoveryPointer {
+    param(
+        [Parameter(Mandatory = $true)][string]$PointerPath,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+    $ptrDir = Split-Path -Parent $PointerPath
+    New-Item -ItemType Directory -Path $ptrDir -Force | Out-Null
+    $ptrLock = Join-Path $ptrDir ".cli-anything-generator.root.lock"
+    $lockHandle = $null
+    $tmpPath = $null
+    try {
+        $lockHandle = Acquire-CliAnythingInstallLock -LockPath $ptrLock
+        $tmpPath = Join-Path $ptrDir (".cli-anything-generator.root.tmp." + [System.Guid]::NewGuid().ToString("N"))
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($tmpPath, ($Value + [Environment]::NewLine), $utf8NoBom)
+        $moved = $false
+        for ($attempt = 0; $attempt -lt 10; $attempt++) {
+            try {
+                if (Test-Path -LiteralPath $PointerPath) {
+                    [System.IO.File]::Replace($tmpPath, $PointerPath, [NullString]::Value, $true)
+                } else {
+                    [System.IO.File]::Move($tmpPath, $PointerPath)
+                }
+                $tmpPath = $null
+                $moved = $true
+                break
+            } catch [System.IO.IOException] {
+                Start-Sleep -Milliseconds 50
+            } catch [System.UnauthorizedAccessException] {
+                Start-Sleep -Milliseconds 50
+            }
+        }
+        if (-not $moved) {
+            if (Test-Path -LiteralPath $PointerPath) {
+                [System.IO.File]::Replace($tmpPath, $PointerPath, [NullString]::Value, $true)
+            } else {
+                [System.IO.File]::Move($tmpPath, $PointerPath)
+            }
+            $tmpPath = $null
+        }
+    } finally {
+        if ($tmpPath -and (Test-Path -LiteralPath $tmpPath)) {
+            Remove-Item -LiteralPath $tmpPath -Force -ErrorAction SilentlyContinue
+        }
+        Release-CliAnythingInstallLock -LockHandle $lockHandle -LockPath $ptrLock
+    }
+}

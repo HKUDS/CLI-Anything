@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import ast
 import configparser
+import importlib.util
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import shutil
 import sys
 from importlib.metadata import distributions
 from pathlib import Path
+from typing import Any
 
 SKIP_DIRS = {
     ".git",
@@ -85,63 +87,22 @@ def _extract_setup_py_metadata(text: str) -> tuple[str | None, str | None]:
     return name, version
 
 
-def _extract_pyproject_metadata_fallback(text: str) -> tuple[str | None, str | None, str]:
-    """Python 3.10 fallback for reading name/version/backend from pyproject.toml."""
-    section = ""
-    build_backend: str | None = None
-    proj_name: str | None = None
-    proj_version: str | None = None
-    poetry_name: str | None = None
-    poetry_version: str | None = None
-
-    for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if line.startswith("[") and line.endswith("]") and "=" not in line:
-            section = line[1:-1].strip()
-            continue
-        match = re.match(r'^([A-Za-z0-9_-]+)\s*=\s*["\']([^"\']+)["\']', line)
-        if not match:
-            continue
-        key, val = match.group(1), match.group(2).strip()
-        if section == "build-system" and key == "build-backend":
-            build_backend = val
-        elif section == "project":
-            if key == "name":
-                proj_name = val
-            elif key == "version":
-                proj_version = val
-        elif section == "tool.poetry":
-            if key == "name":
-                poetry_name = val
-            elif key == "version":
-                poetry_version = val
-
-    backend_norm = (build_backend or "").lower()
-    if not backend_norm or backend_norm == "setuptools" or backend_norm.startswith("setuptools."):
-        backend_kind = "setuptools"
-    elif backend_norm == "poetry" or backend_norm.startswith("poetry."):
-        backend_kind = "poetry"
-    else:
-        backend_kind = "other"
-
-    if backend_kind == "poetry":
-        return proj_name or poetry_name, proj_version or poetry_version, backend_kind
-    return proj_name, proj_version, backend_kind
+def _loads_toml_fallback(text: str) -> dict[str, Any]:
+    """Load and invoke the shared stdlib TOML 1.0 fallback parser (Python 3.10)."""
+    mod = sys.modules.get("_cli_anything_toml_fallback")
+    if mod is None:
+        mod_path = Path(__file__).resolve().parent / "_toml_fallback.py"
+        spec = importlib.util.spec_from_file_location("_cli_anything_toml_fallback", mod_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Unable to load TOML fallback parser at {mod_path}")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["_cli_anything_toml_fallback"] = mod
+        spec.loader.exec_module(mod)
+    return mod.loads_toml_fallback(text)
 
 
-def _extract_pyproject_metadata(text: str) -> tuple[str | None, str | None, str]:
-    """Extract (name, version, backend_kind) from pyproject.toml."""
-    try:
-        import tomllib  # Python 3.11+
-
-        data = tomllib.loads(text)
-    except ImportError:
-        return _extract_pyproject_metadata_fallback(text)
-    except Exception:
-        return None, None, "setuptools"
-
+def _extract_pyproject_data(data: Any) -> tuple[str | None, str | None, str]:
+    """Extract (name, version, backend_kind) from parsed pyproject.toml data."""
     if not isinstance(data, dict):
         return None, None, "setuptools"
 
@@ -156,17 +117,56 @@ def _extract_pyproject_metadata(text: str) -> tuple[str | None, str | None, str]
         backend_kind = "other"
 
     proj = data.get("project")
-    proj_name = proj.get("name").strip() if isinstance(proj, dict) and isinstance(proj.get("name"), str) else None
-    proj_version = proj.get("version").strip() if isinstance(proj, dict) and isinstance(proj.get("version"), str) else None
+    proj_name = (
+        proj.get("name").strip() or None
+        if isinstance(proj, dict) and isinstance(proj.get("name"), str)
+        else None
+    )
+    proj_version = (
+        proj.get("version").strip() or None
+        if isinstance(proj, dict) and isinstance(proj.get("version"), str)
+        else None
+    )
 
     if backend_kind == "poetry":
         tool = data.get("tool")
         poetry = tool.get("poetry") if isinstance(tool, dict) else None
-        p_name = poetry.get("name").strip() if isinstance(poetry, dict) and isinstance(poetry.get("name"), str) else None
-        p_ver = poetry.get("version").strip() if isinstance(poetry, dict) and isinstance(poetry.get("version"), str) else None
+        p_name = (
+            poetry.get("name").strip() or None
+            if isinstance(poetry, dict) and isinstance(poetry.get("name"), str)
+            else None
+        )
+        p_ver = (
+            poetry.get("version").strip() or None
+            if isinstance(poetry, dict) and isinstance(poetry.get("version"), str)
+            else None
+        )
         return proj_name or p_name, proj_version or p_ver, backend_kind
 
     return proj_name, proj_version, backend_kind
+
+
+def _extract_pyproject_metadata_fallback(text: str) -> tuple[str | None, str | None, str]:
+    """Python 3.10 fallback for reading name/version/backend from pyproject.toml."""
+    try:
+        data = _loads_toml_fallback(text)
+    except Exception:
+        return None, None, "setuptools"
+    return _extract_pyproject_data(data)
+
+
+def _extract_pyproject_metadata(text: str) -> tuple[str | None, str | None, str]:
+    """Extract (name, version, backend_kind) from pyproject.toml."""
+    try:
+        import tomllib  # Python 3.11+
+
+        data = tomllib.loads(text)
+    except ImportError:
+        return _extract_pyproject_metadata_fallback(text)
+    except Exception:
+        return None, None, "setuptools"
+
+    return _extract_pyproject_data(data)
 
 
 def _extract_setup_cfg_metadata(text: str) -> tuple[str | None, str | None]:

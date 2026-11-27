@@ -143,6 +143,7 @@ try {
             (Join-Path $resourceScripts "repl_skin.py") `
             (Join-Path $resourceScripts "preview_bundle.py") `
             (Join-Path $resourceScripts "skill_generator.py") `
+            (Join-Path $resourceScripts "_toml_fallback.py") `
             (Join-Path $resourceScripts "verify_harness.py") `
             (Join-Path $resourceScripts "list_harnesses.py") `
             (Join-Path $resourceScripts "pep420_guard.py")
@@ -176,9 +177,7 @@ try {
     [System.IO.File]::WriteAllText((Join-Path $pluginRoot "PLUGIN_ROOT.txt"), ($pluginRoot + [Environment]::NewLine), $utf8NoBom)
 
     if ($isGlobal) {
-        $pointerDir = Split-Path -Parent $discoveryPointer
-        New-Item -ItemType Directory -Path $pointerDir -Force | Out-Null
-        [System.IO.File]::WriteAllText($discoveryPointer, ($pluginRoot + [Environment]::NewLine), $utf8NoBom)
+        Write-CliAnythingDiscoveryPointer -PointerPath $discoveryPointer -Value $pluginRoot
     }
 } finally {
     if ($stagingDir -and (Test-Path -LiteralPath $stagingDir)) {

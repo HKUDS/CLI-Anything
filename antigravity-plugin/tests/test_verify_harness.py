@@ -2766,3 +2766,72 @@ setup(
     )
     assert r_exp["ok"] is False
     assert {c["id"]: c for c in r_exp["checks"]}["namespace-packages"]["status"] == "fail"
+
+
+def test_list_harnesses_parses_inline_and_dotted_pyproject_metadata_on_py310_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = tmp_path / "demoapp" / "agent-harness"
+    pkg = harness / "cli_anything" / "demoapp"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text('"""Demo app harness."""\n', encoding="utf-8")
+
+    # 1. Inline project table: must produce identical merged output under tomllib and Py3.10 fallback.
+    (harness / "pyproject.toml").write_text(
+        'project = { name = "cli-anything-public-name", version = "1.2.3" }\n\n'
+        '[build-system]\n'
+        'requires = ["setuptools>=68"]\n'
+        'build-backend = "setuptools.build_meta"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        list_harnesses,
+        "scan_installed",
+        lambda *, include_hub=False: {
+            "public-name": {
+                "name": "public-name",
+                "status": "installed",
+                "version": "1.2.3",
+                "executable": "/usr/local/bin/cli-anything-public-name",
+                "source": None,
+            }
+        },
+    )
+
+    p_native = list_harnesses.collect_tools(tmp_path)
+    assert p_native["total"] == 1
+    assert p_native["installed"] == 1
+    assert p_native["generated_only"] == 0
+    assert p_native["tools"][0]["name"] == "public-name"
+    assert p_native["tools"][0]["source"] == "./demoapp/agent-harness"
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        p_310 = list_harnesses.collect_tools(tmp_path)
+        assert p_310 == p_native
+        gen_310 = list_harnesses.scan_generated(tmp_path)
+        assert list(gen_310.keys()) == ["public-name"]
+        assert gen_310["public-name"]["version"] == "1.2.3"
+
+    # 2. Dotted project keys + UTF-8 BOM under Py3.10 fallback.
+    (harness / "pyproject.toml").write_bytes(
+        b'\xef\xbb\xbfproject.name = "cli-anything-dotted-pub"\n'
+        b'project.version = "2.4.5"\n'
+    )
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        gen_dotted = list_harnesses.scan_generated(tmp_path)
+        assert list(gen_dotted.keys()) == ["dotted-pub"]
+        assert gen_dotted["dotted-pub"]["version"] == "2.4.5"
+
+    # 3. Poetry inline tables for build-system and tool.poetry under Py3.10 fallback.
+    (harness / "pyproject.toml").write_text(
+        'build-system = { requires = ["poetry-core"], build-backend = "poetry.core.masonry.api" }\n'
+        'tool.poetry = { name = "cli-anything-poetry-inline", version = "3.1.4" }\n',
+        encoding="utf-8",
+    )
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        gen_poetry = list_harnesses.scan_generated(tmp_path)
+        assert list(gen_poetry.keys()) == ["poetry-inline"]
+        assert gen_poetry["poetry-inline"]["version"] == "3.1.4"

@@ -184,6 +184,7 @@ p.write_text(p.read_text(encoding="utf-8").replace("python -S ./scripts/pep420_g
     "${STAGING_DIR}/scripts/repl_skin.py" \
     "${STAGING_DIR}/scripts/preview_bundle.py" \
     "${STAGING_DIR}/scripts/skill_generator.py" \
+    "${STAGING_DIR}/scripts/_toml_fallback.py" \
     "${STAGING_DIR}/scripts/verify_harness.py" \
     "${STAGING_DIR}/scripts/list_harnesses.py" \
     "${STAGING_DIR}/scripts/pep420_guard.py"
@@ -216,8 +217,7 @@ PLUGIN_ROOT="$(to_host_path "$(cd "${DEST_DIR}" && pwd -P)")"
 printf '%s\n' "${PLUGIN_ROOT}" > "${DEST_DIR}/PLUGIN_ROOT.txt"
 
 if [[ "${IS_GLOBAL}" -eq 1 ]]; then
-  mkdir -p "$(dirname "${DISCOVERY_POINTER}")"
-  printf '%s\n' "${PLUGIN_ROOT}" > "${DISCOVERY_POINTER}"
+  write_discovery_pointer "${DISCOVERY_POINTER}" "${PLUGIN_ROOT}"
 fi
 
 echo "Installed Antigravity plugin to: ${DEST_DIR}"

@@ -676,3 +676,57 @@ def test_posix_stale_plugin_root_refuses_global_fallback(tmp_path: Path) -> None
     assert not stale_ws_installed.exists()
     assert (global_installed / "plugin.json").is_file()
     assert global_pointer.is_file()
+
+
+def test_concurrent_distinct_roots_publish_discovery_pointer_atomically(tmp_path: Path) -> None:
+    cmd = _installer_cmd(force=True)
+    rounds = 6 if sys.platform != "win32" else 3
+    for i in range(rounds):
+        case_dir = tmp_path / f"ptr-race-{i}"
+        home = case_dir / "home"
+        short_plugins = case_dir / "a" / "plugins"
+        long_plugins = (
+            case_dir
+            / "very-long-distinct-plugin-root-directory-name-for-atomic-pointer-race"
+            / "plugins"
+        )
+        home.mkdir(parents=True)
+        short_plugins.mkdir(parents=True)
+        long_plugins.mkdir(parents=True)
+
+        env_short = os.environ.copy()
+        env_short["HOME"] = str(home)
+        env_short["USERPROFILE"] = str(home)
+        env_short["ANTIGRAVITY_PLUGINS_HOME"] = str(short_plugins)
+
+        env_long = os.environ.copy()
+        env_long["HOME"] = str(home)
+        env_long["USERPROFILE"] = str(home)
+        env_long["ANTIGRAVITY_PLUGINS_HOME"] = str(long_plugins)
+
+        p1 = subprocess.Popen(cmd, env=env_short, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        p2 = subprocess.Popen(cmd, env=env_long, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out1, err1 = p1.communicate(timeout=45)
+        out2, err2 = p2.communicate(timeout=45)
+
+        assert p1.returncode == 0, f"Round {i} short failed:\n{out1}{err1}"
+        assert p2.returncode == 0, f"Round {i} long failed:\n{out2}{err2}"
+
+        pointer = home / ".gemini" / "cli-anything-generator.root"
+        assert pointer.is_file(), f"Round {i}: discovery pointer missing"
+        raw_lines = pointer.read_text(encoding="utf-8").splitlines()
+        assert len(raw_lines) == 1, f"Round {i}: pointer corrupted with multiple/empty lines: {raw_lines!r}"
+
+        expected = {
+            str((short_plugins / "cli-anything").resolve()),
+            str((long_plugins / "cli-anything").resolve()),
+        }
+        got = raw_lines[0].strip()
+        if sys.platform == "win32":
+            assert got.lower() in {e.lower() for e in expected}, f"Round {i}: unexpected pointer {got!r} not in {expected}"
+        else:
+            assert got in expected, f"Round {i}: unexpected pointer {got!r} not in {expected}"
+
+        gemini_dir = home / ".gemini"
+        assert not (gemini_dir / ".cli-anything-generator.root.lock").exists()
+        assert not list(gemini_dir.glob(".cli-anything-generator.root.tmp.*"))

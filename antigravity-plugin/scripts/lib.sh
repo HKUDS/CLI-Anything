@@ -324,3 +324,37 @@ is_verified_self_install_dir() {
 discovery_pointer_path() {
   printf '%s' "${HOME}/.gemini/cli-anything-generator.root"
 }
+
+# Atomically publish the shared discovery pointer so concurrent global installs
+# targeting distinct ANTIGRAVITY_PLUGINS_HOME roots never truncate or interleave it.
+write_discovery_pointer() {
+  local pointer_path="${1}"
+  local value="${2}"
+  local ptr_dir ptr_tmp="" ptr_lock="" rc=1
+  ptr_dir="$(dirname "${pointer_path}")"
+  mkdir -p "${ptr_dir}"
+  ptr_lock="${ptr_dir}/.cli-anything-generator.root.lock"
+  acquire_install_lock "${ptr_lock}"
+  if ptr_tmp="$(mktemp "${ptr_dir}/.cli-anything-generator.root.tmp.XXXXXX")"; then
+    if printf '%s\n' "${value}" > "${ptr_tmp}"; then
+      local attempt=0 moved=0
+      while [[ "${attempt}" -lt 10 ]]; do
+        if mv -f "${ptr_tmp}" "${pointer_path}" 2>/dev/null; then
+          moved=1
+          break
+        fi
+        attempt=$((attempt + 1))
+        sleep 0.05
+      done
+      if [[ "${moved}" -eq 1 ]] || mv -f "${ptr_tmp}" "${pointer_path}"; then
+        rc=0
+      else
+        rm -f "${ptr_tmp}" 2>/dev/null || true
+      fi
+    else
+      rm -f "${ptr_tmp}" 2>/dev/null || true
+    fi
+  fi
+  release_install_lock "${ptr_lock}"
+  return "${rc}"
+}
