@@ -1227,6 +1227,8 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "package_dir": {},
         "has_project_table": False,
         "scripts_dynamic": False,
+        "dynamic_scripts_defined": False,
+        "dynamic_scripts_error": None,
         "requires_python_dynamic": False,
         "reserved_console_scripts_ep": False,
         "console_scripts": [],
@@ -1237,6 +1239,42 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "include_package_data": None,
         "has_python_requires": False,
     }
+
+
+def _parse_entry_points_ini_groups(text: str) -> dict[str, dict[str, str]]:
+    """Mirror setuptools.config.expand.entry_points() INI parsing."""
+    parser = configparser.ConfigParser(default_section=None, delimiters=("=",), interpolation=None)  # type: ignore[call-overload]
+    parser.optionxform = str  # type: ignore[assignment]
+    parser.read_string(text)
+    groups = {k: dict(v.items()) for k, v in parser.items()}
+    groups.pop(parser.default_section, None)
+    return groups
+
+
+def _read_local_config_files(
+    harness: Path | None,
+    file_entries: list[str],
+    specifier: str,
+) -> tuple[str | None, str | None]:
+    """Read file(s) constrained inside harness root (mirroring setuptools expand.read_files)."""
+    if harness is None:
+        return None, f"cannot resolve {specifier} without harness root"
+    root_resolved = harness.resolve()
+    chunks: list[str] = []
+    for raw_rel in file_entries:
+        rel = _normalize_platform_seps(raw_rel.strip())
+        if not rel or _is_absolute_pattern(rel):
+            return None, f"{specifier} path must be relative to harness root: {raw_rel!r}"
+        cand = harness / rel
+        try:
+            cand_resolved = cand.resolve()
+            cand_resolved.relative_to(root_resolved)
+        except (OSError, ValueError):
+            return None, f"{specifier} path escapes harness root: {raw_rel!r}"
+        if not cand.is_file():
+            return None, f"{specifier} file not found: {raw_rel}"
+        chunks.append(_read_text(cand))
+    return "\n".join(chunks), None
 
 
 def _inspect_pyproject_toml_fallback(
@@ -1410,6 +1448,7 @@ def _inspect_pyproject_data(
                 info["package_dir"].update(poetry_pkg_dir)
 
     project_cfg = data.get("project")
+    dynamic_fields: set[str] = set()
     if isinstance(project_cfg, dict):
         info["has_project_table"] = True
         req_py = project_cfg.get("requires-python")
@@ -1417,9 +1456,10 @@ def _inspect_pyproject_data(
             info["has_python_requires"] = True
         dynamic = project_cfg.get("dynamic")
         if isinstance(dynamic, list):
-            if "scripts" in dynamic:
+            dynamic_fields = {d for d in dynamic if isinstance(d, str)}
+            if "scripts" in dynamic_fields:
                 info["scripts_dynamic"] = True
-            if "requires-python" in dynamic:
+            if "requires-python" in dynamic_fields:
                 info["requires_python_dynamic"] = True
         scripts = project_cfg.get("scripts")
         if isinstance(scripts, dict):
@@ -1431,6 +1471,60 @@ def _inspect_pyproject_data(
             # PEP 621 reserves console_scripts for [project.scripts]; setuptools drops
             # [project.entry-points.console_scripts] and resets legacy setup.py scripts.
             info["reserved_console_scripts_ep"] = True
+
+    # Mirror setuptools _ConfigExpander._obtain_entry_points() for [tool.setuptools.dynamic].entry-points.
+    if backend_kind == "setuptools" and info["has_project_table"]:
+        setuptools_cfg = tool_dict.get("setuptools")
+        dynamic_cfg = setuptools_cfg.get("dynamic") if isinstance(setuptools_cfg, dict) else None
+        if (
+            isinstance(dynamic_cfg, dict)
+            and "entry-points" in dynamic_cfg
+            and any(f in dynamic_fields for f in ("entry-points", "scripts", "gui-scripts"))
+        ):
+            directive = dynamic_cfg["entry-points"]
+            if isinstance(directive, dict) and "file" in directive:
+                raw_files = directive["file"]
+                if isinstance(raw_files, str):
+                    file_list = [raw_files]
+                elif isinstance(raw_files, list) and raw_files and all(isinstance(x, str) for x in raw_files):
+                    file_list = list(raw_files)
+                else:
+                    file_list = []
+                    info["dynamic_scripts_error"] = (
+                        "invalid [tool.setuptools.dynamic].entry-points file directive"
+                    )
+                if file_list:
+                    ep_text, read_err = _read_local_config_files(
+                        harness, file_list, "[tool.setuptools.dynamic].entry-points"
+                    )
+                    if read_err:
+                        info["dynamic_scripts_error"] = read_err
+                    elif ep_text is not None:
+                        try:
+                            groups = _parse_entry_points_ini_groups(ep_text)
+                        except configparser.Error as exc:
+                            info["dynamic_scripts_error"] = (
+                                f"invalid [tool.setuptools.dynamic].entry-points INI: {exc}"
+                            )
+                        else:
+                            if "console_scripts" in groups:
+                                if "scripts" not in dynamic_fields:
+                                    info["dynamic_scripts_error"] = (
+                                        "[tool.setuptools.dynamic].entry-points defines [console_scripts], "
+                                        "but 'scripts' is not listed in [project].dynamic"
+                                    )
+                                else:
+                                    info["dynamic_scripts_defined"] = True
+                                    for k, v in groups["console_scripts"].items():
+                                        info["console_scripts"].append((k.strip(), v.strip()))
+                            elif groups:
+                                # Non-empty entry-points file supersedes legacy setup.py/setup.cfg entry_points.
+                                info["dynamic_scripts_defined"] = True
+            else:
+                info["dynamic_scripts_error"] = (
+                    "unsupported [tool.setuptools.dynamic].entry-points directive "
+                    "(only file-backed entry-points can be statically verified)"
+                )
 
     if backend_kind == "poetry":
         poetry_cfg = tool_dict.get("poetry")
@@ -1579,6 +1673,18 @@ def _inspect_setup_cfg(
                 continue
             name, target = s.split("=", 1)
             info["console_scripts"].append((name.strip(), target.strip()))
+    elif cp.has_section("options") and "entry_points" in cp["options"]:
+        raw_ep_opt = cp["options"]["entry_points"].strip()
+        if raw_ep_opt.startswith("file:"):
+            ep_file = raw_ep_opt[len("file:"):].strip()
+            ep_text, read_err = _read_local_config_files(harness, [ep_file], "setup.cfg [options] entry_points")
+            if not read_err and ep_text is not None:
+                try:
+                    groups = _parse_entry_points_ini_groups(ep_text)
+                except configparser.Error:
+                    groups = {}
+                for k, v in groups.get("console_scripts", {}).items():
+                    info["console_scripts"].append((k.strip(), v.strip()))
 
     return info
 
@@ -1595,9 +1701,16 @@ def _check_packaging(
     has_setup = setup_py.is_file()
     has_pyproject = pyproject.is_file()
     has_setup_cfg = setup_cfg.is_file()
-    pkg_file = setup_py if has_setup else (pyproject if has_pyproject else (setup_cfg if has_setup_cfg else None))
+    # pip's is_installable_dir() requires setup.py or pyproject.toml; setup.cfg alone is not buildable.
+    pkg_file = setup_py if has_setup else (pyproject if has_pyproject else None)
     if pkg_file is None:
-        return [CheckResult("packaging-file", "packaging", FAIL, "missing setup.py (or pyproject.toml)")], module, [], {}
+        detail = (
+            "setup.cfg found without setup.py or pyproject.toml "
+            "(pip requires setup.py or pyproject.toml to build/install)"
+            if has_setup_cfg
+            else "missing setup.py (or pyproject.toml)"
+        )
+        return [CheckResult("packaging-file", "packaging", FAIL, detail)], module, [], {}
 
     checks.append(CheckResult("packaging-file", "packaging", PASS, f"{pkg_file.name} present"))
     setup_text = _read_text(setup_py) if has_setup else ""
@@ -1935,14 +2048,20 @@ def _check_packaging(
     expected_prefixes = {f"cli-anything-{software_slug}"}
     if module is not None:
         expected_prefixes.add(f"cli-anything-{_slugify(module.name)}")
-    # Under PEP 517 / PEP 621: non-setuptools backends ignore setup.py/setup.cfg, and setuptools >= 61
-    # ignores legacy entry_points whenever [project] omits "scripts" from project.dynamic.
+    # Under PEP 517 / PEP 621: non-setuptools backends ignore setup.py/setup.cfg, setuptools >= 61
+    # ignores legacy entry_points whenever [project] omits "scripts" from project.dynamic, and
+    # [tool.setuptools.dynamic].entry-points supersedes legacy setup.py/setup.cfg scripts.
     legacy_scripts = (
         list(setup_info["console_scripts"])
         if (uses_setup_py and setup_info["console_scripts"])
         else (list(setup_cfg_info["console_scripts"]) if uses_setup_cfg else [])
     )
-    if (not uses_setuptools) or (pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"]):
+    if (
+        (not uses_setuptools)
+        or pyproj_info["dynamic_scripts_error"]
+        or pyproj_info["dynamic_scripts_defined"]
+        or (pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"])
+    ):
         declared_scripts = list(pyproj_info["console_scripts"])
     else:
         declared_scripts = list(pyproj_info["console_scripts"]) + legacy_scripts
@@ -1953,7 +2072,16 @@ def _check_packaging(
     ]
     primary_cli_files: list[Path] = []
     all_resolved_cli_files: list[Path] = []
-    if matching_scripts:
+    if pyproj_info["dynamic_scripts_error"]:
+        checks.append(
+            CheckResult(
+                "console-script",
+                "packaging",
+                FAIL,
+                str(pyproj_info["dynamic_scripts_error"]),
+            )
+        )
+    elif matching_scripts:
         invalid_targets: list[str] = []
         for cmd_name, target_spec in matching_scripts:
             ok_target, reason, mod_file = _validate_console_script_target(
@@ -2000,6 +2128,11 @@ def _check_packaging(
             detail = (
                 f"pyproject.toml uses build-backend '{pyproj_info['build_backend']}' without declaring console scripts "
                 "(setup.py/setup.cfg console_scripts are ignored)"
+            )
+        elif pyproj_info["dynamic_scripts_defined"]:
+            detail = (
+                "[tool.setuptools.dynamic].entry-points supersedes legacy console_scripts "
+                f"without declaring cli-anything-{software_slug}"
             )
         elif pyproj_info["has_project_table"] and not pyproj_info["scripts_dynamic"] and (setup_info["console_scripts"] or setup_cfg_info["console_scripts"]):
             detail = (

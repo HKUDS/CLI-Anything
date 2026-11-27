@@ -2939,3 +2939,162 @@ setup(
         assert verify_harness.verify_harness(
             harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
         )["ok"] is True
+
+
+def test_verify_requires_build_entrypoint_alongside_setup_cfg(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cfg_only", "cfgonly")
+    (harness / "setup.py").unlink()
+    (harness / "setup.cfg").write_text(
+        """[metadata]
+name = cli-anything-cfgonly
+version = 1.0.0
+
+[options]
+python_requires = >=3.10
+packages = find_namespace:
+
+[options.packages.find]
+include = cli_anything.*
+
+[options.package_data]
+cli_anything.cfgonly = skills/*.md
+
+[options.entry_points]
+console_scripts =
+    cli-anything-cfgonly = cli_anything.cfgonly.cfgonly_cli:main
+""",
+        encoding="utf-8",
+    )
+    # setup.cfg alone is not installable by pip -> packaging-file MUST fail.
+    r_only = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_only["ok"] is False
+    pf = {c["id"]: c for c in r_only["checks"]}["packaging-file"]
+    assert pf["status"] == "fail"
+    assert "setup.cfg" in pf["detail"]
+
+    # Adding minimal setup.py makes setup.cfg declarative packaging buildable and valid.
+    (harness / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_resolves_dynamic_file_backed_entry_points_before_legacy_scripts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "dyn_ep", "dynep")
+    # Valid legacy setup.py stays on disk; pyproject.toml dynamic file-backed entry-points must supersede it.
+    (harness / "entry-points.txt").write_text(
+        "[console_scripts]\ncli-anything-dynep = cli_anything.dynep.missing_cli:main\n",
+        encoding="utf-8",
+    )
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-dynep"
+version = "1.0.0"
+requires-python = ">=3.10"
+dynamic = ["scripts"]
+
+[tool.setuptools.dynamic]
+entry-points = { file = "entry-points.txt" }
+""",
+        encoding="utf-8",
+    )
+
+    # 1. Broken file-backed script target must FAIL even though legacy setup.py has a valid script.
+    r_broken = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_broken["ok"] is False
+    cs_broken = {c["id"]: c for c in r_broken["checks"]}["console-script"]
+    assert cs_broken["status"] == "fail"
+    assert "missing_cli" in cs_broken["detail"]
+
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r_broken_310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r_broken_310["ok"] is False
+        assert {c["id"]: c for c in r_broken_310["checks"]}["console-script"]["status"] == "fail"
+
+    # 2. Fixing entry-points.txt to the real CLI target passes strict verification (both tomllib and Py3.10).
+    (harness / "entry-points.txt").write_text(
+        "[console_scripts]\ncli-anything-dynep = cli_anything.dynep.dynep_cli:main\n",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        assert verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )["ok"] is True
+
+    # 3. Non-empty entry-points file without [console_scripts] supersedes legacy setup.py scripts -> fails.
+    (harness / "entry-points.txt").write_text(
+        "[other_group]\nhelper = cli_anything.dynep.dynep_cli:main\n",
+        encoding="utf-8",
+    )
+    r_other = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_other["ok"] is False
+    assert {c["id"]: c for c in r_other["checks"]}["console-script"]["status"] == "fail"
+
+    # 4. File defines [console_scripts] while [project].dynamic omits "scripts" -> fails.
+    (harness / "entry-points.txt").write_text(
+        "[console_scripts]\ncli-anything-dynep = cli_anything.dynep.dynep_cli:main\n",
+        encoding="utf-8",
+    )
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-dynep"
+version = "1.0.0"
+requires-python = ">=3.10"
+dynamic = ["entry-points"]
+
+[tool.setuptools.dynamic]
+entry-points = { file = "entry-points.txt" }
+""",
+        encoding="utf-8",
+    )
+    r_missing_dyn = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_missing_dyn["ok"] is False
+    assert {c["id"]: c for c in r_missing_dyn["checks"]}["console-script"]["status"] == "fail"
+
+    # 5. Unsupported attr-backed dynamic entry-points must fail rather than certifying legacy setup.py.
+    (harness / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-dynep"
+version = "1.0.0"
+requires-python = ">=3.10"
+dynamic = ["scripts"]
+
+[tool.setuptools.dynamic]
+entry-points = { attr = "cli_anything.dynep.dynep_cli:ENTRY_POINTS" }
+""",
+        encoding="utf-8",
+    )
+    r_attr = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_attr["ok"] is False
+    assert {c["id"]: c for c in r_attr["checks"]}["console-script"]["status"] == "fail"
