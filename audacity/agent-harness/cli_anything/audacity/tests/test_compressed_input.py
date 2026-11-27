@@ -192,6 +192,21 @@ class CompressedInputTests(unittest.TestCase):
             add_clip(project, 0, self.mp3)
         self.assertIn("duration", str(raised.exception))
 
+    def test_missing_source_keeps_ten_second_placeholder(self):
+        """An absent source keeps the historical 10-second placeholder."""
+        missing = os.path.join(self.root, "offline.mp3")
+        project = create_project()
+        add_track(project, name="Track 1")
+        clip = add_clip(project, 0, missing)
+        self.assertEqual(RECORDED_RUNS, [], "an absent source was probed")
+        self.assertAlmostEqual(clip["end_time"], 10.0)
+        self.assertAlmostEqual(clip["trim_end"], 10.0)
+
+        output = os.path.join(self.root, "offline-out.wav")
+        result = render_mix(project, output, preset="wav")
+        self.assertAlmostEqual(result["duration"], 10.0, places=2)
+        self.assertEqual(result["peak_level"], 0.0)
+
     def test_wav_control_unchanged(self):
         wav_path = os.path.join(self.root, "tone.wav")
         samples = generate_sine_wave(440.0, 0.25, 44100, 0.5, 1)

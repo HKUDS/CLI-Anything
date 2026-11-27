@@ -102,12 +102,17 @@ def add_clip(
 
     if end_time is None:
         if duration <= 0:
-            raise ValueError(
-                f"Cannot determine the duration of '{abs_source or source}'. "
-                "Pass --end explicitly, or install SoX so compressed formats "
-                "can be probed."
-            )
-        end_time = start_time + (duration - trim_start)
+            if abs_source and os.path.exists(abs_source):
+                raise ValueError(
+                    f"Cannot determine the duration of '{abs_source or source}'. "
+                    "Pass --end explicitly, or install SoX so compressed formats "
+                    "can be probed."
+                )
+            # An absent source keeps the historical placeholder so projects can
+            # reference offline media; rendering skips it until the file exists.
+            end_time = start_time + 10.0
+        else:
+            end_time = start_time + (duration - trim_start)
     if trim_end is None:
         trim_end = duration if duration > 0 else (end_time - start_time + trim_start)
 
