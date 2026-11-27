@@ -1014,6 +1014,9 @@ def _resolve_module_attr_path(
         mod_imports = _preparsed_env["mod_imports"]
         dotted_imports = _preparsed_env["dotted_imports"]
         star_imports = _preparsed_env["star_imports"]
+        explicit_top_seq = _preparsed_env["explicit_top_seq"]
+        snap_star_info = _preparsed_env["snap_star_info"]
+        deleted_local_defs = _preparsed_env["deleted_local_defs"]
         type_checking_names = _preparsed_env["type_checking_names"]
         local_env = _preparsed_env
     else:
@@ -1030,6 +1033,7 @@ def _resolve_module_attr_path(
         direct_local_defs: set[str] = set()
         non_callable_local_defs: set[str] = set()
         bad_sig_local_defs: dict[str, str] = {}
+        deleted_local_defs: set[str] = set()
         click_modules: set[str] = set()
         click_factories: set[str] = set()
         click_cmds: set[str] = set()
@@ -1042,12 +1046,16 @@ def _resolve_module_attr_path(
         from_imports: dict[str, list[tuple[str, str, bool]]] = {}
         mod_imports: dict[str, list[str]] = {}
         dotted_imports: list[tuple[str, ...]] = []
-        star_imports: list[tuple[str, bool]] = []
+        star_imports: list[tuple[str, bool, int, bool]] = []
+        explicit_top_seq: dict[str, int] = {}
+        snap_star_info: dict[str, tuple[str, int, int]] = {}
         snap_counter = 0
+        stmt_seq = 0
         local_env = {
             "direct_local_defs": direct_local_defs,
             "non_callable_local_defs": non_callable_local_defs,
             "bad_sig_local_defs": bad_sig_local_defs,
+            "deleted_local_defs": deleted_local_defs,
             "click_cmds": click_cmds,
             "classes": classes,
             "cls_base_refs": cls_base_refs,
@@ -1059,6 +1067,8 @@ def _resolve_module_attr_path(
             "mod_imports": mod_imports,
             "dotted_imports": dotted_imports,
             "star_imports": star_imports,
+            "explicit_top_seq": explicit_top_seq,
+            "snap_star_info": snap_star_info,
             "type_checking_names": type_checking_names,
         }
 
@@ -1087,7 +1097,14 @@ def _resolve_module_attr_path(
         if isinstance(target, ast.Name) and target.id in click_factories:
             return True
         if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
-            if target.value.id in click_modules and target.attr in {"group", "command", "Group", "Command"}:
+            if target.value.id in click_modules and target.attr in {
+                "group",
+                "command",
+                "Group",
+                "Command",
+                "MultiCommand",
+                "CommandCollection",
+            }:
                 return True
             if target.value.id in click_cmds and target.attr in {"group", "command"}:
                 return True
@@ -1120,13 +1137,17 @@ def _resolve_module_attr_path(
             return cur
         return node
 
-    def _snapshot_and_clear(name: str) -> str | None:
+    def _snapshot_and_clear(name: str, *, seq: int | None = None) -> str | None:
         """Archive current top-level binding of `name` under an internal SSA snapshot before rebinding."""
         nonlocal snap_counter
+        prev_explicit = explicit_top_seq.get(name, -1)
+        if seq is not None:
+            explicit_top_seq[name] = seq
         has_state = (
             (name in direct_local_defs)
             or (name in non_callable_local_defs)
             or (name in bad_sig_local_defs)
+            or (name in deleted_local_defs)
             or (name in click_cmds)
             or (name in classes)
             or (name in instances)
@@ -1146,6 +1167,8 @@ def _resolve_module_attr_path(
             return None
         snap_counter += 1
         snap = f"\x00snap:{name}:{snap_counter}"
+        if seq is not None:
+            snap_star_info[snap] = (name, prev_explicit, seq)
         if name in direct_local_defs:
             direct_local_defs.discard(name)
             direct_local_defs.add(snap)
@@ -1154,6 +1177,9 @@ def _resolve_module_attr_path(
             non_callable_local_defs.add(snap)
         if name in bad_sig_local_defs:
             bad_sig_local_defs[snap] = bad_sig_local_defs.pop(name)
+        if name in deleted_local_defs:
+            deleted_local_defs.discard(name)
+            deleted_local_defs.add(snap)
         if name in click_cmds:
             click_cmds.discard(name)
             click_cmds.add(snap)
@@ -1225,50 +1251,142 @@ def _resolve_module_attr_path(
                 break
         return cur
 
-    def _record_binding(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
+    def _unpack_target_value_pairs(
+        target: ast.AST,
+        value: ast.AST | None,
+    ) -> list[tuple[ast.AST, ast.AST | None]] | None:
+        """Recursively map tuple/list unpacking targets to their individual RHS AST elements."""
+        val = _unwrap_static_ifexp(value)
+        if isinstance(target, (ast.Tuple, ast.List)):
+            if isinstance(val, (ast.Tuple, ast.List)) and not any(
+                isinstance(e, ast.Starred) for e in val.elts
+            ):
+                star_idxs = [i for i, e in enumerate(target.elts) if isinstance(e, ast.Starred)]
+                if not star_idxs and len(target.elts) == len(val.elts):
+                    out: list[tuple[ast.AST, ast.AST | None]] = []
+                    for t_elt, v_elt in zip(target.elts, val.elts):
+                        sub = _unpack_target_value_pairs(t_elt, v_elt)
+                        if sub is None:
+                            return None
+                        out.extend(sub)
+                    return out
+                if len(star_idxs) == 1 and len(val.elts) >= len(target.elts) - 1:
+                    si = star_idxs[0]
+                    after_cnt = len(target.elts) - si - 1
+                    mid_end = len(val.elts) - after_cnt
+                    out = []
+                    for t_elt, v_elt in zip(target.elts[:si], val.elts[:si]):
+                        sub = _unpack_target_value_pairs(t_elt, v_elt)
+                        if sub is None:
+                            return None
+                        out.extend(sub)
+                    star_node = target.elts[si]
+                    assert isinstance(star_node, ast.Starred)
+                    star_list = ast.List(elts=list(val.elts[si:mid_end]), ctx=ast.Load())
+                    out.append((star_node.value, star_list))
+                    if after_cnt:
+                        for t_elt, v_elt in zip(target.elts[si + 1 :], val.elts[mid_end:]):
+                            sub = _unpack_target_value_pairs(t_elt, v_elt)
+                            if sub is None:
+                                return None
+                            out.extend(sub)
+                    return out
+            return None
+        return [(target, val)]
+
+    def _collect_starred_target_names(node: ast.AST) -> set[str]:
+        out: set[str] = set()
+        if isinstance(node, ast.Starred):
+            if isinstance(node.value, ast.Name):
+                out.add(node.value.id)
+        elif isinstance(node, (ast.Tuple, ast.List)):
+            for elt in node.elts:
+                out.update(_collect_starred_target_names(elt))
+        return out
+
+    def _bind_single_name(
+        name: str,
+        value: ast.AST | None,
+        *,
+        snap: str | None,
+    ) -> None:
+        if value is None:
+            direct_local_defs.add(name)
+            return
+        if isinstance(value, ast.Name):
+            src_id = snap if (snap is not None and value.id == name) else value.id
+            aliases.setdefault(name, []).append(src_id)
+            return
+        val_chain = _extract_attr_chain(value)
+        if val_chain is not None and len(val_chain) >= 2:
+            if snap is not None and val_chain[0] == name:
+                val_chain = (snap, *val_chain[1:])
+            attr_aliases.setdefault(name, []).append(val_chain)
+            return
+        if _is_provably_non_callable_expr(value):
+            non_callable_local_defs.add(name)
+            return
+        if isinstance(value, ast.Lambda):
+            ok_zero, sig_err = _args_allow_zero_call(value.args, bound_self=False)
+            if not ok_zero:
+                bad_sig_local_defs[name] = (
+                    f"callable '{name}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments"
+                )
+                return
+        direct_local_defs.add(name)
+        if _is_click_cmd_value(value):
+            click_cmds.add(name)
+        elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+            callee = snap if (snap is not None and value.func.id == name) else value.func.id
+            instances.setdefault(name, []).append(callee)
+
+    def _record_binding(target: ast.AST, value: ast.AST | None, *, top_level: bool, seq: int) -> None:
         value = _unwrap_static_ifexp(value)
         _record_attr_chains(target, value, top_level=top_level)
         if value is None:
             return
         if isinstance(target, ast.Name):
             name = target.id
-            snap = _snapshot_and_clear(name) if top_level else None
-            if isinstance(value, ast.Name):
-                src_id = snap if (snap is not None and value.id == name) else value.id
-                aliases.setdefault(name, []).append(src_id)
-                return
-            val_chain = _extract_attr_chain(value)
-            if val_chain is not None and len(val_chain) >= 2:
-                if snap is not None and val_chain[0] == name:
-                    val_chain = (snap, *val_chain[1:])
-                attr_aliases.setdefault(name, []).append(val_chain)
-                return
-            if _is_provably_non_callable_expr(value):
-                non_callable_local_defs.add(name)
-                return
-            if isinstance(value, ast.Lambda):
-                ok_zero, sig_err = _args_allow_zero_call(value.args, bound_self=False)
-                if not ok_zero:
-                    bad_sig_local_defs[name] = (
-                        f"callable '{name}' in {py_file.name} {sig_err} and cannot be invoked with zero arguments"
-                    )
-                    return
-            direct_local_defs.add(name)
-            if _is_click_cmd_value(value):
-                click_cmds.add(name)
-            elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
-                callee = snap if (snap is not None and value.func.id == name) else value.func.id
-                instances.setdefault(name, []).append(callee)
-        else:
-            for bound_name in _collect_target_names(target):
-                if top_level:
-                    _snapshot_and_clear(bound_name)
+            snap = _snapshot_and_clear(name, seq=seq) if top_level else None
+            _bind_single_name(name, value, snap=snap)
+            return
+        unpacked = _unpack_target_value_pairs(target, value)
+        if unpacked is not None:
+            snaps: dict[str, str | None] = {}
+            if top_level:
+                for sub_t, _ in unpacked:
+                    if isinstance(sub_t, ast.Name) and sub_t.id not in snaps:
+                        snaps[sub_t.id] = _snapshot_and_clear(sub_t.id, seq=seq)
+            for sub_t, sub_v in unpacked:
+                if isinstance(sub_t, ast.Name):
+                    rewritten = sub_v
+                    if top_level and rewritten is not None:
+                        for old_n, snap_n in snaps.items():
+                            if snap_n is not None:
+                                rewritten = _replace_ast_root(rewritten, old_n, snap_n)
+                    _bind_single_name(sub_t.id, rewritten, snap=snaps.get(sub_t.id))
+                elif isinstance(sub_t, (ast.Tuple, ast.List)):
+                    for bn in _collect_target_names(sub_t):
+                        if top_level:
+                            _snapshot_and_clear(bn, seq=seq)
+                        direct_local_defs.add(bn)
+            return
+        starred_names = _collect_starred_target_names(target)
+        for bound_name in _collect_target_names(target):
+            if top_level:
+                _snapshot_and_clear(bound_name, seq=seq)
+            if bound_name in starred_names:
+                non_callable_local_defs.add(bound_name)
+            else:
                 direct_local_defs.add(bound_name)
 
     def _collect_stmts(stmts: list[ast.stmt], *, top_level: bool) -> None:
+        nonlocal stmt_seq
         for stmt in stmts:
+            stmt_seq += 1
+            cur_seq = stmt_seq
             if isinstance(stmt, ast.ClassDef):
-                snap = _snapshot_and_clear(stmt.name) if top_level else None
+                snap = _snapshot_and_clear(stmt.name, seq=cur_seq) if top_level else None
                 classes.setdefault(stmt.name, []).append(stmt)
                 cls_base_refs[id(stmt)] = [
                     (snap if (snap is not None and b.id == stmt.name) else b.id)
@@ -1296,7 +1414,7 @@ def _resolve_module_attr_path(
                     direct_local_defs.add(stmt.name)
             elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if top_level:
-                    _snapshot_and_clear(stmt.name)
+                    _snapshot_and_clear(stmt.name, seq=cur_seq)
                 if not stmt.decorator_list:
                     ok_fn, fn_err = _check_plain_func_console_callable(stmt, bound_self=False)
                     if not ok_fn:
@@ -1307,15 +1425,21 @@ def _resolve_module_attr_path(
                     click_cmds.add(stmt.name)
             elif isinstance(stmt, ast.Assign):
                 for tgt in stmt.targets:
-                    _record_binding(tgt, stmt.value, top_level=top_level)
+                    _record_binding(tgt, stmt.value, top_level=top_level, seq=cur_seq)
             elif isinstance(stmt, ast.AnnAssign):
                 if stmt.value is not None:
-                    _record_binding(stmt.target, stmt.value, top_level=top_level)
+                    _record_binding(stmt.target, stmt.value, top_level=top_level, seq=cur_seq)
+            elif isinstance(stmt, ast.Delete):
+                if top_level:
+                    for tgt in stmt.targets:
+                        if isinstance(tgt, ast.Name):
+                            _snapshot_and_clear(tgt.id, seq=cur_seq)
+                            deleted_local_defs.add(tgt.id)
             elif isinstance(stmt, ast.Import):
                 for alias in stmt.names:
                     bound = alias.asname or alias.name.split(".", 1)[0]
                     if top_level:
-                        _snapshot_and_clear(bound)
+                        _snapshot_and_clear(bound, seq=cur_seq)
                     if alias.name in {"click", "click.decorators", "click.core"}:
                         click_modules.add(alias.asname or alias.name.split(".", 1)[0])
                     if alias.asname:
@@ -1331,18 +1455,22 @@ def _resolve_module_attr_path(
                 for alias in stmt.names:
                     if alias.name == "*":
                         if stmt.level == 0 and stmt.module in {"click", "click.decorators", "click.core"}:
-                            click_factories.update({"group", "command", "Group", "Command"})
+                            click_factories.update(
+                                {"group", "command", "Group", "Command", "MultiCommand", "CommandCollection"}
+                            )
                         if resolved_mod:
-                            star_imports.append((resolved_mod, is_rel))
+                            star_imports.append((resolved_mod, is_rel, cur_seq, top_level))
                         continue
                     bound = alias.asname or alias.name
                     if top_level:
-                        _snapshot_and_clear(bound)
+                        _snapshot_and_clear(bound, seq=cur_seq)
                     if stmt.level == 0 and stmt.module in {"click", "click.decorators", "click.core"} and alias.name in {
                         "group",
                         "command",
                         "Group",
                         "Command",
+                        "MultiCommand",
+                        "CommandCollection",
                     }:
                         click_factories.add(bound)
                     if resolved_mod is not None:
@@ -1651,11 +1779,81 @@ def _resolve_module_attr_path(
             errs.append(err)
         return errs[0] if errs else None
 
-    # Single-component callable (`module:main`): return directly if defined locally,
-    # reject imported module objects and non-callable literals, and follow local re-exports
-    # (`from .demoapp_cli import main`, `main = cli_mod.main`, wildcard exports honoring `__all__`, etc.).
+    def _candidate_star_imports(cand: str) -> tuple[str, list[tuple[str, bool, int, bool]]]:
+        """Return (lookup_name, applicable_star_imports_newest_first) honoring statement order."""
+        if cand in snap_star_info:
+            orig_name, min_seq, max_seq = snap_star_info[cand]
+            return orig_name, [s for s in reversed(star_imports) if min_seq < s[2] < max_seq]
+        min_seq = explicit_top_seq.get(cand, -1)
+        return cand, [s for s in reversed(star_imports) if s[2] > min_seq]
+
+    def _is_absent_export_error(err: str | None) -> bool:
+        if not err:
+            return False
+        return (
+            ("not defined or imported" in err)
+            or ("not listed in __all__" in err)
+            or ("not exported by wildcard" in err)
+        )
+
+    # Single-component callable (`module:main`): honor statement order between explicit bindings
+    # and wildcard imports, reject imported module objects / non-callables / deleted bindings,
+    # and follow local re-exports (`from .demoapp_cli import main`, `main = cli_mod.main`, etc.).
     if len(attr_parts) == 1:
+        has_external_binding = False
+        shadowed_by_later_star: set[str] = set()
+
         for cand in root_names:
+            sym_name, applicable_stars = _candidate_star_imports(cand)
+            if not applicable_stars:
+                continue
+            cand_has_explicit = (
+                (cand in direct_local_defs)
+                or (cand in non_callable_local_defs)
+                or (cand in bad_sig_local_defs)
+                or (cand in deleted_local_defs)
+                or (cand in mod_imports)
+                or (cand in from_imports)
+                or (cand in attr_aliases)
+            )
+            for star_mod, is_rel, _star_seq, star_is_top in applicable_stars:
+                if harness is not None and eff_pkg_dir is not None:
+                    star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+                    if star_file is not None:
+                        allowed, wc_err = _module_wildcard_allows(star_file, sym_name)
+                        if not allowed:
+                            if not cand_has_explicit and first_local_err is None and wc_err:
+                                first_local_err = wc_err
+                            continue
+                        ok_def, def_err = _module_defines_symbol(star_file, sym_name)
+                        if not ok_def:
+                            if not cand_has_explicit and first_local_err is None and def_err:
+                                first_local_err = def_err
+                            continue
+                        ok_sub, sub_err, impl = _recurse_local(
+                            star_mod, star_file, star_is_pkg, [sym_name]
+                        )
+                        if ok_sub:
+                            return True, None, impl or star_file
+                        if not _is_absent_export_error(sub_err):
+                            if first_local_err is None and sub_err:
+                                first_local_err = sub_err
+                            if star_is_top:
+                                shadowed_by_later_star.add(cand)
+                                break
+                        elif not cand_has_explicit and first_local_err is None and sub_err:
+                            first_local_err = sub_err
+                    elif _is_harness_mod_ref(star_mod, is_rel):
+                        if not cand_has_explicit and first_local_err is None:
+                            first_local_err = f"re-exported module '{star_mod}' not found in harness"
+                    else:
+                        has_external_binding = True
+                else:
+                    has_external_binding = True
+
+        for cand in root_names:
+            if cand in shadowed_by_later_star:
+                continue
             if cand in direct_local_defs:
                 inst_err = _instance_call_sig_error(cand)
                 if inst_err is not None:
@@ -1664,14 +1862,18 @@ def _resolve_module_attr_path(
                     continue
                 return True, None, py_file
 
-        has_external_binding = False
         for cand in root_names:
+            if cand in shadowed_by_later_star:
+                continue
             # Module objects bound via `import ...` are never callable console-script targets.
             for target_mod in mod_imports.get(cand, ()):
                 if first_local_err is None:
                     first_local_err = (
                         f"target '{attr_parts[0]}' resolves to imported module '{target_mod}' which is not callable"
                     )
+            if cand in deleted_local_defs:
+                if first_local_err is None:
+                    first_local_err = f"target '{attr_parts[0]}' is deleted at module scope in {py_file.name}"
             if cand in non_callable_local_defs:
                 if first_local_err is None:
                     first_local_err = (
@@ -1704,6 +1906,7 @@ def _resolve_module_attr_path(
                     (r in direct_local_defs)
                     or (r in non_callable_local_defs)
                     or (r in bad_sig_local_defs)
+                    or (r in deleted_local_defs)
                     or (r in classes)
                     or (r in instances)
                     or (r in click_cmds)
@@ -1765,30 +1968,6 @@ def _resolve_module_attr_path(
                         )
                 else:
                     has_external_binding = True
-
-        for star_mod, is_rel in star_imports:
-            if harness is not None and eff_pkg_dir is not None:
-                star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
-                if star_file is not None:
-                    allowed, wc_err = _module_wildcard_allows(star_file, attr_parts[0])
-                    if not allowed:
-                        if first_local_err is None and wc_err:
-                            first_local_err = wc_err
-                        continue
-                    ok_sub, sub_err, impl = _recurse_local(
-                        star_mod, star_file, star_is_pkg, [attr_parts[0]]
-                    )
-                    if ok_sub:
-                        return True, None, impl or star_file
-                    if first_local_err is None and sub_err:
-                        first_local_err = sub_err
-                elif _is_harness_mod_ref(star_mod, is_rel):
-                    if first_local_err is None:
-                        first_local_err = f"re-exported module '{star_mod}' not found in harness"
-                else:
-                    has_external_binding = True
-            else:
-                has_external_binding = True
 
         if has_external_binding or first_local_err is None:
             return True, None, py_file
@@ -1962,11 +2141,31 @@ def _resolve_module_attr_path(
                 else:
                     callable_names.add(t.id)
             else:
+                unpacked = _unpack_target_value_pairs(t, val)
+                if unpacked is not None:
+                    for sub_t, sub_v in unpacked:
+                        if isinstance(sub_t, ast.Name):
+                            _record_cls_assign(sub_t, sub_v, cls_top=cls_top)
+                        else:
+                            for bn in _collect_target_names(sub_t):
+                                if cls_top:
+                                    non_callable_names.discard(bn)
+                                    bad_sig_cls_names.pop(bn, None)
+                                callable_names.add(bn)
+                    return
+                starred_names = _collect_starred_target_names(t)
                 for bn in _collect_target_names(t):
-                    if cls_top:
-                        non_callable_names.discard(bn)
-                        bad_sig_cls_names.pop(bn, None)
-                    callable_names.add(bn)
+                    if bn in starred_names:
+                        if cls_top:
+                            callable_names.discard(bn)
+                            bad_sig_cls_names.pop(bn, None)
+                            cls_attr_vals.pop(bn, None)
+                        non_callable_names.add(bn)
+                    else:
+                        if cls_top:
+                            non_callable_names.discard(bn)
+                            bad_sig_cls_names.pop(bn, None)
+                        callable_names.add(bn)
 
         def _scan_cls_body(body: list[ast.stmt], *, cls_top: bool) -> None:
             for s in body:
@@ -2269,22 +2468,31 @@ def _resolve_module_attr_path(
                         if first_local_err is None and sub_err:
                             first_local_err = sub_err
 
-        # 5d. Local `from .other import *` (must honor `__all__` and `_` visibility for `attr_parts[0]`).
-        for star_mod, _is_rel in star_imports:
-            star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
-            if star_file is not None:
-                allowed, wc_err = _module_wildcard_allows(star_file, attr_parts[0])
-                if not allowed:
-                    if first_local_err is None and wc_err:
-                        first_local_err = wc_err
-                    continue
-                ok_sub, sub_err, impl = _recurse_local(
-                    star_mod, star_file, star_is_pkg, attr_parts
-                )
-                if ok_sub:
-                    return True, None, impl or star_file
-                if first_local_err is None and sub_err:
-                    first_local_err = sub_err
+        # 5d. Local `from .other import *` (honoring statement order, `__all__`, and `_` visibility).
+        for cand in root_names:
+            sym_name, applicable_stars = _candidate_star_imports(cand)
+            for star_mod, _is_rel, _star_seq, star_is_top in applicable_stars:
+                star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+                if star_file is not None:
+                    allowed, wc_err = _module_wildcard_allows(star_file, sym_name)
+                    if not allowed:
+                        if first_local_err is None and wc_err:
+                            first_local_err = wc_err
+                        continue
+                    ok_def, def_err = _module_defines_symbol(star_file, sym_name)
+                    if not ok_def:
+                        if first_local_err is None and def_err:
+                            first_local_err = def_err
+                        continue
+                    ok_sub, sub_err, impl = _recurse_local(
+                        star_mod, star_file, star_is_pkg, [sym_name, *attr_parts[1:]]
+                    )
+                    if ok_sub:
+                        return True, None, impl or star_file
+                    if first_local_err is None and sub_err:
+                        first_local_err = sub_err
+                    if star_is_top and not _is_absent_export_error(sub_err):
+                        break
 
     return (
         False,
@@ -5393,12 +5601,18 @@ def _file_declares_click_group(py_file: Path) -> bool:
             return True
         chain = _extract_attr_chain(expr)
         if chain is not None:
-            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {"group", "Group", "MultiCommand"}:
+            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {
+                "group",
+                "Group",
+                "MultiCommand",
+                "CommandCollection",
+            }:
                 return True
             if chain in {
                 ("click", "decorators", "group"),
                 ("click", "core", "Group"),
                 ("click", "core", "MultiCommand"),
+                ("click", "core", "CommandCollection"),
             } and "click" in click_mod_aliases:
                 return True
         return False
@@ -5408,9 +5622,17 @@ def _file_declares_click_group(py_file: Path) -> bool:
             return True
         chain = _extract_attr_chain(expr)
         if chain is not None:
-            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {"Group", "MultiCommand"}:
+            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {
+                "Group",
+                "MultiCommand",
+                "CommandCollection",
+            }:
                 return True
-            if chain in {("click", "core", "Group"), ("click", "core", "MultiCommand")} and "click" in click_mod_aliases:
+            if chain in {
+                ("click", "core", "Group"),
+                ("click", "core", "MultiCommand"),
+                ("click", "core", "CommandCollection"),
+            } and "click" in click_mod_aliases:
                 return True
         return False
 
@@ -5434,14 +5656,14 @@ def _file_declares_click_group(py_file: Path) -> bool:
             if node.level == 0 and node.module in {"click", "click.decorators", "click.core"}:
                 for alias in node.names:
                     if alias.name == "*":
-                        group_factories.update({"group", "Group", "MultiCommand"})
-                        group_classes.update({"Group", "MultiCommand"})
+                        group_factories.update({"group", "Group", "MultiCommand", "CommandCollection"})
+                        group_classes.update({"Group", "MultiCommand", "CommandCollection"})
                         command_factories.add("command")
                         continue
                     bound = alias.asname or alias.name
-                    if alias.name in {"group", "Group", "MultiCommand"}:
+                    if alias.name in {"group", "Group", "MultiCommand", "CommandCollection"}:
                         group_factories.add(bound)
-                    if alias.name in {"Group", "MultiCommand"}:
+                    if alias.name in {"Group", "MultiCommand", "CommandCollection"}:
                         group_classes.add(bound)
                     if alias.name == "command":
                         command_factories.add(bound)

@@ -7081,6 +7081,268 @@ setup(
         assert res["ok"] is True, (idx, res["checks"])
 
 
+def test_verify_honors_rebinding_order_after_wildcard_imports(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "wc_order", "wcapp")
+    pkg = harness / "cli_anything" / "wcapp"
+    cli_py = pkg / "wcapp_cli.py"
+    impl_py = pkg / "impl.py"
+    bad_impl_py = pkg / "bad_impl.py"
+    other_py = pkg / "other.py"
+
+    impl_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def impl_cli(use_json):
+    pass
+
+def run():
+    impl_cli()
+
+class Runner:
+    @staticmethod
+    def run():
+        impl_cli()
+""",
+        encoding="utf-8",
+    )
+    bad_impl_py.write_text("run = 0\nRunner = 0\n", encoding="utf-8")
+    other_py.write_text("helper = 123\n", encoding="utf-8")
+
+    def _set_target(spec: str) -> None:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import setup, find_namespace_packages
+
+setup(
+    name="cli-anything-wcapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.wcapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-wcapp={spec}"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    cli_header = """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+"""
+
+    # Invalid cases: later explicit binding / delete / shadowing wildcard must override earlier wildcard export.
+    invalid_cases = [
+        ("cli_anything.wcapp.wcapp_cli:run", "from .impl import *\nrun = 0\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", "from .impl import *\ndef run(argv):\n    pass\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", "from .impl import *\ndel run\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", "from .impl import *\nalias = run\nrun = 0\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", cli_header + "def run():\n    cli()\nfrom .bad_impl import *\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", "from .impl import *\nfrom .bad_impl import *\n"),
+        ("cli_anything.wcapp.wcapp_cli:Runner.run", "from .impl import *\nRunner = 0\n"),
+        ("cli_anything.wcapp.wcapp_cli:Runner.run", "from .impl import *\nfrom .bad_impl import *\n"),
+    ]
+    for idx, (spec, src) in enumerate(invalid_cases):
+        cli_py.write_text(src, encoding="utf-8")
+        _set_target(spec)
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, spec)
+        assert {c["id"]: c for c in res_bad["checks"]}["console-script"]["status"] == "fail", idx
+
+    # Valid cases: alias captured before rebinding, later valid wildcard overriding bad binding,
+    # or unrelated wildcard not exporting `run`.
+    valid_cases = [
+        ("cli_anything.wcapp.wcapp_cli:alias", "from .impl import *\nalias = run\nrun = 0\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", "run = 0\nfrom .impl import *\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", cli_header + "def run():\n    cli()\nfrom .other import *\n"),
+        ("cli_anything.wcapp.wcapp_cli:run", "from .bad_impl import *\nfrom .impl import *\n"),
+    ]
+    for idx, (spec, src) in enumerate(valid_cases):
+        cli_py.write_text(src, encoding="utf-8")
+        _set_target(spec)
+        res_ok = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_ok["ok"] is True, (idx, spec, res_ok["checks"])
+
+
+def test_verify_checks_individual_values_in_unpacked_callable_bindings(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "unpack_ep", "upkapp")
+    cli_py = harness / "cli_anything" / "upkapp" / "upkapp_cli.py"
+
+    def _set_target(spec: str) -> None:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import setup, find_namespace_packages
+
+setup(
+    name="cli-anything-upkapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.upkapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-upkapp={spec}"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    cli_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+class Plain:
+    pass
+
+def get_pair():
+    return (0, cli)
+
+# 1. Direct tuple unpacking with non-callable + callable
+run_bad, run_ok = 0, cli
+
+# 2. Unpacked bad-signature lambda + valid callable
+lam_bad, lam_ok = (lambda req: req), (lambda: cli())
+
+# 3. Nested unpacking with non-callable literal and non-callable class instance
+nest_ok, (nest_bad_int, nest_bad_inst) = cli, (0, Plain())
+
+# 4. Starred unpacking (starred target is always a list -> non-callable)
+star_ok, *star_rest = cli, 1, 2
+*dyn_rest, dyn_ok = get_pair()
+
+# 5. Swap assignment preserving pre-assignment RHS bindings
+swap_a = 0
+swap_b = cli
+swap_a, swap_b = swap_b, swap_a
+
+# 6. Class-body unpacked attributes
+class Box:
+    bad_m, ok_m = 0, staticmethod(cli)
+""",
+        encoding="utf-8",
+    )
+
+    for ok_spec in (
+        "cli_anything.upkapp.upkapp_cli:run_ok",
+        "cli_anything.upkapp.upkapp_cli:lam_ok",
+        "cli_anything.upkapp.upkapp_cli:nest_ok",
+        "cli_anything.upkapp.upkapp_cli:star_ok",
+        "cli_anything.upkapp.upkapp_cli:dyn_ok",
+        "cli_anything.upkapp.upkapp_cli:swap_a",
+        "cli_anything.upkapp.upkapp_cli:Box.ok_m",
+    ):
+        _set_target(ok_spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (ok_spec, res["checks"])
+
+    for bad_spec in (
+        "cli_anything.upkapp.upkapp_cli:run_bad",
+        "cli_anything.upkapp.upkapp_cli:lam_bad",
+        "cli_anything.upkapp.upkapp_cli:nest_bad_int",
+        "cli_anything.upkapp.upkapp_cli:nest_bad_inst",
+        "cli_anything.upkapp.upkapp_cli:star_rest",
+        "cli_anything.upkapp.upkapp_cli:dyn_rest",
+        "cli_anything.upkapp.upkapp_cli:swap_b",
+        "cli_anything.upkapp.upkapp_cli:Box.bad_m",
+    ):
+        _set_target(bad_spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, bad_spec
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "fail", bad_spec
+
+
+def test_verify_recognizes_click_command_collection_as_group(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "cmd_coll", "ccapp")
+    cli_py = harness / "cli_anything" / "ccapp" / "ccapp_cli.py"
+
+    def _set_target(spec: str) -> None:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import setup, find_namespace_packages
+
+setup(
+    name="cli-anything-ccapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.ccapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-ccapp={spec}"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    variants = [
+        # 1. Direct click.CommandCollection with cli.main entry point
+        (
+            "cli_anything.ccapp.ccapp_cli:cli.main",
+            """import click
+
+cli = click.CommandCollection(
+    sources=[],
+    params=[click.Option(["--json"], "use_json", is_flag=True)],
+    invoke_without_command=True,
+)
+""",
+        ),
+        # 2. Aliased import `from click import CommandCollection as CC`
+        (
+            "cli_anything.ccapp.ccapp_cli:main",
+            """from click import CommandCollection as CC, Option
+
+cli = CC(
+    sources=[],
+    params=[Option(["--json"], "use_json", is_flag=True)],
+    invoke_without_command=True,
+)
+
+def main():
+    cli()
+""",
+        ),
+        # 3. Subclass of click.core.CommandCollection used via @click.command(cls=...)
+        (
+            "cli_anything.ccapp.ccapp_cli:main",
+            """import click
+from click.core import CommandCollection
+
+class AppCollection(CommandCollection):
+    pass
+
+@click.command(cls=AppCollection, invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+
+def main():
+    cli()
+""",
+        ),
+    ]
+    for idx, (spec, src) in enumerate(variants):
+        cli_py.write_text(src, encoding="utf-8")
+        _set_target(spec)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (idx, res["checks"])
+        by_id = {c["id"]: c for c in res["checks"]}
+        assert by_id["click-groups"]["status"] == "pass", idx
+        assert by_id["console-script"]["status"] == "pass", idx
+
+
+
 
 
 
