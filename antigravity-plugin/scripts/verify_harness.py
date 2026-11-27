@@ -976,7 +976,7 @@ def _resolve_module_attr_path(
     check_manifest: bool = False,
     _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
     _preparsed_env: dict[str, Any] | None = None,
-    _resolved_target_out: list[tuple[Path, str]] | None = None,
+    _resolved_target_out: list[tuple[Path, str, str | None]] | None = None,
 ) -> tuple[bool, str | None, Path | None]:
     """Validate a console-script attribute chain and resolve local re-exports to the implementation file.
 
@@ -1615,7 +1615,7 @@ def _resolve_module_attr_path(
 
     def _record_resolved(target_file: Path, sym: str) -> None:
         if _resolved_target_out is not None:
-            _resolved_target_out.append((target_file, _canonical_symbol_name(sym)))
+            _resolved_target_out.append((target_file, _canonical_symbol_name(sym), module_path))
 
     root_names = _expand_aliases(attr_parts[0])
     first_local_err: str | None = None
@@ -1900,7 +1900,7 @@ def _resolve_module_attr_path(
                     first_local_err = bad_sig_local_defs[cand]
 
             for attr_chain in attr_aliases.get(cand, ()):
-                sub_out: list[tuple[Path, str]] | None = [] if _resolved_target_out is not None else None
+                sub_out: list[tuple[Path, str, str | None]] | None = [] if _resolved_target_out is not None else None
                 ok_sub, sub_err, impl = _resolve_module_attr_path(
                     py_file,
                     list(attr_chain),
@@ -2027,7 +2027,7 @@ def _resolve_module_attr_path(
                 return False, cls_err, None
             return True, None, py_file
         if isinstance(val, ast.Name):
-            sub_out: list[tuple[Path, str]] | None = [] if _resolved_target_out is not None else None
+            sub_out: list[tuple[Path, str, str | None]] | None = [] if _resolved_target_out is not None else None
             ok_ref, ref_err, ref_impl = _resolve_module_attr_path(
                 py_file,
                 [val.id],
@@ -2435,7 +2435,7 @@ def _resolve_module_attr_path(
     # 4. Local attribute aliases (e.g. `sub = demoapp_cli.Runner` -> `sub.run`).
     for cand in root_names:
         for attr_chain in attr_aliases.get(cand, ()):
-            sub_out: list[tuple[Path, str]] | None = [] if _resolved_target_out is not None else None
+            sub_out: list[tuple[Path, str, str | None]] | None = [] if _resolved_target_out is not None else None
             ok_sub, sub_err, impl = _resolve_module_attr_path(
                 py_file,
                 [*attr_chain, *attr_parts[1:]],
@@ -2784,7 +2784,7 @@ def _validate_console_script_target(
     excluded_files: set[str] | None = None,
     hatch_exclude: list[str] | None = None,
     check_manifest: bool = False,
-    resolved_target_out: list[tuple[Path, str]] | None = None,
+    resolved_target_out: list[tuple[Path, str, str | None]] | None = None,
 ) -> tuple[bool, str, Path | None]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
     spec = target_spec.strip()
@@ -4022,6 +4022,7 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "parse_error": None,
         "build_system_error": None,
         "project_metadata_error": None,
+        "setuptools_config_error": None,
         "build_backend": None,
         "backend_kind": "setuptools",
         "namespace_ok": False,
@@ -4218,93 +4219,171 @@ def _inspect_pyproject_data(
     tool = data.get("tool")
     tool_dict = tool if isinstance(tool, dict) else {}
 
-    if backend_kind == "setuptools":
-        setuptools_cfg = tool_dict.get("setuptools")
-        if isinstance(setuptools_cfg, dict):
-            if isinstance(setuptools_cfg.get("include-package-data"), bool):
-                info["include_package_data"] = setuptools_cfg["include-package-data"]
-            py_mods_cfg = setuptools_cfg.get("py-modules")
-            if isinstance(py_mods_cfg, list):
-                info["declares_py_modules"] = True
-                info["py_modules"] = [m for m in py_mods_cfg if isinstance(m, str)]
-            pkg_dir_cfg = setuptools_cfg.get("package-dir")
-            if isinstance(pkg_dir_cfg, dict):
-                info["declares_package_dir"] = True
-                for pk, pv in pkg_dir_cfg.items():
-                    if isinstance(pk, str) and isinstance(pv, str):
-                        info["package_dir"][pk] = pv
-            pkg_data_cfg = setuptools_cfg.get("package-data")
-            if isinstance(pkg_data_cfg, dict):
-                info["declares_package_data"] = True
-                for pk, pv in pkg_data_cfg.items():
-                    if isinstance(pk, str) and isinstance(pv, list):
-                        info["package_data"][pk] = [x for x in pv if isinstance(x, str)]
-            excl_data_cfg = setuptools_cfg.get("exclude-package-data")
-            if isinstance(excl_data_cfg, dict):
-                info["declares_exclude_package_data"] = True
-                for pk, pv in excl_data_cfg.items():
-                    if isinstance(pk, str) and isinstance(pv, list):
-                        info["exclude_package_data"][pk] = [x for x in pv if isinstance(x, str)]
-            pkgs = setuptools_cfg.get("packages")
-            if isinstance(pkgs, dict) and isinstance(pkgs.get("find"), dict):
-                info["declares_packages"] = True
-                find_cfg = pkgs["find"]
-                if find_cfg.get("namespaces") is False:
-                    info["namespaces_disabled"] = True
-                else:
-                    if "where" not in find_cfg:
-                        wheres: list[str] | None = None
-                    elif isinstance(find_cfg["where"], list):
-                        wheres = [v for v in find_cfg["where"] if isinstance(v, str)]
-                    elif isinstance(find_cfg["where"], str):
-                        wheres = [find_cfg["where"]]
-                    else:
-                        wheres = []
+    def _is_valid_setuptools_pkg_name(value: str) -> bool:
+        def _is_py_mod(s: str) -> bool:
+            parts = s.split(".")
+            return bool(parts) and all(p.isidentifier() and not keyword.iskeyword(p) for p in parts)
 
-                    if "include" not in find_cfg:
-                        includes: list[str] | None = None
-                    elif isinstance(find_cfg["include"], list):
-                        includes = [v for v in find_cfg["include"] if isinstance(v, str)]
-                    else:
-                        includes = []
-                    excludes_raw = find_cfg.get("exclude")
-                    excludes = (
-                        [v for v in excludes_raw if isinstance(v, str)]
-                        if isinstance(excludes_raw, list)
-                        else None
-                    )
-                    info["pkg_spec"] = {
-                        "kind": "find",
-                        "includes": includes,
-                        "excludes": excludes,
-                        "wheres": wheres,
-                        "fills_package_dir": True,
-                    }
-                    if _find_selects_package(
-                        target_pkg,
-                        includes,
-                        excludes,
-                        harness=harness,
-                        wheres=wheres,
-                    ):
-                        info["namespace_ok"] = True
-                    if target_pkg and _find_selects_package(
-                        f"{target_pkg}.skills",
-                        includes,
-                        excludes,
-                        harness=harness,
-                        wheres=wheres,
-                        require_init=False,
-                    ):
-                        info["skills_subpkg_ok"] = True
-            elif isinstance(pkgs, list):
+        if not value:
+            return False
+        top, *children = value.split(".")
+        if top.endswith("-stubs"):
+            return _is_py_mod(".".join([top[: -len("-stubs")], *children]))
+        if value.startswith("-") or value.endswith("-") or value.endswith("-stubs"):
+            return False
+        return _is_py_mod(value.replace("-", "_"))
+
+    if backend_kind == "setuptools":
+        has_setuptools_cfg = "setuptools" in tool_dict
+        setuptools_cfg = tool_dict.get("setuptools")
+        if has_setuptools_cfg and not isinstance(setuptools_cfg, dict):
+            info["setuptools_config_error"] = "[tool.setuptools] must be a TOML table"
+        elif isinstance(setuptools_cfg, dict):
+            if "include-package-data" in setuptools_cfg:
+                raw_ipd = setuptools_cfg["include-package-data"]
+                if isinstance(raw_ipd, bool):
+                    info["include_package_data"] = raw_ipd
+                elif info["setuptools_config_error"] is None:
+                    info["setuptools_config_error"] = "[tool.setuptools].include-package-data must be a boolean"
+
+            if "py-modules" in setuptools_cfg:
+                py_mods_cfg = setuptools_cfg["py-modules"]
+                if isinstance(py_mods_cfg, list) and all(isinstance(m, str) for m in py_mods_cfg):
+                    info["declares_py_modules"] = True
+                    info["py_modules"] = list(py_mods_cfg)
+                else:
+                    info["declares_py_modules"] = True
+                    if info["setuptools_config_error"] is None:
+                        info["setuptools_config_error"] = "[tool.setuptools].py-modules must be an array of strings"
+
+            if "package-dir" in setuptools_cfg:
+                pkg_dir_cfg = setuptools_cfg["package-dir"]
+                if isinstance(pkg_dir_cfg, dict) and all(
+                    isinstance(pk, str) and isinstance(pv, str) for pk, pv in pkg_dir_cfg.items()
+                ):
+                    info["declares_package_dir"] = True
+                    info["package_dir"].update(pkg_dir_cfg)
+                elif info["setuptools_config_error"] is None:
+                    info["setuptools_config_error"] = "[tool.setuptools].package-dir must be a table mapping strings to strings"
+
+            if "package-data" in setuptools_cfg:
+                pkg_data_cfg = setuptools_cfg["package-data"]
+                if isinstance(pkg_data_cfg, dict) and all(
+                    isinstance(pk, str) and isinstance(pv, list) and all(isinstance(x, str) for x in pv)
+                    for pk, pv in pkg_data_cfg.items()
+                ):
+                    info["declares_package_data"] = True
+                    for pk, pv in pkg_data_cfg.items():
+                        info["package_data"][pk] = list(pv)
+                elif info["setuptools_config_error"] is None:
+                    info["setuptools_config_error"] = "[tool.setuptools].package-data must map package names to arrays of strings"
+
+            if "exclude-package-data" in setuptools_cfg:
+                excl_data_cfg = setuptools_cfg["exclude-package-data"]
+                if isinstance(excl_data_cfg, dict) and all(
+                    isinstance(pk, str) and isinstance(pv, list) and all(isinstance(x, str) for x in pv)
+                    for pk, pv in excl_data_cfg.items()
+                ):
+                    info["declares_exclude_package_data"] = True
+                    for pk, pv in excl_data_cfg.items():
+                        info["exclude_package_data"][pk] = list(pv)
+                elif info["setuptools_config_error"] is None:
+                    info["setuptools_config_error"] = "[tool.setuptools].exclude-package-data must map package names to arrays of strings"
+
+            if "packages" in setuptools_cfg:
+                pkgs = setuptools_cfg["packages"]
                 info["declares_packages"] = True
-                str_pkgs = [p for p in pkgs if isinstance(p, str)]
-                info["pkg_spec"] = {"kind": "explicit", "packages": str_pkgs}
-                if _explicit_packages_cover(target_pkg, str_pkgs):
-                    info["namespace_ok"] = True
-                if target_pkg and f"{target_pkg}.skills" in str_pkgs:
-                    info["skills_subpkg_ok"] = True
+                if isinstance(pkgs, dict):
+                    extra_pkg_keys = sorted(k for k in pkgs if k != "find")
+                    if extra_pkg_keys:
+                        if info["setuptools_config_error"] is None:
+                            info["setuptools_config_error"] = (
+                                f"[tool.setuptools.packages] contains unsupported key(s): {', '.join(extra_pkg_keys)}"
+                            )
+                    elif "find" in pkgs:
+                        find_cfg = pkgs["find"]
+                        if not isinstance(find_cfg, dict):
+                            if info["setuptools_config_error"] is None:
+                                info["setuptools_config_error"] = "[tool.setuptools.packages.find] must be a TOML table"
+                        else:
+                            allowed_find_keys = {"where", "include", "exclude", "namespaces"}
+                            extra_find_keys = sorted(k for k in find_cfg if k not in allowed_find_keys)
+                            find_err: str | None = None
+                            if extra_find_keys:
+                                find_err = (
+                                    f"[tool.setuptools.packages.find] contains unsupported option(s): {', '.join(extra_find_keys)}"
+                                )
+                            elif "namespaces" in find_cfg and not isinstance(find_cfg["namespaces"], bool):
+                                find_err = "[tool.setuptools.packages.find].namespaces must be a boolean"
+                            else:
+                                for opt_name in ("where", "include", "exclude"):
+                                    if opt_name in find_cfg:
+                                        opt_val = find_cfg[opt_name]
+                                        if not isinstance(opt_val, list) or any(not isinstance(v, str) for v in opt_val):
+                                            find_err = (
+                                                f"[tool.setuptools.packages.find].{opt_name} must be an array of strings"
+                                            )
+                                            break
+                            if find_err is not None:
+                                if info["setuptools_config_error"] is None:
+                                    info["setuptools_config_error"] = find_err
+                            elif find_cfg.get("namespaces") is False:
+                                info["namespaces_disabled"] = True
+                            else:
+                                wheres: list[str] | None = (
+                                    list(find_cfg["where"]) if "where" in find_cfg else None
+                                )
+                                includes: list[str] | None = (
+                                    list(find_cfg["include"]) if "include" in find_cfg else None
+                                )
+                                excludes: list[str] | None = (
+                                    list(find_cfg["exclude"]) if "exclude" in find_cfg else None
+                                )
+                                info["pkg_spec"] = {
+                                    "kind": "find",
+                                    "includes": includes,
+                                    "excludes": excludes,
+                                    "wheres": wheres,
+                                    "fills_package_dir": True,
+                                }
+                                if _find_selects_package(
+                                    target_pkg,
+                                    includes,
+                                    excludes,
+                                    harness=harness,
+                                    wheres=wheres,
+                                ):
+                                    info["namespace_ok"] = True
+                                if target_pkg and _find_selects_package(
+                                    f"{target_pkg}.skills",
+                                    includes,
+                                    excludes,
+                                    harness=harness,
+                                    wheres=wheres,
+                                    require_init=False,
+                                ):
+                                    info["skills_subpkg_ok"] = True
+                    else:
+                        # Empty `[tool.setuptools.packages]` table `{}` selects no packages.
+                        info["pkg_spec"] = {"kind": "explicit", "packages": []}
+                elif isinstance(pkgs, list):
+                    if any(not isinstance(p, str) or not _is_valid_setuptools_pkg_name(p) for p in pkgs):
+                        if info["setuptools_config_error"] is None:
+                            info["setuptools_config_error"] = (
+                                "[tool.setuptools].packages must be an array of valid package name strings"
+                            )
+                    else:
+                        str_pkgs = list(pkgs)
+                        info["pkg_spec"] = {"kind": "explicit", "packages": str_pkgs}
+                        if _explicit_packages_cover(target_pkg, str_pkgs):
+                            info["namespace_ok"] = True
+                        if target_pkg and f"{target_pkg}.skills" in str_pkgs:
+                            info["skills_subpkg_ok"] = True
+                else:
+                    if info["setuptools_config_error"] is None:
+                        info["setuptools_config_error"] = (
+                            "[tool.setuptools].packages must be an array of package names or a {find = {...}} table"
+                        )
     elif backend_kind == "hatch":
         hatch_cfg = tool_dict.get("hatch")
         hatch_build = hatch_cfg.get("build") if isinstance(hatch_cfg, dict) else None
@@ -4886,7 +4965,7 @@ def _check_packaging(
     harness: Path,
     software_slug: str,
     module: Path | None,
-) -> tuple[list[CheckResult], Path | None, list[Path], dict[str, Path], dict[Path, set[str]]]:
+) -> tuple[list[CheckResult], Path | None, list[Path], dict[str, Path], dict[str, Any]]:
     checks: list[CheckResult] = []
     setup_py = harness / "setup.py"
     pyproject = harness / "pyproject.toml"
@@ -5272,6 +5351,16 @@ def _check_packaging(
                 shadowing_ns_module = sel_hp
                 break
 
+    if has_pyproject and pyproj_info["setuptools_config_error"]:
+        checks.append(
+            CheckResult(
+                "pyproject-setuptools-config",
+                "packaging",
+                FAIL,
+                f"invalid pyproject.toml [tool.setuptools]: {pyproj_info['setuptools_config_error']}",
+            )
+        )
+
     # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py/setup.cfg.
     # Non-setuptools PEP 517 backends (Hatch, Poetry, etc.) do not execute setup.py or setup.cfg at all.
     if pyproj_info["namespaces_disabled"]:
@@ -5511,8 +5600,8 @@ def _check_packaging(
     ]
     primary_cli_files: list[Path] = []
     all_resolved_cli_files: list[Path] = []
-    primary_cli_symbols: dict[Path, set[str]] = {}
-    all_cli_symbols: dict[Path, set[str]] = {}
+    primary_cli_targets: dict[Path, list[tuple[str, str | None]]] = {}
+    all_cli_targets: dict[Path, list[tuple[str, str | None]]] = {}
     uses_setup_cfg_scripts = (
         uses_setuptools
         and uses_setup_cfg
@@ -5600,7 +5689,7 @@ def _check_packaging(
                 if not ok_alias:
                     invalid_targets.append(f"{cmd_name}={target_spec} ({alias_reason})")
         for cmd_name, target_spec in matching_scripts:
-            resolved_targets: list[tuple[Path, str]] = []
+            resolved_targets: list[tuple[Path, str, str | None]] = []
             ok_target, reason, mod_file = _validate_console_script_target(
                 target_spec,
                 harness,
@@ -5618,18 +5707,25 @@ def _check_packaging(
             elif mod_file is not None:
                 if mod_file not in all_resolved_cli_files:
                     all_resolved_cli_files.append(mod_file)
-                matched_syms = [sym for t_file, sym in resolved_targets if t_file == mod_file]
-                if not matched_syms and ":" in target_spec:
-                    raw_attr = target_spec.split(":", 1)[1].split("[", 1)[0].strip()
+                matched_targets = [(sym, mpath) for t_file, sym, mpath in resolved_targets if t_file == mod_file]
+                if not matched_targets and ":" in target_spec:
+                    raw_mod, raw_attr = target_spec.split(":", 1)
+                    raw_attr = raw_attr.split("[", 1)[0].strip()
                     if raw_attr:
-                        matched_syms = [raw_attr.split(".", 1)[0]]
-                if matched_syms:
-                    all_cli_symbols.setdefault(mod_file, set()).add(matched_syms[-1])
+                        matched_targets = [(raw_attr.split(".", 1)[0], raw_mod.strip() or None)]
+                if matched_targets:
+                    pair = matched_targets[-1]
+                    all_list = all_cli_targets.setdefault(mod_file, [])
+                    if pair not in all_list:
+                        all_list.append(pair)
                 if cmd_name in expected_prefixes:
                     if mod_file not in primary_cli_files:
                         primary_cli_files.append(mod_file)
-                    if matched_syms:
-                        primary_cli_symbols.setdefault(mod_file, set()).add(matched_syms[-1])
+                    if matched_targets:
+                        pair = matched_targets[-1]
+                        prim_list = primary_cli_targets.setdefault(mod_file, [])
+                        if pair not in prim_list:
+                            prim_list.append(pair)
         if not invalid_targets:
             first_name, first_target = matching_scripts[0]
             checks.append(
@@ -5686,7 +5782,18 @@ def _check_packaging(
             )
         )
     declared_cli_files = primary_cli_files or all_resolved_cli_files
-    cli_entry_symbols = primary_cli_symbols if primary_cli_files else all_cli_symbols
+    cli_entry_targets = primary_cli_targets if primary_cli_files else all_cli_targets
+    cli_resolution_ctx: dict[str, Any] = {
+        "harness": harness,
+        "target_pkg": target_pkg,
+        "eff_pkg_dir": eff_package_dir,
+        "parent_selected": parent_selected,
+        "pkg_spec": eff_pkg_spec,
+        "excluded_files": poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
+        "hatch_exclude": pyproj_info["hatch_exclude"] if (has_pyproject and pyproj_info["backend_kind"] == "hatch") else None,
+        "check_manifest": uses_setuptools,
+        "entry_targets": cli_entry_targets,
+    }
 
     skill_data_ok = False
     if has_pyproject and pyproj_info["backend_kind"] == "hatch":
@@ -5869,7 +5976,7 @@ def _check_packaging(
             CheckResult("python-requires", "packaging", WARN, "python_requires not declared", severity="warn")
         )
 
-    return checks, effective_module, declared_cli_files, eff_subpkg_dirs, cli_entry_symbols
+    return checks, effective_module, declared_cli_files, eff_subpkg_dirs, cli_resolution_ctx
 
 
 def _iter_live_ast_nodes(
@@ -5915,21 +6022,29 @@ def _iter_live_ast_nodes(
                 stack.extend(reversed(children))
 
 
-def _collect_load_names_split(
+def _collect_refs_split(
     node: ast.AST,
     tc_names: set[str] | frozenset[str],
     *,
     exclude_names: set[str] | frozenset[str] = frozenset(),
-) -> tuple[set[str], set[str]]:
-    """Return (eager_load_names, late_load_names) where ast.Lambda bodies are late-bound."""
+) -> tuple[set[str], set[str], set[tuple[str, ...]], set[tuple[str, ...]]]:
+    """Return (eager_names, late_names, eager_attr_chains, late_attr_chains)."""
     eager: set[str] = set()
     late: set[str] = set()
+    eager_chains: set[tuple[str, ...]] = set()
+    late_chains: set[tuple[str, ...]] = set()
     stack: list[tuple[ast.AST, bool, frozenset[str]]] = [(node, False, frozenset(exclude_names))]
     while stack:
         cur, is_late, excl = stack.pop()
         if isinstance(cur, ast.Name) and isinstance(cur.ctx, ast.Load):
             if cur.id not in excl:
                 (late if is_late else eager).add(cur.id)
+            continue
+        if isinstance(cur, ast.Attribute) and isinstance(cur.ctx, ast.Load):
+            chain = _extract_attr_chain(cur)
+            if chain is not None and len(chain) >= 2 and chain[0] not in excl:
+                (late_chains if is_late else eager_chains).add(chain)
+            stack.append((cur.value, is_late, excl))
             continue
         if isinstance(cur, ast.Lambda):
             for d in cur.args.defaults:
@@ -5986,33 +6101,54 @@ def _collect_load_names_split(
             continue
         for ch in reversed(list(ast.iter_child_nodes(cur))):
             stack.append((ch, is_late, excl))
-    return eager, late
+    return eager, late, eager_chains, late_chains
 
 
-def _collect_fn_free_load_names_split(
+def _collect_load_names_split(
+    node: ast.AST,
+    tc_names: set[str] | frozenset[str],
+    *,
+    exclude_names: set[str] | frozenset[str] = frozenset(),
+) -> tuple[set[str], set[str]]:
+    """Return (eager_load_names, late_load_names) where ast.Lambda bodies are late-bound."""
+    e, l, _, _ = _collect_refs_split(node, tc_names, exclude_names=exclude_names)
+    return e, l
+
+
+def _collect_fn_free_refs_split(
     fn: ast.FunctionDef | ast.AsyncFunctionDef,
     tc_names: set[str] | frozenset[str],
-) -> tuple[set[str], set[str]]:
+) -> tuple[set[str], set[str], set[tuple[str, ...]], set[tuple[str, ...]]]:
     eager: set[str] = set()
     late: set[str] = set()
+    eager_chains: set[tuple[str, ...]] = set()
+    late_chains: set[tuple[str, ...]] = set()
     for dec in fn.decorator_list:
-        e, l = _collect_load_names_split(dec, tc_names)
+        e, l, ec, lc = _collect_refs_split(dec, tc_names)
         eager.update(e)
         late.update(l)
+        eager_chains.update(ec)
+        late_chains.update(lc)
     for d in fn.args.defaults:
-        e, l = _collect_load_names_split(d, tc_names)
+        e, l, ec, lc = _collect_refs_split(d, tc_names)
         eager.update(e)
         late.update(l)
+        eager_chains.update(ec)
+        late_chains.update(lc)
     for d in fn.args.kw_defaults:
         if d is not None:
-            e, l = _collect_load_names_split(d, tc_names)
+            e, l, ec, lc = _collect_refs_split(d, tc_names)
             eager.update(e)
             late.update(l)
+            eager_chains.update(ec)
+            late_chains.update(lc)
     for arg in (*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs):
         if arg.annotation is not None:
-            e, l = _collect_load_names_split(arg.annotation, tc_names)
+            e, l, ec, lc = _collect_refs_split(arg.annotation, tc_names)
             eager.update(e)
             late.update(l)
+            eager_chains.update(ec)
+            late_chains.update(lc)
 
     local_bound: set[str] = set()
     for arg in (*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs):
@@ -6084,58 +6220,142 @@ def _collect_fn_free_load_names_split(
     local_bound -= explicit_globals
 
     for stmt in fn.body:
-        e, l = _collect_load_names_split(stmt, tc_names, exclude_names=local_bound)
+        e, l, ec, lc = _collect_refs_split(stmt, tc_names, exclude_names=local_bound)
         late.update(e)
         late.update(l)
-    return eager, late
+        late_chains.update(ec)
+        late_chains.update(lc)
+    return eager, late, eager_chains, late_chains
 
 
-def _collect_cls_free_load_names_split(
+def _collect_cls_free_refs_split(
     cls_node: ast.ClassDef,
     tc_names: set[str] | frozenset[str],
-) -> tuple[set[str], set[str]]:
+) -> tuple[set[str], set[str], set[tuple[str, ...]], set[tuple[str, ...]]]:
     eager: set[str] = set()
     late: set[str] = set()
+    eager_chains: set[tuple[str, ...]] = set()
+    late_chains: set[tuple[str, ...]] = set()
     for node in (*cls_node.decorator_list, *cls_node.bases):
-        e, l = _collect_load_names_split(node, tc_names)
+        e, l, ec, lc = _collect_refs_split(node, tc_names)
         eager.update(e)
         late.update(l)
+        eager_chains.update(ec)
+        late_chains.update(lc)
     for kw in cls_node.keywords:
-        e, l = _collect_load_names_split(kw.value, tc_names)
+        e, l, ec, lc = _collect_refs_split(kw.value, tc_names)
         eager.update(e)
         late.update(l)
+        eager_chains.update(ec)
+        late_chains.update(lc)
     for stmt in cls_node.body:
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            e, l = _collect_fn_free_load_names_split(stmt, tc_names)
-            eager.update(e)
-            late.update(l)
+            e, l, ec, lc = _collect_fn_free_refs_split(stmt, tc_names)
         elif isinstance(stmt, ast.ClassDef):
-            e, l = _collect_cls_free_load_names_split(stmt, tc_names)
-            eager.update(e)
-            late.update(l)
+            e, l, ec, lc = _collect_cls_free_refs_split(stmt, tc_names)
         else:
-            e, l = _collect_load_names_split(stmt, tc_names)
-            eager.update(e)
-            late.update(l)
-    return eager, late
+            e, l, ec, lc = _collect_refs_split(stmt, tc_names)
+        eager.update(e)
+        late.update(l)
+        eager_chains.update(ec)
+        late_chains.update(lc)
+    return eager, late, eager_chains, late_chains
 
 
-def _collect_reachable_cli_nodes(
-    tree: ast.Module,
-    entry_symbols: set[str],
+def _is_local_module_shipped(
+    target_mod: str,
+    target_file: Path,
+    is_target_pkg_init: bool,
     *,
-    ignored_owners: set[str] | frozenset[str] = frozenset(),
-) -> tuple[list[ast.AST], list[ast.AST], set[str]]:
-    """Collect AST subtrees reachable from `entry_symbols` in the published command tree.
+    harness: Path | None,
+    target_pkg: str | None,
+    parent_selected: bool,
+    pkg_spec: dict[str, Any] | None,
+    excluded_files: set[str] | None,
+    hatch_exclude: list[str] | None,
+    check_manifest: bool,
+) -> bool:
+    if harness is None:
+        return True
+    try:
+        rel_posix = target_file.relative_to(harness).as_posix()
+    except ValueError:
+        rel_posix = ""
+    if excluded_files and rel_posix and _poetry_is_excluded(rel_posix, excluded_files):
+        return False
+    if hatch_exclude and rel_posix and _hatch_is_excluded(rel_posix, hatch_exclude):
+        return False
+    if check_manifest and rel_posix and not _manifest_covers_skill(
+        harness, rel_posix, initially_included=True
+    ):
+        return False
+    owner = target_mod if is_target_pkg_init else ".".join(target_mod.split(".")[:-1])
+    if (
+        target_pkg
+        and parent_selected
+        and owner
+        and owner != target_pkg
+        and owner.startswith(f"{target_pkg}.")
+        and pkg_spec is not None
+    ):
+        if pkg_spec["kind"] == "find":
+            if not _find_selects_package(
+                owner,
+                pkg_spec["includes"],
+                pkg_spec["excludes"],
+                harness=harness,
+                wheres=pkg_spec["wheres"],
+                require_init=False,
+            ):
+                return False
+        elif pkg_spec["kind"] == "explicit":
+            if owner not in pkg_spec["packages"]:
+                return False
+    return True
 
-    Tracks temporal module-scope rebindings (SSA windows) so aliases captured before a source
-    rebind, swap assignments, and shadowed definitions all resolve to the active version.
-    Returns (scan_nodes, live_top_tests, tc_names).
-    """
+
+def _resolve_relative_import_mod(
+    stmt: ast.ImportFrom,
+    py_file: Path,
+    module_path: str | None,
+) -> str | None:
+    if stmt.level == 0:
+        return stmt.module or ""
+    if not module_path:
+        return None
+    is_pkg_init = py_file.name == "__init__.py"
+    cur_pkg_parts = (
+        module_path.split(".") if is_pkg_init else module_path.split(".")[:-1]
+    )
+    up = stmt.level - 1
+    if up > len(cur_pkg_parts):
+        return None
+    base_parts = cur_pkg_parts[: len(cur_pkg_parts) - up]
+    if stmt.module:
+        return ".".join([*base_parts, *stmt.module.split(".")])
+    return ".".join(base_parts)
+
+
+def _build_cli_module_index(
+    py_file: Path,
+    module_path: str | None,
+) -> dict[str, Any] | None:
+    text = _read_text(py_file)
+    try:
+        tree = ast.parse(text, filename=str(py_file))
+    except SyntaxError:
+        return None
+
     tc_names = _collect_type_checking_names(tree.body)
     try_star = getattr(ast, "TryStar", ())
     match_cls = getattr(ast, "Match", ())
-    inf_seq = 10**9
+
+    ignored_owners: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in {"click", "click.decorators", "click.core", "typer", "sys"}:
+                    ignored_owners.add(alias.asname or alias.name.split(".", 1)[0])
 
     flat_stmts: list[tuple[int, bool, ast.stmt, list[ast.AST]]] = []
     live_top_tests: list[ast.AST] = []
@@ -6199,7 +6419,533 @@ def _collect_reachable_cli_nodes(
             return pairs
         return [(n, value) for n in _collect_target_names(target)]
 
-    # Each entry in def_versions[name] is (seq, is_redef, ast_node_or_None_for_delete).
+    # Each entry in def_versions[name] is (seq, is_redef, payload) where payload is:
+    # - ast.AST node (FunctionDef / AsyncFunctionDef / ClassDef / RHS expression)
+    # - ("import_from", resolved_mod, orig_name, is_rel)
+    # - ("import_mod", target_mod)
+    # - None (explicit `del name`)
+    def_versions: dict[str, list[tuple[int, bool, Any]]] = {}
+    registered_by_owner: dict[str, list[tuple[int, str, ast.FunctionDef | ast.AsyncFunctionDef]]] = {}
+    mutations_by_owner: dict[str, list[tuple[int, ast.AST, list[ast.AST]]]] = {}
+    decorator_owner_alias: dict[str, str] = {}
+    dotted_imports: list[tuple[int, tuple[str, ...]]] = []
+    star_imports: list[tuple[int, bool, str, bool]] = []
+
+    mutator_attrs = {"add_command", "add_typer", "add_source", "params", "commands", "sources"}
+    reg_dec_attrs = {"command", "group", "callback", "result_callback"}
+
+    def _record_assign(cur_seq: int, top_level: bool, target: ast.AST, value: ast.AST, for_iters: list[ast.AST]) -> None:
+        t_chain = _extract_attr_chain(target)
+        if t_chain is not None and len(t_chain) >= 2 and t_chain[0] not in ignored_owners:
+            mutations_by_owner.setdefault(t_chain[0], []).append((cur_seq, value, for_iters))
+            return
+        if isinstance(target, ast.Subscript):
+            sub_chain = _extract_attr_chain(target.value)
+            if sub_chain is not None and sub_chain[0] not in ignored_owners:
+                mutations_by_owner.setdefault(sub_chain[0], []).append((cur_seq, value, for_iters))
+                return
+        for t_name, sub_val in _unpack_assign_targets(target, value):
+            val_chain = _extract_attr_chain(sub_val)
+            if (
+                val_chain is not None
+                and len(val_chain) >= 2
+                and val_chain[-1] in reg_dec_attrs
+                and val_chain[0] not in ignored_owners
+            ):
+                decorator_owner_alias[t_name] = val_chain[0]
+            elif top_level:
+                decorator_owner_alias.pop(t_name, None)
+            e_names, l_names = _collect_load_names_split(sub_val, tc_names)
+            refs_self = t_name in (e_names | l_names)
+            is_redef = top_level and not refs_self
+            def_versions.setdefault(t_name, []).append((cur_seq, is_redef, sub_val))
+
+    for cur_seq, top_level, stmt, for_iters in flat_stmts:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            def_versions.setdefault(stmt.name, []).append((cur_seq, top_level, stmt))
+            if top_level:
+                decorator_owner_alias.pop(stmt.name, None)
+            for dec in stmt.decorator_list:
+                dec_target = dec.func if isinstance(dec, ast.Call) else dec
+                owner: str | None = None
+                chain = _extract_attr_chain(dec_target)
+                if (
+                    chain is not None
+                    and len(chain) >= 2
+                    and chain[-1] in reg_dec_attrs
+                    and chain[0] not in ignored_owners
+                ):
+                    owner = chain[0]
+                elif isinstance(dec_target, ast.Name) and dec_target.id in decorator_owner_alias:
+                    cand_owner = decorator_owner_alias[dec_target.id]
+                    if cand_owner not in ignored_owners:
+                        owner = cand_owner
+                if owner is not None:
+                    registered_by_owner.setdefault(owner, []).append((cur_seq, stmt.name, stmt))
+        elif isinstance(stmt, ast.ClassDef):
+            def_versions.setdefault(stmt.name, []).append((cur_seq, top_level, stmt))
+            if top_level:
+                decorator_owner_alias.pop(stmt.name, None)
+        elif isinstance(stmt, ast.Assign):
+            for tgt in stmt.targets:
+                _record_assign(cur_seq, top_level, tgt, stmt.value, for_iters)
+        elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
+            _record_assign(cur_seq, top_level, stmt.target, stmt.value, for_iters)
+        elif isinstance(stmt, ast.AugAssign):
+            t_chain = _extract_attr_chain(stmt.target)
+            if t_chain is not None and len(t_chain) >= 2 and t_chain[0] not in ignored_owners:
+                mutations_by_owner.setdefault(t_chain[0], []).append((cur_seq, stmt, for_iters))
+            elif isinstance(stmt.target, ast.Name) and stmt.target.id not in ignored_owners:
+                def_versions.setdefault(stmt.target.id, []).append((cur_seq, False, stmt.value))
+        elif isinstance(stmt, ast.Delete):
+            if top_level:
+                for tgt in stmt.targets:
+                    if isinstance(tgt, ast.Name):
+                        def_versions.setdefault(tgt.id, []).append((cur_seq, True, None))
+                        decorator_owner_alias.pop(tgt.id, None)
+        elif isinstance(stmt, ast.Import):
+            for alias in stmt.names:
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                target_mod = alias.name if alias.asname else bound
+                def_versions.setdefault(bound, []).append((cur_seq, top_level, ("import_mod", target_mod)))
+                if top_level:
+                    decorator_owner_alias.pop(bound, None)
+                if not alias.asname and "." in alias.name:
+                    dotted_imports.append((cur_seq, tuple(alias.name.split("."))))
+        elif isinstance(stmt, ast.ImportFrom):
+            resolved_mod = _resolve_relative_import_mod(stmt, py_file, module_path)
+            is_rel = stmt.level > 0
+            for alias in stmt.names:
+                if alias.name == "*":
+                    if resolved_mod:
+                        star_imports.append((cur_seq, top_level, resolved_mod, is_rel))
+                    continue
+                bound = alias.asname or alias.name
+                def_versions.setdefault(bound, []).append(
+                    (cur_seq, top_level, ("import_from", resolved_mod, alias.name, is_rel))
+                )
+                if top_level:
+                    decorator_owner_alias.pop(bound, None)
+        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            call = stmt.value
+            chain = _extract_attr_chain(call.func)
+            if chain is not None and len(chain) >= 2 and chain[1] in mutator_attrs:
+                if chain[0] not in ignored_owners:
+                    mutations_by_owner.setdefault(chain[0], []).append((cur_seq, call, for_iters))
+            else:
+                arg_owners: set[str] = set()
+                for arg in call.args:
+                    arg_node = arg.value if isinstance(arg, ast.Starred) else arg
+                    arg_chain = _extract_attr_chain(arg_node)
+                    if arg_chain is not None and arg_chain[0] not in ignored_owners:
+                        arg_owners.add(arg_chain[0])
+                for kw in call.keywords:
+                    kw_chain = _extract_attr_chain(kw.value)
+                    if kw_chain is not None and kw_chain[0] not in ignored_owners:
+                        arg_owners.add(kw_chain[0])
+                for own in arg_owners:
+                    mutations_by_owner.setdefault(own, []).append((cur_seq, call, for_iters))
+
+    return {
+        "file": py_file,
+        "module_path": module_path,
+        "tree": tree,
+        "tc_names": tc_names,
+        "ignored_owners": ignored_owners,
+        "live_top_tests": live_top_tests,
+        "def_versions": def_versions,
+        "registered_by_owner": registered_by_owner,
+        "mutations_by_owner": mutations_by_owner,
+        "dotted_imports": dotted_imports,
+        "star_imports": star_imports,
+    }
+
+
+def _collect_reachable_cli_tree(
+    entry_file: Path,
+    entry_targets: list[tuple[str, str | None]],
+    cli_resolution_ctx: dict[str, Any] | None = None,
+) -> dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None:
+    """Collect reachable AST subtrees across `entry_file` and any shipped local modules it calls/imports.
+
+    Tracks temporal module-scope SSA rebindings within each module and follows local `from ... import`,
+    `import ...`, wildcard imports, attribute chains (`commands.cli`), and lazy function-body imports.
+    Returns `{file_path: (tree, scan_nodes, live_top_tests, tc_names)}`, or `None` if `entry_file` fails to parse.
+    """
+    inf_seq = 10**9
+    ctx = cli_resolution_ctx or {}
+    harness: Path | None = ctx.get("harness")
+    target_pkg: str | None = ctx.get("target_pkg")
+    eff_pkg_dir: dict[str, str] | None = ctx.get("eff_pkg_dir")
+    parent_selected: bool = bool(ctx.get("parent_selected"))
+    pkg_spec: dict[str, Any] | None = ctx.get("pkg_spec")
+    excluded_files: set[str] | None = ctx.get("excluded_files")
+    hatch_exclude: list[str] | None = ctx.get("hatch_exclude")
+    check_manifest: bool = bool(ctx.get("check_manifest"))
+
+    mod_cache: dict[Path, dict[str, Any] | None] = {}
+
+    def _get_mod_index(py_file: Path, module_path: str | None) -> dict[str, Any] | None:
+        if py_file not in mod_cache:
+            mod_cache[py_file] = _build_cli_module_index(py_file, module_path)
+        return mod_cache[py_file]
+
+    def _resolve_active(
+        idx: dict[str, Any],
+        name: str,
+        before_seq: int,
+    ) -> tuple[list[tuple[int, Any]], int, int]:
+        entries = idx["def_versions"].get(name, ())
+        earlier = [e for e in entries if e[0] < before_seq]
+        last_redef_idx = -1
+        for i, (_dseq, is_redef, _payload) in enumerate(earlier):
+            if is_redef:
+                last_redef_idx = i
+        if last_redef_idx >= 0:
+            window_start = earlier[last_redef_idx][0]
+            active_slice = earlier[last_redef_idx:]
+        else:
+            window_start = -1
+            active_slice = earlier
+        active_items = [(dseq, payload) for dseq, _ir, payload in active_slice if payload is not None]
+        window_end = inf_seq
+        for dseq, is_redef, _payload in entries:
+            if dseq >= before_seq and is_redef:
+                window_end = dseq
+                break
+        return active_items, window_start, window_end
+
+    def _resolve_shipped_local_mod(mod_name: str) -> tuple[Path | None, bool]:
+        if harness is None or eff_pkg_dir is None or not mod_name:
+            return None, False
+        t_file, is_pkg = _resolve_local_module_file(mod_name, harness, eff_pkg_dir)
+        if t_file is None:
+            return None, False
+        if not _is_local_module_shipped(
+            mod_name,
+            t_file,
+            is_pkg,
+            harness=harness,
+            target_pkg=target_pkg,
+            parent_selected=parent_selected,
+            pkg_spec=pkg_spec,
+            excluded_files=excluded_files,
+            hatch_exclude=hatch_exclude,
+            check_manifest=check_manifest,
+        ):
+            return None, False
+        return t_file, is_pkg
+
+    entry_mod_path = entry_targets[0][1] if entry_targets else None
+    entry_idx = _get_mod_index(entry_file, entry_mod_path)
+    if entry_idx is None:
+        return None
+
+    scan_nodes_by_file: dict[Path, list[ast.AST]] = {entry_file: []}
+    added_node_ids_by_file: dict[Path, set[int]] = {entry_file: set()}
+    visited_queries: set[tuple[Path, str, int]] = set()
+    worklist: list[tuple[Path, str | None, str, int]] = []
+
+    def _enqueue(py_file: Path, mod_path: str | None, name: str, before_seq: int) -> None:
+        idx = _get_mod_index(py_file, mod_path)
+        if idx is None or name in idx["ignored_owners"]:
+            return
+        key = (py_file, name, before_seq)
+        if key not in visited_queries:
+            visited_queries.add(key)
+            worklist.append((py_file, mod_path, name, before_seq))
+
+    def _add_scan(py_file: Path, node: ast.AST) -> None:
+        nid = id(node)
+        seen_ids = added_node_ids_by_file.setdefault(py_file, set())
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            scan_nodes_by_file.setdefault(py_file, []).append(node)
+
+    def _enqueue_local_mod_attr(base_mod: str, tail_attrs: tuple[str, ...]) -> None:
+        if not base_mod or not tail_attrs:
+            return
+        # Prefer deepest shipped submodule prefix when referencing e.g. `pkg.submod.cli`.
+        for split_k in range(len(tail_attrs) - 1, 0, -1):
+            cand_mod = f"{base_mod}.{'.'.join(tail_attrs[:split_k])}"
+            cand_file, _ = _resolve_shipped_local_mod(cand_mod)
+            if cand_file is not None:
+                _enqueue(cand_file, cand_mod, tail_attrs[split_k], inf_seq)
+                return
+        t_file, _ = _resolve_shipped_local_mod(base_mod)
+        if t_file is not None:
+            _enqueue(t_file, base_mod, tail_attrs[0], inf_seq)
+
+    def _follow_attr_chain(idx: dict[str, Any], chain: tuple[str, ...], ref_seq: int) -> None:
+        if len(chain) < 2 or harness is None or eff_pkg_dir is None:
+            return
+        # 1. Dotted `import a.b.c` matching a prefix of `chain`.
+        for imp_seq, imp_parts in reversed(idx["dotted_imports"]):
+            if imp_seq >= ref_seq:
+                continue
+            max_k = min(len(imp_parts), len(chain) - 1)
+            for k in range(max_k, 0, -1):
+                if chain[:k] == imp_parts[:k]:
+                    t_mod = ".".join(chain[:k])
+                    t_file, _ = _resolve_shipped_local_mod(t_mod)
+                    if t_file is not None:
+                        _enqueue(t_file, t_mod, chain[k], inf_seq)
+                        return
+        # 2. Active binding of `chain[0]` in `idx`.
+        active_items, _, _ = _resolve_active(idx, chain[0], ref_seq)
+        for _dseq, payload in active_items:
+            if isinstance(payload, tuple) and payload[0] == "import_mod":
+                _enqueue_local_mod_attr(payload[1], chain[1:])
+            elif isinstance(payload, tuple) and payload[0] == "import_from":
+                base_mod, orig_name = payload[1], payload[2]
+                sub_mod = f"{base_mod}.{orig_name}" if base_mod else orig_name
+                _enqueue_local_mod_attr(sub_mod, chain[1:])
+
+    def _follow_fn_local_imports(
+        idx: dict[str, Any],
+        fn: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        if harness is None or eff_pkg_dir is None:
+            return
+        tc = idx["tc_names"]
+        used_names: set[str] = set()
+        used_chains: set[tuple[str, ...]] = set()
+        local_from: dict[str, list[tuple[str | None, str]]] = {}
+        local_mod: dict[str, list[str]] = {}
+        local_dotted: list[tuple[str, ...]] = []
+        for sub in _iter_live_ast_nodes(fn.body, tc):
+            if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                used_names.add(sub.id)
+            elif isinstance(sub, ast.Attribute) and isinstance(sub.ctx, ast.Load):
+                ch = _extract_attr_chain(sub)
+                if ch is not None and len(ch) >= 2:
+                    used_chains.add(ch)
+            elif isinstance(sub, ast.Import):
+                for alias in sub.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    t_mod = alias.name if alias.asname else bound
+                    local_mod.setdefault(bound, []).append(t_mod)
+                    if not alias.asname and "." in alias.name:
+                        local_dotted.append(tuple(alias.name.split(".")))
+            elif isinstance(sub, ast.ImportFrom):
+                rmod = _resolve_relative_import_mod(sub, idx["file"], idx["module_path"])
+                for alias in sub.names:
+                    if alias.name == "*":
+                        continue
+                    bound = alias.asname or alias.name
+                    local_from.setdefault(bound, []).append((rmod, alias.name))
+        for bound, specs in local_from.items():
+            if bound not in used_names:
+                continue
+            for rmod, orig_name in specs:
+                if rmod:
+                    t_file, _ = _resolve_shipped_local_mod(rmod)
+                    if t_file is not None and _module_defines_symbol(t_file, orig_name)[0]:
+                        _enqueue(t_file, rmod, orig_name, inf_seq)
+                sub_mod = f"{rmod}.{orig_name}" if rmod else orig_name
+                for ch in used_chains:
+                    if ch[0] == bound:
+                        _enqueue_local_mod_attr(sub_mod, ch[1:])
+        for bound, mods in local_mod.items():
+            for ch in used_chains:
+                if ch[0] == bound:
+                    for t_mod in mods:
+                        _enqueue_local_mod_attr(t_mod, ch[1:])
+        for imp_parts in local_dotted:
+            for ch in used_chains:
+                max_k = min(len(imp_parts), len(ch) - 1)
+                for k in range(max_k, 0, -1):
+                    if ch[:k] == imp_parts[:k]:
+                        t_mod = ".".join(ch[:k])
+                        t_file, _ = _resolve_shipped_local_mod(t_mod)
+                        if t_file is not None:
+                            _enqueue(t_file, t_mod, ch[k], inf_seq)
+                            break
+
+    def _split_refs_of(
+        idx: dict[str, Any],
+        node: ast.AST,
+    ) -> tuple[set[str], set[str], set[tuple[str, ...]], set[tuple[str, ...]]]:
+        tc = idx["tc_names"]
+        ign = idx["ignored_owners"]
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            e, l, ec, lc = _collect_fn_free_refs_split(node, tc)
+        elif isinstance(node, ast.ClassDef):
+            e, l, ec, lc = _collect_cls_free_refs_split(node, tc)
+        else:
+            e, l, ec, lc = _collect_refs_split(node, tc)
+        return (
+            e - ign,
+            l - ign,
+            {c for c in ec if c[0] not in ign},
+            {c for c in lc if c[0] not in ign},
+        )
+
+    for sym, mod_path in entry_targets:
+        _enqueue(entry_file, mod_path, sym, inf_seq)
+
+    while worklist:
+        cur_file, cur_mod_path, name, before_seq = worklist.pop()
+        idx = _get_mod_index(cur_file, cur_mod_path)
+        if idx is None:
+            continue
+        active_items, w_start, w_end = _resolve_active(idx, name, before_seq)
+
+        # Check applicable wildcard imports shadowing or supplying `name` within (w_start, before_seq).
+        for star_seq, _star_top, star_mod, _is_rel in reversed(idx["star_imports"]):
+            if not (w_start < star_seq < before_seq):
+                continue
+            star_file, _ = _resolve_shipped_local_mod(star_mod)
+            if star_file is not None:
+                if _module_wildcard_allows(star_file, name)[0] and _module_defines_symbol(star_file, name)[0]:
+                    _enqueue(star_file, star_mod, name, inf_seq)
+
+        for dseq, payload in active_items:
+            if isinstance(payload, tuple):
+                kind = payload[0]
+                if kind == "import_from":
+                    base_mod, orig_name = payload[1], payload[2]
+                    if base_mod:
+                        t_file, _ = _resolve_shipped_local_mod(base_mod)
+                        if t_file is not None and _module_defines_symbol(t_file, orig_name)[0]:
+                            _enqueue(t_file, base_mod, orig_name, inf_seq)
+                continue
+            def_node = payload
+            _add_scan(cur_file, def_node)
+            e_names, l_names, e_chains, l_chains = _split_refs_of(idx, def_node)
+            for n in e_names:
+                _enqueue(cur_file, cur_mod_path, n, dseq)
+            for n in l_names:
+                _enqueue(cur_file, cur_mod_path, n, inf_seq)
+            for ch in e_chains:
+                _follow_attr_chain(idx, ch, dseq)
+            for ch in l_chains:
+                _follow_attr_chain(idx, ch, inf_seq)
+            if isinstance(def_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                _follow_fn_local_imports(idx, def_node)
+
+        for rseq, sub_name, sub_node in idx["registered_by_owner"].get(name, ()):
+            if not (w_start <= rseq < w_end):
+                continue
+            _add_scan(cur_file, sub_node)
+            _enqueue(cur_file, cur_mod_path, sub_name, rseq + 1)
+            e_names, l_names, e_chains, l_chains = _split_refs_of(idx, sub_node)
+            for n in e_names:
+                _enqueue(cur_file, cur_mod_path, n, rseq)
+            for n in l_names:
+                _enqueue(cur_file, cur_mod_path, n, inf_seq)
+            for ch in e_chains:
+                _follow_attr_chain(idx, ch, rseq)
+            for ch in l_chains:
+                _follow_attr_chain(idx, ch, inf_seq)
+            _follow_fn_local_imports(idx, sub_node)
+
+        for mseq, mut_node, for_iters in idx["mutations_by_owner"].get(name, ()):
+            if not (w_start <= mseq < w_end):
+                continue
+            _add_scan(cur_file, mut_node)
+            e_names, l_names, e_chains, l_chains = _split_refs_of(idx, mut_node)
+            for n in e_names:
+                _enqueue(cur_file, cur_mod_path, n, mseq)
+            for n in l_names:
+                _enqueue(cur_file, cur_mod_path, n, inf_seq)
+            for ch in e_chains:
+                _follow_attr_chain(idx, ch, mseq)
+            for ch in l_chains:
+                _follow_attr_chain(idx, ch, inf_seq)
+            for it_expr in for_iters:
+                it_e, it_l, it_ec, it_lc = _split_refs_of(idx, it_expr)
+                for n in it_e:
+                    _enqueue(cur_file, cur_mod_path, n, mseq)
+                for n in it_l:
+                    _enqueue(cur_file, cur_mod_path, n, inf_seq)
+                for ch in it_ec:
+                    _follow_attr_chain(idx, ch, mseq)
+                for ch in it_lc:
+                    _follow_attr_chain(idx, ch, inf_seq)
+
+    result: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] = {}
+    for fpath, nodes in scan_nodes_by_file.items():
+        fidx = mod_cache.get(fpath)
+        if fidx is not None:
+            result[fpath] = (fidx["tree"], nodes, fidx["live_top_tests"], fidx["tc_names"])
+    return result
+
+
+def _collect_reachable_cli_nodes(
+    tree: ast.Module,
+    entry_symbols: set[str],
+    *,
+    ignored_owners: set[str] | frozenset[str] = frozenset(),
+) -> tuple[list[ast.AST], list[ast.AST], set[str]]:
+    """Single-file compatibility wrapper for reachable AST collection."""
+    inf_seq = 10**9
+    tc_names = _collect_type_checking_names(tree.body)
+    try_star = getattr(ast, "TryStar", ())
+    match_cls = getattr(ast, "Match", ())
+
+    flat_stmts: list[tuple[int, bool, ast.stmt, list[ast.AST]]] = []
+    live_top_tests: list[ast.AST] = []
+    seq = 0
+
+    def _flatten(stmts: list[ast.stmt], *, top_level: bool, for_iters: list[ast.AST]) -> None:
+        nonlocal seq
+        for stmt in stmts:
+            if isinstance(stmt, ast.If):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is True:
+                    _flatten(stmt.body, top_level=top_level, for_iters=for_iters)
+                elif branch is False:
+                    _flatten(stmt.orelse, top_level=top_level, for_iters=for_iters)
+                else:
+                    live_top_tests.append(stmt.test)
+                    _flatten(stmt.body, top_level=False, for_iters=for_iters)
+                    _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, ast.While):
+                branch = _static_branch_truthiness(stmt.test, tc_names=tc_names)
+                if branch is False:
+                    _flatten(stmt.orelse, top_level=top_level, for_iters=for_iters)
+                else:
+                    live_top_tests.append(stmt.test)
+                    _flatten(stmt.body, top_level=False, for_iters=for_iters)
+                    _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+                next_iters = [*for_iters, stmt.iter]
+                _flatten(stmt.body, top_level=False, for_iters=next_iters)
+                _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+                _flatten(stmt.body, top_level=False, for_iters=for_iters)
+            elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
+                _flatten(stmt.body, top_level=False, for_iters=for_iters)
+                _flatten(stmt.orelse, top_level=False, for_iters=for_iters)
+                _flatten(stmt.finalbody, top_level=False, for_iters=for_iters)
+                for h in stmt.handlers:
+                    _flatten(h.body, top_level=False, for_iters=for_iters)
+            elif match_cls and isinstance(stmt, match_cls):
+                for c in stmt.cases:
+                    _flatten(c.body, top_level=False, for_iters=for_iters)
+            else:
+                seq += 1
+                flat_stmts.append((seq, top_level, stmt, list(for_iters)))
+
+    _flatten(tree.body, top_level=True, for_iters=[])
+
+    def _unpack_assign_targets(target: ast.AST, value: ast.AST) -> list[tuple[str, ast.AST]]:
+        if isinstance(target, ast.Name):
+            return [(target.id, value)]
+        if (
+            isinstance(target, (ast.Tuple, ast.List))
+            and isinstance(value, (ast.Tuple, ast.List))
+            and len(target.elts) == len(value.elts)
+            and not any(isinstance(e, ast.Starred) for e in target.elts)
+            and not any(isinstance(e, ast.Starred) for e in value.elts)
+        ):
+            pairs: list[tuple[str, ast.AST]] = []
+            for t_elt, v_elt in zip(target.elts, value.elts):
+                pairs.extend(_unpack_assign_targets(t_elt, v_elt))
+            return pairs
+        return [(n, value) for n in _collect_target_names(target)]
+
     def_versions: dict[str, list[tuple[int, bool, ast.AST | None]]] = {}
     registered_by_owner: dict[str, list[tuple[int, str, ast.FunctionDef | ast.AsyncFunctionDef]]] = {}
     mutations_by_owner: dict[str, list[tuple[int, ast.AST, list[ast.AST]]]] = {}
@@ -6297,16 +7043,13 @@ def _collect_reachable_cli_nodes(
                 for own in arg_owners:
                     mutations_by_owner.setdefault(own, []).append((cur_seq, call, for_iters))
 
-    def _resolve_active_defs(
-        name: str,
-        before_seq: int,
-    ) -> tuple[list[tuple[int, ast.AST]], int, int]:
+    def _resolve_active_defs(name: str, before_seq: int) -> tuple[list[tuple[int, ast.AST]], int, int]:
         entries = def_versions.get(name, ())
         earlier = [e for e in entries if e[0] < before_seq]
         last_redef_idx = -1
-        for idx, (_dseq, is_redef, _node) in enumerate(earlier):
+        for i, (_dseq, is_redef, _node) in enumerate(earlier):
             if is_redef:
-                last_redef_idx = idx
+                last_redef_idx = i
         if last_redef_idx >= 0:
             window_start = earlier[last_redef_idx][0]
             active_slice = earlier[last_redef_idx:]
@@ -6323,11 +7066,11 @@ def _collect_reachable_cli_nodes(
 
     def _split_names_of(node: ast.AST) -> tuple[set[str], set[str]]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            e, l = _collect_fn_free_load_names_split(node, tc_names)
+            e, l, _, _ = _collect_fn_free_refs_split(node, tc_names)
         elif isinstance(node, ast.ClassDef):
-            e, l = _collect_cls_free_load_names_split(node, tc_names)
+            e, l, _, _ = _collect_cls_free_refs_split(node, tc_names)
         else:
-            e, l = _collect_load_names_split(node, tc_names)
+            e, l, _, _ = _collect_refs_split(node, tc_names)
         return e - set(ignored_owners), l - set(ignored_owners)
 
     scan_nodes: list[ast.AST] = []
@@ -6391,18 +7134,11 @@ def _collect_reachable_cli_nodes(
     return scan_nodes, live_top_tests, tc_names
 
 
-def _file_declares_click_group(
-    py_file: Path,
-    *,
-    entry_symbols: set[str] | None = None,
+def _tree_nodes_declare_click_group(
+    tree: ast.Module,
+    scan_roots: list[ast.AST],
+    tc_names: set[str] | frozenset[str],
 ) -> bool:
-    """Return True if py_file declares a Click command group (resolving import and local aliases)."""
-    text = _read_text(py_file)
-    try:
-        tree = ast.parse(text, filename=str(py_file))
-    except SyntaxError:
-        return "click" in text and ("@click.group" in text or "click.group" in text)
-
     click_mod_aliases: set[str] = set()
     group_factories: set[str] = set()
     command_factories: set[str] = set()
@@ -6530,16 +7266,6 @@ def _file_declares_click_group(
                         return True
         return False
 
-    if entry_symbols:
-        scan_roots, _, tc_names = _collect_reachable_cli_nodes(
-            tree,
-            entry_symbols,
-            ignored_owners=click_mod_aliases,
-        )
-    else:
-        tc_names = _collect_type_checking_names(tree.body)
-        scan_roots = [tree]
-
     for node in _iter_live_ast_nodes(scan_roots, tc_names):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if any(_is_group_decorator_or_call(dec) for dec in node.decorator_list):
@@ -6548,6 +7274,63 @@ def _file_declares_click_group(
             if _is_group_decorator_or_call(node):
                 return True
 
+    return False
+
+
+def _file_declares_click_group(
+    py_file: Path,
+    *,
+    entry_symbols: set[str] | None = None,
+) -> bool:
+    """Return True if py_file declares a Click command group (resolving import and local aliases)."""
+    text = _read_text(py_file)
+    try:
+        tree = ast.parse(text, filename=str(py_file))
+    except SyntaxError:
+        return "click" in text and ("@click.group" in text or "click.group" in text)
+    if entry_symbols:
+        click_aliases: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in {"click", "click.decorators", "click.core"}:
+                        click_aliases.add(alias.asname or alias.name.split(".", 1)[0])
+        scan_roots, _, tc_names = _collect_reachable_cli_nodes(
+            tree,
+            entry_symbols,
+            ignored_owners=click_aliases,
+        )
+    else:
+        tc_names = _collect_type_checking_names(tree.body)
+        scan_roots = [tree]
+    return _tree_nodes_declare_click_group(tree, scan_roots, tc_names)
+
+
+def _tree_nodes_have_invoke_without_command(
+    scan_roots: list[ast.AST],
+    tc_names: set[str] | frozenset[str],
+) -> bool:
+    for node in _iter_live_ast_nodes(scan_roots, tc_names):
+        if isinstance(node, ast.Call):
+            for kw in node.keywords:
+                if (
+                    kw.arg == "invoke_without_command"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value is True
+                ):
+                    return True
+    return False
+
+
+def _tree_nodes_have_auto_save_callback(
+    scan_roots: list[ast.AST],
+    tc_names: set[str] | frozenset[str],
+) -> bool:
+    for node in _iter_live_ast_nodes(scan_roots, tc_names):
+        if isinstance(node, ast.Attribute) and node.attr in {"result_callback", "call_on_close"}:
+            return True
+        if isinstance(node, ast.Name) and node.id in {"result_callback", "call_on_close"}:
+            return True
     return False
 
 
@@ -6576,16 +7359,7 @@ def _file_has_invoke_without_command(
     else:
         tc_names = _collect_type_checking_names(tree.body)
         scan_roots = [tree]
-    for node in _iter_live_ast_nodes(scan_roots, tc_names):
-        if isinstance(node, ast.Call):
-            for kw in node.keywords:
-                if (
-                    kw.arg == "invoke_without_command"
-                    and isinstance(kw.value, ast.Constant)
-                    and kw.value.value is True
-                ):
-                    return True
-    return False
+    return _tree_nodes_have_invoke_without_command(scan_roots, tc_names)
 
 
 def _decl_matches_cli_flag(decl: str, flag: str) -> bool:
@@ -6610,19 +7384,13 @@ def _decl_matches_cli_flag(decl: str, flag: str) -> bool:
     return first == flag or second == flag
 
 
-def _file_declares_cli_flag(
-    py_file: Path,
-    text: str,
+def _tree_nodes_declare_cli_flag(
+    tree: ast.Module,
+    scan_roots: list[ast.AST],
+    live_top_tests: list[ast.AST],
+    tc_names: set[str] | frozenset[str],
     flag: str,
-    *,
-    entry_symbols: set[str] | None = None,
 ) -> bool:
-    """Return True if py_file declares CLI option `flag` on the published command tree or sys.argv."""
-    try:
-        tree = ast.parse(text, filename=str(py_file))
-    except SyntaxError:
-        return f'"{flag}"' in text or f"'{flag}'" in text
-
     click_mod_aliases: set[str] = set()
     typer_mod_aliases: set[str] = set()
     sys_mod_aliases: set[str] = set()
@@ -6760,17 +7528,6 @@ def _file_declares_cli_flag(
             return True
         return False
 
-    if entry_symbols:
-        scan_roots, live_top_tests, tc_names = _collect_reachable_cli_nodes(
-            tree,
-            entry_symbols,
-            ignored_owners=click_mod_aliases | typer_mod_aliases | sys_mod_aliases,
-        )
-    else:
-        tc_names = _collect_type_checking_names(tree.body)
-        scan_roots = [tree]
-        live_top_tests = []
-
     for node in _iter_live_ast_nodes(scan_roots, tc_names):
         if isinstance(node, ast.Call):
             if not _is_option_decl_call(node):
@@ -6799,12 +7556,43 @@ def _file_declares_cli_flag(
     return False
 
 
+def _file_declares_cli_flag(
+    py_file: Path,
+    text: str,
+    flag: str,
+    *,
+    entry_symbols: set[str] | None = None,
+) -> bool:
+    """Return True if py_file declares CLI option `flag` on the published command tree or sys.argv."""
+    try:
+        tree = ast.parse(text, filename=str(py_file))
+    except SyntaxError:
+        return f'"{flag}"' in text or f"'{flag}'" in text
+    if entry_symbols:
+        ignored: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in {"click", "click.decorators", "click.core", "typer", "sys"}:
+                        ignored.add(alias.asname or alias.name.split(".", 1)[0])
+        scan_roots, live_top_tests, tc_names = _collect_reachable_cli_nodes(
+            tree,
+            entry_symbols,
+            ignored_owners=ignored,
+        )
+    else:
+        tc_names = _collect_type_checking_names(tree.body)
+        scan_roots = [tree]
+        live_top_tests = []
+    return _tree_nodes_declare_cli_flag(tree, scan_roots, live_top_tests, tc_names, flag)
+
+
 def _check_cli_surface(
     module: Path,
     canonical_repl_skin: Path | None,
     *,
     cli_entry_files: list[Path] | None = None,
-    cli_entry_symbols: dict[Path, set[str]] | None = None,
+    cli_resolution_ctx: dict[str, Any] | None = None,
     subpkg_dirs: dict[str, Path] | None = None,
 ) -> list[CheckResult]:
     checks: list[CheckResult] = []
@@ -6814,18 +7602,82 @@ def _check_cli_surface(
 
     if cli_files:
         cli_texts = [_read_text(p) for p in cli_files]
-        sym_map = cli_entry_symbols or {}
-        if all(_file_declares_click_group(p, entry_symbols=sym_map.get(p) or None) for p in cli_files):
+        entry_targets_map: dict[Path, list[tuple[str, str | None]]] = (
+            (cli_resolution_ctx or {}).get("entry_targets") or {}
+        )
+        cli_trees: list[tuple[Path, str, dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None]] = []
+        for p, t in zip(cli_files, cli_texts):
+            targets = entry_targets_map.get(p)
+            if targets:
+                rmap = _collect_reachable_cli_tree(p, targets, cli_resolution_ctx)
+            else:
+                try:
+                    ptree = ast.parse(t, filename=str(p))
+                    rmap = {p: (ptree, [ptree], [], _collect_type_checking_names(ptree.body))}
+                except SyntaxError:
+                    rmap = None
+            cli_trees.append((p, t, rmap))
+
+        def _entry_has_click_group(
+            p: Path,
+            t: str,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+        ) -> bool:
+            if rmap is None:
+                return "click" in t and ("@click.group" in t or "click.group" in t)
+            return any(
+                _tree_nodes_declare_click_group(ftree, fscan, ftc)
+                for ftree, fscan, _ftests, ftc in rmap.values()
+            )
+
+        def _entry_has_flag(
+            p: Path,
+            t: str,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+            flag: str,
+        ) -> bool:
+            if rmap is None:
+                return f'"{flag}"' in t or f"'{flag}'" in t
+            return any(
+                _tree_nodes_declare_cli_flag(ftree, fscan, ftests, ftc, flag)
+                for ftree, fscan, ftests, ftc in rmap.values()
+            )
+
+        def _entry_has_repl_default(
+            p: Path,
+            t: str,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+        ) -> bool:
+            if rmap is None:
+                return "invoke_without_command=True" in t
+            return any(
+                _tree_nodes_have_invoke_without_command(fscan, ftc)
+                for _ftree, fscan, _ftests, ftc in rmap.values()
+            )
+
+        def _entry_has_auto_save(
+            p: Path,
+            t: str,
+            rmap: dict[Path, tuple[ast.Module, list[ast.AST], list[ast.AST], set[str]]] | None,
+        ) -> bool:
+            if rmap is None:
+                return "result_callback" in t or "call_on_close" in t
+            return any(
+                _tree_nodes_have_auto_save_callback(fscan, ftc)
+                for _ftree, fscan, _ftests, ftc in rmap.values()
+            )
+
+        if all(_entry_has_click_group(p, t, rmap) for p, t, rmap in cli_trees):
             checks.append(CheckResult("click-groups", "cli", PASS, "uses Click command groups"))
         else:
             checks.append(CheckResult("click-groups", "cli", FAIL, "CLI does not declare a Click command group"))
 
-        if all(_file_declares_cli_flag(p, t, "--json", entry_symbols=sym_map.get(p) or None) for p, t in zip(cli_files, cli_texts)):
+        if all(_entry_has_flag(p, t, rmap, "--json") for p, t, rmap in cli_trees):
             checks.append(CheckResult("json-flag", "cli", PASS, "--json output flag declared"))
         else:
             checks.append(CheckResult("json-flag", "cli", FAIL, "missing --json flag in CLI entry point"))
 
-        if all(_file_has_invoke_without_command(p, t, entry_symbols=sym_map.get(p) or None) for p, t in zip(cli_files, cli_texts)):
+        if all(_entry_has_repl_default(p, t, rmap) for p, t, rmap in cli_trees):
             checks.append(CheckResult("repl-default", "cli", PASS, "default REPL mode configured (invoke_without_command=True)"))
         else:
             checks.append(
@@ -6840,15 +7692,14 @@ def _check_cli_surface(
 
         has_session = (core_dir / "session.py").is_file()
         session_clis = [
-            (p, t)
-            for p, t in zip(cli_files, cli_texts)
-            if _file_declares_cli_flag(p, t, "--project", entry_symbols=sym_map.get(p) or None)
+            (p, t, rmap)
+            for p, t, rmap in cli_trees
+            if _entry_has_flag(p, t, rmap, "--project")
         ]
         if has_session and session_clis:
             if all(
-                _file_declares_cli_flag(p, t, "--dry-run", entry_symbols=sym_map.get(p) or None)
-                and ("result_callback" in t or "call_on_close" in t)
-                for p, t in session_clis
+                _entry_has_flag(p, t, rmap, "--dry-run") and _entry_has_auto_save(p, t, rmap)
+                for p, t, rmap in session_clis
             ):
                 checks.append(CheckResult("auto-save-dry-run", "cli", PASS, "auto-save and --dry-run implemented"))
             else:
@@ -7133,7 +7984,7 @@ def verify_harness(
     repl_skin_ref = _find_canonical_repl_skin(canonical_repl_skin, repo_root)
 
     checks, module = _check_layout(harness)
-    pkg_checks, effective_module, declared_cli_files, eff_subpkg_dirs, cli_entry_symbols = _check_packaging(
+    pkg_checks, effective_module, declared_cli_files, eff_subpkg_dirs, cli_resolution_ctx = _check_packaging(
         harness, _slugify(software_dir_name), module
     )
     checks.extend(pkg_checks)
@@ -7194,7 +8045,7 @@ def verify_harness(
                 active_module,
                 repl_skin_ref,
                 cli_entry_files=declared_cli_files,
-                cli_entry_symbols=cli_entry_symbols,
+                cli_resolution_ctx=cli_resolution_ctx,
                 subpkg_dirs=eff_subpkg_dirs,
             )
         )

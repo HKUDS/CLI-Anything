@@ -7951,6 +7951,306 @@ def info(use_json):
         assert res_ok["ok"] is True, (idx, res_ok["checks"])
 
 
+def test_verify_follows_local_imports_for_published_cli_surface(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "split_cli", "splapp")
+    pkg = harness / "cli_anything" / "splapp"
+    cli_py = pkg / "splapp_cli.py"
+    cmds_py = pkg / "commands.py"
+    subcmds_py = pkg / "subcmds.py"
+    opts_py = pkg / "options.py"
+
+    # 1. Exact repro from review 6085752518: move valid fixture's Click group into commands.py
+    # and keep a thin wrapper main() calling imported cli() in splapp_cli.py.
+    cmds_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+@click.option("--project", "project_path", default=None)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        click.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+""",
+        encoding="utf-8",
+    )
+
+    wrapper_variants = [
+        # 1a. Relative `from .commands import cli`
+        """from .commands import cli
+
+def main():
+    cli()
+""",
+        # 1b. Relative module import `from . import commands`
+        """from . import commands
+
+def main():
+    commands.cli()
+""",
+        # 1c. Absolute module import with alias
+        """import cli_anything.splapp.commands as cmds
+
+def main():
+    cmds.cli.main()
+""",
+        # 1d. Dotted absolute module import
+        """import cli_anything.splapp.commands
+
+def main():
+    cli_anything.splapp.commands.cli()
+""",
+        # 1e. Lazy import inside main()
+        """def main():
+    from .commands import cli
+    cli()
+""",
+        # 1f. Wildcard import `from .commands import *`
+        """from .commands import *
+
+def main():
+    cli()
+""",
+    ]
+    for idx, wrapper_src in enumerate(wrapper_variants):
+        cli_py.write_text(wrapper_src, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (idx, res["checks"])
+
+    # 2. Multi-hop cross-module split: wrapper -> commands.py -> subcmds.py + options.py.
+    opts_py.write_text(
+        """import click
+
+def json_option():
+    return click.option("--json", "use_json", is_flag=True)
+""",
+        encoding="utf-8",
+    )
+    subcmds_py.write_text(
+        """import click
+from .options import json_option
+
+@click.command()
+@json_option()
+def status(use_json):
+    pass
+""",
+        encoding="utf-8",
+    )
+    cmds_py.write_text(
+        """import click
+from .subcmds import status
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+cli.add_command(status)
+""",
+        encoding="utf-8",
+    )
+    cli_py.write_text(
+        """from .commands import cli
+
+def main():
+    cli()
+""",
+        encoding="utf-8",
+    )
+    res_multi = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_multi["ok"] is True, res_multi["checks"]
+
+    # 3. Negative: unused option on unregistered command in commands.py must STILL fail json-flag.
+    cmds_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+def cli():
+    pass
+
+@click.command()
+@click.option("--json", "use_json", is_flag=True)
+def unused_aux(use_json):
+    pass
+""",
+        encoding="utf-8",
+    )
+    res_unreg = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_unreg["ok"] is False
+    assert {c["id"]: c for c in res_unreg["checks"]}["json-flag"]["status"] == "fail"
+
+    # 4. Negative: importing cli without calling it from main() must fail both click-groups and json-flag.
+    cmds_py.write_text(
+        """import click
+
+@click.group(invoke_without_command=True)
+@click.option("--json", "use_json", is_flag=True)
+def cli(use_json):
+    pass
+""",
+        encoding="utf-8",
+    )
+    cli_py.write_text(
+        """from .commands import cli
+
+def main():
+    return None
+""",
+        encoding="utf-8",
+    )
+    res_unused_imp = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_unused_imp["ok"] is False
+    chk_u = {c["id"]: c for c in res_unused_imp["checks"]}
+    assert chk_u["click-groups"]["status"] == "fail"
+    assert chk_u["json-flag"]["status"] == "fail"
+
+    # 5. Negative: MANIFEST.in excluding commands.py prevents following unshipped module.
+    cli_py.write_text(
+        """from .commands import cli
+
+def main():
+    cli()
+""",
+        encoding="utf-8",
+    )
+    (harness / "MANIFEST.in").write_text("exclude cli_anything/splapp/commands.py\n", encoding="utf-8")
+    res_excl = verify_harness.verify_harness(
+        harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_excl["ok"] is False
+    chk_e = {c["id"]: c for c in res_excl["checks"]}
+    assert chk_e["click-groups"]["status"] == "fail"
+    assert chk_e["json-flag"]["status"] == "fail"
+
+
+def test_verify_rejects_invalid_setuptools_pyproject_finder_types(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "bad_st_find", "stfapp")
+    (harness / "setup.py").unlink()
+    pyproject = harness / "pyproject.toml"
+
+    base_header = """[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-stfapp"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-stfapp = "cli_anything.stfapp.stfapp_cli:main"
+
+[tool.setuptools.package-data]
+"cli_anything.stfapp" = ["skills/*.md"]
+"""
+
+    invalid_sections = [
+        # Exact repro: exclude supplied as string instead of array
+        """[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+exclude = "cli_anything.*"
+""",
+        # include supplied as string instead of array
+        """[tool.setuptools.packages.find]
+include = "cli_anything.*"
+""",
+        # where supplied as string instead of array (rejected by setuptools schema)
+        """[tool.setuptools.packages.find]
+where = "."
+include = ["cli_anything.*"]
+""",
+        # non-string element inside exclude/include/where array
+        """[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+exclude = [123]
+""",
+        """[tool.setuptools.packages.find]
+where = [123]
+include = ["cli_anything.*"]
+""",
+        # namespaces supplied as string/int instead of boolean
+        """[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+namespaces = "true"
+""",
+        # unknown finder option
+        """[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+unknown_opt = true
+""",
+        # find is not a table
+        """[tool.setuptools.packages]
+find = ["cli_anything.*"]
+""",
+        # packages is string instead of array/table
+        """[tool.setuptools]
+packages = "cli_anything.stfapp"
+""",
+        # packages contains invalid package name / non-string element
+        """[tool.setuptools]
+packages = [123]
+""",
+        # extra key alongside find
+        """[tool.setuptools.packages]
+other = true
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+""",
+        # invalid package-dir type
+        """[tool.setuptools]
+package-dir = ["src"]
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+""",
+        # invalid include-package-data type
+        """[tool.setuptools]
+include-package-data = "true"
+[tool.setuptools.packages.find]
+include = ["cli_anything.*"]
+""",
+    ]
+
+    for idx, bad_sec in enumerate(invalid_sections):
+        pyproject.write_text(base_header + "\n" + bad_sec, encoding="utf-8")
+        res_bad = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (idx, res_bad["checks"])
+        chks = {c["id"]: c for c in res_bad["checks"]}
+        assert chks["pyproject-setuptools-config"]["status"] == "fail", (idx, chks)
+
+    # Valid [tool.setuptools.packages.find] with array types must PASS strictly.
+    pyproject.write_text(
+        base_header
+        + """
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_anything.*"]
+exclude = ["tests*"]
+namespaces = true
+""",
+        encoding="utf-8",
+    )
+    res_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_ok["ok"] is True, res_ok["checks"]
+
+
+
 
 
 
