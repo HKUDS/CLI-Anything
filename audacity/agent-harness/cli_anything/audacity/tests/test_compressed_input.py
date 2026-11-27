@@ -24,6 +24,7 @@ from cli_anything.audacity.utils import sox_backend
 from cli_anything.audacity.utils.audio_utils import generate_sine_wave, write_wav
 
 FAKE_DURATION = 0.5
+RECORDED_RUNS = []
 
 
 class FakeResult:
@@ -35,18 +36,28 @@ class FakeResult:
 
 def fake_run(cmd, **kwargs):
     """Stand-in for subprocess.run inside sox_backend."""
+    RECORDED_RUNS.append(list(cmd))
     executable = os.path.basename(str(cmd[0]))
     if executable == "soxi" and list(cmd[1:2]) == ["-D"]:
         return FakeResult(stdout=f"{FAKE_DURATION}\n")
     if executable == "sox" and len(cmd) >= 2:
         output = str(cmd[-1])
+        source = str(cmd[1])
+        requested = None
+        if "-c" in cmd:
+            requested = int(cmd[cmd.index("-c") + 1])
+        if requested is None:
+            # A surround source keeps its native layout unless SoX is asked
+            # to remix it; mono sources stay mono.
+            requested = 6 if "surround" in source else 1
         rate = 8000
         frames = b"".join(
             struct.pack("<h", int(12000 * math.sin(2 * math.pi * 440 * i / rate)))
+            * requested
             for i in range(int(FAKE_DURATION * rate))
         )
         with wave.open(output, "w") as handle:
-            handle.setnchannels(1)
+            handle.setnchannels(requested)
             handle.setsampwidth(2)
             handle.setframerate(rate)
             handle.writeframes(frames)
@@ -58,6 +69,7 @@ class CompressedInputTests(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory(prefix="audacity-746-")
         self.root = self.tmp_dir.name
+        RECORDED_RUNS.clear()
         self.mp3 = os.path.join(self.root, "voice.mp3")
         with open(self.mp3, "wb") as handle:
             handle.write(b"ID3\x04\x00\x00\x00\x00\x00\x00not-a-wav")
@@ -107,6 +119,40 @@ class CompressedInputTests(unittest.TestCase):
         self.assertGreater(result["peak_level"], 0.01)
         with wave.open(output, "r") as handle:
             self.assertGreater(handle.getnframes(), 0)
+
+    def test_surround_source_is_decoded_to_project_channels(self):
+        """A decoded multichannel source must arrive in the project layout."""
+        source = os.path.join(self.root, "surround.flac")
+        with open(source, "wb") as handle:
+            handle.write(b"fLaC\x00\x00\x00\x22not-really-a-flac")
+
+        project = create_project(sample_rate=8000, channels=1)
+        add_track(project, name="Track 1")
+        clip = add_clip(project, 0, source)
+        self.assertAlmostEqual(clip["end_time"], FAKE_DURATION, places=2)
+
+        output = os.path.join(self.root, "surround-out.wav")
+        result = render_mix(project, output, preset="wav")
+        self.assertAlmostEqual(result["duration"], FAKE_DURATION, places=2)
+
+        decode_cmds = [
+            cmd for cmd in RECORDED_RUNS
+            if os.path.basename(str(cmd[0])) == "sox" and str(cmd[-1]).endswith(".wav")
+        ]
+        self.assertTrue(decode_cmds, "the source was not decoded through SoX")
+        self.assertIn("-c", decode_cmds[0], "SoX was not asked for the project layout")
+        self.assertEqual(decode_cmds[0][decode_cmds[0].index("-c") + 1], "1")
+
+        with wave.open(output, "r") as handle:
+            self.assertEqual(handle.getnchannels(), 1)
+            self.assertEqual(handle.getnframes(), int(FAKE_DURATION * 8000))
+            raw = handle.readframes(handle.getnframes())
+        tail = struct.unpack("<1000h", raw[-2000:])
+        self.assertGreater(
+            max(abs(sample) for sample in tail),
+            3000,
+            "the clip was inserted with the source layout and truncated",
+        )
 
     def test_render_fails_loudly_without_sox(self):
         project, _ = self._project(

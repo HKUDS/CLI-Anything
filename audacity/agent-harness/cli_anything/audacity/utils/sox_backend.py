@@ -153,14 +153,20 @@ def convert_format(
     }
 
 
-def decode_to_wav(input_path: str, output_path: str, timeout: int = 60) -> dict:
+def decode_to_wav(
+    input_path: str, output_path: str, channels: Optional[int] = None,
+    timeout: int = 60,
+) -> dict:
     """Decode any source SoX can read into a WAV file.
 
     SoX handles compressed inputs (MP3, FLAC, OGG, ...) and resets the
     container to RIFF/WAV so the stdlib wave reader can consume it.
+    ``channels`` asks SoX to remix the source to that channel count, so a
+    surround source arrives in a layout the clip renderer understands.
     """
     try:
-        return convert_format(input_path, output_path, timeout=timeout)
+        return convert_format(input_path, output_path, channels=channels,
+                              timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"SoX timed out decoding {input_path}") from exc
 

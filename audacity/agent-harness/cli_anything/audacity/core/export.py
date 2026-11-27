@@ -270,8 +270,14 @@ def _render_track(
     return track_audio
 
 
-def _decode_compressed_source(source: str, read_error: Exception):
-    """Decode a non-WAV source through SoX, failing loudly when unavailable."""
+def _decode_compressed_source(source: str, read_error: Exception, channels: int):
+    """Decode a non-WAV source through SoX, failing loudly when unavailable.
+
+    The clip renderer only understands mono and stereo buffers, so SoX is
+    asked to remix the decoded source to the project's channel count instead
+    of returning the source's native layout (a 5.1 source would otherwise be
+    inserted frame-by-frame as if it were mono/stereo).
+    """
     try:
         from cli_anything.audacity.utils.sox_backend import decode_to_wav, find_sox
         find_sox()
@@ -285,7 +291,7 @@ def _decode_compressed_source(source: str, read_error: Exception):
     with tempfile.TemporaryDirectory(prefix="cli-anything-source-") as tmp_dir:
         wav_path = os.path.join(tmp_dir, "source.wav")
         try:
-            decode_to_wav(source, wav_path)
+            decode_to_wav(source, wav_path, channels=channels)
         except (RuntimeError, OSError) as exc:
             raise RuntimeError(
                 f"Could not decode audio source '{source}' with SoX: {exc}"
@@ -306,7 +312,7 @@ def _render_clip(
             samples, src_rate, src_channels, src_bits = read_wav(source)
         except (wave.Error, EOFError, struct.error, ValueError) as exc:
             samples, src_rate, src_channels, src_bits = _decode_compressed_source(
-                source, exc
+                source, exc, channels
             )
 
         # Handle trim
