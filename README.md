@@ -1374,7 +1374,7 @@ Each application received complete, production-ready CLI interfaces — not demo
 <td align="center"><strong>🔩 <a href="3MF/agent-harness/">3MF</a></strong></td>
 <td>Mesh geometry editor for 3D printing</td>
 <td><code>cli-anything-3mf</code></td>
-<td>numpy, scipy, trimesh</td>
+<td>numpy, scipy, trimesh, networkx</td>
 <td align="center">✅ 50</td>
 </tr>
 <tr>

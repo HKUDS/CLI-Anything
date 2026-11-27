@@ -96,7 +96,7 @@ cli_anything/threemf/
 ## Dependencies
 
 - Python 3.10+
-- numpy, scipy, trimesh
+- numpy, scipy, trimesh, networkx
 - click, prompt-toolkit
 
 ## License
