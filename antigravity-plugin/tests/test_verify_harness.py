@@ -3754,3 +3754,96 @@ cli-anything-pexcl = "cli_anything.pexcl.pexcl_cli:main"
     )
     assert res_cli_excl["ok"] is False
     assert {c["id"]: c for c in res_cli_excl["checks"]}["console-script"]["status"] == "fail"
+
+
+def test_verify_checks_manifest_coverage_for_console_script_module(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "manifest_cli", "mcliapp")
+
+    # 1. Excluding the console-script module in MANIFEST.in removes it from sdist -> must fail.
+    for bad_manifest in (
+        "exclude cli_anything/mcliapp/mcliapp_cli.py\n",
+        "global-exclude *_cli.py\n",
+        "prune cli_anything/mcliapp\n",
+    ):
+        (harness / "MANIFEST.in").write_text(bad_manifest, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, (bad_manifest, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["console-script"]["status"] == "fail", bad_manifest
+
+    # 2. Re-including the module after excluding it survives sdist -> passes.
+    (harness / "MANIFEST.in").write_text(
+        "exclude cli_anything/mcliapp/mcliapp_cli.py\n"
+        "include cli_anything/mcliapp/mcliapp_cli.py\n",
+        encoding="utf-8",
+    )
+    assert verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )["ok"] is True
+
+
+def test_verify_follows_local_entrypoint_reexports_for_cli_surface(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "facade_cli", "facapp")
+    pkg = harness / "cli_anything" / "facapp"
+
+    def _set_ep(target: str) -> dict:
+        (harness / "setup.py").write_text(
+            f"""from setuptools import find_namespace_packages, setup
+setup(
+    name="cli-anything-facapp",
+    version="1.0.0",
+    python_requires=">=3.10",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={{"cli_anything.facapp": ["skills/*.md"]}},
+    entry_points={{"console_scripts": ["cli-anything-facapp={target}"]}},
+)
+""",
+            encoding="utf-8",
+        )
+        return verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+
+    # 1. Existing __main__.py (`from cli_anything.facapp.facapp_cli import main`) passes strict checks.
+    r_main = _set_ep("cli_anything.facapp.__main__:main")
+    assert r_main["ok"] is True, r_main["checks"]
+
+    # 2. Excluding the re-exported implementation module in MANIFEST.in still fails console-script.
+    (harness / "MANIFEST.in").write_text(
+        "exclude cli_anything/facapp/facapp_cli.py\n", encoding="utf-8"
+    )
+    r_excl = _set_ep("cli_anything.facapp.__main__:main")
+    assert r_excl["ok"] is False
+    assert {c["id"]: c for c in r_excl["checks"]}["console-script"]["status"] == "fail"
+    (harness / "MANIFEST.in").unlink()
+
+    # 3. Dotted submodule re-export (`__init__.py`: `from . import facapp_cli`) & attr-alias facade pass.
+    (pkg / "__init__.py").write_text(
+        '"""FacApp harness."""\nfrom . import facapp_cli\n', encoding="utf-8"
+    )
+    assert _set_ep("cli_anything.facapp:facapp_cli.main")["ok"] is True
+
+    (pkg / "alias_facade.py").write_text(
+        "from . import facapp_cli\nentry = facapp_cli.cli.main\n", encoding="utf-8"
+    )
+    assert _set_ep("cli_anything.facapp.alias_facade:entry")["ok"] is True
+
+    # 4. Overwriting an imported re-export with a local non-Click def does NOT inherit facapp_cli.py.
+    (pkg / "override_facade.py").write_text(
+        "from .facapp_cli import main\n\ndef main():\n    return None\n",
+        encoding="utf-8",
+    )
+    r_override = _set_ep("cli_anything.facapp.override_facade:main")
+    assert r_override["ok"] is False
+    checks_ov = {c["id"]: c for c in r_override["checks"]}
+    assert checks_ov["click-groups"]["status"] == "fail"
+    assert checks_ov["json-flag"]["status"] == "fail"
+
+    # 5. Broken local re-export (missing symbol in target module) fails console-script.
+    (pkg / "broken_facade.py").write_text(
+        "from .facapp_cli import does_not_exist\n", encoding="utf-8"
+    )
+    r_broken = _set_ep("cli_anything.facapp.broken_facade:does_not_exist")
+    assert r_broken["ok"] is False
+    assert {c["id"]: c for c in r_broken["checks"]}["console-script"]["status"] == "fail"

@@ -437,59 +437,64 @@ def _module_defines_symbol(py_file: Path, symbol: str) -> tuple[bool, str | None
     return False, f"attribute '{symbol}' not defined or imported in {py_file.name}"
 
 
-def _module_defines_attr_path(
+def _resolve_module_attr_path(
     py_file: Path,
     attr_parts: list[str],
     *,
     module_path: str | None = None,
     harness: Path | None = None,
+    target_pkg: str | None = None,
     eff_pkg_dir: dict[str, str] | None = None,
+    parent_selected: bool = False,
+    pkg_spec: dict[str, Any] | None = None,
+    excluded_files: set[str] | None = None,
+    check_manifest: bool = False,
     _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
-) -> tuple[bool, str | None]:
-    """Statically validate the full dotted callable path in py_file.
+) -> tuple[bool, str | None, Path | None]:
+    """Validate a console-script attribute chain and resolve local re-exports to the implementation file.
 
-    For single-component callables (`attr_parts == ["main"]`), delegates directly to
-    `_module_defines_symbol()`. For multi-component paths (`a.b` / `a.b.c`), verifies the
-    entire attribute chain via explicit module-scope attribute assignments, Click command
-    `.main` entrypoints, local class definitions (including nested classes, local bases,
-    and local class instances/aliases), or local module imports. Unverifiable or missing
-    trailing attributes fail rather than certifying only the first component.
+    For single-component callables (`attr_parts == ["main"]`), verifies the symbol is bound and
+    follows local re-export facades (`from .demoapp_cli import main`, `main = demoapp_cli.main`,
+    `from .demoapp_cli import *`, etc.) to the defining implementation file while checking that
+    any traversed local module is also packaged and not excluded by MANIFEST.in / Poetry rules.
+    For multi-component paths (`a.b` / `a.b.c`), verifies the complete attribute chain across
+    explicit module-scope attribute assignments, Click command `.main` entrypoints, local class
+    definitions/instances/aliases, and local module imports.
     """
-    if len(attr_parts) == 1:
-        return _module_defines_symbol(py_file, attr_parts[0])
-
     try:
         resolved_self = py_file.resolve()
     except OSError:
         resolved_self = py_file
     visit_key = (resolved_self, tuple(attr_parts))
     if visit_key in _visited:
-        return False, f"cyclic dotted callable '{'.'.join(attr_parts)}' in {py_file.name}"
+        return False, f"cyclic dotted callable '{'.'.join(attr_parts)}' in {py_file.name}", None
     next_visited = _visited | {visit_key}
 
     ok_root, root_err = _module_defines_symbol(py_file, attr_parts[0])
     if not ok_root:
-        return False, root_err
+        return False, root_err, None
 
     try:
         tree = ast.parse(_read_text(py_file), filename=str(py_file))
     except SyntaxError as exc:
-        return False, f"syntax error in {py_file.name}: {exc.msg}"
+        return False, f"syntax error in {py_file.name}: {exc.msg}", None
 
     try_star = getattr(ast, "TryStar", ())
     match_cls = getattr(ast, "Match", ())
 
+    direct_local_defs: set[str] = set()
     click_modules: set[str] = set()
     click_factories: set[str] = set()
     click_cmds: set[str] = set()
     classes: dict[str, list[ast.ClassDef]] = {}
     attr_assigns: set[tuple[str, ...]] = set()
     aliases: dict[str, list[str]] = {}
+    attr_aliases: dict[str, list[tuple[str, ...]]] = {}
     instances: dict[str, list[str]] = {}
-    from_imports: dict[str, list[tuple[str, str]]] = {}
+    from_imports: dict[str, list[tuple[str, str, bool]]] = {}
     mod_imports: dict[str, list[str]] = {}
     dotted_imports: list[tuple[str, ...]] = []
-    star_imports: list[str] = []
+    star_imports: list[tuple[str, bool]] = []
 
     is_pkg_init = py_file.name == "__init__.py"
     cur_pkg_parts = (
@@ -530,34 +535,70 @@ def _module_defines_attr_path(
                 return True
         return False
 
-    def _record_binding(target: ast.AST, value: ast.AST | None) -> None:
+    def _clear_reexports(name: str) -> None:
+        from_imports.pop(name, None)
+        mod_imports.pop(name, None)
+        aliases.pop(name, None)
+        attr_aliases.pop(name, None)
+
+    def _record_binding(target: ast.AST, value: ast.AST | None, *, top_level: bool) -> None:
         for chain in _collect_target_attr_chains(target):
             attr_assigns.add(chain)
-        if value is None or not isinstance(target, ast.Name):
+        if value is None:
             return
-        name = target.id
-        if isinstance(value, ast.Name):
-            aliases.setdefault(name, []).append(value.id)
-        elif _is_click_cmd_value(value):
-            click_cmds.add(name)
-        elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
-            instances.setdefault(name, []).append(value.func.id)
+        if isinstance(target, ast.Name):
+            name = target.id
+            if isinstance(value, ast.Name):
+                if top_level:
+                    direct_local_defs.discard(name)
+                    _clear_reexports(name)
+                aliases.setdefault(name, []).append(value.id)
+                return
+            val_chain = _extract_attr_chain(value)
+            if val_chain is not None and len(val_chain) >= 2:
+                if top_level:
+                    direct_local_defs.discard(name)
+                    _clear_reexports(name)
+                attr_aliases.setdefault(name, []).append(val_chain)
+                return
+            if top_level:
+                _clear_reexports(name)
+            direct_local_defs.add(name)
+            if _is_click_cmd_value(value):
+                click_cmds.add(name)
+            elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+                instances.setdefault(name, []).append(value.func.id)
+        else:
+            for bound_name in _collect_target_names(target):
+                if top_level:
+                    _clear_reexports(bound_name)
+                direct_local_defs.add(bound_name)
 
-    def _collect_stmts(stmts: list[ast.stmt]) -> None:
+    def _collect_stmts(stmts: list[ast.stmt], *, top_level: bool) -> None:
         for stmt in stmts:
             if isinstance(stmt, ast.ClassDef):
+                if top_level:
+                    _clear_reexports(stmt.name)
+                direct_local_defs.add(stmt.name)
                 classes.setdefault(stmt.name, []).append(stmt)
             elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if top_level:
+                    _clear_reexports(stmt.name)
+                direct_local_defs.add(stmt.name)
                 if any(_is_click_cmd_expr(dec) for dec in stmt.decorator_list):
                     click_cmds.add(stmt.name)
             elif isinstance(stmt, ast.Assign):
                 for tgt in stmt.targets:
-                    _record_binding(tgt, stmt.value)
+                    _record_binding(tgt, stmt.value, top_level=top_level)
             elif isinstance(stmt, ast.AnnAssign):
                 if stmt.value is not None:
-                    _record_binding(stmt.target, stmt.value)
+                    _record_binding(stmt.target, stmt.value, top_level=top_level)
             elif isinstance(stmt, ast.Import):
                 for alias in stmt.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    if top_level:
+                        direct_local_defs.discard(bound)
+                        _clear_reexports(bound)
                     if alias.name == "click":
                         click_modules.add(alias.asname or "click")
                     if alias.asname:
@@ -569,12 +610,16 @@ def _module_defines_attr_path(
                             dotted_imports.append(tuple(alias.name.split(".")))
             elif isinstance(stmt, ast.ImportFrom):
                 resolved_mod = _resolve_import_from_module(stmt)
+                is_rel = stmt.level > 0
                 for alias in stmt.names:
                     if alias.name == "*":
                         if resolved_mod:
-                            star_imports.append(resolved_mod)
+                            star_imports.append((resolved_mod, is_rel))
                         continue
                     bound = alias.asname or alias.name
+                    if top_level:
+                        direct_local_defs.discard(bound)
+                        _clear_reexports(bound)
                     if stmt.level == 0 and stmt.module == "click" and alias.name in {
                         "group",
                         "command",
@@ -583,32 +628,40 @@ def _module_defines_attr_path(
                     }:
                         click_factories.add(bound)
                     if resolved_mod is not None:
-                        from_imports.setdefault(bound, []).append((resolved_mod, alias.name))
+                        from_imports.setdefault(bound, []).append((resolved_mod, alias.name, is_rel))
             elif isinstance(stmt, ast.If):
                 if _is_dunder_main_guard(stmt.test):
-                    _collect_stmts(stmt.orelse)
+                    _collect_stmts(stmt.orelse, top_level=False)
                 else:
-                    _collect_stmts(stmt.body)
-                    _collect_stmts(stmt.orelse)
+                    _collect_stmts(stmt.body, top_level=False)
+                    _collect_stmts(stmt.orelse, top_level=False)
             elif isinstance(stmt, (ast.For, ast.AsyncFor)):
-                _collect_stmts(stmt.body)
-                _collect_stmts(stmt.orelse)
+                for bound_name in _collect_target_names(stmt.target):
+                    direct_local_defs.add(bound_name)
+                _collect_stmts(stmt.body, top_level=False)
+                _collect_stmts(stmt.orelse, top_level=False)
             elif isinstance(stmt, ast.While):
-                _collect_stmts(stmt.body)
-                _collect_stmts(stmt.orelse)
+                _collect_stmts(stmt.body, top_level=False)
+                _collect_stmts(stmt.orelse, top_level=False)
             elif isinstance(stmt, (ast.With, ast.AsyncWith)):
-                _collect_stmts(stmt.body)
+                for item in stmt.items:
+                    if item.optional_vars is not None:
+                        for bound_name in _collect_target_names(item.optional_vars):
+                            direct_local_defs.add(bound_name)
+                _collect_stmts(stmt.body, top_level=False)
             elif isinstance(stmt, ast.Try) or (try_star and isinstance(stmt, try_star)):
-                _collect_stmts(stmt.body)
-                _collect_stmts(stmt.orelse)
-                _collect_stmts(stmt.finalbody)
+                _collect_stmts(stmt.body, top_level=False)
+                _collect_stmts(stmt.orelse, top_level=False)
+                _collect_stmts(stmt.finalbody, top_level=False)
                 for handler in stmt.handlers:
-                    _collect_stmts(handler.body)
+                    if handler.name:
+                        direct_local_defs.add(handler.name)
+                    _collect_stmts(handler.body, top_level=False)
             elif match_cls and isinstance(stmt, match_cls):
                 for case in stmt.cases:
-                    _collect_stmts(case.body)
+                    _collect_stmts(case.body, top_level=False)
 
-    _collect_stmts(tree.body)
+    _collect_stmts(tree.body, top_level=True)
 
     def _expand_aliases(start_name: str) -> set[str]:
         seen: set[str] = {start_name}
@@ -621,16 +674,193 @@ def _module_defines_attr_path(
                     stack.append(nxt)
         return seen
 
+    def _is_harness_mod_ref(mod_name: str, is_explicit_rel: bool) -> bool:
+        if is_explicit_rel:
+            return True
+        if target_pkg and (mod_name == target_pkg or mod_name.startswith(f"{target_pkg}.")):
+            return True
+        return False
+
+    def _check_local_module_shipped(
+        target_mod: str,
+        target_file: Path,
+        is_target_pkg_init: bool,
+    ) -> str | None:
+        if harness is None:
+            return None
+        try:
+            rel_posix = target_file.relative_to(harness).as_posix()
+        except ValueError:
+            rel_posix = ""
+        if excluded_files and rel_posix and _poetry_is_excluded(rel_posix, excluded_files):
+            return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by packaging rules"
+        if check_manifest and rel_posix and not _manifest_covers_skill(
+            harness, rel_posix, initially_included=True
+        ):
+            return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from sdist by MANIFEST.in"
+        owner = target_mod if is_target_pkg_init else ".".join(target_mod.split(".")[:-1])
+        if (
+            target_pkg
+            and parent_selected
+            and owner
+            and owner != target_pkg
+            and owner.startswith(f"{target_pkg}.")
+            and pkg_spec is not None
+        ):
+            if pkg_spec["kind"] == "find":
+                if not _find_selects_package(
+                    owner,
+                    pkg_spec["includes"],
+                    pkg_spec["excludes"],
+                    harness=harness,
+                    wheres=pkg_spec["wheres"],
+                    require_init=False,
+                ):
+                    return f"re-exported package '{owner}' is not selected by packaging discovery"
+            elif pkg_spec["kind"] == "explicit":
+                if owner not in pkg_spec["packages"]:
+                    return f"re-exported package '{owner}' is not listed in packaging packages"
+        return None
+
+    def _recurse_local(
+        target_mod: str,
+        target_file: Path,
+        is_target_pkg_init: bool,
+        sub_attrs: list[str],
+    ) -> tuple[bool, str | None, Path | None]:
+        ship_err = _check_local_module_shipped(target_mod, target_file, is_target_pkg_init)
+        if ship_err is not None:
+            return False, ship_err, None
+        return _resolve_module_attr_path(
+            target_file,
+            sub_attrs,
+            module_path=target_mod,
+            harness=harness,
+            target_pkg=target_pkg,
+            eff_pkg_dir=eff_pkg_dir,
+            parent_selected=parent_selected,
+            pkg_spec=pkg_spec,
+            excluded_files=excluded_files,
+            check_manifest=check_manifest,
+            _visited=next_visited,
+        )
+
     root_names = _expand_aliases(attr_parts[0])
+    first_local_err: str | None = None
+
+    # Single-component callable (`module:main`): return directly if defined locally,
+    # otherwise follow local re-exports (`from .demoapp_cli import main`, `main = cli_mod.main`, etc.).
+    if len(attr_parts) == 1:
+        if any(cand in direct_local_defs for cand in root_names):
+            return True, None, py_file
+        if harness is None or eff_pkg_dir is None:
+            return True, None, py_file
+
+        has_external_binding = False
+        for cand in root_names:
+            for attr_chain in attr_aliases.get(cand, ()):
+                ok_sub, sub_err, impl = _resolve_module_attr_path(
+                    py_file,
+                    list(attr_chain),
+                    module_path=module_path,
+                    harness=harness,
+                    target_pkg=target_pkg,
+                    eff_pkg_dir=eff_pkg_dir,
+                    parent_selected=parent_selected,
+                    pkg_spec=pkg_spec,
+                    excluded_files=excluded_files,
+                    check_manifest=check_manifest,
+                    _visited=next_visited,
+                )
+                if ok_sub:
+                    return True, None, impl or py_file
+                chain_roots = _expand_aliases(attr_chain[0])
+                is_local_chain = any(
+                    (r in from_imports and any(_is_harness_mod_ref(bm, ir) for bm, _, ir in from_imports[r]))
+                    or (r in mod_imports and any(_is_harness_mod_ref(tm, False) for tm in mod_imports[r]))
+                    for r in chain_roots
+                ) or any(
+                    attr_chain[0] == di[0] and _is_harness_mod_ref(".".join(di), False)
+                    for di in dotted_imports
+                )
+                if is_local_chain:
+                    if first_local_err is None and sub_err:
+                        first_local_err = sub_err
+                else:
+                    has_external_binding = True
+
+            for base_mod, orig_name, is_rel in from_imports.get(cand, ()):
+                sub_mod = f"{base_mod}.{orig_name}" if base_mod else orig_name
+                sub_file, sub_is_pkg = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
+                if sub_file is not None:
+                    ship_err = _check_local_module_shipped(sub_mod, sub_file, sub_is_pkg)
+                    if ship_err is None:
+                        return True, None, sub_file
+                    if first_local_err is None:
+                        first_local_err = ship_err
+                    continue
+                if base_mod:
+                    base_file, base_is_pkg = _resolve_local_module_file(base_mod, harness, eff_pkg_dir)
+                    if base_file is not None:
+                        ok_sub, sub_err, impl = _recurse_local(
+                            base_mod, base_file, base_is_pkg, [orig_name]
+                        )
+                        if ok_sub:
+                            return True, None, impl or base_file
+                        if first_local_err is None and sub_err:
+                            first_local_err = sub_err
+                        continue
+                if _is_harness_mod_ref(base_mod or orig_name, is_rel):
+                    if first_local_err is None:
+                        first_local_err = (
+                            f"re-exported module '{base_mod or orig_name}' not found in harness"
+                        )
+                else:
+                    has_external_binding = True
+
+            for target_mod in mod_imports.get(cand, ()):
+                target_file, target_is_pkg = _resolve_local_module_file(target_mod, harness, eff_pkg_dir)
+                if target_file is not None:
+                    ship_err = _check_local_module_shipped(target_mod, target_file, target_is_pkg)
+                    if ship_err is None:
+                        return True, None, target_file
+                    if first_local_err is None:
+                        first_local_err = ship_err
+                elif _is_harness_mod_ref(target_mod, False):
+                    if first_local_err is None:
+                        first_local_err = f"re-exported module '{target_mod}' not found in harness"
+                else:
+                    has_external_binding = True
+
+        for star_mod, is_rel in star_imports:
+            star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+            if star_file is not None:
+                ok_sub, sub_err, impl = _recurse_local(
+                    star_mod, star_file, star_is_pkg, [attr_parts[0]]
+                )
+                if ok_sub:
+                    return True, None, impl or star_file
+                if first_local_err is None and sub_err:
+                    first_local_err = sub_err
+            elif _is_harness_mod_ref(star_mod, is_rel):
+                if first_local_err is None:
+                    first_local_err = f"re-exported module '{star_mod}' not found in harness"
+            else:
+                has_external_binding = True
+
+        if has_external_binding or first_local_err is None:
+            return True, None, py_file
+        return False, first_local_err, None
+
     tail = tuple(attr_parts[1:])
 
     # 1. Explicit module-scope attribute assignment (e.g. `main.sub = ...` or `A.B.c = ...`).
     if any((cand, *tail) in attr_assigns for cand in root_names):
-        return True, None
+        return True, None, py_file
 
     # 2. Click Command / Group `.main` entrypoint (e.g. `@click.group() def cli(): ...` -> `cli.main`).
     if len(attr_parts) == 2 and attr_parts[1] == "main" and any(c in click_cmds for c in root_names):
-        return True, None
+        return True, None, py_file
 
     # 3. Local class (or alias / direct instance of a local class) attribute/method chain.
     def _class_defines_chain(
@@ -729,93 +959,126 @@ def _module_defines_attr_path(
     for cls_name in candidate_class_names:
         for cls_node in classes.get(cls_name, ()):
             if _class_defines_chain(cls_node, attr_parts[1:], {cls_name}):
-                return True, None
+                return True, None, py_file
 
-    # 4. Local imported submodule / symbol chain inside the harness.
+    # 4. Local attribute aliases (e.g. `sub = demoapp_cli.Runner` -> `sub.run`).
+    for cand in root_names:
+        for attr_chain in attr_aliases.get(cand, ()):
+            ok_sub, sub_err, impl = _resolve_module_attr_path(
+                py_file,
+                [*attr_chain, *attr_parts[1:]],
+                module_path=module_path,
+                harness=harness,
+                target_pkg=target_pkg,
+                eff_pkg_dir=eff_pkg_dir,
+                parent_selected=parent_selected,
+                pkg_spec=pkg_spec,
+                excluded_files=excluded_files,
+                check_manifest=check_manifest,
+                _visited=next_visited,
+            )
+            if ok_sub:
+                return True, None, impl or py_file
+            if first_local_err is None and sub_err:
+                first_local_err = sub_err
+
+    # 5. Local imported submodule / symbol chain inside the harness.
     if harness is not None and eff_pkg_dir is not None:
-        # 4a. Dotted `import a.b.c` where attr_parts starts with `a.b.c` (or a prefix).
+        # 5a. Dotted `import a.b.c` where attr_parts starts with `a.b.c` (or a prefix).
         for imp_parts in dotted_imports:
             max_k = min(len(imp_parts), len(attr_parts) - 1)
             for k in range(max_k, 0, -1):
                 if tuple(attr_parts[:k]) == imp_parts[:k]:
                     target_mod = ".".join(attr_parts[:k])
-                    target_file, _ = _resolve_local_module_file(target_mod, harness, eff_pkg_dir)
+                    target_file, target_is_pkg = _resolve_local_module_file(
+                        target_mod, harness, eff_pkg_dir
+                    )
                     if target_file is not None:
-                        ok_sub, _ = _module_defines_attr_path(
-                            target_file,
-                            attr_parts[k:],
-                            module_path=target_mod,
-                            harness=harness,
-                            eff_pkg_dir=eff_pkg_dir,
-                            _visited=next_visited,
+                        ok_sub, sub_err, impl = _recurse_local(
+                            target_mod, target_file, target_is_pkg, attr_parts[k:]
                         )
                         if ok_sub:
-                            return True, None
+                            return True, None, impl or target_file
+                        if first_local_err is None and sub_err:
+                            first_local_err = sub_err
 
         for cand in root_names:
-            # 4b. `import pkg.sub as alias` -> resolve `attr_parts[1:]` in `pkg.sub`.
+            # 5b. `import pkg.sub as alias` -> resolve `attr_parts[1:]` in `pkg.sub`.
             for target_mod in mod_imports.get(cand, ()):
-                target_file, _ = _resolve_local_module_file(target_mod, harness, eff_pkg_dir)
+                target_file, target_is_pkg = _resolve_local_module_file(
+                    target_mod, harness, eff_pkg_dir
+                )
                 if target_file is not None:
-                    ok_sub, _ = _module_defines_attr_path(
-                        target_file,
-                        attr_parts[1:],
-                        module_path=target_mod,
-                        harness=harness,
-                        eff_pkg_dir=eff_pkg_dir,
-                        _visited=next_visited,
+                    ok_sub, sub_err, impl = _recurse_local(
+                        target_mod, target_file, target_is_pkg, attr_parts[1:]
                     )
                     if ok_sub:
-                        return True, None
+                        return True, None, impl or target_file
+                    if first_local_err is None and sub_err:
+                        first_local_err = sub_err
 
-            # 4c. `from base_mod import orig_name [as cand]` -> submodule or symbol in base_mod.
-            for base_mod, orig_name in from_imports.get(cand, ()):
+            # 5c. `from base_mod import orig_name [as cand]` -> submodule or symbol in base_mod.
+            for base_mod, orig_name, _is_rel in from_imports.get(cand, ()):
                 sub_mod = f"{base_mod}.{orig_name}" if base_mod else orig_name
-                sub_file, _ = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
+                sub_file, sub_is_pkg = _resolve_local_module_file(sub_mod, harness, eff_pkg_dir)
                 if sub_file is not None:
-                    ok_sub, _ = _module_defines_attr_path(
-                        sub_file,
-                        attr_parts[1:],
-                        module_path=sub_mod,
-                        harness=harness,
-                        eff_pkg_dir=eff_pkg_dir,
-                        _visited=next_visited,
+                    ok_sub, sub_err, impl = _recurse_local(
+                        sub_mod, sub_file, sub_is_pkg, attr_parts[1:]
                     )
                     if ok_sub:
-                        return True, None
+                        return True, None, impl or sub_file
+                    if first_local_err is None and sub_err:
+                        first_local_err = sub_err
                 if base_mod:
-                    base_file, _ = _resolve_local_module_file(base_mod, harness, eff_pkg_dir)
+                    base_file, base_is_pkg = _resolve_local_module_file(base_mod, harness, eff_pkg_dir)
                     if base_file is not None:
-                        ok_sub, _ = _module_defines_attr_path(
-                            base_file,
-                            [orig_name, *attr_parts[1:]],
-                            module_path=base_mod,
-                            harness=harness,
-                            eff_pkg_dir=eff_pkg_dir,
-                            _visited=next_visited,
+                        ok_sub, sub_err, impl = _recurse_local(
+                            base_mod, base_file, base_is_pkg, [orig_name, *attr_parts[1:]]
                         )
                         if ok_sub:
-                            return True, None
+                            return True, None, impl or base_file
+                        if first_local_err is None and sub_err:
+                            first_local_err = sub_err
 
-        # 4d. Local `from .other import *`.
-        for star_mod in star_imports:
-            star_file, _ = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
+        # 5d. Local `from .other import *`.
+        for star_mod, _is_rel in star_imports:
+            star_file, star_is_pkg = _resolve_local_module_file(star_mod, harness, eff_pkg_dir)
             if star_file is not None:
-                ok_sub, _ = _module_defines_attr_path(
-                    star_file,
-                    attr_parts,
-                    module_path=star_mod,
-                    harness=harness,
-                    eff_pkg_dir=eff_pkg_dir,
-                    _visited=next_visited,
+                ok_sub, sub_err, impl = _recurse_local(
+                    star_mod, star_file, star_is_pkg, attr_parts
                 )
                 if ok_sub:
-                    return True, None
+                    return True, None, impl or star_file
+                if first_local_err is None and sub_err:
+                    first_local_err = sub_err
 
     return (
         False,
-        f"dotted callable '{'.'.join(attr_parts)}' could not be statically verified in {py_file.name}",
+        first_local_err
+        or f"dotted callable '{'.'.join(attr_parts)}' could not be statically verified in {py_file.name}",
+        None,
     )
+
+
+def _module_defines_attr_path(
+    py_file: Path,
+    attr_parts: list[str],
+    *,
+    module_path: str | None = None,
+    harness: Path | None = None,
+    eff_pkg_dir: dict[str, str] | None = None,
+    _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
+) -> tuple[bool, str | None]:
+    """Statically validate the full dotted callable path in py_file."""
+    ok, err, _ = _resolve_module_attr_path(
+        py_file,
+        attr_parts,
+        module_path=module_path,
+        harness=harness,
+        eff_pkg_dir=eff_pkg_dir,
+        _visited=_visited,
+    )
+    return ok, err
 
 
 def _is_windows_path_semantics() -> bool:
@@ -992,6 +1255,7 @@ def _validate_console_script_target(
     pkg_spec: dict[str, Any] | None = None,
     base_package_dir: dict[str, str] | None = None,
     excluded_files: set[str] | None = None,
+    check_manifest: bool = False,
 ) -> tuple[bool, str, Path | None]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
     spec = target_spec.strip()
@@ -1034,13 +1298,18 @@ def _validate_console_script_target(
         src_hint = parent_dir_rel or "."
         return False, f"module '{module_path}' not found in effective package source directory '{src_hint}'", None
 
-    if excluded_files:
-        try:
-            mod_rel = mod_file.relative_to(harness).as_posix()
-        except ValueError:
-            mod_rel = ""
-        if mod_rel and _poetry_is_excluded(mod_rel, excluded_files):
-            return False, f"module '{module_path}' is excluded from wheel by packaging rules", None
+    try:
+        mod_rel = mod_file.relative_to(harness).as_posix()
+    except ValueError:
+        mod_rel = ""
+
+    if excluded_files and mod_rel and _poetry_is_excluded(mod_rel, excluded_files):
+        return False, f"module '{module_path}' is excluded from wheel by packaging rules", None
+
+    if check_manifest and mod_rel and not _manifest_covers_skill(
+        harness, mod_rel, initially_included=True
+    ):
+        return False, f"module '{module_path}' ({mod_rel}) is excluded from sdist by MANIFEST.in", None
 
     if target_pkg and parent_selected and owner_pkg != target_pkg and pkg_spec is not None:
         if pkg_spec["kind"] == "find":
@@ -1057,16 +1326,21 @@ def _validate_console_script_target(
             if owner_pkg not in pkg_spec["packages"]:
                 return False, f"package '{owner_pkg}' is not listed in packaging packages", None
 
-    ok_sym, sym_err = _module_defines_attr_path(
+    ok_sym, sym_err, impl_file = _resolve_module_attr_path(
         mod_file,
         attr_parts,
         module_path=module_path,
         harness=harness,
+        target_pkg=target_pkg,
         eff_pkg_dir=eff_pkg_dir,
+        parent_selected=parent_selected,
+        pkg_spec=pkg_spec,
+        excluded_files=excluded_files,
+        check_manifest=check_manifest,
     )
     if not ok_sym:
         return False, sym_err or f"callable '{attr_path}' not found in '{module_path}'", None
-    return True, "", mod_file
+    return True, "", impl_file or mod_file
 
 
 def _package_exists_under(root: Path, target_pkg: str, *, require_init: bool = True) -> bool:
@@ -2690,6 +2964,7 @@ def _check_packaging(
                 pkg_spec=eff_pkg_spec,
                 base_package_dir=eff_base_package_dir,
                 excluded_files=poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
+                check_manifest=uses_setuptools,
             )
             if not ok_target:
                 invalid_targets.append(f"{cmd_name}={target_spec} ({reason})")
