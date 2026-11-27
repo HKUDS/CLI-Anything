@@ -53,6 +53,15 @@ cleanup() {
     rm -rf "${SKILL_DIR}/references"
     cp -R "${BACKUP_DIR}/references" "${SKILL_DIR}/references"
   fi
+  # Restore the guides subtree independently of sync if a test left it as a
+  # symlink or missing while the references parent remained a real directory
+  # (the whole-tree restore above does not cover that case).
+  if [[ -d "${BACKUP_DIR}/references/guides" ]] &&
+    { [[ -L "${SKILL_DIR}/references/guides" ]] ||
+      [[ ! -d "${SKILL_DIR}/references/guides" ]]; }; then
+    rm -rf "${SKILL_DIR}/references/guides"
+    cp -R "${BACKUP_DIR}/references/guides" "${SKILL_DIR}/references/guides"
+  fi
   # Belt-and-braces restores in case sync itself is broken or refused to run.
   rm -f "${ORPHAN}" "${ORPHAN_FIXED}" "${ORPHAN_LINK}" "${ORPHAN_DANGLING_LINK}" 2>/dev/null ||
     true
@@ -212,5 +221,46 @@ python3 "${SYNC}" >/dev/null
 [[ -f "${REPO_ROOT}/cli-anything-plugin/guides/session-locking.md" ]] ||
   fail "sync touched canonical sources through symlinked DIR_MAP root"
 python3 "${VALIDATE}" >/dev/null || fail "validation failed after DIR_MAP root repair"
+
+# 14. Empty DIR_MAP source with a symlinked mirror root: sync must unlink
+# the root instead of traversing it and deleting external files.
+python3 - "${SYNC}" <<'PYEOF'
+import pathlib
+import shutil
+import sys
+import tempfile
+
+sync_path = pathlib.Path(sys.argv[1]).resolve()
+external = pathlib.Path(tempfile.mkdtemp())
+try:
+    marker = external / "external-marker.txt"
+    marker.write_text("do not delete")
+
+    repo = pathlib.Path(tempfile.mkdtemp())
+    skill = repo / "codex-skill"
+    (skill / "references").mkdir(parents=True)
+    (repo / "empty-source").mkdir()
+    mirror = skill / "references" / "guides"
+    mirror.symlink_to(external, target_is_directory=True)
+
+    namespace = {"__file__": str(sync_path)}
+    exec(sync_path.read_text(encoding="utf-8"), namespace)
+    namespace["REPO_ROOT"] = repo
+    namespace["SKILL_DIR"] = skill
+    namespace["PLUGIN_DIR"] = repo / "plugin"
+    namespace["FILE_MAP"] = []
+    namespace["DIR_MAP"] = [("empty-source", "references/guides")]
+    namespace["sync"]()
+
+    assert not marker.exists() or marker.read_text() == "do not delete", (
+        "sync deleted files through a symlinked DIR_MAP root"
+    )
+    assert not mirror.is_symlink(), "sync kept symlinked DIR_MAP root"
+    assert mirror.is_dir(), "sync did not recreate DIR_MAP root as a directory"
+    shutil.rmtree(repo)
+finally:
+    shutil.rmtree(external, ignore_errors=True)
+PYEOF
+python3 "${VALIDATE}" >/dev/null || fail "validation failed after empty-source symlink test"
 
 echo "PASS: codex-skill sync and validation regression tests."

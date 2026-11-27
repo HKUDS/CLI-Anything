@@ -126,7 +126,15 @@ def sync() -> None:
     expected = {dest for _, dest in mapped}
     for _, dest_rel in DIR_MAP:
         dest_dir = SKILL_DIR / dest_rel
+        if dest_dir.is_symlink() or (dest_dir.exists() and not dest_dir.is_dir()):
+            # Never traverse a symlinked or non-directory mirror root: its
+            # target may live outside codex-skill/, and rglob() + unlink()
+            # below would delete files there.
+            dest_dir.unlink()
         if not dest_dir.is_dir():
+            # Mirror even an empty canonical source directory so the
+            # vendored layout stays a real directory.
+            dest_dir.mkdir(parents=True, exist_ok=True)
             continue
         for existing in sorted(dest_dir.rglob("*")):
             if existing.is_symlink() or (
