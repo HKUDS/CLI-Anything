@@ -1596,15 +1596,14 @@ def _resolve_module_attr_path(
     ) -> str | None:
         if harness is None:
             return None
-        try:
-            rel_posix = target_file.relative_to(harness).as_posix()
-        except ValueError:
-            rel_posix = ""
-        if excluded_files and rel_posix and _poetry_is_excluded(rel_posix, excluded_files):
+        rel_posix = _rel_in_harness(harness, target_file)
+        if rel_posix is None:
+            return f"re-exported module '{target_mod}' resolves outside the project tree and cannot be verified for sdist/release inclusion"
+        if excluded_files and _poetry_is_excluded(rel_posix, excluded_files):
             return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by packaging rules"
-        if hatch_exclude and rel_posix and _hatch_is_excluded(rel_posix, hatch_exclude):
+        if hatch_exclude and _hatch_is_excluded(rel_posix, hatch_exclude):
             return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by Hatch exclude rules"
-        if check_manifest and rel_posix and not _manifest_covers_skill(
+        if check_manifest and not _manifest_covers_skill(
             harness, rel_posix, initially_included=True
         ):
             return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from sdist by MANIFEST.in"
@@ -2638,6 +2637,17 @@ def _normalize_platform_seps(raw: str) -> str:
     return raw.replace("\\", "/") if _is_windows_path_semantics() else raw
 
 
+def _rel_in_harness(harness: Path, target: Path) -> str | None:
+    """Return a normalized POSIX path relative to `harness` iff `target` resolves within `harness`."""
+    try:
+        rel = target.resolve().relative_to(harness.resolve()).as_posix()
+    except (OSError, ValueError):
+        return None
+    if rel in {"", "."} or rel == ".." or rel.startswith("../"):
+        return None
+    return rel
+
+
 def _norm_pkg_dir_value(raw: str) -> str:
     """Normalize a package_dir / where path like setuptools convert_path() (preserving bare '.' and spaces)."""
     cleaned = _normalize_platform_seps(raw)
@@ -2941,18 +2951,17 @@ def _validate_console_script_target(
         src_hint = parent_dir_rel or "."
         return False, f"module '{module_path}' not found in effective package source directory '{src_hint}'", None
 
-    try:
-        mod_rel = mod_file.relative_to(harness).as_posix()
-    except ValueError:
-        mod_rel = ""
+    mod_rel = _rel_in_harness(harness, mod_file)
+    if mod_rel is None:
+        return False, f"module '{module_path}' resolves outside the project tree and cannot be verified for sdist/release inclusion", None
 
-    if excluded_files and mod_rel and _poetry_is_excluded(mod_rel, excluded_files):
+    if excluded_files and _poetry_is_excluded(mod_rel, excluded_files):
         return False, f"module '{module_path}' is excluded from wheel by packaging rules", None
 
-    if hatch_exclude and mod_rel and _hatch_is_excluded(mod_rel, hatch_exclude):
+    if hatch_exclude and _hatch_is_excluded(mod_rel, hatch_exclude):
         return False, f"module '{module_path}' is excluded from wheel by Hatch exclude rules", None
 
-    if check_manifest and mod_rel and not _manifest_covers_skill(
+    if check_manifest and not _manifest_covers_skill(
         harness, mod_rel, initially_included=True
     ):
         return False, f"module '{module_path}' ({mod_rel}) is excluded from sdist by MANIFEST.in", None
@@ -3498,12 +3507,18 @@ def _manifest_covers_skill(
     """
     if harness is None or not expected_manifest_rel:
         return False
+    expected_norm = _normalize_platform_seps(expected_manifest_rel)
+    if _is_absolute_pattern(expected_norm):
+        return False
+    canonical_rel = posixpath.normpath(expected_norm)
+    if canonical_rel in {"", ".", ".."} or canonical_rel.startswith("../"):
+        return False
+    if _rel_in_harness(harness, harness / canonical_rel) is None:
+        return False
     manifest = harness / "MANIFEST.in"
     if not manifest.is_file():
         return initially_included
 
-    expected_norm = _normalize_platform_seps(expected_manifest_rel)
-    canonical_rel = PurePosixPath(expected_norm).as_posix()
     target_dir_parts = canonical_rel.split("/")[:-1]
     ancestor_dirs = ["/".join(target_dir_parts[: i + 1]) for i in range(len(target_dir_parts))]
 
@@ -3642,12 +3657,15 @@ def _inspect_setup_py(
         "unverifiable_package_dir": False,
         "package_dir": {},
         "declares_py_modules": False,
+        "unverifiable_py_modules": False,
         "py_modules": [],
         "has_ext_modules": False,
         "has_entry_points": False,
         "entry_points_error": None,
         "console_scripts": [],
         "package_data": {},
+        "package_data_nonempty": False,
+        "unverifiable_package_data": False,
         "exclude_package_data": {},
         "unverifiable_exclude_package_data_all": False,
         "unverifiable_exclude_package_data_keys": set(),
@@ -3916,6 +3934,52 @@ def _inspect_setup_py(
                 return None
         return None
 
+    def _eval_setup_str(node: ast.AST, _seen: frozenset[str] = frozenset()) -> str | None:
+        cur = node
+        seen = set(_seen)
+        while isinstance(cur, ast.Name) and cur.id in bindings and cur.id not in seen:
+            seen.add(cur.id)
+            cur = bindings[cur.id]
+        next_seen = frozenset(seen)
+        if isinstance(cur, ast.Constant) and isinstance(cur.value, str):
+            return cur.value
+        if isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.Add):
+            left = _eval_setup_str(cur.left, next_seen)
+            right = _eval_setup_str(cur.right, next_seen)
+            if left is not None and right is not None:
+                return left + right
+            return None
+        if isinstance(cur, ast.JoinedStr):
+            parts: list[str] = []
+            for part in cur.values:
+                if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                    parts.append(part.value)
+                elif (
+                    isinstance(part, ast.FormattedValue)
+                    and part.conversion == -1
+                    and part.format_spec is None
+                ):
+                    pv = _eval_setup_str(part.value, next_seen)
+                    if pv is None:
+                        return None
+                    parts.append(pv)
+                else:
+                    return None
+            return "".join(parts)
+        if (
+            isinstance(cur, ast.Call)
+            and isinstance(cur.func, ast.Attribute)
+            and cur.func.attr == "join"
+            and len(cur.args) == 1
+            and not cur.keywords
+            and not isinstance(cur.args[0], ast.Starred)
+        ):
+            sep = _eval_setup_str(cur.func.value, next_seen)
+            items = _eval_setup_str_list(cur.args[0], next_seen)
+            if sep is not None and items is not None:
+                return sep.join(items)
+        return None
+
     def _eval_setup_str_list(node: ast.AST, _seen: frozenset[str] = frozenset()) -> list[str] | None:
         cur = node
         seen = set(_seen)
@@ -3932,9 +3996,9 @@ def _inspect_setup_py(
                         return None
                     out.extend(sub)
                 else:
-                    r_elt = _resolve(elt)
-                    if isinstance(r_elt, ast.Constant) and isinstance(r_elt.value, str):
-                        out.append(r_elt.value)
+                    s_elt = _eval_setup_str(elt, next_seen)
+                    if s_elt is not None:
+                        out.append(s_elt)
                     else:
                         return None
             return out
@@ -3961,18 +4025,22 @@ def _inspect_setup_py(
             and cur.func.attr in {"split", "splitlines"}
             and not any(isinstance(a, ast.Starred) for a in cur.args)
         ):
-            recv = _resolve(cur.func.value)
-            if isinstance(recv, ast.Constant) and isinstance(recv.value, str):
+            recv_str = _eval_setup_str(cur.func.value, next_seen)
+            if recv_str is not None:
                 if cur.func.attr == "split" and len(cur.args) <= 2:
                     sep_val: str | None = None
                     maxsplit_val = -1
                     ok_args = True
                     if len(cur.args) >= 1:
                         r0 = _resolve(cur.args[0])
-                        if isinstance(r0, ast.Constant) and (r0.value is None or isinstance(r0.value, str)):
-                            sep_val = r0.value
+                        if isinstance(r0, ast.Constant) and r0.value is None:
+                            sep_val = None
                         else:
-                            ok_args = False
+                            s0 = _eval_setup_str(cur.args[0], next_seen)
+                            if s0 is not None:
+                                sep_val = s0
+                            else:
+                                ok_args = False
                     if len(cur.args) == 2:
                         r1 = _resolve(cur.args[1])
                         if isinstance(r1, ast.Constant) and isinstance(r1.value, int) and not isinstance(r1.value, bool):
@@ -3982,10 +4050,14 @@ def _inspect_setup_py(
                     for kw in cur.keywords:
                         if kw.arg == "sep":
                             rv = _resolve(kw.value)
-                            if isinstance(rv, ast.Constant) and (rv.value is None or isinstance(rv.value, str)):
-                                sep_val = rv.value
+                            if isinstance(rv, ast.Constant) and rv.value is None:
+                                sep_val = None
                             else:
-                                ok_args = False
+                                sv = _eval_setup_str(kw.value, next_seen)
+                                if sv is not None:
+                                    sep_val = sv
+                                else:
+                                    ok_args = False
                         elif kw.arg == "maxsplit":
                             rv = _resolve(kw.value)
                             if isinstance(rv, ast.Constant) and isinstance(rv.value, int) and not isinstance(rv.value, bool):
@@ -3996,11 +4068,11 @@ def _inspect_setup_py(
                             ok_args = False
                     if ok_args:
                         try:
-                            return recv.value.split(sep_val, maxsplit_val)
+                            return recv_str.split(sep_val, maxsplit_val)
                         except ValueError:
                             return None
                 elif cur.func.attr == "splitlines" and not cur.args and not cur.keywords:
-                    return recv.value.splitlines()
+                    return recv_str.splitlines()
         return None
 
     def _eval_static_dict_items(
@@ -4023,10 +4095,10 @@ def _inspect_setup_py(
                     for sk, sv in sub_items:
                         merged[sk] = sv
                 else:
-                    rk = _resolve(k)
-                    if not (isinstance(rk, ast.Constant) and isinstance(rk.value, str)):
+                    rk = _eval_setup_str(k, next_seen)
+                    if rk is None:
                         return None
-                    merged[rk.value] = v
+                    merged[rk] = v
             return list(merged.items())
         if isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.BitOr):
             left = _eval_static_dict_items(cur.left, next_seen)
@@ -4060,10 +4132,10 @@ def _inspect_setup_py(
                         r_pair = _resolve(pair_node)
                         if not isinstance(r_pair, (ast.List, ast.Tuple)) or len(r_pair.elts) != 2:
                             return None
-                        rk = _resolve(r_pair.elts[0])
-                        if not (isinstance(rk, ast.Constant) and isinstance(rk.value, str)):
+                        rk = _eval_setup_str(r_pair.elts[0], next_seen)
+                        if rk is None:
                             return None
-                        merged[rk.value] = r_pair.elts[1]
+                        merged[rk] = r_pair.elts[1]
             for kw in cur.keywords:
                 if kw.arg is None:
                     sub_items = _eval_static_dict_items(kw.value, next_seen)
@@ -4243,11 +4315,11 @@ def _inspect_setup_py(
             if dict_items:
                 info["has_entry_points"] = True
             for group_name, v in dict_items:
-                v_node = _resolve(v)
-                if isinstance(v_node, ast.Constant) and isinstance(v_node.value, str):
-                    raw_items: list[str] | None = [v_node.value]
+                v_str = _eval_setup_str(v)
+                if v_str is not None:
+                    raw_items: list[str] | None = [v_str]
                 else:
-                    raw_items = _eval_setup_str_list(v_node)
+                    raw_items = _eval_setup_str_list(v)
                 if raw_items is not None:
                     pairs, ep_err = _parse_entry_point_group_items(
                         raw_items, group=group_name, allow_semicolon_comments=False
@@ -4256,21 +4328,35 @@ def _inspect_setup_py(
                         info["entry_points_error"] = f"setup.py {ep_err}"
                     if group_name == "console_scripts":
                         info["console_scripts"].extend(pairs)
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if node.value:
+        else:
+            node_str = _eval_setup_str(node)
+            if node_str is not None:
+                if node_str:
+                    info["has_entry_points"] = True
+                cs_pairs, ep_err = _parse_ini_entry_points(node_str)
+                if ep_err is not None and info["entry_points_error"] is None:
+                    info["entry_points_error"] = f"setup.py {ep_err}"
+                info["console_scripts"].extend(cs_pairs)
+            elif not (isinstance(node, ast.Constant) and node.value is None):
                 info["has_entry_points"] = True
-            cs_pairs, ep_err = _parse_ini_entry_points(node.value)
-            if ep_err is not None and info["entry_points_error"] is None:
-                info["entry_points_error"] = f"setup.py {ep_err}"
-            info["console_scripts"].extend(cs_pairs)
 
     def _extract_pkg_data_mapping(expr: ast.AST, dest: dict[str, list[str]]) -> None:
-        dict_items = _eval_static_dict_items(expr)
-        if dict_items is not None:
-            for k, v in dict_items:
-                vals = _eval_setup_str_list(v)
-                if vals is not None:
-                    dest[k] = vals
+        resolved = _resolve(expr)
+        if isinstance(resolved, ast.Constant) and resolved.value is None:
+            return
+        dict_items = _eval_static_dict_items(resolved)
+        if dict_items is None:
+            info["package_data_nonempty"] = True
+            info["unverifiable_package_data"] = True
+            return
+        if dict_items:
+            info["package_data_nonempty"] = True
+        for k, v in dict_items:
+            vals = _eval_setup_str_list(v)
+            if vals is None:
+                info["unverifiable_package_data"] = True
+            else:
+                dest[k] = vals
 
     def _extract_exclude_pkg_data_mapping(expr: ast.AST) -> None:
         resolved = _resolve(expr)
@@ -4313,9 +4399,12 @@ def _inspect_setup_py(
                     val = _resolve(kw_val)
                     if not (isinstance(val, ast.Constant) and val.value is None):
                         info["declares_py_modules"] = True
-                    mods = _eval_setup_str_list(val)
-                    if mods:
-                        info["py_modules"] = list(mods)
+                        mods = _eval_setup_str_list(val)
+                        if mods is not None:
+                            info["py_modules"] = list(mods)
+                            info["unverifiable_py_modules"] = False
+                        else:
+                            info["unverifiable_py_modules"] = True
                 elif kw_name == "ext_modules":
                     val = _resolve(kw_val)
                     if not (isinstance(val, ast.Constant) and val.value is None):
@@ -4333,8 +4422,8 @@ def _inspect_setup_py(
                     if isinstance(val, ast.Constant) and isinstance(val.value, bool):
                         info["include_package_data"] = val.value
                 elif kw_name == "python_requires":
-                    val = _resolve(kw_val)
-                    if isinstance(val, ast.Constant) and isinstance(val.value, str) and val.value.strip():
+                    req_str = _eval_setup_str(kw_val)
+                    if req_str is not None and req_str.strip():
                         info["has_python_requires"] = True
             if has_unresolved_kwargs:
                 if not info["declares_packages"]:
@@ -4344,6 +4433,10 @@ def _inspect_setup_py(
                 if not info["declares_package_dir"]:
                     info["declares_package_dir"] = True
                     info["unverifiable_package_dir"] = True
+                if not info["declares_py_modules"]:
+                    info["unverifiable_py_modules"] = True
+                if not info["package_data_nonempty"]:
+                    info["unverifiable_package_data"] = True
                 if (
                     not info["exclude_package_data"]
                     and not info["unverifiable_exclude_package_data_all"]
@@ -5373,12 +5466,15 @@ def _check_packaging(
         "unverifiable_package_dir": False,
         "package_dir": {},
         "declares_py_modules": False,
+        "unverifiable_py_modules": False,
         "py_modules": [],
         "has_ext_modules": False,
         "has_entry_points": False,
         "entry_points_error": None,
         "console_scripts": [],
         "package_data": {},
+        "package_data_nonempty": False,
+        "unverifiable_package_data": False,
         "exclude_package_data": {},
         "unverifiable_exclude_package_data_all": False,
         "unverifiable_exclude_package_data_keys": set(),
@@ -5545,7 +5641,12 @@ def _check_packaging(
     missing_runtime_subpkgs: list[str] = []
     missing_subpkg_dirs: list[str] = []
     excluded_runtime_files: list[str] = []
+    out_of_tree_sources: list[str] = []
     eff_subpkg_dirs: dict[str, Path] = {}
+
+    def _record_out_of_tree(label: str) -> None:
+        if label not in out_of_tree_sources:
+            out_of_tree_sources.append(label)
 
     poetry_excluded_files: set[str] = set()
     poetry_wheel_included_files: set[str] = set()
@@ -5582,9 +5683,9 @@ def _check_packaging(
         except OSError:
             return
         for py_file in py_files:
-            try:
-                rel_posix = py_file.relative_to(harness).as_posix()
-            except ValueError:
+            rel_posix = _rel_in_harness(harness, py_file)
+            if rel_posix is None:
+                _record_out_of_tree(f"{raw_dir}/{py_file.name}" if raw_dir else py_file.name)
                 continue
             if uses_setuptools:
                 if not _manifest_covers_skill(harness, rel_posix, initially_included=True):
@@ -5602,6 +5703,9 @@ def _check_packaging(
         and target_pkg
         and effective_module is not None
     ):
+        raw_target_check = _get_package_dir_rel(target_pkg, eff_package_dir)
+        if _rel_in_harness(harness, effective_module) is None:
+            _record_out_of_tree(f"{target_pkg} -> '{raw_target_check}'")
         runtime_subpkgs = _collect_runtime_subpackages(
             effective_module,
             target_pkg,
@@ -5619,6 +5723,8 @@ def _check_packaging(
             dir_path = (harness / raw_dir) if raw_dir else harness
             if not dir_path.is_dir():
                 missing_subpkg_dirs.append(f"{pkg_name} -> '{raw_dir}'")
+            elif _rel_in_harness(harness, dir_path) is None:
+                _record_out_of_tree(f"{pkg_name} -> '{raw_dir}'")
 
         for sub_pkg in runtime_subpkgs:
             if eff_pkg_spec is not None and not _is_subpkg_selected(sub_pkg):
@@ -5672,28 +5778,35 @@ def _check_packaging(
 
     # Detect packaged top-level `cli_anything.py` modules that shadow the PEP 420 namespace.
     shadowing_ns_module: str | None = None
+    unverifiable_ns_shadow_module: str | None = None
     if uses_setuptools:
         if pyproj_info["declares_py_modules"]:
             eff_py_modules = list(pyproj_info["py_modules"])
-        elif uses_setup_py and setup_info["py_modules"]:
+            eff_py_modules_unverifiable = False
+        elif uses_setup_py and (setup_info["py_modules"] or setup_info["unverifiable_py_modules"]):
             eff_py_modules = list(setup_info["py_modules"])
+            eff_py_modules_unverifiable = bool(setup_info["unverifiable_py_modules"])
         elif uses_setup_cfg and setup_cfg_info["py_modules"]:
             eff_py_modules = list(setup_cfg_info["py_modules"])
+            eff_py_modules_unverifiable = False
         elif auto_discovered_py_modules:
             eff_py_modules = list(auto_discovered_py_modules)
+            eff_py_modules_unverifiable = False
         else:
             eff_py_modules = []
-        if "cli_anything" in eff_py_modules:
-            root_dir_rel = _get_package_dir_rel("", eff_package_dir)
-            ns_mod_path = (
-                (harness / root_dir_rel / "cli_anything.py")
-                if root_dir_rel
-                else (harness / "cli_anything.py")
-            )
-            if ns_mod_path.is_file():
-                shadowing_ns_module = (
-                    f"{root_dir_rel}/cli_anything.py" if root_dir_rel else "cli_anything.py"
-                )
+            eff_py_modules_unverifiable = False
+        root_dir_rel = _get_package_dir_rel("", eff_package_dir)
+        ns_mod_path = (
+            (harness / root_dir_rel / "cli_anything.py")
+            if root_dir_rel
+            else (harness / "cli_anything.py")
+        )
+        ns_mod_label = f"{root_dir_rel}/cli_anything.py" if root_dir_rel else "cli_anything.py"
+        if ns_mod_path.is_file():
+            if "cli_anything" in eff_py_modules:
+                shadowing_ns_module = ns_mod_label
+            elif eff_py_modules_unverifiable:
+                unverifiable_ns_shadow_module = ns_mod_label
     elif has_pyproject and pyproj_info["backend_kind"] == "poetry":
         if "cli_anything.py" in poetry_wheel_included_files:
             shadowing_ns_module = "cli_anything.py"
@@ -5780,6 +5893,15 @@ def _check_packaging(
                 f"packaged top-level module '{shadowing_ns_module}' shadows PEP 420 namespace package 'cli_anything'",
             )
         )
+    elif unverifiable_ns_shadow_module:
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"setup.py specifies dynamic/unverifiable py_modules= while top-level '{unverifiable_ns_shadow_module}' exists and may shadow PEP 420 namespace package 'cli_anything'",
+            )
+        )
     elif setup_py_package_dir_unverifiable:
         checks.append(
             CheckResult(
@@ -5787,6 +5909,17 @@ def _check_packaging(
                 "packaging",
                 FAIL,
                 "setup.py specifies an explicit dynamic/unverifiable package_dir= mapping that cannot be statically verified",
+            )
+        )
+    elif out_of_tree_sources:
+        sample = ", ".join(out_of_tree_sources[:3])
+        extra = f" (+{len(out_of_tree_sources) - 3} more)" if len(out_of_tree_sources) > 3 else ""
+        checks.append(
+            CheckResult(
+                "namespace-packages",
+                "packaging",
+                FAIL,
+                f"mapped package source(s) lie outside the project tree and cannot be verified for sdist/release inclusion: {sample}{extra}",
             )
         )
     elif excluded_runtime_files:
@@ -6224,6 +6357,7 @@ def _check_packaging(
     }
 
     skill_data_ok = False
+    unverifiable_pkg_data = False
     unverifiable_excl_all = False
     unverifiable_excl_keys: set[str] = set()
     if has_pyproject and pyproj_info["backend_kind"] == "hatch":
@@ -6236,11 +6370,11 @@ def _check_packaging(
                 else (harness / "skills" / "SKILL.md")
             )
             if skill_path.is_file():
-                try:
-                    skill_rel = skill_path.relative_to(harness).as_posix()
-                except ValueError:
-                    skill_rel = f"{raw_pkg_dir}/skills/SKILL.md" if raw_pkg_dir else "skills/SKILL.md"
-                skill_data_ok = not _hatch_is_excluded(skill_rel, pyproj_info["hatch_exclude"])
+                skill_rel = _rel_in_harness(harness, skill_path)
+                skill_data_ok = (
+                    skill_rel is not None
+                    and not _hatch_is_excluded(skill_rel, pyproj_info["hatch_exclude"])
+                )
             else:
                 skill_data_ok = False
         else:
@@ -6258,13 +6392,11 @@ def _check_packaging(
             expected_wheel_rel = f"{target_pkg.replace('.', '/')}/skills/SKILL.md"
             pkg_skill_included = False
             if skill_path.is_file():
-                try:
-                    skill_rel = skill_path.relative_to(harness).as_posix()
-                except ValueError:
-                    skill_rel = (
-                        f"{raw_pkg_dir}/skills/SKILL.md" if raw_pkg_dir else "skills/SKILL.md"
-                    )
-                pkg_skill_included = not _poetry_is_excluded(skill_rel, poetry_excluded_files)
+                skill_rel = _rel_in_harness(harness, skill_path)
+                pkg_skill_included = (
+                    skill_rel is not None
+                    and not _poetry_is_excluded(skill_rel, poetry_excluded_files)
+                )
             skill_data_ok = pkg_skill_included or (
                 expected_wheel_rel in poetry_wheel_included_files
             )
@@ -6274,9 +6406,14 @@ def _check_packaging(
         if pyproj_info["declares_package_data"]:
             eff_pkg_data = pyproj_info["package_data"]
             eff_pkg_star = True
-        elif uses_setup_py and setup_info["package_data"]:
+        elif uses_setup_py and (
+            setup_info["package_data"]
+            or setup_info["package_data_nonempty"]
+            or setup_info["unverifiable_package_data"]
+        ):
             eff_pkg_data = setup_info["package_data"]
             eff_pkg_star = False
+            unverifiable_pkg_data = bool(setup_info["unverifiable_package_data"])
         elif uses_setup_cfg and setup_cfg_info["package_data"]:
             eff_pkg_data = setup_cfg_info["package_data"]
             eff_pkg_star = True
@@ -6385,11 +6522,12 @@ def _check_packaging(
     if skill_data_ok:
         checks.append(CheckResult("package-data-skills", "packaging", PASS, f"packaged SKILL.md included in package data for {target_pkg_label}"))
     else:
-        pd_detail = (
-            f"{pkg_file.name} specifies unverifiable exclude_package_data that may exclude skills/SKILL.md for {target_pkg_label}"
-            if (unverifiable_excl_all or unverifiable_excl_keys)
-            else f"{pkg_file.name} does not declare package_data shipping skills/SKILL.md for {target_pkg_label}"
-        )
+        if unverifiable_excl_all or unverifiable_excl_keys:
+            pd_detail = f"{pkg_file.name} specifies unverifiable exclude_package_data that may exclude skills/SKILL.md for {target_pkg_label}"
+        elif unverifiable_pkg_data:
+            pd_detail = f"{pkg_file.name} specifies unverifiable package_data that cannot be statically verified to ship skills/SKILL.md for {target_pkg_label}"
+        else:
+            pd_detail = f"{pkg_file.name} does not declare package_data shipping skills/SKILL.md for {target_pkg_label}"
         checks.append(
             CheckResult(
                 "package-data-skills",
@@ -6726,15 +6864,14 @@ def _is_local_module_shipped(
 ) -> bool:
     if harness is None:
         return True
-    try:
-        rel_posix = target_file.relative_to(harness).as_posix()
-    except ValueError:
-        rel_posix = ""
-    if excluded_files and rel_posix and _poetry_is_excluded(rel_posix, excluded_files):
+    rel_posix = _rel_in_harness(harness, target_file)
+    if rel_posix is None:
         return False
-    if hatch_exclude and rel_posix and _hatch_is_excluded(rel_posix, hatch_exclude):
+    if excluded_files and _poetry_is_excluded(rel_posix, excluded_files):
         return False
-    if check_manifest and rel_posix and not _manifest_covers_skill(
+    if hatch_exclude and _hatch_is_excluded(rel_posix, hatch_exclude):
+        return False
+    if check_manifest and not _manifest_covers_skill(
         harness, rel_posix, initially_included=True
     ):
         return False

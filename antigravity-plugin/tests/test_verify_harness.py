@@ -9091,6 +9091,224 @@ def main():
         assert {c["id"]: c for c in res_bad["checks"]}["json-flag"]["status"] == "fail", idx
 
 
+def test_verify_preserves_computed_and_unresolved_py_modules_for_namespace_shadowing(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "pymod_shadow", "pymapp")
+    shadow_mod = harness / "cli_anything.py"
+    shadow_mod.write_text("SHADOW = True\n", encoding="utf-8")
+    setup_py = harness / "setup.py"
+
+    def _write_setup(py_modules_expr: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-pymapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    py_modules={py_modules_expr},
+    package_data={{"cli_anything.pymapp": ["skills/*.md"]}},
+    include_package_data=True,
+    entry_points={{"console_scripts": ["cli-anything-pymapp=cli_anything.pymapp.pymapp_cli:main"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    # 1. Exact repro from review 6087115964 + computed string forms must FAIL namespace-packages.
+    for expr in (
+        "['cli_' + 'anything']",
+        "[f\"{'cli'}_{'anything'}\"]",
+        "['_'.join(['cli', 'anything'])]",
+    ):
+        _write_setup(expr)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, (expr, res["checks"])
+        ns_chk = {c["id"]: c for c in res["checks"]}["namespace-packages"]
+        assert ns_chk["status"] == "fail", (expr, ns_chk)
+        assert "shadows PEP 420 namespace package" in ns_chk["detail"], (expr, ns_chk)
+
+    # 2. Unresolvable py_modules expressions with cli_anything.py present must FAIL as unverifiable.
+    for expr in (
+        "[m for m in ['cli_anything']]",
+        "get_modules()",
+    ):
+        _write_setup(expr)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, (expr, res["checks"])
+        ns_chk = {c["id"]: c for c in res["checks"]}["namespace-packages"]
+        assert ns_chk["status"] == "fail", (expr, ns_chk)
+        assert "unverifiable py_modules" in ns_chk["detail"], (expr, ns_chk)
+
+    # 3. Computed py_modules that provably excludes cli_anything passes strictly even if cli_anything.py exists.
+    _write_setup("['other_' + 'helper']")
+    res_other = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_other["ok"] is True, res_other["checks"]
+
+    # 4. Dynamic py_modules without any top-level cli_anything.py on disk cannot shadow the namespace.
+    shadow_mod.unlink()
+    _write_setup("get_modules()")
+    res_no_file = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_no_file["ok"] is True, res_no_file["checks"]
+
+
+def test_verify_rejects_out_of_tree_package_dir_for_sdist_survival(tmp_path: Path) -> None:
+    parent = tmp_path / "workspace"
+    harness = _create_valid_harness(parent / "project", "ootapp")
+    pkg_dir = harness / "cli_anything" / "ootapp"
+    shared_app = harness.parent / "shared_app"
+    shutil.move(str(pkg_dir), str(shared_app))
+
+    # Leave minimal cli_anything/ootapp/__init__.py so the otherwise-valid fixture passes layout
+    # checks while effective package_dir points outside the project root to ../shared_app.
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
+    setup_py = harness / "setup.py"
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-ootapp",
+    version="1.0.0",
+    packages=[
+        "cli_anything.ootapp",
+        "cli_anything.ootapp.core",
+        "cli_anything.ootapp.utils",
+        "cli_anything.ootapp.skills",
+    ],
+    package_dir={"cli_anything.ootapp": "../shared_app"},
+    package_data={"cli_anything.ootapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-ootapp=cli_anything.ootapp.ootapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+
+    # 1. Exact repro from review 6087115964 (no MANIFEST.in): must FAIL namespace-packages,
+    #    console-script, and must NOT credit package-data-skills for out-of-tree SKILL.md.
+    res_oot = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_oot["ok"] is False
+    by_id = {c["id"]: c for c in res_oot["checks"]}
+    assert by_id["namespace-packages"]["status"] == "fail"
+    assert "outside the project tree" in by_id["namespace-packages"]["detail"]
+    assert by_id["console-script"]["status"] == "fail"
+    assert "outside the project tree" in by_id["console-script"]["detail"]
+    assert by_id["package-data-skills"]["status"] == "warn"
+
+    # 2. Even with a MANIFEST.in trying to include ../shared_app, sdist cannot ship out-of-tree files.
+    manifest = harness / "MANIFEST.in"
+    manifest.write_text("recursive-include ../shared_app *\n", encoding="utf-8")
+    res_oot_m = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_oot_m["ok"] is False
+    by_id_m = {c["id"]: c for c in res_oot_m["checks"]}
+    assert by_id_m["namespace-packages"]["status"] == "fail"
+    assert by_id_m["package-data-skills"]["status"] == "warn"
+    manifest.unlink()
+
+    # 3. Moving the sources back in-tree under a normalized sub/../ path must PASS strictly.
+    shutil.rmtree(pkg_dir)
+    shutil.move(str(shared_app), str(pkg_dir))
+    (harness / "sub").mkdir(exist_ok=True)
+    setup_py.write_text(
+        """from setuptools import setup
+
+setup(
+    name="cli-anything-ootapp",
+    version="1.0.0",
+    packages=[
+        "cli_anything.ootapp",
+        "cli_anything.ootapp.core",
+        "cli_anything.ootapp.utils",
+        "cli_anything.ootapp.skills",
+    ],
+    package_dir={"cli_anything.ootapp": "sub/../cli_anything/ootapp"},
+    package_data={"cli_anything.ootapp": ["skills/*.md"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["cli-anything-ootapp=cli_anything.ootapp.ootapp_cli:main"]},
+    python_requires=">=3.10",
+)
+""",
+        encoding="utf-8",
+    )
+    res_in_tree = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_in_tree["ok"] is True, res_in_tree["checks"]
+
+
+def test_verify_prevents_unresolved_setup_py_package_data_from_cfg_fallback(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "pkgdata_cfg", "pdcapp")
+    setup_py = harness / "setup.py"
+    setup_cfg = harness / "setup.cfg"
+    setup_cfg.write_text(
+        """[options.package_data]
+cli_anything.pdcapp = skills/*.md
+""",
+        encoding="utf-8",
+    )
+
+    def _write_setup(pkg_data_expr: str) -> None:
+        setup_py.write_text(
+            f"""from setuptools import find_namespace_packages, setup
+
+setup(
+    name="cli-anything-pdcapp",
+    version="1.0.0",
+    packages=find_namespace_packages(include=["cli_anything.*"]),
+    package_data={pkg_data_expr},
+    entry_points={{"console_scripts": ["cli-anything-pdcapp=cli_anything.pdcapp.pdcapp_cli:main"]}},
+    python_requires=">=3.10",
+)
+""",
+            encoding="utf-8",
+        )
+
+    # 1. Exact repro from review 6087115964: truthy setup.py package_data with an unsupported
+    #    comprehension value suppresses setup.cfg [options.package_data] -> must WARN / strict FAIL.
+    for expr in (
+        '{"cli_anything.pdcapp": [p for p in ["*.txt"]]}',
+        "build_package_data()",
+    ):
+        _write_setup(expr)
+        res_bad = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res_bad["ok"] is False, (expr, res_bad["checks"])
+        pd_chk = {c["id"]: c for c in res_bad["checks"]}["package-data-skills"]
+        assert pd_chk["status"] == "warn", (expr, pd_chk)
+        assert "unverifiable package_data" in pd_chk["detail"], (expr, pd_chk)
+
+    # 2. Explicitly empty package_data={} in setup.py IS falsy in setuptools, so setup.cfg fallback applies.
+    _write_setup("{}")
+    res_cfg_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_cfg_ok["ok"] is True, res_cfg_ok["checks"]
+
+    # 3. Computed string expressions in setup.py package_data resolve statically and pass strictly.
+    setup_cfg.unlink()
+    _write_setup('{"cli_anything." + "pdcapp": ["skills/" + "*.md"]}')
+    res_comp_ok = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert res_comp_ok["ok"] is True, res_comp_ok["checks"]
+
+
+
 
 
 
