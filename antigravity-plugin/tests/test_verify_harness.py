@@ -4259,3 +4259,257 @@ setup(
     ):
         res = _set_ep(good_target)
         assert res["ok"] is True, (good_target, res["checks"])
+
+
+def test_verify_enforces_hatch_package_path_collapsing_and_sources(
+    tmp_path: Path, monkeypatch
+) -> None:
+    harness = _create_valid_harness(tmp_path / "hatch_collapse", "hcoll")
+    (harness / "setup.py").unlink()
+
+    def _write_hatch(extra_section: str) -> None:
+        (harness / "pyproject.toml").write_text(
+            f"""[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-hcoll"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-hcoll = "cli_anything.hcoll.hcoll_cli:main"
+
+{extra_section}
+""",
+            encoding="utf-8",
+        )
+
+    # 1. packages = ["cli_anything/hcoll"] collapses to `hcoll/` in Hatch -> must fail.
+    for bad_section in (
+        '[tool.hatch.build.targets.wheel]\npackages = ["cli_anything/hcoll"]',
+        '[tool.hatch.build.targets.wheel]\npackages = ["cli_anything"]\nsources = {"cli_anything" = "vendor"}',
+        '[tool.hatch.build.targets.wheel]\npackages = ["cli_anything"]\nsources = {"" = "vendor"}',
+    ):
+        _write_hatch(bad_section)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is False, (bad_section, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["namespace-packages"]["status"] == "fail", bad_section
+
+    # Verify Py3.10 fallback matches tomllib on collapsed Hatch packages.
+    _write_hatch('[tool.hatch.build.targets.wheel]\npackages = ["cli_anything/hcoll"]')
+    with monkeypatch.context() as mp:
+        mp.setitem(sys.modules, "tomllib", None)
+        r310 = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert r310["ok"] is False
+        assert {c["id"]: c for c in r310["checks"]}["namespace-packages"]["status"] == "fail"
+
+    # 2. Preserving namespace via sources, only-include, or global [tool.hatch.build] passes.
+    for good_section in (
+        '[tool.hatch.build.targets.wheel]\npackages = ["cli_anything/hcoll"]\nsources = {"cli_anything/hcoll" = "cli_anything/hcoll"}',
+        '[tool.hatch.build.targets.wheel]\nonly-include = ["cli_anything/hcoll"]',
+        '[tool.hatch.build]\npackages = ["cli_anything"]',
+    ):
+        _write_hatch(good_section)
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (good_section, res["checks"])
+
+    # 3. Hatch wheel exclude removes SKILL.md or CLI module cleanly.
+    _write_hatch(
+        '[tool.hatch.build.targets.wheel]\npackages = ["cli_anything"]\nexclude = ["cli_anything/hcoll/skills/SKILL.md"]'
+    )
+    r_excl_skill = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_excl_skill["ok"] is False
+    assert {c["id"]: c for c in r_excl_skill["checks"]}["package-data-skills"]["status"] == "warn"
+
+    _write_hatch(
+        '[tool.hatch.build.targets.wheel]\npackages = ["cli_anything"]\nexclude = ["cli_anything/hcoll/hcoll_cli.py"]'
+    )
+    r_excl_cli = verify_harness.verify_harness(
+        harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+    )
+    assert r_excl_cli["ok"] is False
+    assert {c["id"]: c for c in r_excl_cli["checks"]}["console-script"]["status"] == "fail"
+
+    # 4. src/hcoll remapped into cli_anything/hcoll via exact sources passes, while
+    #    sources = {"src" = "cli_anything"} is overwritten by packages = ["src/hcoll"] -> fails.
+    src_h = _create_valid_harness(tmp_path / "hatch_src_map", "hsmap")
+    (src_h / "setup.py").unlink()
+    shutil.copytree(src_h / "cli_anything" / "hsmap", src_h / "src" / "hsmap")
+    for sec, expected_ok in (
+        ('[tool.hatch.build.targets.wheel]\npackages = ["src/hsmap"]\nsources = {"src" = "cli_anything"}', False),
+        ('[tool.hatch.build.targets.wheel]\npackages = ["src/hsmap"]\nsources = {"src/hsmap" = "cli_anything/hsmap"}', True),
+    ):
+        (src_h / "pyproject.toml").write_text(
+            f"""[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-anything-hsmap"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+cli-anything-hsmap = "cli_anything.hsmap.hsmap_cli:main"
+
+{sec}
+""",
+            encoding="utf-8",
+        )
+        res = verify_harness.verify_harness(
+            src_h, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is expected_ok, (sec, res["checks"])
+
+
+def test_verify_recognizes_aliased_click_group_decorators(tmp_path: Path) -> None:
+    harness = _create_valid_harness(tmp_path / "click_alias", "calias")
+    cli_py = harness / "cli_anything" / "calias" / "calias_cli.py"
+
+    valid_variants = [
+        # 1. `from click import group`
+        """from click import echo, group, option, pass_context
+
+@group(invoke_without_command=True)
+@option("--json", "use_json", is_flag=True)
+@option("--project", "project_path", default=None)
+@option("--dry-run", is_flag=True, default=False)
+@pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+        # 2. `import click as clk`
+        """import click as clk
+
+@clk.group(invoke_without_command=True)
+@clk.option("--json", "use_json", is_flag=True)
+@clk.option("--project", "project_path", default=None)
+@clk.option("--dry-run", is_flag=True, default=False)
+@clk.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        clk.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+        # 3. `from click.decorators import group as grp` + spaces around `invoke_without_command = True`
+        """from click import echo, option, pass_context
+from click.decorators import group as grp
+
+@grp(invoke_without_command = True)
+@option("--json", "use_json", is_flag=True)
+@option("--project", "project_path", default=None)
+@option("--dry-run", is_flag=True, default=False)
+@pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+        # 4. `@command(cls=Group, ...)`
+        """from click import Group, command, echo, option, pass_context
+
+@command(cls=Group, invoke_without_command=True)
+@option("--json", "use_json", is_flag=True)
+@option("--project", "project_path", default=None)
+@option("--dry-run", is_flag=True, default=False)
+@pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+        # 5. Local variable alias `make_group = clk.group`
+        """import click as clk
+
+make_group = clk.group
+
+@make_group(invoke_without_command=True)
+@clk.option("--json", "use_json", is_flag=True)
+@clk.option("--project", "project_path", default=None)
+@clk.option("--dry-run", is_flag=True, default=False)
+@clk.pass_context
+def cli(ctx, use_json, project_path, dry_run):
+    if ctx.invoked_subcommand is None:
+        clk.echo("repl")
+
+@cli.result_callback()
+def auto_save(result, use_json, project_path, dry_run):
+    return result
+
+def main():
+    cli()
+""",
+    ]
+
+    for idx, src in enumerate(valid_variants):
+        cli_py.write_text(src, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=True, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert res["ok"] is True, (idx, res["checks"])
+        assert {c["id"]: c for c in res["checks"]}["click-groups"]["status"] == "pass", idx
+
+    # Invalid variants: non-Click `@group` or Click `@command` without a Group must fail `click-groups`.
+    for bad_src in (
+        """def group(**kwargs):
+    return lambda fn: fn
+
+@group(invoke_without_command=True)
+def cli():
+    "--json"
+
+def main():
+    cli()
+""",
+        """from click import command, option
+
+@command()
+@option("--json", is_flag=True)
+def cli(json):
+    pass
+
+def main():
+    cli()
+""",
+    ):
+        cli_py.write_text(bad_src, encoding="utf-8")
+        res = verify_harness.verify_harness(
+            harness, strict=False, canonical_repl_skin=CANONICAL_REPL_SKIN
+        )
+        assert {c["id"]: c for c in res["checks"]}["click-groups"]["status"] == "fail", bad_src

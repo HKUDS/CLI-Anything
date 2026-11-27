@@ -711,6 +711,7 @@ def _resolve_module_attr_path(
     parent_selected: bool = False,
     pkg_spec: dict[str, Any] | None = None,
     excluded_files: set[str] | None = None,
+    hatch_exclude: list[str] | None = None,
     check_manifest: bool = False,
     _visited: frozenset[tuple[Path, tuple[str, ...]]] = frozenset(),
 ) -> tuple[bool, str | None, Path | None]:
@@ -899,8 +900,8 @@ def _resolve_module_attr_path(
                         direct_local_defs.discard(bound)
                         non_callable_local_defs.discard(bound)
                         _clear_reexports(bound)
-                    if alias.name == "click":
-                        click_modules.add(alias.asname or "click")
+                    if alias.name in {"click", "click.decorators", "click.core"}:
+                        click_modules.add(alias.asname or alias.name.split(".", 1)[0])
                     if alias.asname:
                         mod_imports.setdefault(alias.asname, []).append(alias.name)
                     else:
@@ -913,6 +914,8 @@ def _resolve_module_attr_path(
                 is_rel = stmt.level > 0
                 for alias in stmt.names:
                     if alias.name == "*":
+                        if stmt.level == 0 and stmt.module in {"click", "click.decorators", "click.core"}:
+                            click_factories.update({"group", "command", "Group", "Command"})
                         if resolved_mod:
                             star_imports.append((resolved_mod, is_rel))
                         continue
@@ -921,7 +924,7 @@ def _resolve_module_attr_path(
                         direct_local_defs.discard(bound)
                         non_callable_local_defs.discard(bound)
                         _clear_reexports(bound)
-                    if stmt.level == 0 and stmt.module == "click" and alias.name in {
+                    if stmt.level == 0 and stmt.module in {"click", "click.decorators", "click.core"} and alias.name in {
                         "group",
                         "command",
                         "Group",
@@ -995,6 +998,8 @@ def _resolve_module_attr_path(
             rel_posix = ""
         if excluded_files and rel_posix and _poetry_is_excluded(rel_posix, excluded_files):
             return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by packaging rules"
+        if hatch_exclude and rel_posix and _hatch_is_excluded(rel_posix, hatch_exclude):
+            return f"re-exported module '{target_mod}' ({rel_posix}) is excluded from wheel by Hatch exclude rules"
         if check_manifest and rel_posix and not _manifest_covers_skill(
             harness, rel_posix, initially_included=True
         ):
@@ -1042,6 +1047,7 @@ def _resolve_module_attr_path(
             parent_selected=parent_selected,
             pkg_spec=pkg_spec,
             excluded_files=excluded_files,
+            hatch_exclude=hatch_exclude,
             check_manifest=check_manifest,
             _visited=next_visited,
         )
@@ -1081,6 +1087,7 @@ def _resolve_module_attr_path(
                     parent_selected=parent_selected,
                     pkg_spec=pkg_spec,
                     excluded_files=excluded_files,
+                    hatch_exclude=hatch_exclude,
                     check_manifest=check_manifest,
                     _visited=next_visited,
                 )
@@ -1198,6 +1205,7 @@ def _resolve_module_attr_path(
                 parent_selected=parent_selected,
                 pkg_spec=pkg_spec,
                 excluded_files=excluded_files,
+                hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
                 _visited=next_visited,
             )
@@ -1216,6 +1224,7 @@ def _resolve_module_attr_path(
                 parent_selected=parent_selected,
                 pkg_spec=pkg_spec,
                 excluded_files=excluded_files,
+                hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
                 _visited=next_visited,
             )
@@ -1467,6 +1476,7 @@ def _resolve_module_attr_path(
                 parent_selected=parent_selected,
                 pkg_spec=pkg_spec,
                 excluded_files=excluded_files,
+                hatch_exclude=hatch_exclude,
                 check_manifest=check_manifest,
                 _visited=next_visited,
             )
@@ -1753,6 +1763,7 @@ def _validate_console_script_target(
     pkg_spec: dict[str, Any] | None = None,
     base_package_dir: dict[str, str] | None = None,
     excluded_files: set[str] | None = None,
+    hatch_exclude: list[str] | None = None,
     check_manifest: bool = False,
 ) -> tuple[bool, str, Path | None]:
     """Validate that a console_scripts target resolves to an importable harness callable."""
@@ -1804,6 +1815,9 @@ def _validate_console_script_target(
     if excluded_files and mod_rel and _poetry_is_excluded(mod_rel, excluded_files):
         return False, f"module '{module_path}' is excluded from wheel by packaging rules", None
 
+    if hatch_exclude and mod_rel and _hatch_is_excluded(mod_rel, hatch_exclude):
+        return False, f"module '{module_path}' is excluded from wheel by Hatch exclude rules", None
+
     if check_manifest and mod_rel and not _manifest_covers_skill(
         harness, mod_rel, initially_included=True
     ):
@@ -1834,6 +1848,7 @@ def _validate_console_script_target(
         parent_selected=parent_selected,
         pkg_spec=pkg_spec,
         excluded_files=excluded_files,
+        hatch_exclude=hatch_exclude,
         check_manifest=check_manifest,
     )
     if not ok_sym:
@@ -1886,27 +1901,164 @@ def _explicit_packages_cover(target_pkg: str | None, packages: list[str]) -> boo
     return any(re.match(r"^cli_anything\.[A-Za-z0-9_]+", p) for p in packages)
 
 
+def _hatch_norm_rel_path(raw: str) -> str:
+    """Mirror hatchling.builders.utils.normalize_relative_path() using POSIX separators."""
+    cleaned = _normalize_platform_seps(raw).strip("/")
+    if not cleaned:
+        return ""
+    norm = PurePosixPath(cleaned).as_posix()
+    return "" if norm == "." else norm
+
+
+def _hatch_norm_rel_dir(raw: str) -> str:
+    """Mirror hatchling.builders.utils.normalize_relative_directory() using POSIX separators."""
+    norm = _hatch_norm_rel_path(raw)
+    return f"{norm}/" if norm else ""
+
+
+def _hatch_build_sources_map(
+    raw_sources: Any,
+    norm_packages: list[str],
+) -> dict[str, str]:
+    """Mirror hatchling.builders.config.BuilderConfig.sources (including package-path collapsing)."""
+    sources: dict[str, str] = {}
+    if isinstance(raw_sources, list):
+        for src in raw_sources:
+            if isinstance(src, str) and src and not _is_absolute_pattern(src):
+                sources[_hatch_norm_rel_dir(src)] = ""
+    elif isinstance(raw_sources, dict):
+        for src, repl in raw_sources.items():
+            if not isinstance(src, str) or not isinstance(repl, str):
+                continue
+            if (src and _is_absolute_pattern(src)) or (repl and _is_absolute_pattern(repl)):
+                continue
+            norm_repl = _hatch_norm_rel_path(repl)
+            repl_str = f"{norm_repl}/" if norm_repl else ""
+            src_key = _hatch_norm_rel_dir(src) if src else ""
+            sources[src_key] = repl_str
+
+    for rel_path in norm_packages:
+        if "/" in rel_path:
+            parent_dir = rel_path.rsplit("/", 1)[0]
+            if parent_dir and _hatch_norm_rel_dir(rel_path) not in sources:
+                sources[_hatch_norm_rel_dir(parent_dir)] = ""
+
+    return dict(sorted(sources.items()))
+
+
+def _hatch_distribution_path(rel_posix: str, sources_map: dict[str, str]) -> str:
+    """Mirror hatchling.builders.config.BuilderConfig.get_distribution_path()."""
+    for source, replacement in sources_map.items():
+        if not source:
+            return replacement + rel_posix
+        if rel_posix.startswith(source):
+            return rel_posix.replace(source, replacement, 1)
+    return rel_posix
+
+
+def _hatch_is_excluded(rel_posix: str, exclude_patterns: list[str]) -> bool:
+    """Evaluate Hatch gitignore-style wheel exclude patterns against a project-relative POSIX path."""
+    if not exclude_patterns:
+        return False
+    rel = _hatch_norm_rel_path(rel_posix)
+    if not rel:
+        return False
+    parts = rel.split("/")
+    ancestor_dirs = ["/".join(parts[:i]) for i in range(1, len(parts))]
+
+    excluded = False
+    for raw in exclude_patterns:
+        if not isinstance(raw, str):
+            continue
+        pat = raw.strip()
+        if not pat or pat.startswith("#"):
+            continue
+        negated = pat.startswith("!")
+        if negated:
+            pat = pat[1:]
+            if not pat:
+                continue
+        dir_only = pat.endswith("/")
+        pat_clean = pat.rstrip("/")
+        anchored = pat_clean.startswith("/") or ("/" in pat_clean)
+        pat_clean = pat_clean.lstrip("/")
+        if not pat_clean:
+            continue
+
+        matched = False
+        if dir_only:
+            if anchored:
+                matched = any(
+                    _glob_matches_relpath(anc, pat_clean, recursive=True) for anc in ancestor_dirs
+                )
+            else:
+                matched = any(fnmatch.fnmatchcase(p, pat_clean) for p in parts[:-1])
+        else:
+            if anchored:
+                matched = _glob_matches_relpath(rel, pat_clean, recursive=True) or any(
+                    _glob_matches_relpath(anc, pat_clean, recursive=True) for anc in ancestor_dirs
+                )
+            else:
+                matched = any(fnmatch.fnmatchcase(p, pat_clean) for p in parts)
+
+        if matched:
+            excluded = not negated
+    return excluded
+
+
 def _hatch_packages_dir(
     target_pkg: str | None,
     packages: list[str],
     harness: Path | None = None,
+    *,
+    only_include: list[str] | None = None,
+    raw_sources: Any = None,
 ) -> dict[str, str] | None:
-    """Return effective package_dir mapping if Hatch wheel packages cover target_pkg, else None."""
+    """Return effective package_dir mapping if Hatch wheel selection ships target_pkg under cli_anything/.
+
+    Mirrors hatchling's `BuilderConfig.sources` + `get_distribution_path()` rewriting:
+    multi-segment `packages` entries (e.g. `packages = ["cli_anything/demoapp"]`) strip their
+    parent directory unless explicitly preserved in `sources`, whereas `only-include` preserves
+    the path prefix unless rewritten by `sources`.
+    """
     mod = target_pkg.split(".", 1)[1] if (target_pkg and "." in target_pkg) else None
-    for raw in packages:
-        norm = _normalize_platform_seps(raw).strip("/")
-        if not norm:
-            continue
-        if norm == "cli_anything" or norm.endswith("/cli_anything"):
-            if harness is None or not mod:
-                return {} if norm == "cli_anything" else {"cli_anything": norm}
-            if (harness / norm / mod / "__init__.py").is_file():
-                return {} if norm == "cli_anything" else {"cli_anything": norm}
-        elif mod and (norm == f"cli_anything/{mod}" or norm.endswith(f"/cli_anything/{mod}")):
-            if harness is None or (harness / norm / "__init__.py").is_file():
-                return {} if norm == f"cli_anything/{mod}" else {target_pkg: norm}  # type: ignore[dict-item]
-        elif not mod and ("cli_anything/" in norm):
-            return {}
+    norm_packages = sorted(
+        p
+        for raw in packages
+        if isinstance(raw, str)
+        and not _is_absolute_pattern(raw)
+        and (p := _hatch_norm_rel_path(raw))
+        and not p.startswith("..")
+    )
+    norm_only_inc = [
+        p
+        for raw in (only_include or [])
+        if isinstance(raw, str)
+        and not _is_absolute_pattern(raw)
+        and (p := _hatch_norm_rel_path(raw))
+        and not p.startswith("..")
+    ]
+    selected_roots = norm_only_inc or norm_packages
+    if not selected_roots:
+        return None
+    sources_map = _hatch_build_sources_map(raw_sources, norm_packages)
+
+    expected_init = f"cli_anything/{mod}/__init__.py" if mod else None
+    for sel_root in selected_roots:
+        if mod and expected_init:
+            # Case 1: sel_root is the namespace root (`cli_anything` or `src/cli_anything`).
+            if _hatch_distribution_path(f"{sel_root}/{mod}/__init__.py", sources_map) == expected_init:
+                if harness is None or (harness / sel_root / mod / "__init__.py").is_file():
+                    return {} if sel_root == "cli_anything" else {"cli_anything": sel_root}
+            # Case 2: sel_root is the app package dir itself (e.g. `only-include = ["cli_anything/demoapp"]`
+            # or `packages = ["src/demoapp"]` with `sources = {"src/demoapp" = "cli_anything/demoapp"}`).
+            if _hatch_distribution_path(f"{sel_root}/__init__.py", sources_map) == expected_init:
+                if harness is None or (harness / sel_root / "__init__.py").is_file():
+                    return {} if sel_root == f"cli_anything/{mod}" else {target_pkg: sel_root}  # type: ignore[dict-item]
+        else:
+            dist_dir = _hatch_distribution_path(f"{sel_root}/", sources_map)
+            if dist_dir == "cli_anything/" or dist_dir.startswith("cli_anything/"):
+                return {} if sel_root == "cli_anything" else {"cli_anything": sel_root}
     return None
 
 
@@ -2558,6 +2710,9 @@ def _empty_pyproject_info() -> dict[str, Any]:
         "declares_py_modules": False,
         "py_modules": [],
         "hatch_packages": [],
+        "hatch_only_include": [],
+        "hatch_sources": None,
+        "hatch_exclude": [],
         "poetry_wheel_packages": [],
         "has_project_table": False,
         "scripts_dynamic": False,
@@ -2758,12 +2913,50 @@ def _inspect_pyproject_data(
         hatch_build = hatch_cfg.get("build") if isinstance(hatch_cfg, dict) else None
         hatch_targets = hatch_build.get("targets") if isinstance(hatch_build, dict) else None
         hatch_wheel = hatch_targets.get("wheel") if isinstance(hatch_targets, dict) else None
-        hatch_pkgs = hatch_wheel.get("packages") if isinstance(hatch_wheel, dict) else None
-        if isinstance(hatch_pkgs, list):
+        hatch_wheel_dict = hatch_wheel if isinstance(hatch_wheel, dict) else {}
+        hatch_build_dict = hatch_build if isinstance(hatch_build, dict) else {}
+
+        hatch_pkgs = (
+            hatch_wheel_dict["packages"]
+            if "packages" in hatch_wheel_dict
+            else hatch_build_dict.get("packages")
+        )
+        hatch_only_inc = (
+            hatch_wheel_dict["only-include"]
+            if "only-include" in hatch_wheel_dict
+            else hatch_build_dict.get("only-include")
+        )
+        hatch_sources = (
+            hatch_wheel_dict["sources"]
+            if "sources" in hatch_wheel_dict
+            else hatch_build_dict.get("sources")
+        )
+        hatch_excl = (
+            hatch_wheel_dict["exclude"]
+            if "exclude" in hatch_wheel_dict
+            else hatch_build_dict.get("exclude")
+        )
+        if isinstance(hatch_excl, list):
+            info["hatch_exclude"] = [x for x in hatch_excl if isinstance(x, str)]
+        info["hatch_sources"] = hatch_sources
+
+        if isinstance(hatch_pkgs, list) or isinstance(hatch_only_inc, list):
             info["declares_packages"] = True
-            str_pkgs = [p for p in hatch_pkgs if isinstance(p, str)]
+            str_pkgs = [p for p in hatch_pkgs if isinstance(p, str)] if isinstance(hatch_pkgs, list) else []
+            str_only_inc = (
+                [p for p in hatch_only_inc if isinstance(p, str)]
+                if isinstance(hatch_only_inc, list)
+                else []
+            )
             info["hatch_packages"] = str_pkgs
-            hatch_pkg_dir = _hatch_packages_dir(target_pkg, str_pkgs, harness=harness)
+            info["hatch_only_include"] = str_only_inc
+            hatch_pkg_dir = _hatch_packages_dir(
+                target_pkg,
+                str_pkgs,
+                harness=harness,
+                only_include=str_only_inc,
+                raw_sources=hatch_sources,
+            )
             if hatch_pkg_dir is not None:
                 info["namespace_ok"] = True
                 info["package_dir"].update(hatch_pkg_dir)
@@ -3339,14 +3532,30 @@ def _check_packaging(
                             shadowing_ns_module = rel_cand
                             break
     elif has_pyproject and pyproj_info["backend_kind"] == "hatch":
-        for raw_hp in pyproj_info["hatch_packages"]:
-            if not raw_hp or _is_absolute_pattern(raw_hp):
-                continue
-            norm_hp = _norm_pkg_dir_value(raw_hp)
-            if (norm_hp == "cli_anything.py" or norm_hp.endswith("/cli_anything.py")) and (
-                harness / norm_hp
-            ).is_file():
-                shadowing_ns_module = norm_hp
+        norm_hp_pkgs = sorted(
+            p
+            for raw in pyproj_info["hatch_packages"]
+            if isinstance(raw, str)
+            and not _is_absolute_pattern(raw)
+            and (p := _hatch_norm_rel_path(raw))
+            and not p.startswith("..")
+        )
+        norm_hp_only = [
+            p
+            for raw in pyproj_info["hatch_only_include"]
+            if isinstance(raw, str)
+            and not _is_absolute_pattern(raw)
+            and (p := _hatch_norm_rel_path(raw))
+            and not p.startswith("..")
+        ]
+        hp_sources = _hatch_build_sources_map(pyproj_info["hatch_sources"], norm_hp_pkgs)
+        for sel_hp in (norm_hp_only or norm_hp_pkgs):
+            if (
+                _hatch_distribution_path(sel_hp, hp_sources) == "cli_anything.py"
+                and (harness / sel_hp).is_file()
+                and not _hatch_is_excluded(sel_hp, pyproj_info["hatch_exclude"])
+            ):
+                shadowing_ns_module = sel_hp
                 break
 
     # In setuptools >= 61, pyproject.toml [tool.setuptools.packages*] takes precedence over setup.py/setup.cfg.
@@ -3553,6 +3762,7 @@ def _check_packaging(
                 pkg_spec=eff_pkg_spec,
                 base_package_dir=eff_base_package_dir,
                 excluded_files=poetry_excluded_files if (has_pyproject and pyproj_info["backend_kind"] == "poetry") else None,
+                hatch_exclude=pyproj_info["hatch_exclude"] if (has_pyproject and pyproj_info["backend_kind"] == "hatch") else None,
                 check_manifest=uses_setuptools,
             )
             if not ok_target:
@@ -3621,7 +3831,7 @@ def _check_packaging(
 
     skill_data_ok = False
     if has_pyproject and pyproj_info["backend_kind"] == "hatch":
-        # Hatch includes non-Python assets inside declared package directories automatically.
+        # Hatch includes non-Python assets inside selected package directories unless excluded.
         if pyproj_info["namespace_ok"] and target_pkg:
             raw_pkg_dir = _get_package_dir_rel(target_pkg, eff_package_dir)
             skill_path = (
@@ -3629,9 +3839,16 @@ def _check_packaging(
                 if raw_pkg_dir
                 else (harness / "skills" / "SKILL.md")
             )
-            skill_data_ok = skill_path.is_file()
+            if skill_path.is_file():
+                try:
+                    skill_rel = skill_path.relative_to(harness).as_posix()
+                except ValueError:
+                    skill_rel = f"{raw_pkg_dir}/skills/SKILL.md" if raw_pkg_dir else "skills/SKILL.md"
+                skill_data_ok = not _hatch_is_excluded(skill_rel, pyproj_info["hatch_exclude"])
+            else:
+                skill_data_ok = False
         else:
-            skill_data_ok = bool(pyproj_info["namespace_ok"])
+            skill_data_ok = False
     elif has_pyproject and pyproj_info["backend_kind"] == "poetry":
         # Poetry includes non-Python assets inside wheel-selected packages unless excluded
         # by [tool.poetry].exclude (and not re-included with format="wheel").
@@ -3796,6 +4013,157 @@ def _check_packaging(
     return checks, effective_module, declared_cli_files, eff_subpkg_dirs
 
 
+def _file_declares_click_group(py_file: Path) -> bool:
+    """Return True if py_file declares a Click command group (resolving import and local aliases)."""
+    text = _read_text(py_file)
+    try:
+        tree = ast.parse(text, filename=str(py_file))
+    except SyntaxError:
+        return "click" in text and ("@click.group" in text or "click.group" in text)
+
+    click_mod_aliases: set[str] = set()
+    group_factories: set[str] = set()
+    command_factories: set[str] = set()
+    group_classes: set[str] = set()
+
+    def _expr_is_click_group_factory(expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in group_factories:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {"group", "Group", "MultiCommand"}:
+                return True
+            if chain in {
+                ("click", "decorators", "group"),
+                ("click", "core", "Group"),
+                ("click", "core", "MultiCommand"),
+            } and "click" in click_mod_aliases:
+                return True
+        return False
+
+    def _expr_is_click_group_class(expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in group_classes:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] in {"Group", "MultiCommand"}:
+                return True
+            if chain in {("click", "core", "Group"), ("click", "core", "MultiCommand")} and "click" in click_mod_aliases:
+                return True
+        return False
+
+    def _expr_is_click_command_factory(expr: ast.AST) -> bool:
+        if isinstance(expr, ast.Name) and expr.id in command_factories:
+            return True
+        chain = _extract_attr_chain(expr)
+        if chain is not None:
+            if len(chain) == 2 and chain[0] in click_mod_aliases and chain[1] == "command":
+                return True
+            if chain == ("click", "decorators", "command") and "click" in click_mod_aliases:
+                return True
+        return False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in {"click", "click.decorators", "click.core"}:
+                    click_mod_aliases.add(alias.asname or alias.name.split(".", 1)[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module in {"click", "click.decorators", "click.core"}:
+                for alias in node.names:
+                    if alias.name == "*":
+                        group_factories.update({"group", "Group", "MultiCommand"})
+                        group_classes.update({"Group", "MultiCommand"})
+                        command_factories.add("command")
+                        continue
+                    bound = alias.asname or alias.name
+                    if alias.name in {"group", "Group", "MultiCommand"}:
+                        group_factories.add(bound)
+                    if alias.name in {"Group", "MultiCommand"}:
+                        group_classes.add(bound)
+                    if alias.name == "command":
+                        command_factories.add(bound)
+
+    if not click_mod_aliases and not group_factories and not group_classes and not command_factories:
+        return False
+
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                if node.name not in group_classes and any(
+                    _expr_is_click_group_class(b) for b in node.bases
+                ):
+                    group_classes.add(node.name)
+                    group_factories.add(node.name)
+                    changed = True
+            elif isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name):
+                        if tgt.id not in group_factories and _expr_is_click_group_factory(node.value):
+                            group_factories.add(tgt.id)
+                            changed = True
+                        if tgt.id not in group_classes and _expr_is_click_group_class(node.value):
+                            group_classes.add(tgt.id)
+                            changed = True
+                        if tgt.id not in command_factories and _expr_is_click_command_factory(node.value):
+                            command_factories.add(tgt.id)
+                            changed = True
+            elif isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
+                tname = node.target.id
+                if tname not in group_factories and _expr_is_click_group_factory(node.value):
+                    group_factories.add(tname)
+                    changed = True
+                if tname not in group_classes and _expr_is_click_group_class(node.value):
+                    group_classes.add(tname)
+                    changed = True
+                if tname not in command_factories and _expr_is_click_command_factory(node.value):
+                    command_factories.add(tname)
+                    changed = True
+
+    def _is_group_decorator_or_call(expr: ast.AST) -> bool:
+        if _expr_is_click_group_factory(expr):
+            return True
+        if isinstance(expr, ast.Call):
+            if _expr_is_click_group_factory(expr.func):
+                return True
+            if _expr_is_click_command_factory(expr.func):
+                for kw in expr.keywords:
+                    if kw.arg == "cls" and _expr_is_click_group_class(kw.value):
+                        return True
+        return False
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if any(_is_group_decorator_or_call(dec) for dec in node.decorator_list):
+                return True
+        elif isinstance(node, ast.Call):
+            if _is_group_decorator_or_call(node):
+                return True
+
+    return False
+
+
+def _file_has_invoke_without_command(py_file: Path, text: str) -> bool:
+    if "invoke_without_command=True" in text:
+        return True
+    try:
+        tree = ast.parse(text, filename=str(py_file))
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            for kw in node.keywords:
+                if (
+                    kw.arg == "invoke_without_command"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value is True
+                ):
+                    return True
+    return False
+
+
 def _check_cli_surface(
     module: Path,
     canonical_repl_skin: Path | None,
@@ -3810,7 +4178,7 @@ def _check_cli_surface(
 
     if cli_files:
         cli_texts = [_read_text(p) for p in cli_files]
-        if all("click" in t and ("@click.group" in t or "click.group" in t) for t in cli_texts):
+        if all(_file_declares_click_group(p) for p in cli_files):
             checks.append(CheckResult("click-groups", "cli", PASS, "uses Click command groups"))
         else:
             checks.append(CheckResult("click-groups", "cli", FAIL, "CLI does not declare a Click command group"))
@@ -3820,7 +4188,7 @@ def _check_cli_surface(
         else:
             checks.append(CheckResult("json-flag", "cli", FAIL, "missing --json flag in CLI entry point"))
 
-        if all("invoke_without_command=True" in t for t in cli_texts):
+        if all(_file_has_invoke_without_command(p, t) for p, t in zip(cli_files, cli_texts)):
             checks.append(CheckResult("repl-default", "cli", PASS, "default REPL mode configured (invoke_without_command=True)"))
         else:
             checks.append(
