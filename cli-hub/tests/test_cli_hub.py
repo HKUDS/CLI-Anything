@@ -2,6 +2,8 @@
 
 import json
 import os
+import signal
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -54,9 +56,10 @@ from cli_hub.installer import (
     _save_installed,
     _run_command,
     _install_strategy,
+    INSTALL_TIMEOUT_SECONDS,
     _UV_INSTALL_HINT,
 )
-from cli_hub.analytics import _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent, detect_invocation_context
+from cli_hub.analytics import _flush_pending, _is_enabled, track_event, track_install, track_uninstall as analytics_track_uninstall, track_visit, track_first_run, _detect_is_agent, detect_invocation_context
 from cli_hub.cli import main
 
 
@@ -917,7 +920,7 @@ class TestInstaller:
             data = _load_installed()
             assert data["gimp"]["version"] == "1.0.0"
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_success(self, mock_get_cli, mock_run):
@@ -935,7 +938,7 @@ class TestInstaller:
         assert not success
         assert "not found" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_pip_failure(self, mock_get_cli, mock_run):
@@ -945,6 +948,89 @@ class TestInstaller:
         success, msg = install_cli("gimp")
         assert not success
         assert "failed" in msg
+
+    @patch("cli_hub.installer._terminate_process_tree")
+    @patch("cli_hub.installer.subprocess.Popen")
+    def test_interrupted_install_reaps_process_tree(self, popen, terminate):
+        process = popen.return_value
+        process.communicate.side_effect = [KeyboardInterrupt(), ("", "")]
+        with pytest.raises(KeyboardInterrupt):
+            _run_command("installer | worker", timeout=60)
+        terminate.assert_called_once_with(process)
+        assert process.communicate.call_count == 2
+
+    @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="POSIX hangup")
+    @patch("cli_hub.installer._terminate_process_tree")
+    @patch("cli_hub.installer.subprocess.Popen")
+    def test_hangup_reaps_detached_installer_and_restores_handler(self, popen, terminate):
+        process = popen.return_value
+        with (
+            patch("cli_hub.installer.signal.getsignal", return_value=signal.SIG_DFL),
+            patch("cli_hub.installer.signal.signal") as register_signal,
+        ):
+            def communicate(timeout=None):
+                if timeout is not None:
+                    handler = register_signal.call_args.args[1]
+                    handler(signal.SIGHUP, None)
+                return "", ""
+
+            process.communicate.side_effect = communicate
+            with pytest.raises(SystemExit) as error:
+                _run_command("pip install example", timeout=60)
+
+        assert error.value.code == 128 + signal.SIGHUP
+        terminate.assert_called_once_with(process)
+        assert process.communicate.call_count == 2
+        register_signal.assert_called_with(signal.SIGHUP, signal.SIG_DFL)
+
+    @patch("cli_hub.installer.subprocess.Popen")
+    @patch("cli_hub.installer.get_cli")
+    @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
+    def test_install_pip_timeout_is_reported(self, mock_get_cli, mock_popen):
+        mock_get_cli.return_value = {
+            "name": "hacker-feeds-cli",
+            "display_name": "Hacker Feeds CLI",
+            "version": "1.0.0",
+            "entry_point": "cli-anything-hacker-feeds-cli",
+            "install_cmd": "pip install git+https://github.com/collectivewinca/hacker-feeds-cli.git",
+        }
+        process = mock_popen.return_value
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("pip install", INSTALL_TIMEOUT_SECONDS), ("", ""),
+        ]
+        with patch("cli_hub.installer._terminate_process_tree") as terminate:
+            success, msg = install_cli("hacker-feeds-cli")
+        terminate.assert_called_once_with(process)
+
+        assert not success
+        assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
+        assert process.communicate.call_args_list[0].kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
+        assert mock_popen.call_args.kwargs["start_new_session"] == (os.name != "nt")
+
+    @patch("cli_hub.installer.subprocess.Popen")
+    @patch("cli_hub.installer.get_cli")
+    def test_install_command_timeout_is_reported(self, mock_get_cli, mock_popen):
+        mock_get_cli.return_value = {
+            "name": "hacker-feeds-cli",
+            "display_name": "Hacker Feeds CLI",
+            "version": "1.0.0",
+            "entry_point": "hacker-feeds-cli",
+            "_source": "public",
+            "install_strategy": "command",
+            "install_cmd": "pip install hacker-feeds-cli",
+        }
+        process = mock_popen.return_value
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("pip install", INSTALL_TIMEOUT_SECONDS), ("", ""),
+        ]
+        with patch("cli_hub.installer._terminate_process_tree") as terminate:
+            success, msg = install_cli("hacker-feeds-cli")
+        terminate.assert_called_once_with(process)
+
+        assert not success
+        assert f"timed out after {INSTALL_TIMEOUT_SECONDS} seconds" in msg
+        assert process.communicate.call_args_list[0].kwargs["timeout"] == INSTALL_TIMEOUT_SECONDS
+        assert mock_popen.call_args.kwargs["start_new_session"] == (os.name != "nt")
 
     @patch("cli_hub.installer.subprocess.run")
     @patch("cli_hub.installer.get_cli")
@@ -957,7 +1043,7 @@ class TestInstaller:
         assert success
         assert "GIMP" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_command_strategy_success(self, mock_get_cli, mock_run):
@@ -978,7 +1064,7 @@ class TestInstaller:
         assert success
         assert "1Password CLI" in msg
 
-    @patch("cli_hub.installer.subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "brew"))
+    @patch("cli_hub.installer.subprocess.Popen", side_effect=FileNotFoundError(2, "No such file or directory", "brew"))
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     def test_install_command_strategy_missing_executable(self, mock_get_cli, mock_run):
@@ -1044,7 +1130,7 @@ class TestUvStrategy:
         cli = {**GENERATE_VEO_CLI, "install_strategy": "command"}
         assert _install_strategy(cli) == "command"
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
     @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
@@ -1096,7 +1182,7 @@ class TestUvStrategy:
         assert success
         assert "Generate Veo Video" in msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer._run_process")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer._find_uv", return_value="/usr/bin/uv")
     def test_install_uv_failure_propagated(self, mock_find_uv, mock_get_cli, mock_run):
@@ -1171,33 +1257,37 @@ class TestScriptStrategy:
 
     # ── Full install flow ──────────────────────────────────────────────
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_success(self, mock_get_cli, mock_run):
+    def test_install_jimeng_success(self, mock_get_cli, mock_popen):
         """install_cli('jimeng') succeeds and invokes the pipe command via shell."""
         mock_get_cli.return_value = JIMENG_CLI
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_process = MagicMock(returncode=0)
+        mock_process.communicate.return_value = ("", "")
+        mock_popen.return_value = mock_process
 
         success, msg = install_cli("jimeng")
 
         assert success, f"Expected success but got: {msg}"
         assert "Jimeng" in msg
 
-        mock_run.assert_called_once()
-        _, kwargs = mock_run.call_args
+        mock_popen.assert_called_once()
+        _, kwargs = mock_popen.call_args
         assert kwargs.get("shell") is True
-        assert "| bash" in mock_run.call_args[0][0]
+        assert "| bash" in mock_popen.call_args[0][0]
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_failure_propagated(self, mock_get_cli, mock_run):
+    def test_install_jimeng_failure_propagated(self, mock_get_cli, mock_popen):
         """A non-zero exit from the curl|bash script surfaces as failure."""
         mock_get_cli.return_value = JIMENG_CLI
-        mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="curl: (6) Could not resolve host"
+        mock_process = MagicMock(returncode=1)
+        mock_process.communicate.return_value = (
+            "", "curl: (6) Could not resolve host"
         )
+        mock_popen.return_value = mock_process
 
         success, msg = install_cli("jimeng")
 
@@ -1215,14 +1305,16 @@ class TestScriptStrategy:
         # Should mention the CLI name or explain no command available — never crash
         assert msg
 
-    @patch("cli_hub.installer.subprocess.run")
+    @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
     @patch("cli_hub.installer.INSTALLED_FILE", Path(tempfile.mktemp()))
-    def test_install_jimeng_recorded_in_installed_json(self, mock_get_cli, mock_run):
+    def test_install_jimeng_recorded_in_installed_json(self, mock_get_cli, mock_popen):
         """After a successful install, jimeng appears in installed.json."""
         installed_file = Path(tempfile.mktemp())
         mock_get_cli.return_value = JIMENG_CLI
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_process = MagicMock(returncode=0)
+        mock_process.communicate.return_value = ("", "")
+        mock_popen.return_value = mock_process
 
         with patch("cli_hub.installer.INSTALLED_FILE", installed_file):
             success, _ = install_cli("jimeng")
@@ -1249,6 +1341,16 @@ class TestAnalytics:
     def test_analytics_disabled_by_true(self):
         with patch.dict(os.environ, {"CLI_HUB_NO_ANALYTICS": "true"}):
             assert not _is_enabled()
+
+    @patch("cli_hub.analytics.time.monotonic", side_effect=(0, 0, 2))
+    def test_flush_pending_uses_one_exit_deadline(self, _mock_monotonic):
+        first_thread = MagicMock()
+        second_thread = MagicMock()
+        with patch("cli_hub.analytics._pending_threads", [first_thread, second_thread]):
+            _flush_pending()
+
+        first_thread.join.assert_called_once_with(timeout=3)
+        second_thread.join.assert_called_once_with(timeout=1)
 
     @patch("cli_hub.analytics._send_event")
     def test_track_event_sends_request(self, mock_send):

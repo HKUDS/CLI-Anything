@@ -6,6 +6,7 @@ import platform
 import re
 import sys
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -71,11 +72,15 @@ _PARENT_PROCESS_RULES = (
 
 
 def _flush_pending():
-    """Wait for in-flight analytics requests before process exit."""
+    """Wait briefly for analytics requests without delaying exit per event."""
     with _lock:
         threads = list(_pending_threads)
+    deadline = time.monotonic() + 3
     for t in threads:
-        t.join(timeout=3)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        t.join(timeout=remaining)
 
 
 atexit.register(_flush_pending)

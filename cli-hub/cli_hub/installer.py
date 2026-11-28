@@ -1,10 +1,13 @@
 """Install, uninstall, and manage CLIs and matrices."""
 
 import json
+import os
 import shlex
+import signal
 import shutil
 import subprocess
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -14,6 +17,7 @@ from cli_hub.matrix_skill import render_matrix_skill_file
 
 INSTALLED_FILE = Path.home() / ".cli-hub" / "installed.json"
 MATRIX_STATE_FILE = Path.home() / ".cli-hub" / "matrix_state.json"
+INSTALL_TIMEOUT_SECONDS = 600
 
 
 def _load_installed():
@@ -67,7 +71,93 @@ _UV_INSTALL_HINT = (
 _SHELL_METACHARACTERS = ("|", "&&", "||", ";", "$(", "`")
 
 
-def _run_command(cmd):
+def _run_process(command, *, shell=False, timeout=None):
+    """Run a package-manager process and turn common failures into results."""
+    try:
+        if timeout is None:
+            return subprocess.run(command, shell=shell, text=True, capture_output=True, check=False)
+        return _run_timed_process(command, shell=shell, timeout=timeout)
+    except FileNotFoundError as exc:
+        parts = shlex.split(command) if isinstance(command, str) else command
+        missing = exc.filename or (parts[0] if parts else "unknown command")
+        return subprocess.CompletedProcess(command, 127, "", f"Command not found: {missing}")
+
+
+def _run_timed_process(command, *, shell, timeout):
+    process = None
+    hangup_received = False
+
+    def handle_hangup(signum, _frame):
+        nonlocal hangup_received
+        if hangup_received:
+            return
+        hangup_received = True
+        if process is not None:
+            raise SystemExit(128 + signum)
+
+    # A detached group no longer receives the terminal's hangup. Turn the
+    # default parent action into an exit that runs our cleanup first.
+    trap_hangup = (
+        hasattr(signal, "SIGHUP")
+        and threading.current_thread() is threading.main_thread()
+        and signal.getsignal(signal.SIGHUP) == signal.SIG_DFL
+    )
+    if trap_hangup:
+        signal.signal(signal.SIGHUP, handle_hangup)
+
+    try:
+        try:
+            process = subprocess.Popen(
+                command, shell=shell, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=os.name != "nt",
+            )
+            if hangup_received:
+                raise SystemExit(128 + signal.SIGHUP)
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+            stdout, stderr = process.communicate()
+            message = f"Command timed out after {timeout} seconds."
+            return subprocess.CompletedProcess(command, 124, stdout, f"{message}\n{stderr}" if stderr else message)
+        except BaseException:
+            if process is not None:
+                _terminate_process_tree(process)
+                process.communicate()
+            raise
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    finally:
+        if trap_hangup:
+            signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+
+def _terminate_process_tree(process):
+    """Stop a timed-out installer and any processes it started."""
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _run_command(cmd, timeout=None):
     """Run a command string.
 
     Uses shell=True when the command contains shell operators (pipes, &&, etc.)
@@ -75,21 +165,11 @@ def _run_command(cmd):
     Commands come from the trusted registry, not from user input.
     """
     use_shell = any(c in cmd for c in _SHELL_METACHARACTERS)
-    try:
-        return subprocess.run(
-            cmd if use_shell else shlex.split(cmd),
-            capture_output=True,
-            text=True,
-            shell=use_shell,
-        )
-    except FileNotFoundError as exc:
-        missing = exc.filename or shlex.split(cmd)[0]
-        return subprocess.CompletedProcess(
-            args=cmd,
-            returncode=127,
-            stdout="",
-            stderr=f"Command not found: {missing}",
-        )
+    return _run_process(
+        cmd if use_shell else shlex.split(cmd),
+        shell=use_shell,
+        timeout=timeout,
+    )
 
 
 def _command_exists(cmd):
@@ -123,10 +203,11 @@ def _generic_install(cli):
     install_cmd = cli.get("install_cmd")
     if not install_cmd:
         return False, f"No install command is defined for {cli['display_name']}."
-    result = _run_command(install_cmd)
+    result = _run_command(install_cmd, timeout=INSTALL_TIMEOUT_SECONDS)
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"Install failed:\n{result.stderr or result.stdout}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"Install failed:\n{error}"
 
 
 def _generic_uninstall(cli):
@@ -183,13 +264,14 @@ def _bundled_update(cli):
 
 def _pip_install(cli):
     install_cmd = cli["install_cmd"]
-    result = subprocess.run(
+    result = _run_process(
         [sys.executable, "-m", "pip", "install"] + install_cmd.replace("pip install ", "").split(),
-        capture_output=True, text=True
+        timeout=INSTALL_TIMEOUT_SECONDS,
     )
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"pip install failed:\n{result.stderr}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"pip install failed:\n{error}"
 
 
 def _pip_uninstall(cli):
@@ -221,10 +303,11 @@ def _pip_update(cli):
 def _uv_install(cli):
     if _find_uv() is None:
         return False, _UV_INSTALL_HINT
-    result = _run_command(cli["install_cmd"])
+    result = _run_command(cli["install_cmd"], timeout=INSTALL_TIMEOUT_SECONDS)
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"uv install failed:\n{result.stderr or result.stdout}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"uv install failed:\n{error}"
 
 
 def _uv_uninstall(cli):
@@ -263,13 +346,14 @@ def _npm_install(cli):
             "  Linux: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs\n"
             "  Windows: Download from https://nodejs.org"
         )
-    result = subprocess.run(
+    result = _run_process(
         [npm, "install", "-g", cli["npm_package"]],
-        capture_output=True, text=True
+        timeout=INSTALL_TIMEOUT_SECONDS,
     )
     if result.returncode == 0:
         return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
-    return False, f"npm install failed:\n{result.stderr}"
+    error = result.stderr or result.stdout or f"Command exited with status {result.returncode}."
+    return False, f"npm install failed:\n{error}"
 
 
 def _npm_uninstall(cli):
