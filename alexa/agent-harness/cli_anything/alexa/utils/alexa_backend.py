@@ -352,12 +352,22 @@ def verify() -> dict[str, Any]:
 
 # ── Devices ──────────────────────────────────────────────────────────
 
+# Email of the account the most recent fetch_devices() actually used, so the
+# cache is tagged with the fetching session's account even if another
+# process switched accounts meanwhile.
+last_fetch_account: str | None = None
+
+
 def fetch_devices() -> list[dict[str, Any]]:
     """Raw device records from Amazon."""
+    global last_fetch_account
     alexapy = _alexapy()
 
     async def _go(login, account):
+        global last_fetch_account
+        last_fetch_account = account.get("email")
         return await alexapy.AlexaAPI.get_devices(login) or []
+    last_fetch_account = None
     return run(lambda: _with_session(_go))
 
 
@@ -382,9 +392,10 @@ def _current_email() -> str | None:
     return (account or {}).get("email")
 
 
-def cache_devices(devices: list[dict[str, Any]]) -> None:
-    """Cache the device list, tagged with the account it belongs to."""
-    _atomic_write_json(config_dir() / "devices.json", {"account": _current_email(), "devices": devices})
+def cache_devices(devices: list[dict[str, Any]], account: str | None = None) -> None:
+    """Cache the device list, tagged with the account it was fetched for."""
+    _atomic_write_json(config_dir() / "devices.json",
+                       {"account": account or _current_email(), "devices": devices})
 
 
 def cached_devices() -> list[dict[str, Any]] | None:
@@ -432,12 +443,16 @@ async def _execute(login, account, action: dict[str, Any]) -> dict[str, Any]:
         return {"sent": True, "response": result}
 
     if op == "announce":
-        first = action["devices"][0]
-        api = alexapy.AlexaAPI(_DeviceAdapter(first, locale), login)
-        await api.send_announcement(action["text"], title=action["title"],
-                                    customer_id=first.get("owner_customer_id") or None,
-                                    targets=[d["serial"] for d in action["devices"]], queue_delay=0)
-        return {"sent": True}
+        # Each owner's devices go in their own request, sent as that owner, so
+        # announcements across a shared household reach every member's Echos.
+        batches: dict[str | None, list[dict[str, Any]]] = {}
+        for d in action["devices"]:
+            batches.setdefault(d.get("owner_customer_id") or None, []).append(d)
+        for owner, devs in batches.items():
+            api = alexapy.AlexaAPI(_DeviceAdapter(devs[0], locale), login)
+            await api.send_announcement(action["text"], title=action["title"], customer_id=owner,
+                                        targets=[d["serial"] for d in devs], queue_delay=0)
+        return {"sent": True, "requests": len(batches)}
 
     api = alexapy.AlexaAPI(_DeviceAdapter(action["device"], locale), login)
     # In shared households a device may belong to another member; act as its owner.

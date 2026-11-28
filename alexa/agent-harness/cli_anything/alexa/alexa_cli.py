@@ -126,7 +126,7 @@ def _devices(refresh: bool = True) -> list[dict[str, Any]]:
         why = "Dry run" if _dry_run else "--cached"
         raise dev.DeviceNotFound(f"{why} needs a cached device list. Run `device list` once while logged in.")
     devices = [dev.normalize(d) for d in backend.fetch_devices()]
-    backend.cache_devices(devices)
+    backend.cache_devices(devices, account=backend.last_fetch_account)
     return devices
 
 

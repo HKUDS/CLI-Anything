@@ -747,3 +747,31 @@ def test_json_repl_usage_errors_are_json(fake_backend, monkeypatch):
     data = json.loads(result.stdout)
     assert data["ok"] is False and data["error"] == "usage_error"
     assert fake_backend == []
+
+
+# ── tenth Codex review round (commit 834d1a7) ─────────────────────────
+
+def test_announce_partitions_by_owner(monkeypatch):
+    import asyncio
+    _FakeAPI.calls = []
+    monkeypatch.setattr(backend, "_alexapy", lambda: _FakeAlexapy)
+    devs = [{"serial": "A1", "type": "T", "owner_customer_id": "ME"},
+            {"serial": "B1", "type": "T", "owner_customer_id": "THEM"},
+            {"serial": "A2", "type": "T", "owner_customer_id": "ME"}]
+    result = asyncio.run(backend._execute(object(), {}, act.announce(devs, "hello")))
+    sent = {c[3]["customer_id"]: c[3]["targets"] for c in _FakeAPI.calls}
+    assert sent == {"ME": ["A1", "A2"], "THEM": ["B1"]} and result["requests"] == 2
+
+
+def test_cache_tagged_with_fetching_account(home, monkeypatch):
+    backend.save_account({"email": "a@b.c", "domain": "amazon.com", "oauth": {"refresh_token": "x"}})
+
+    def fetch_as_a_then_switch():
+        backend.last_fetch_account = "a@b.c"  # session ran as account A...
+        backend.save_account({"email": "b@b.c", "domain": "amazon.com",
+                              "oauth": {"refresh_token": "y"}})  # ...meanwhile login switched to B
+        return RAW_DEVICES
+
+    monkeypatch.setattr(backend, "fetch_devices", fetch_as_a_then_switch)
+    run("device", "list")
+    assert backend.cached_devices() is None  # A's devices are not shown for B
