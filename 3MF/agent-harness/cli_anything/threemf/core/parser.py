@@ -32,6 +32,21 @@ _KNOWN_NS: dict[str, str] = {
     "b": NS_BAMBU,
 }
 
+#: Millimetres per 3MF core model unit.  The 3MF core specification defines
+#: these six units for ``<model unit="...">``; geometry routines in this
+#: package (bounds, tolerances, ``resize --diameter``) are defined in mm, so
+#: :func:`parse_3mf` normalises coordinates with these factors and
+#: :func:`write_3mf` converts them back to the archive unit.
+UNIT_TO_MM: dict[str, float] = {
+    "micron": 0.001,
+    "millimeter": 1.0,
+    "centimeter": 10.0,
+    "inch": 25.4,
+    "foot": 304.8,
+    "meter": 1000.0,
+}
+DEFAULT_UNIT = "millimeter"
+
 # Ensure ElementTree will use the prefixes above when writing.
 for _prefix, _uri in _KNOWN_NS.items():
     ET.register_namespace(_prefix, _uri)
@@ -135,8 +150,13 @@ def _find_model_path(zf: zipfile.ZipFile) -> str:
 def _parse_mesh_element(
     obj_elem: ET.Element,
     ns: str,
+    unit_scale: float = 1.0,
 ) -> MeshData | None:
     """Extract mesh arrays from an ``<object>`` element.
+
+    *unit_scale* is the number of millimetres per model unit; vertex
+    coordinates are multiplied by it so that the returned :class:`MeshData`
+    is always in millimetres.
 
     Returns ``None`` when the element has no ``<mesh>`` child (e.g.
     component-only objects).
@@ -164,6 +184,8 @@ def _parse_mesh_element(
         return None
 
     vertices = np.array(vert_list, dtype=np.float64)
+    if unit_scale != 1.0:
+        vertices *= unit_scale
 
     # -- triangles ---------------------------------------------------------
     tris_elem = mesh_elem.find(_tag("triangles", ns))
@@ -261,8 +283,16 @@ def parse_3mf(path: str) -> ThreeMFData:
     root = ET.fromstring(model_bytes)
     ns = _detect_namespace(root)
 
-    # Unit
-    unit = root.get("unit", "millimeter")
+    # Unit -- coordinates are normalised to millimetres below, while
+    # ``ThreeMFData.unit`` keeps the archive unit for the write-back.
+    unit = root.get("unit", DEFAULT_UNIT)
+    try:
+        unit_scale = UNIT_TO_MM[unit]
+    except KeyError:
+        raise ValueError(
+            f"Unsupported 3MF model unit {unit!r}; supported units are: "
+            + ", ".join(sorted(UNIT_TO_MM))
+        ) from None
 
     # Metadata
     metadata: dict[str, str] = {}
@@ -277,7 +307,7 @@ def parse_3mf(path: str) -> ThreeMFData:
     resources = root.find(_tag("resources", ns))
     if resources is not None:
         for obj in resources.iterfind(_tag("object", ns)):
-            mesh_data = _parse_mesh_element(obj, ns)
+            mesh_data = _parse_mesh_element(obj, ns, unit_scale)
             if mesh_data is not None:
                 meshes.append(mesh_data)
 
@@ -328,6 +358,8 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
     if original_bytes is not None:
         root = ET.fromstring(original_bytes)
         ns = _detect_namespace(root)
+        unit_scale = UNIT_TO_MM[data.unit]
+        root.set("unit", data.unit)
 
         resources = root.find(_tag("resources", ns))
         if resources is not None:
@@ -343,7 +375,7 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
                     obj.remove(old_mesh)
 
                 # Build new mesh element
-                new_mesh = _build_mesh_element(md, ns)
+                new_mesh = _build_mesh_element(md, ns, unit_scale)
                 obj.append(new_mesh)
     else:
         # Build from scratch
@@ -360,8 +392,13 @@ def _rebuild_model_xml(data: ThreeMFData) -> bytes:
     return buf.getvalue()
 
 
-def _build_mesh_element(md: MeshData, ns: str) -> ET.Element:
-    """Create a ``<mesh>`` XML element from vertex/triangle arrays."""
+def _build_mesh_element(md: MeshData, ns: str, unit_scale: float = 1.0) -> ET.Element:
+    """Create a ``<mesh>`` XML element from vertex/triangle arrays.
+
+    Vertices are stored in millimetres in :class:`MeshData`; *unit_scale* is
+    the number of millimetres per archive unit, so coordinates are divided by
+    it before serialisation to keep the file in its declared unit.
+    """
     mesh_el = ET.Element(_tag("mesh", ns))
 
     # Vertices
@@ -370,9 +407,9 @@ def _build_mesh_element(md: MeshData, ns: str) -> ET.Element:
         ET.SubElement(
             verts_el,
             _tag("vertex", ns),
-            x=f"{row[0]:.6g}",
-            y=f"{row[1]:.6g}",
-            z=f"{row[2]:.6g}",
+            x=f"{row[0] / unit_scale:.6g}",
+            y=f"{row[1] / unit_scale:.6g}",
+            z=f"{row[2] / unit_scale:.6g}",
         )
 
     # Triangles
@@ -405,6 +442,7 @@ def _build_model_from_scratch(data: ThreeMFData) -> ET.Element:
         _tag("model", NS_CORE),
         unit=data.unit,
     )
+    unit_scale = UNIT_TO_MM[data.unit]
 
     # Metadata
     for name, value in data.metadata.items():
@@ -425,7 +463,7 @@ def _build_model_from_scratch(data: ThreeMFData) -> ET.Element:
         if md.name:
             obj.set("name", md.name)
 
-        mesh_el = _build_mesh_element(md, NS_CORE)
+        mesh_el = _build_mesh_element(md, NS_CORE, unit_scale)
         obj.append(mesh_el)
 
         ET.SubElement(build, _tag("item", NS_CORE), objectid=md.object_id)
