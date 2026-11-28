@@ -7,6 +7,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -75,27 +76,58 @@ def _run_process(command, *, shell=False, timeout=None):
     try:
         if timeout is None:
             return subprocess.run(command, shell=shell, text=True, capture_output=True, check=False)
-        process = subprocess.Popen(
-            command, shell=shell, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=os.name != "nt",
-        )
+        return _run_timed_process(command, shell=shell, timeout=timeout)
     except FileNotFoundError as exc:
         parts = shlex.split(command) if isinstance(command, str) else command
         missing = exc.filename or (parts[0] if parts else "unknown command")
         return subprocess.CompletedProcess(command, 127, "", f"Command not found: {missing}")
 
+
+def _run_timed_process(command, *, shell, timeout):
+    process = None
+    hangup_received = False
+
+    def handle_hangup(signum, _frame):
+        nonlocal hangup_received
+        if hangup_received:
+            return
+        hangup_received = True
+        if process is not None:
+            raise SystemExit(128 + signum)
+
+    # A detached group no longer receives the terminal's hangup. Turn the
+    # default parent action into an exit that runs our cleanup first.
+    trap_hangup = (
+        hasattr(signal, "SIGHUP")
+        and threading.current_thread() is threading.main_thread()
+        and signal.getsignal(signal.SIGHUP) == signal.SIG_DFL
+    )
+    if trap_hangup:
+        signal.signal(signal.SIGHUP, handle_hangup)
+
     try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        _terminate_process_tree(process)
-        stdout, stderr = process.communicate()
-        message = f"Command timed out after {timeout} seconds."
-        return subprocess.CompletedProcess(command, 124, stdout, f"{message}\n{stderr}" if stderr else message)
-    except BaseException:
-        _terminate_process_tree(process)
-        process.communicate()
-        raise
-    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        try:
+            process = subprocess.Popen(
+                command, shell=shell, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=os.name != "nt",
+            )
+            if hangup_received:
+                raise SystemExit(128 + signal.SIGHUP)
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+            stdout, stderr = process.communicate()
+            message = f"Command timed out after {timeout} seconds."
+            return subprocess.CompletedProcess(command, 124, stdout, f"{message}\n{stderr}" if stderr else message)
+        except BaseException:
+            if process is not None:
+                _terminate_process_tree(process)
+                process.communicate()
+            raise
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    finally:
+        if trap_hangup:
+            signal.signal(signal.SIGHUP, signal.SIG_DFL)
 
 
 def _terminate_process_tree(process):

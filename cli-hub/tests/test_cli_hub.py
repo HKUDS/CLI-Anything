@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -957,6 +958,30 @@ class TestInstaller:
             _run_command("installer | worker", timeout=60)
         terminate.assert_called_once_with(process)
         assert process.communicate.call_count == 2
+
+    @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="POSIX hangup")
+    @patch("cli_hub.installer._terminate_process_tree")
+    @patch("cli_hub.installer.subprocess.Popen")
+    def test_hangup_reaps_detached_installer_and_restores_handler(self, popen, terminate):
+        process = popen.return_value
+        with (
+            patch("cli_hub.installer.signal.getsignal", return_value=signal.SIG_DFL),
+            patch("cli_hub.installer.signal.signal") as register_signal,
+        ):
+            def communicate(timeout=None):
+                if timeout is not None:
+                    handler = register_signal.call_args.args[1]
+                    handler(signal.SIGHUP, None)
+                return "", ""
+
+            process.communicate.side_effect = communicate
+            with pytest.raises(SystemExit) as error:
+                _run_command("pip install example", timeout=60)
+
+        assert error.value.code == 128 + signal.SIGHUP
+        terminate.assert_called_once_with(process)
+        assert process.communicate.call_count == 2
+        register_signal.assert_called_with(signal.SIGHUP, signal.SIG_DFL)
 
     @patch("cli_hub.installer.subprocess.Popen")
     @patch("cli_hub.installer.get_cli")
